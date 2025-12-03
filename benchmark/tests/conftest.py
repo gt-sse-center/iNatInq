@@ -23,11 +23,12 @@ def source_dir_fixture():
 
 @pytest.fixture(name="fixtures_dir")
 def fixtures_dir_fixture(source_dir):
+    """Get the path to the fixtures directory."""
     return source_dir / "tests" / "fixtures"
 
 
 @pytest.fixture(name="config_yaml")
-def config_yaml_fixture(source_dir, fixtures_dir):
+def config_yaml_fixture(fixtures_dir):
     """The config as a yaml file within a fake source directory."""
     config_file = fixtures_dir / "inquire_benchmark_small.yaml"
 

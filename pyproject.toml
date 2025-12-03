@@ -42,7 +42,7 @@ Repository = "https://github.com/gt-sse-center/inatinq"
 line-length = 110
 
 [tool.ruff.lint]
-exclude = ["tests/**"]
+exclude = ["**/tests/**"]
 
 select = ["ALL"]
 
