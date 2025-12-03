@@ -8,7 +8,7 @@ authors = [
     { name = "Ketan Bhardwaj", email= "ketanbj@cc.gatech.edu" },
     { name = "Varun Narayan", email= "varun.narayan@gatech.edu" },
 ]
-requires-python = ">= 3.10"
+requires-python = ">= 3.11"
 dependencies = [
     "inquire_api",
 ]
