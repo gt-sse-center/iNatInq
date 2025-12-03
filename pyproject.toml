@@ -1,22 +1,19 @@
 [project]
-name = "inquire_api"
+name = "inatinq"
 version = "0.0.0"
-description = "API server for INQUIRE natural language search"
+description = "The iNaturalist-INQUIRE project to add INQUIRE based text semantic search to the iNaturalist platform."
 readme = "README.md"
 authors = [
-    { name = "Varun Agrawak", email = "varunagrawal@gatech.edu" }
+    { name = "Varun Agrawal", email = "varunagrawal@gatech.edu" },
+    { name = "Ketan Bhardwaj", email= "ketanbj@cc.gatech.edu" },
+    { name = "Varun Narayan", email= "varun.narayan@gatech.edu" },
 ]
 requires-python = ">= 3.10"
 dependencies = [
     "datasets>=4.4.1",
     "docker>=7.1.0",
-    "fastapi[all,standard]>=0.121.0",
-    "inat-toolkit",
-    "jinja2>=3.1.6",
     "loguru>=0.7.3",
     "open-clip-torch>=3.2.0",
-    "pgvector>=0.4.1",
-    "qdrant-client>=1.15.1",
     "torch>=2.9.0",
     "transformers>=4.57.1",
 ]
@@ -42,6 +39,13 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
+app = [
+    "fastapi[all]>=0.121.0",
+    "jinja2>=3.1.6",
+    "pgvector>=0.4.1",
+    "qdrant-client>=1.15.1",
+]
+
 dev = [
     "loguru>=0.7.3",
     "pre-commit>=4.3.0",
@@ -107,6 +111,3 @@ convention = "google"
 
 [tool.uv.build-backend]
 module-name = "inquire_api"
-
-[tool.uv.sources]
-inat-toolkit = { path = "../inat-open-data", editable = true }
