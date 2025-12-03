@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+:root {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom colors for use with tailwindcss.
+  E.g. bg-inatgray */
+@theme {
+  --color-inatgray: #eeeeee;
+  --color-inatgreen: #74ac00;
+  --color-inatgreenhover: #8eb947;  /* This is inatgreen at 80% opacity. */
+  --color-inattext: #333333;
+  --color-inatborder: #cccccc;
+  --color-inatlink: #337ab7;
+  --color-inatlinkhover: #537EA4;
+  --color-inatwhite: #ffffff;
+}
+
