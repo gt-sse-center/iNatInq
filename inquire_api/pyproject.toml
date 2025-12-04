@@ -1,0 +1,112 @@
+[project]
+name = "inquire_api"
+version = "0.0.0"
+description = "API server for INQUIRE natural language search"
+readme = "README.md"
+authors = [
+    { name = "Varun Agrawal", email = "varunagrawal@gatech.edu" }
+]
+requires-python = ">= 3.10"
+dependencies = [
+    "datasets>=4.4.1",
+    "docker>=7.1.0",
+    "fastapi[all,standard]>=0.121.0",
+    #"inat-toolkit",
+    "jinja2>=3.1.6",
+    "loguru>=0.7.3",
+    "open-clip-torch>=3.2.0",
+    "pgvector>=0.4.1",
+    "qdrant-client>=1.15.1",
+    "torch>=2.9.0",
+    "transformers>=4.57.1",
+]
+
+classifiers = [
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.10",
+]
+
+[project.license]
+text = "MIT"
+
+[project.urls]
+Homepage = "https://github.com/gt-sse-center/inatinq"
+Documentation = "https://github.com/gt-sse-center/inatinq"
+Repository = "https://github.com/gt-sse-center/inatinq"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "loguru>=0.7.3",
+    "pre-commit>=4.3.0",
+    "pytest>=8.4.2",
+    "pytest-cov>=7.0.0",
+    "pytest-loguru>=0.4.0",
+    "ruff>=0.13.0",
+    "pytest-mock>=3.15.1",
+    "ipython>=8.37.0",
+]
+
+[tool.pytest.ini_options]
+addopts = "--verbose -vv --capture=no --cov=inquire_api --cov-report html --cov-report term --cov-report xml:coverage.xml --cov-fail-under=70.0"
+norecursedirs = []
+
+
+[tool.ruff]
+line-length = 110
+
+[tool.ruff.lint]
+exclude = ["tests/**"]
+
+select = ["ALL"]
+
+ignore = [
+    "ANN002", # Missing type annotation for `*args`
+    "ANN201", # Missing return types
+    "ANN003", # Missing type annotation for `**kwargs`
+    "BLE001", # Do not catch blind exception: `Exception`
+    "B905", # `zip()` without an explicit `strict=` parameter
+    "BLE001", # Do not catch blind exception: `Exception`
+    "COM812", # Trailing comma missing
+    "D105", # Missing docstring in magic method
+    "D107", # Missing docstring in `__init__` method
+    "D202", # No blank lines allowed after function docstring
+    "D203", # Incorrect blank line before class
+    "D213", # Multi line summary second line
+    "EM101", # Separate message assignment for exception
+    "FIX002", # Line contains TODO, consider resolving the issue
+    "N802", # Function name `xxx` should be lowercase
+    "N999", # Invalid module name
+    "PERF203", # try-catch in loop
+    "RET504", # Separate assignment and return
+    "S101", # Use of assert detected
+    "TC006", # Add quotes to type expression in `typing.cast()`
+    "TD002", # Missing author in TODO
+    "TD003", # Missing issue link for this TODO
+    "TRY002", # Create your own exception
+    "TRY003", # Avoid specifying long messages outside the exception class
+    "TRY300", # Consider moving this statement to an `else` block
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.pylint]
+max-args = 10
+max-branches = 20
+max-returns = 20
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.uv.build-backend]
+module-name = "inquire_api"
+
+#[tool.uv.sources]
+#inat-toolkit = { path = "../inat-open-data", editable = true }

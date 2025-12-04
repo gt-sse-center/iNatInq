@@ -16,7 +16,7 @@ class Settings(BaseSettings):
 
     embedding_model_id: str
 
-    model_config = SettingsConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(env_file="./.env")
 
 
 @lru_cache
