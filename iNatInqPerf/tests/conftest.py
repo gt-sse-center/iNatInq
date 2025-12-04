@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from loguru import logger
 from tqdm import tqdm
+import yaml
 
 # Disable tqdm bars in tests
 tqdm.__init__ = partialmethod(tqdm.__init__, disable=True)
@@ -35,7 +36,32 @@ def config_yaml_fixture(fixtures_dir):
     return config_file
 
 
-pytest_plugins = ["fixtures.conftest"]
+@pytest.fixture(name="benchmark_yaml")
+def benchmark_config_fixture(config_yaml: Path):
+    with config_yaml.open() as f:
+        return yaml.safe_load(f)
+
+
+@pytest.fixture(name="milvus_yaml")
+def milvus_config_fixture(fixtures_dir):
+    config_yaml = fixtures_dir / "inquire_milvus.yaml"
+    with config_yaml.open() as f:
+        return yaml.safe_load(f)
+
+
+@pytest.fixture(name="qdrant_yaml")
+def qdrant_config_fixture(fixtures_dir):
+    config_yaml = fixtures_dir / "inquire_qdrant.yaml"
+    with config_yaml.open() as f:
+        return yaml.safe_load(f)
+
+
+@pytest.fixture(name="weaviate_yaml")
+def weaviate_config_fixture(fixtures_dir):
+    config_yaml = fixtures_dir / "inquire_weaviate.yaml"
+    with config_yaml.open() as f:
+        return yaml.safe_load(f)
+
 
 # Set logging level to CRITICAL so it doesn't show
 # in test output but is still captured for testing.
