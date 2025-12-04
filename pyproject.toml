@@ -10,21 +10,25 @@ authors = [
 ]
 requires-python = ">= 3.10"
 dependencies = [
-    "datasets>=4.4.1",
-    "docker>=7.1.0",
-    "loguru>=0.7.3",
-    "open-clip-torch>=3.2.0",
-    "torch>=2.9.0",
-    "transformers>=4.57.1",
+    "inquire_api",
 ]
 
-classifiers = [
-    "Operating System :: MacOS",
-    "Operating System :: Microsoft :: Windows",
-    "Operating System :: POSIX :: Linux",
-    "Programming Language :: Python",
-    "Programming Language :: Python :: 3.10",
+[dependency-groups]
+dev = [
+    "ipython>=8.37.0",
+    "loguru>=0.7.3",
+    "pre-commit>=4.3.0",
+    "pytest>=8.4.2",
+    "pytest-cov>=7.0.0",
+    "pytest-loguru>=0.4.0",
+    "ruff>=0.13.0",
 ]
+
+[tool.uv.sources]
+inquire_api = { workspace = true }
+
+[tool.uv.workspace]
+members = ["inquire_api"]
 
 [project.license]
 text = "MIT"
@@ -33,34 +37,6 @@ text = "MIT"
 Homepage = "https://github.com/gt-sse-center/inatinq"
 Documentation = "https://github.com/gt-sse-center/inatinq"
 Repository = "https://github.com/gt-sse-center/inatinq"
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[dependency-groups]
-app = [
-    "fastapi[all]>=0.121.0",
-    "jinja2>=3.1.6",
-    "pgvector>=0.4.1",
-    "qdrant-client>=1.15.1",
-]
-
-dev = [
-    "loguru>=0.7.3",
-    "pre-commit>=4.3.0",
-    "pytest>=8.4.2",
-    "pytest-cov>=7.0.0",
-    "pytest-loguru>=0.4.0",
-    "ruff>=0.13.0",
-    "pytest-mock>=3.15.1",
-    "ipython>=8.37.0",
-]
-
-[tool.pytest.ini_options]
-addopts = "--verbose -vv --capture=no --cov=inquire_api --cov-report html --cov-report term --cov-report xml:coverage.xml --cov-fail-under=70.0"
-norecursedirs = []
-
 
 [tool.ruff]
 line-length = 110
@@ -108,6 +84,3 @@ max-returns = 20
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
-
-[tool.uv.build-backend]
-module-name = "inquire_api"

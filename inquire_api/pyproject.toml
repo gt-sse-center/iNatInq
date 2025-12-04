@@ -32,26 +32,12 @@ classifiers = [
 [project.license]
 text = "MIT"
 
-[project.urls]
-Homepage = "https://github.com/gt-sse-center/inatinq"
-Documentation = "https://github.com/gt-sse-center/inatinq"
-Repository = "https://github.com/gt-sse-center/inatinq"
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
-dev = [
-    "loguru>=0.7.3",
-    "pre-commit>=4.3.0",
-    "pytest>=8.4.2",
-    "pytest-cov>=7.0.0",
-    "pytest-loguru>=0.4.0",
-    "ruff>=0.13.0",
-    "pytest-mock>=3.15.1",
-    "ipython>=8.37.0",
-]
+dev = []
 
 [tool.pytest.ini_options]
 addopts = "--verbose -vv --capture=no --cov=inquire_api --cov-report html --cov-report term --cov-report xml:coverage.xml --cov-fail-under=70.0"
