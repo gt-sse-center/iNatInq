@@ -4,6 +4,7 @@ import numpy as np
 from datasets import Dataset, Features, Value, List
 import pytest
 
+from datetime import datetime
 from inquire_api.vector_db import VectorDatabaseAdaptor
 
 
@@ -22,6 +23,11 @@ def dataset_fixture(N):
             "img_url": [f"https://test.com/{i}.png" for i in range(N)],
             "file_name": [f"image_{i}.png" for i in range(N)],
             "img_embedding": [rng.random(512) for _ in range(N)],
+            "latitude": rng.random(size=(N,)).tolist(),
+            "longitude": rng.random(size=(N,)).tolist(),
+            "positional_accuracy": rng.random(size=(N,)).tolist(),
+            "observed_on": [datetime.now() for _ in range(N)],
+            "taxon": ["" for _ in range(N)],
         },
         features=Features(
             {
@@ -31,6 +37,11 @@ def dataset_fixture(N):
                 "file_name": Value("string"),
                 # `img_embedding` column is of type datasets.List[float32]
                 "img_embedding": List(feature=Value("float32"), length=512),
+                "latitude": Value("float32"),
+                "longitude": Value("float32"),
+                "positional_accuracy": Value("float32"),
+                "observed_on": Value("date32"),
+                "taxon": Value("string"),
             },
         ),
     )

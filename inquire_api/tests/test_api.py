@@ -20,7 +20,7 @@ def test_index(client):
 
 def test_count(client):
     response = client.get("/count")
-    assert response.json() == 1000
+    assert response.json() == 2091851
 
 
 def test_query(client):
