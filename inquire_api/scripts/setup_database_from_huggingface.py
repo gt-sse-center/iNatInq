@@ -12,7 +12,6 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from tqdm import tqdm
 
-from inquire_api.container import Container, ContainerConfig
 from inquire_api.vector_db import HuggingFaceDataset, VectorDatabaseAdaptor
 
 app = typer.Typer(pretty_exceptions_enable=False)
