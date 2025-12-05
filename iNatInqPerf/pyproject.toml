@@ -12,7 +12,7 @@ readme = "README.md"
 authors = [
     { name = "Ketan Bhardwaj", email = "ketanbj@cc.gatech.edu" }
 ]
-requires-python = ">= 3.10"
+requires-python = ">= 3.11"
 dependencies = [
     "numpy>=2.0.0",
     "pandas>=1.5",

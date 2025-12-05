@@ -1,6 +1,6 @@
 """Common pytest configurations and fixtures."""
 
-from datetime import datetime
+import datetime
 
 import numpy as np
 import pytest
@@ -48,7 +48,7 @@ def dataset_fixture(N):
             "latitude": rng.random(size=(N,)).tolist(),
             "longitude": rng.random(size=(N,)).tolist(),
             "positional_accuracy": rng.random(size=(N,)).tolist(),
-            "observed_on": [datetime.now(tz=datetime.UTC) for _ in range(N)],
+            "observed_on": [datetime.datetime.now(datetime.UTC) for _ in range(N)],
             "taxon": ["" for _ in range(N)],
         },
         features=Features(
