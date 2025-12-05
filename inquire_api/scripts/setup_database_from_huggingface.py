@@ -4,15 +4,15 @@ from typing import Annotated
 
 import typer
 from datasets import load_dataset
-from inquire_api.vector_db import HuggingFaceDataset, VectorDatabaseAdaptor
+from inat_toolkit.database import Observation, Photo, Taxon
+from inat_toolkit.image import get_url
 from loguru import logger
 from qdrant_client import models
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from tqdm import tqdm
 
-from inat_toolkit.database import Observation, Photo, Taxon
-from inat_toolkit.image import get_url
+from inquire_api.vector_db import HuggingFaceDataset, VectorDatabaseAdaptor
 
 app = typer.Typer(pretty_exceptions_enable=False)
 

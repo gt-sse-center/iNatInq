@@ -69,8 +69,8 @@ ignore = [
     "TRY300", # Consider moving this statement to an `else` block
 ]
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["ANN001", "D103", "INP001", "PLR2004"]
-"scripts/*" = ["INP001",]
+"tests/*" = ["ANN001", "D100", "D103", "INP001", "PLR2004"]
+"scripts/*" = ["INP001", "ERA001", "T201"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 15

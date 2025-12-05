@@ -10,6 +10,7 @@ requires-python = ">= 3.11"
 
 dependencies = [
     "fastapi[all,standard]>=0.121.0",
+    "inat-toolkit",
     "jinja2>=3.1.6",
     "open-clip-torch>=3.2.0",
 ]
@@ -88,3 +89,6 @@ convention = "google"
 
 [tool.uv.build-backend]
 module-name = "inquire_api"
+
+[tool.uv.sources]
+inat-toolkit = { workspace = true }

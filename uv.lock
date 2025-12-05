@@ -1480,6 +1480,7 @@ version = "0.0.0"
 source = { editable = "inquire_api" }
 dependencies = [
     { name = "fastapi", extra = ["all", "standard"] },
+    { name = "inat-toolkit" },
     { name = "jinja2" },
     { name = "open-clip-torch" },
 ]
@@ -1487,6 +1488,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", extras = ["all", "standard"], specifier = ">=0.121.0" },
+    { name = "inat-toolkit", editable = "inat_toolkit" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "open-clip-torch", specifier = ">=3.2.0" },
 ]
