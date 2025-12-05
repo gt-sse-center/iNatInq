@@ -1,10 +1,10 @@
-name: "iNatInqPerf CI+CD"
+name: "Inquire API CI+CD"
 run-name: ${{ github.run_number }} [${{ github.actor }}] on ${{ github.ref_name }}
 
 on:
   pull_request:
     paths:
-      - 'iNatInqPerf'
+      - 'inquire_api'
     branches:
       - '**' # This wildcard matches all branch names
   push:
@@ -25,7 +25,7 @@ jobs:
 
     with:
       # These values can be customized for your specific requirements.
-      tests_path: "iNatInqPerf/tests"
+      tests_path: "inquire_api/tests"
       operating_system_json_string: "[ 'ubuntu-latest' ]"
       python_version_json_string: "['3.11']"
       python_package_version: "3.11"
