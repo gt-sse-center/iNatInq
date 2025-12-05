@@ -1,13 +1,25 @@
 """Common pytest configurations and fixtures."""
 
 import datetime
+import sys
+from functools import partialmethod
 
 import numpy as np
 import pytest
 from datasets import Dataset, Features, List, Value
+from loguru import logger
+from tqdm import tqdm
 
 from inquire_api.container import Container, ContainerConfig
 from inquire_api.vector_db import VectorDatabaseAdaptor
+
+# Disable tqdm bars in tests
+tqdm.__init__ = partialmethod(tqdm.__init__, disable=True)
+
+# Set logging level to CRITICAL so it doesn't show
+# in test output but is still captured for testing.
+logger.remove()
+logger.add(sys.stderr, level="CRITICAL")
 
 
 @pytest.fixture(name="port", scope="session")
