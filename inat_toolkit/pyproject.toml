@@ -1,0 +1,87 @@
+[project]
+name = "inat_toolkit"
+version = "0.0.0"
+description = "Utilities for handling the iNaturalist Open Dataset"
+readme = "README.md"
+authors = [
+    { name = "Varun Agrawal", email = "varunagrawal@gatech.edu" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "pgvector>=0.4.1",
+    "psycopg[binary]>=3.2.12",
+    "sqlalchemy>=2.0.44",
+]
+
+classifiers = [
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.10",
+]
+
+[project.license]
+text = "MIT"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = []
+
+[tool.pytest.ini_options]
+addopts = "--verbose -vv --capture=no --cov=inat_toolkit --cov-report html --cov-report term --cov-report xml:coverage.xml --cov-fail-under=70.0"
+norecursedirs = []
+
+[tool.ruff]
+line-length = 110
+
+[tool.ruff.lint]
+select = ["ALL"]
+
+ignore = [
+    "ANN002", # Missing type annotation for `*args`
+    "ANN201", # Missing return types
+    "ANN003", # Missing type annotation for `**kwargs`
+    "BLE001", # Do not catch blind exception: `Exception`
+    "B905", # `zip()` without an explicit `strict=` parameter
+    "BLE001", # Do not catch blind exception: `Exception`
+    "COM812", # Trailing comma missing
+    "D105", # Missing docstring in magic method
+    "D107", # Missing docstring in `__init__` method
+    "D202", # No blank lines allowed after function docstring
+    "D203", # Incorrect blank line before class
+    "D213", # Multi line summary second line
+    "E501", # Line too long
+    "EM101", # Separate message assignment for exception
+    "FIX002", # Line contains TODO, consider resolving the issue
+    "N802", # Function name `xxx` should be lowercase
+    "N999", # Invalid module name
+    "RET504", # Separate assignment and return
+    "S101", # Use of assert detected
+    "TC006", # Add quotes to type expression in `typing.cast()`
+    "TD002", # Missing author in TODO
+    "TD003", # Missing issue link for this TODO
+    "TRY002", # Create your own exception
+    "TRY003", # Avoid specifying long messages outside the exception class
+    "TRY300", # Consider moving this statement to an `else` block
+]
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN001", "D103", "INP001", "PLR2004"]
+"scripts/*" = ["INP001",]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.pylint]
+max-args = 10
+max-branches = 20
+max-returns = 20
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.uv.build-backend]
+module-name = "inat_toolkit"
