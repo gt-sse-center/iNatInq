@@ -83,7 +83,6 @@ def test_vector_insertion(
     assert count_result.count == num_vectors
 
 
-@pytest.mark.regression
 def test_search(
     client_with_collection: QdrantClient,
     rng: np.random.Generator,

@@ -8,7 +8,7 @@ from PIL import Image
 from inat_toolkit.embed import ImageEmbedder
 
 
-@logger.catch
+@logger.catch(reraise=True)
 def download_image(url: str, timeout: int = 10) -> Image.Image:
     """Download the image at `url`."""
 

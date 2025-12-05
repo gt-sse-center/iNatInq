@@ -1,5 +1,6 @@
 """Tests for the database module."""
 
+import os
 from uuid import UUID
 
 import pytest
@@ -7,6 +8,11 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
 from inat_toolkit.database import Observation, Photo, Taxon
+
+# TODO(Varun): Skip tests until we can recreate the postgres db in a test env
+pytestmark = pytest.mark.skipif(
+    os.getenv("GITHUB_ACTIONS") == "true", reason="No Postgres DB set up for test env"
+)
 
 
 @pytest.fixture(name="connection_str")
