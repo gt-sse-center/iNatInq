@@ -19,3 +19,7 @@ data/
 
 # VS Code directory
 .vscode
+
+**/.results
+
+*.npy

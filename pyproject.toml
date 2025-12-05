@@ -36,12 +36,12 @@ dev = [
 
 [tool.uv.sources]
 inquire_api = { workspace = true }
-inatinqperf = { workspace = true }
+iNatInqPerf = { workspace = true }
 
 [tool.uv.workspace]
 members = [
     "inquire_api",
-    "iNatInqPerf"
+    "iNatInqPerf",
 ]
 
 [project.license]
