@@ -11,12 +11,15 @@ from inquire_api.config import get_settings
 from inquire_api.embedding import TextEmbedder
 from inquire_api.vector_db import VectorDatabaseAdaptor
 
-app_settings = get_settings()
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Function which defines operation at the beginning and the end of the FastAPI app lifespan."""
+
+    # Get the app settings.
+    # This pattern allows for overriding `get_settings` for testing.
+    app_settings = app.dependency_overrides.get(get_settings, get_settings)()
+
     # Load the model
     embedder = TextEmbedder(model_id=app_settings.embedding_model_id)
     logger.info("Loaded embedding model.")
@@ -38,7 +41,7 @@ async def lifespan(app: FastAPI):
     del vector_db
 
 
-app = FastAPI(title=app_settings.name, lifespan=lifespan)
+app = FastAPI(title="The Inquire API", lifespan=lifespan)
 app.include_router(routes.router)
 
 app.add_middleware(
