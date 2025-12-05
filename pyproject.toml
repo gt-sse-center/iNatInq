@@ -12,7 +12,7 @@ requires-python = ">= 3.11"
 dependencies = [
     "inquire_api",
     "inatinqperf",
-    "inat_toolkit",
+    "inat-toolkit",
     "datasets>=4.4.1",
     "docker>=7.1.0",
     "loguru>=0.7.3",

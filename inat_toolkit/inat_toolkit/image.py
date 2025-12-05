@@ -13,7 +13,6 @@ def download_image(url: str, timeout: int = 10) -> Image.Image:
     """Download the image at `url`."""
 
     resp = requests.get(url, stream=True, timeout=timeout)
-
     return Image.open(resp.raw)
 
 
