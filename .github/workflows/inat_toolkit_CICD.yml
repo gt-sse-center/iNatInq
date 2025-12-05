@@ -14,7 +14,7 @@ permissions: {}
 
 jobs:
   CICD_Workflow:
-    name: "CI+CD Workflow"
+    name: "iNat Toolkit CI+CD Workflow"
 
     permissions:
       contents: write
