@@ -52,7 +52,6 @@ def test_photo_query(session):
     )
 
     photo = result[0]
-    print(photo.embedding)
     assert photo.photo_id == expected_photo.photo_id
     assert photo.photo_uuid == expected_photo.photo_uuid
     assert photo.observation_uuid == expected_photo.observation_uuid

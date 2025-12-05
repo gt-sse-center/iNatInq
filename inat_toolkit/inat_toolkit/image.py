@@ -1,7 +1,6 @@
 """Module with image utilities."""
 
 import numpy as np
-import PIL
 import requests
 from loguru import logger
 from PIL import Image
@@ -9,17 +8,13 @@ from PIL import Image
 from inat_toolkit.embed import ImageEmbedder
 
 
+@logger.catch
 def download_image(url: str, timeout: int = 10) -> Image.Image:
     """Download the image at `url`."""
 
     resp = requests.get(url, stream=True, timeout=timeout)
 
-    try:
-        return Image.open(resp.raw)
-
-    except PIL.UnidentifiedImageError:
-        logger.error(f"Image at {url} not found")
-        return None
+    return Image.open(resp.raw)
 
 
 def get_url(
