@@ -1,0 +1,18 @@
+.thumb {
+  display: block;
+  overflow: hidden;
+  height: 200px;
+  width: 200px;
+}
+
+.thumb img {
+  display: block; /* Otherwise it keeps some space around baseline */
+  min-width: 100%; /* Scale up to fill container width */
+  min-height: 100%; /* Scale up to fill container height */
+  -ms-interpolation-mode: bicubic; /* Scaled images look a bit better in IE now */
+}
+
+/* Set the width of each Matine Chip so they are all the same width. */
+.mantine-Chip-label {
+  width: 80%;
+}
