@@ -1,9 +1,13 @@
 """Unit tests for the API."""
 
+import os
 import pytest
 from fastapi.testclient import TestClient
 
 from inquire_api.main import app
+
+# TODO(Varun): Make fixtures
+pytestmark = pytest.mark.skipif(os.getenv("GITHUB_ACTIONS") == "true", reason="Running on Github Actions CI")
 
 
 @pytest.fixture(name="client")

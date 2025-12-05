@@ -1,11 +1,15 @@
 """Unit tests for the vector database adaptor."""
 
+import os
 import numpy as np
 from datasets import Dataset, Features, Value, List
 import pytest
 
 from datetime import datetime
 from inquire_api.vector_db import VectorDatabaseAdaptor
+
+# TODO(Varun): Make fixtures
+pytestmark = pytest.mark.skipif(os.getenv("GITHUB_ACTIONS") == "true", reason="Running on Github Actions CI")
 
 
 @pytest.fixture(name="N")
