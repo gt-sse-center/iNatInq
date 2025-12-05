@@ -4,9 +4,7 @@ run-name: ${{ github.run_number }} [${{ github.actor }}] on ${{ github.ref_name 
 on:
   pull_request:
     paths:
-      - 'inquire_api'
-    branches:
-      - '**' # This wildcard matches all branch names
+      - 'inquire_api/**'
   push:
     branches:
       - main
