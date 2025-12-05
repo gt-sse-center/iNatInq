@@ -2,24 +2,30 @@
 
 ## Installing Dependencies
 
-We use [uv](https://docs.astral.sh/uv/) to manage all the python dependencies.
+We use [uv workspaces](https://docs.astral.sh/uv/concepts/projects/workspaces/) to manage all the python dependencies.
 
-Each top-level directory corresponds to a sub-project, and accordingly there is a dependency group specified for each sub-project.
+There is a top-level `pyproject.toml`, and each directory corresponds to a sub-project which has its own `pyproject.toml`.
 
-This means, that if you want to install the dependencies for the `benchmark`, you can run
-
-```sh
-uv sync --group benchmark
-```
-
-and similarly for the `app` sub-project
+This makes dependency management across the various sub-projects quite easy. To sync all the dependencies across the workspace, we can run
 
 ```sh
-uv sync --group app
+uv sync --all-packages
 ```
 
-To install all dependencies across all sub-projects, you can run
+This is by far the most convenient as it allows full compatibility with IDE tools such as VS Code.
+
+### Install Sub-project Dependencies
+
+To install the dependencies for a specific sub-project, you can run
 
 ```sh
-uv sync --all-groups
+uv sync --package <sub-project>
 ```
+
+This means, that if you want to install the dependencies for the `iNatInqPer` project, you can run
+
+```sh
+uv sync --package inatinqperf  # It is case insensitive.
+```
+
+## Running Tests
