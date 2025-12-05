@@ -12,7 +12,6 @@ dependencies = [
     "fastapi[all,standard]>=0.121.0",
     "jinja2>=3.1.6",
     "open-clip-torch>=3.2.0",
-    "pgvector>=0.4.1",
 ]
 
 classifiers = [
