@@ -14,8 +14,8 @@ from tqdm import tqdm
 from inatinqperf.adaptors import VECTORDBS, DataPoint, Faiss, Query, SearchResult, VectorDatabase
 from inatinqperf.benchmark.configuration import Config
 from inatinqperf.benchmark.container import container_context
+from inatinqperf.benchmark.profiler import Profiler
 from inatinqperf.utils import (
-    Profiler,
     embed_images,
     embed_text,
     export_images,
