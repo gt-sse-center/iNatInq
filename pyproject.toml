@@ -8,15 +8,25 @@ authors = [
     { name = "Ketan Bhardwaj", email= "ketanbj@cc.gatech.edu" },
     { name = "Varun Narayan", email= "varun.narayan@gatech.edu" },
 ]
-requires-python = ">= 3.10"
+requires-python = ">= 3.11"
 dependencies = [
     "inquire_api",
+    "inatinqperf",
+    "datasets>=4.4.1",
+    "docker>=7.1.0",
+    "loguru>=0.7.3",
+    "pydantic>=2.11.9",
+    "python-dotenv>=1.2.1",
+    "qdrant-client>=1.15.1",
+    "torch>=2.9.0",
+    "tqdm>=4.67.1",
+    "transformers>=4.57.1",
+    "typer>=0.17.4",
 ]
 
 [dependency-groups]
 dev = [
     "ipython>=8.37.0",
-    "loguru>=0.7.3",
     "pre-commit>=4.3.0",
     "pytest>=8.4.2",
     "pytest-cov>=7.0.0",
@@ -26,9 +36,13 @@ dev = [
 
 [tool.uv.sources]
 inquire_api = { workspace = true }
+inatinqperf = { workspace = true }
 
 [tool.uv.workspace]
-members = ["inquire_api"]
+members = [
+    "inquire_api",
+    "iNatInqPerf"
+]
 
 [project.license]
 text = "MIT"
@@ -42,7 +56,7 @@ Repository = "https://github.com/gt-sse-center/inatinq"
 line-length = 110
 
 [tool.ruff.lint]
-exclude = ["tests/**"]
+exclude = ["**/tests/**"]
 
 select = ["ALL"]
 

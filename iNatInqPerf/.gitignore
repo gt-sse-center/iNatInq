@@ -1,0 +1,11 @@
+
+.coverage
+.DS_Store
+.vscode
+__pycache__
+coverage.xml
+minisign_key.pri
+post_generation_instructions.html
+.results/**
+
+data/
