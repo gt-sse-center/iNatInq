@@ -9,7 +9,6 @@ from inatinqperf.utils.embed import (
     embed_images,
     embed_text,
 )
-from inatinqperf.utils.profiler import Profiler
 
 
 def get_table(data: dict[str, Any]) -> str:
@@ -19,7 +18,6 @@ def get_table(data: dict[str, Any]) -> str:
 
 
 __all__ = [
-    "Profiler",
     "embed_images",
     "embed_text",
     "export_images",

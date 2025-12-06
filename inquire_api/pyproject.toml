@@ -6,10 +6,10 @@ readme = "README.md"
 authors = [
     { name = "Varun Agrawal", email = "varunagrawal@gatech.edu" }
 ]
-requires-python = ">= 3.10"
+requires-python = ">= 3.11"
+
 dependencies = [
     "fastapi[all,standard]>=0.121.0",
-    #"inat-toolkit",
     "jinja2>=3.1.6",
     "open-clip-torch>=3.2.0",
     "pgvector>=0.4.1",
@@ -42,8 +42,6 @@ norecursedirs = []
 line-length = 110
 
 [tool.ruff.lint]
-exclude = ["tests/**"]
-
 select = ["ALL"]
 
 ignore = [
@@ -74,6 +72,10 @@ ignore = [
     "TRY300", # Consider moving this statement to an `else` block
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN001", "D100", "D103", "INP001", "PLR2004", "N803"]
+"scripts/*" = ["INP001", "ERA001", "T201"]
+
 [tool.ruff.lint.mccabe]
 max-complexity = 15
 
@@ -87,6 +89,3 @@ convention = "google"
 
 [tool.uv.build-backend]
 module-name = "inquire_api"
-
-#[tool.uv.sources]
-#inat-toolkit = { path = "../inat-open-data", editable = true }

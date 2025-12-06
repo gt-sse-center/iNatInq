@@ -12,7 +12,7 @@ readme = "README.md"
 authors = [
     { name = "Ketan Bhardwaj", email = "ketanbj@cc.gatech.edu" }
 ]
-requires-python = ">= 3.10"
+requires-python = ">= 3.11"
 dependencies = [
     "numpy>=2.0.0",
     "pandas>=1.5",
@@ -40,18 +40,6 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
 ]
 
-[project.license]
-text = "MIT"
-
-[project.urls]
-Homepage = "https://github.com/gt-sse-center/iNatInqPerf"
-Documentation = "https://github.com/gt-sse-center/iNatInqPerf"
-Repository = "https://github.com/gt-sse-center/iNatInqPerf"
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [dependency-groups]
 dev = [
     "autogitsemver>=0.9.2",
@@ -60,12 +48,18 @@ dev = [
     "pytest-mock>=3.15.1",
 ]
 
+[project.license]
+text = "MIT"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [tool.pytest.ini_options]
 addopts = "--verbose -vv --capture=no --cov=inatinqperf --cov-report html --cov-report term --cov-report xml:coverage.xml --cov-fail-under=70.0"
 norecursedirs = [
     "tests/vectordbs",
 ]
-
 
 [tool.ruff]
 line-length = 110

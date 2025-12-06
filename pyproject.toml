@@ -36,12 +36,12 @@ dev = [
 
 [tool.uv.sources]
 inquire_api = { workspace = true }
-inatinqperf = { workspace = true }
+iNatInqPerf = { workspace = true }
 
 [tool.uv.workspace]
 members = [
     "inquire_api",
-    "iNatInqPerf"
+    "iNatInqPerf",
 ]
 
 [project.license]
@@ -51,50 +51,3 @@ text = "MIT"
 Homepage = "https://github.com/gt-sse-center/inatinq"
 Documentation = "https://github.com/gt-sse-center/inatinq"
 Repository = "https://github.com/gt-sse-center/inatinq"
-
-[tool.ruff]
-line-length = 110
-
-[tool.ruff.lint]
-exclude = ["**/tests/**"]
-
-select = ["ALL"]
-
-ignore = [
-    "ANN002", # Missing type annotation for `*args`
-    "ANN201", # Missing return types
-    "ANN003", # Missing type annotation for `**kwargs`
-    "BLE001", # Do not catch blind exception: `Exception`
-    "B905", # `zip()` without an explicit `strict=` parameter
-    "BLE001", # Do not catch blind exception: `Exception`
-    "COM812", # Trailing comma missing
-    "D105", # Missing docstring in magic method
-    "D107", # Missing docstring in `__init__` method
-    "D202", # No blank lines allowed after function docstring
-    "D203", # Incorrect blank line before class
-    "D213", # Multi line summary second line
-    "EM101", # Separate message assignment for exception
-    "FIX002", # Line contains TODO, consider resolving the issue
-    "N802", # Function name `xxx` should be lowercase
-    "N999", # Invalid module name
-    "PERF203", # try-catch in loop
-    "RET504", # Separate assignment and return
-    "S101", # Use of assert detected
-    "TC006", # Add quotes to type expression in `typing.cast()`
-    "TD002", # Missing author in TODO
-    "TD003", # Missing issue link for this TODO
-    "TRY002", # Create your own exception
-    "TRY003", # Avoid specifying long messages outside the exception class
-    "TRY300", # Consider moving this statement to an `else` block
-]
-
-[tool.ruff.lint.mccabe]
-max-complexity = 15
-
-[tool.ruff.lint.pylint]
-max-args = 10
-max-branches = 20
-max-returns = 20
-
-[tool.ruff.lint.pydocstyle]
-convention = "google"

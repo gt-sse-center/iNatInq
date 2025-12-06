@@ -6,7 +6,7 @@ import uuid
 import pytest
 
 from inatinqperf.benchmark.configuration import ContainerConfig
-from inatinqperf.utils import profiler
+from inatinqperf.benchmark import profiler
 
 
 @pytest.fixture(scope="module", name="docker_client")

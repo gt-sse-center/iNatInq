@@ -16,3 +16,10 @@ coverage.xml
 data/
 
 **/.DS_Store
+
+# VS Code directory
+.vscode
+
+**/.results
+
+*.npy

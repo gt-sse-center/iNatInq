@@ -3,9 +3,9 @@
 repos:
 - repo: local
   hooks:
-  - id: uv sync --frozen
-    name: uv sync --frozen
-    entry: uv sync --frozen
+  - id: uv sync --frozen --all-packages
+    name: uv sync --frozen --all-packages
+    entry: uv sync --frozen --all-packages
     language: system
     pass_filenames: false
     require_serial: true

@@ -16,6 +16,7 @@ class FilterData(BaseModel):
     longitude_max: float | None
     start_date: datetime.date | None = None
     end_date: datetime.date | None = None
+    months: list[str] | None = None
 
 
 class QueryFormData(BaseModel):

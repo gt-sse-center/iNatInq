@@ -1,0 +1,138 @@
+name: "[Callable] CI+CD Workflow Impl"
+
+on:
+  workflow_call:
+    inputs:
+      tests_path:
+        type: string
+        description: "The path to the tests diretory to be executed."
+        required: true
+
+      operating_system_json_string:
+        type: string
+        description: "The operating systems to run the job on. Note that this is JSON content embedded within a string."
+        required: true
+
+      python_version_json_string:
+        type: string
+        description: "The Python versions to run the job with. Note that this is JSON content embedded within a string."
+        required: true
+
+      python_package_version:
+        type: string
+        description: "The python version used when creating the python package."
+        required: true
+
+      coverage_badge_gist_id:
+        type: string
+        description: "The ID of the Gist used to store coverage badge information. Code coverage information will not be persisted if this value is missing."
+        required: false
+
+      coverage_badge_gist_username:
+        type: string
+        description: "The username used to access the Gist used to store coverage badge information. The current GitHub user will be used if this value is not provided."
+        required: false
+
+    secrets:
+      MINISIGN_PRIVATE_KEY:
+        required: false
+        description: "Private key used to sign artifacts. Artifacts will not be signed if this value is missing."
+
+      PYPI_PUBLISH_TOKEN:
+        required: false
+        description: "Token used to publish packages to PyPi. Packages will not be published if this value is missing."
+
+      COVERAGE_BADGE_GIST_TOKEN:
+        required: false
+        description: "Token used to access the Gist used to store coverage badge information. Code coverage information will not be persisted if this value is missing."
+
+jobs:
+  # ----------------------------------------------------------------------
+  validate:
+    strategy:
+      fail-fast: false
+
+      matrix:
+        os: ${{ fromJson(inputs.operating_system_json_string) }}
+        python_version: ${{ fromJson(inputs.python_version_json_string) }}
+
+    name: Validate
+    runs-on: ${{ matrix.os }}
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python_version }}
+          enable-cache: true
+
+      - name: Install the project
+        run: uv sync --locked --all-packages --dev
+
+      - name: Run pre-commit scripts
+        run: uv run pre-commit run --verbose
+
+      - name: Validate Tests
+        run: uv run pytest ${{ inputs.tests_path }}
+        env:
+          COVERAGE_FILE: .coverage.${{ matrix.os }}.${{ matrix.python_version }}
+
+      - name: Upload Coverage Data
+        uses: actions/upload-artifact@v4
+        with:
+          name: .coverage.${{ matrix.os }}.${{ matrix.python_version }}
+          path: .coverage.${{ matrix.os }}.${{ matrix.python_version }}
+          include-hidden-files: true
+
+  # ----------------------------------------------------------------------
+  package_coverage:
+    needs: validate
+
+    name: Postprocess Coverage Info
+    runs-on: ubuntu-latest
+
+    outputs:
+      coverage_total: ${{ steps.combine_coverage_data.outputs.coverage_total }}
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv and python
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Dependencies
+        run: uv sync --frozen
+
+      - name: Download Coverage Data
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Combine Coverage Data
+        id: combine_coverage_data
+        shell: bash
+        run: |
+          uv run coverage combine .
+          uv run coverage report --ignore-errors --show-missing --skip-covered
+          uv run coverage json --ignore-errors -o .coverage.json
+
+          export TOTAL=$(uv run python -c "import json;print(json.load(open('.coverage.json'))['totals']['percent_covered_display'])")
+          echo "coverage_total=${TOTAL}" >> $GITHUB_OUTPUT
+          echo "**Total coverage:** ${TOTAL}%" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Coverage Data
+        uses: actions/upload-artifact@v4
+        with:
+          name: .coverage.json
+          path: .coverage.json
+          include-hidden-files: true
