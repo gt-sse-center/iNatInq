@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 from loguru import logger
 from tqdm import tqdm
-import yaml
 
 # Disable tqdm bars in tests
 tqdm.__init__ = partialmethod(tqdm.__init__, disable=True)
@@ -24,44 +23,18 @@ def source_dir_fixture():
 
 @pytest.fixture(name="fixtures_dir")
 def fixtures_dir_fixture(source_dir):
-    """Get the path to the fixtures directory."""
     return source_dir / "tests" / "fixtures"
 
 
 @pytest.fixture(name="config_yaml")
-def config_yaml_fixture(fixtures_dir):
+def config_yaml_fixture(source_dir, fixtures_dir):
     """The config as a yaml file within a fake source directory."""
     config_file = fixtures_dir / "inquire_benchmark_small.yaml"
 
     return config_file
 
 
-@pytest.fixture(name="benchmark_yaml")
-def benchmark_config_fixture(config_yaml: Path):
-    with config_yaml.open() as f:
-        return yaml.safe_load(f)
-
-
-@pytest.fixture(name="milvus_yaml")
-def milvus_config_fixture(fixtures_dir):
-    config_yaml = fixtures_dir / "inquire_milvus.yaml"
-    with config_yaml.open() as f:
-        return yaml.safe_load(f)
-
-
-@pytest.fixture(name="qdrant_yaml")
-def qdrant_config_fixture(fixtures_dir):
-    config_yaml = fixtures_dir / "inquire_qdrant.yaml"
-    with config_yaml.open() as f:
-        return yaml.safe_load(f)
-
-
-@pytest.fixture(name="weaviate_yaml")
-def weaviate_config_fixture(fixtures_dir):
-    config_yaml = fixtures_dir / "inquire_weaviate.yaml"
-    with config_yaml.open() as f:
-        return yaml.safe_load(f)
-
+pytest_plugins = ["fixtures.conftest"]
 
 # Set logging level to CRITICAL so it doesn't show
 # in test output but is still captured for testing.
