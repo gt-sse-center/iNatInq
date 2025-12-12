@@ -139,4 +139,3 @@ class Config(BaseModel):
     vectordb: VectorDatabaseConfig
     search: SearchParams
     update: dict[str, PositiveInt]
-    compute_recall: bool = False

@@ -9,3 +9,5 @@ post_generation_instructions.html
 .results/**
 
 data/
+
+!tests/fixtures/*.npy
