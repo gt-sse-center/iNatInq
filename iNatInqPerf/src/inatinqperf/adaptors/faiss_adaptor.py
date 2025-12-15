@@ -30,20 +30,17 @@ class Faiss(VectorDatabase):
 
     def __init__(
         self,
-        dataset: HuggingFaceDataset,
         metric: Metric = Metric.INNER_PRODUCT,
         nlist: int = 32768,
         m: int = 64,
         nbits: int = 8,
         nprobe: int = 32,
         index_type: str = "flat",
-        batch_size: int = 8192,
         **kwargs,  # noqa: ARG002
     ) -> None:
         """Constructor for the FAISS adaptor.
 
         Args:
-            dataset (HuggingFaceDataset): The dataset to load into the vector database for indexing.
             metric (Metric, optional): The metric to use for computing similarity during search.
                 Defaults to Metric.INNER_PRODUCT.
             nlist (int, optional): The number of clusters to generate when creating
@@ -58,12 +55,18 @@ class Faiss(VectorDatabase):
             batch_size (int, optional): The batch size used during index building.
             **kwargs: All the extra keyword arguments. This is not used.
         """
-        super().__init__(dataset, metric)
+        super().__init__(metric)
         self.index_type: FaissIndexType = self._translate_index_type(index_type)
         self.nlist = nlist
         self.m = m
         self.nbits = nbits
         self.nprobe = nprobe
+
+        self.index = None
+
+    def initialize_collection(self, dataset: HuggingFaceDataset, batch_size: int = 8192) -> None:
+        """Create a dataset collection and upload data to it."""
+        super().initialize_collection(dataset, batch_size=batch_size)
 
         if self.index_type == FaissIndexType.FLAT:
             self.index = self._build_flat_index(
@@ -78,10 +81,10 @@ class Faiss(VectorDatabase):
                 metric=self.metric,
                 dim=self.dim,
                 dataset=dataset,
-                nlist=nlist,
-                m=m,
-                nbits=nbits,
-                nprobe=nprobe,
+                nlist=self.nlist,
+                m=self.m,
+                nbits=self.nbits,
+                nprobe=self.nprobe,
                 batch_size=batch_size,
             )
 

@@ -27,7 +27,6 @@ class Qdrant(VectorDatabase):
 
     def __init__(
         self,
-        dataset: HuggingFaceDataset,
         metric: Metric,
         *,
         url: str = "localhost",
@@ -37,10 +36,9 @@ class Qdrant(VectorDatabase):
         collection_name: str = "default_collection",
         m: int = 32,
         ef: int = 128,
-        batch_size: int = 1024,
         **params,  # noqa: ARG002
     ) -> None:
-        super().__init__(dataset, metric)
+        super().__init__(metric)
 
         self.client = QdrantClient(
             url=url,
@@ -54,8 +52,6 @@ class Qdrant(VectorDatabase):
         self.m = m
         # The ef value used during collection construction
         self.ef = ef
-
-        self._initialize_collection(dataset, batch_size)
 
     def _get_vectors_config(self) -> models.VectorParams:
         """Get the Qdrant VectorParams config."""
@@ -74,7 +70,7 @@ class Qdrant(VectorDatabase):
             on_disk=True,  # Store index on disk
         )
 
-    def _upload_dataset_in_batches(self, dataset: HuggingFaceDataset, batch_size: int) -> None:
+    def _upload_dataset(self, dataset: HuggingFaceDataset, batch_size: int) -> None:
         """Upload `dataset` in batches of size `batch_size`."""
         # Batch insert dataset
         num_batches = int(np.ceil(len(dataset) / batch_size))
@@ -90,15 +86,14 @@ class Qdrant(VectorDatabase):
                 ),
             )
 
-    def _initialize_collection(self, dataset: HuggingFaceDataset, batch_size: int) -> None:
-        """Helper method to initialize collection."""
-        if self.client.collection_exists(collection_name=self.collection_name):
-            logger.info("Deleted existing collection")
-            self.client.delete_collection(collection_name=self.collection_name)
+    def initialize_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
+        """Create a dataset collection and upload data to it."""
 
-        logger.patch(lambda r: r.update(function="constructor")).info(
-            f"Creating collection {self.collection_name}"
-        )
+        if self.client.collection_exists(collection_name=self.collection_name):
+            logger.warning("Specified collection already exists, exiting...")
+            return
+
+        super().initialize_collection(dataset, batch_size=batch_size)
 
         vectors_config = self._get_vectors_config()
         # disable indexing by setting m=0 until dataset upload is complete
@@ -111,7 +106,7 @@ class Qdrant(VectorDatabase):
             shard_number=4,  # reasonable default as per qdrant docs
         )
 
-        self._upload_dataset_in_batches(dataset, batch_size)
+        self._upload_dataset(dataset, batch_size)
 
         # Set the indexing params
         self.client.update_collection(
@@ -225,7 +220,6 @@ class QdrantCluster(Qdrant):
 
     def __init__(  # noqa: PLR0913
         self,
-        dataset: HuggingFaceDataset,
         metric: Metric,
         *,
         url: str = "localhost",
@@ -254,7 +248,6 @@ class QdrantCluster(Qdrant):
         self._wait_for_startup(primary, timeout=startup_timeout, container_names=self.container_names)
 
         super().__init__(
-            dataset,
             metric=metric,
             url=primary,
             port=port,
@@ -267,15 +260,15 @@ class QdrantCluster(Qdrant):
             params=params,
         )
 
-    def _initialize_collection(self, dataset: HuggingFaceDataset, batch_size: int) -> None:
-        """Helper method to initialize collection."""
+    def initialize_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
+        """Create a dataset collection and upload data to it."""
         if self.client.collection_exists(collection_name=self.collection_name):
-            logger.info("Deleted existing collection")
-            self.client.delete_collection(collection_name=self.collection_name)
+            logger.warning("Specified collection already exists, exiting...")
+            return
 
-        logger.patch(lambda r: r.update(function="constructor")).info(
-            f"Creating collection {self.collection_name} with {self.shard_number} shards"
-        )
+        logger.info(f"Creating collection {self.collection_name} with {self.shard_number} shards")
+
+        super().super().initialize_collection(dataset, batch_size=batch_size)
 
         vectors_config = self._get_vectors_config()
         # disable indexing by setting m=0 until dataset upload is complete
@@ -290,7 +283,7 @@ class QdrantCluster(Qdrant):
             write_consistency_factor=self.write_consistency_factor,
         )
 
-        self._upload_dataset_in_batches(dataset, batch_size)
+        self._upload_dataset(dataset, batch_size)
 
         num_points_in_db = self.client.count(
             collection_name=self.collection_name,
