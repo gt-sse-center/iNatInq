@@ -62,6 +62,9 @@ class Faiss(VectorDatabase):
         self.nbits = nbits
         self.nprobe = nprobe
 
+        # Specify collection name to satisfy base class requirement.
+        self.collection_name = "inat-open-data"
+
         self.index = None
 
     def initialize_collection(self, dataset: HuggingFaceDataset, batch_size: int = 8192) -> None:
