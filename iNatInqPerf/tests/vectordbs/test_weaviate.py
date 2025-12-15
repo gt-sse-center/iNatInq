@@ -205,7 +205,6 @@ def test_vector_insertion(class_name: str):
         assert aggregate_count(class_name) == num_vectors
 
 
-@pytest.mark.regression
 def test_search(class_name: str):
     """Test search capabilities of the weaviate."""
     rng = np.random.default_rng(seed=101)

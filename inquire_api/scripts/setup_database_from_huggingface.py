@@ -1,4 +1,4 @@
-"""Script to upload a HuggingFace dataset to a vector database."""
+"""Script to upload a HuggingFace dataset + Postgres data to a vector database."""
 
 from typing import Annotated
 
