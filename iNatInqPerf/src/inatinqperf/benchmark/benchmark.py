@@ -283,7 +283,7 @@ class Benchmarker:
         """Run update workflow then search again to capture post-update performance."""
         self.update(dataset, vectordb)
         # Pass in the updated baseline results to compute new recall
-        self.search(vectordb, "baseline_results_post_update.npy")
+        self.search(vectordb, self.cfg.baseline.results_post_update)
 
     def run(self) -> None:
         """Run end-to-end benchmark with all steps."""
@@ -298,7 +298,7 @@ class Benchmarker:
             vectordb = self.build(dataset)
 
             # Perform search
-            self.search(vectordb, "baseline_results.npy")
+            self.search(vectordb, self.cfg.baseline.results)
 
             # Update operations followed by search to measure impact
             self.update_and_search(dataset, vectordb)

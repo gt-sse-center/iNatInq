@@ -129,6 +129,16 @@ class ContainerConfig(BaseModel):
                 self.volumes[i] = str(project_dir / volume)
 
 
+class BaselineResults(BaseModel):
+    """Configuration for holding paths for search results on baseline vector database.
+
+    Used for computing recall.
+    """
+
+    results: Path
+    results_post_update: Path
+
+
 class Config(BaseModel):
     """Class encapsulating benchmark configuration with data validation."""
 
@@ -139,3 +149,4 @@ class Config(BaseModel):
     vectordb: VectorDatabaseConfig
     search: SearchParams
     update: dict[str, PositiveInt]
+    baseline: BaselineResults
