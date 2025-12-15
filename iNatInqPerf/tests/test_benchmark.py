@@ -182,7 +182,7 @@ def test_search(config_yaml, data_path, caplog):
     dataset = benchmarker.embed()
     vectordb = benchmarker.build(dataset)
 
-    benchmarker.search(vectordb, "tests/fixtures/baseline_results.npy")
+    benchmarker.search(vectordb, benchmarker.cfg.baseline.results)
 
     # The configured index type drives the log message; assert against the configured value.
     expected_index_type = benchmarker.cfg.vectordb.params.index_type.upper()
