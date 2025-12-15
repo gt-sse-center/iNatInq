@@ -178,7 +178,9 @@ class Benchmarker:
         metric = self.cfg.vectordb.params.metric.lower()
 
         # Create exact baseline
-        faiss_flat_db = Faiss(dataset, metric=metric, index_type="FLAT")
+        faiss_flat_db = Faiss(metric=metric, index_type="FLAT")
+        faiss_flat_db.initialize_collection(dataset, batch_size=8192)
+
         logger.info("Created exact baseline index")
 
         return faiss_flat_db

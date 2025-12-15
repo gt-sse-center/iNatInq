@@ -14,7 +14,8 @@ from tqdm import tqdm
 
 from inatinqperf.adaptors.base import DataPoint, HuggingFaceDataset, Query, SearchResult, VectorDatabase
 from inatinqperf.adaptors.enums import Metric
-from inatinqperf.container import log_single_container_tail
+
+from .utils import log_single_container_tail
 
 
 class Qdrant(VectorDatabase):

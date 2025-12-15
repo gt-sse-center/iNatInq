@@ -182,7 +182,7 @@ def test_search(config_yaml, data_path, caplog):
     dataset = benchmarker.embed()
     vectordb = benchmarker.build(dataset)
 
-    benchmarker.search(dataset, vectordb)
+    benchmarker.search(vectordb)
 
     # The configured index type drives the log message; assert against the configured value.
     expected_index_type = benchmarker.cfg.vectordb.params.index_type.upper()
@@ -219,7 +219,7 @@ def test_update_and_search_invokes_all(monkeypatch, config_yaml, data_path):
     def fake_update(dataset, db):
         calls["update"].append(db)
 
-    def fake_search(dataset, vdb, baseline):
+    def fake_search(vdb, baseline):
         calls["search"].append((vdb, baseline))
 
     monkeypatch.setattr(benchmarker, "update", fake_update)

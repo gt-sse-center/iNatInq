@@ -33,19 +33,23 @@ class ConcreteVectorDatabase(VectorDatabase):
     Implements brute-force search in-memory to validate shapes & lifecycle.
     """
 
-    def __init__(self, dataset, metric: str, **params):
-        super().__init__(dataset, metric)
+    def __init__(self, metric: str, **params):
+        super().__init__(metric)
 
+        self._metric = self._translate_metric(metric)
+        self.collection_name = "test-collection"
+        self._dim = None
+        self._X = None
+        self._ids = None
+
+    def _upload_collection(self, dataset, batch_size):
         dataset = dataset.with_format("numpy")
         # [:] is a trick to get the numpy array
         embeddings = dataset["embedding"][:]
 
         dim = embeddings.shape[1]
-
         assert isinstance(dim, int) and dim > 0
         self._dim = dim
-        self._metric = self._translate_metric(metric)
-
         # "Upsert" dataset
         self._X = embeddings
         self._ids = dataset["id"]
@@ -130,7 +134,8 @@ def tiny_dataset_fixture():
 
 @pytest.mark.parametrize("metric", [Metric.INNER_PRODUCT, Metric.L2])
 def test_lifecycle_and_shapes(metric, tiny_dataset):
-    db = ConcreteVectorDatabase(tiny_dataset, metric=metric)
+    db = ConcreteVectorDatabase(metric=metric)
+    db.initialize_collection(tiny_dataset)
 
     # search with two queries
     q = Query([1.0, 0.0])
@@ -157,7 +162,8 @@ def test_lifecycle_and_shapes(metric, tiny_dataset):
 
 
 def test_invalid_delete(tiny_dataset):
-    db = ConcreteVectorDatabase(tiny_dataset, metric=Metric.INNER_PRODUCT)
+    db = ConcreteVectorDatabase(metric=Metric.INNER_PRODUCT)
+    db.initialize_collection(tiny_dataset)
 
     # id=101 does not exist in tiny_dataset.
     db.delete([101])
@@ -168,7 +174,8 @@ def test_invalid_delete(tiny_dataset):
 
 
 def test_upsert_replaces_existing(tiny_dataset):
-    db = ConcreteVectorDatabase(tiny_dataset, metric=Metric.INNER_PRODUCT)
+    db = ConcreteVectorDatabase(metric=Metric.INNER_PRODUCT)
+    db.initialize_collection(tiny_dataset)
 
     # Upsert same ids with shifted vectors
     ids = np.asarray(tiny_dataset["id"], dtype=np.int64)

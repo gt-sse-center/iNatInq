@@ -54,9 +54,9 @@ class Weaviate(VectorDatabase):
         )
         self.client.connect()
 
-        self.index_type = index_type
+        self.index_type_func = self._get_index_type(WeaviateIndexType(index_type))
 
-    def initialize_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
+    def _upload_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
         """Create a dataset collection and upload data to it."""
 
         ## Create collection. If it exists, then log warning and return
@@ -64,15 +64,11 @@ class Weaviate(VectorDatabase):
             logger.warning("Specified collection already exists, exiting...")
             return
 
-        super().initialize_collection(dataset, batch_size=batch_size)
-
-        index_type_func = self._get_index_type(WeaviateIndexType(self.index_type))
-
         # The `id` and `vector` properties are created by default
         self.client.collections.create(
             self.collection_name,
             vector_config=Configure.Vectors.self_provided(
-                vector_index_config=index_type_func(distance_metric=self._translate_metric(self.metric)),
+                vector_index_config=self.index_type_func(distance_metric=self._translate_metric(self.metric)),
             ),
             properties=[
                 Property(
