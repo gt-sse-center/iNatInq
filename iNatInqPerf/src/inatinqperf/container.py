@@ -12,7 +12,7 @@ from inatinqperf.configuration import Config
 
 
 @contextmanager
-def container_context(config: Config | dict) -> Generator[object]:
+def container_context(config: Config | dict, *, auto_stop: bool = True) -> Generator[object]:
     """Context manager for running the vector database container.
 
     If the containers key is not provided in the config, then it executes an empty context,
@@ -20,6 +20,7 @@ def container_context(config: Config | dict) -> Generator[object]:
 
     Args:
         config (Config): The configuration with the details about the containers.
+        auto_stop (bool): Flag indicating we wish to stop and remove the containers on completion.
     """
     containers: list[object] = []
     network = None
@@ -88,17 +89,18 @@ def container_context(config: Config | dict) -> Generator[object]:
     finally:
         logger.info("Cleaning up containers")
 
-        try:
-            # Stop containers in reverse order
-            for container in containers[::-1]:
-                container.stop()
+        if auto_stop:
+            try:
+                # Stop containers in reverse order
+                for container in containers[::-1]:
+                    container.stop()
 
-        except Exception as exc:
-            logger.warning(f"Failed to stop container: {exc}")
+            except Exception as exc:
+                logger.warning(f"Failed to stop container: {exc}")
 
-        # Remove network if it was created.
-        if network:
-            network.remove()
+            # Remove network if it was created.
+            if network:
+                network.remove()
 
         client.close()
 
