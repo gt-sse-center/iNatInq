@@ -86,14 +86,12 @@ class Qdrant(VectorDatabase):
                 ),
             )
 
-    def initialize_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
-        """Create a dataset collection and upload data to it."""
+    def _upload_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
+        """Method to upload the collection to the vector database."""
 
         if self.client.collection_exists(collection_name=self.collection_name):
             logger.warning("Specified collection already exists, exiting...")
             return
-
-        super().initialize_collection(dataset, batch_size=batch_size)
 
         vectors_config = self._get_vectors_config()
         # disable indexing by setting m=0 until dataset upload is complete
@@ -260,15 +258,14 @@ class QdrantCluster(Qdrant):
             params=params,
         )
 
-    def initialize_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
-        """Create a dataset collection and upload data to it."""
+    def _upload_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
+        """Method to upload the collection to the vector database."""
+
         if self.client.collection_exists(collection_name=self.collection_name):
             logger.warning("Specified collection already exists, exiting...")
             return
 
         logger.info(f"Creating collection {self.collection_name} with {self.shard_number} shards")
-
-        super().super().initialize_collection(dataset, batch_size=batch_size)
 
         vectors_config = self._get_vectors_config()
         # disable indexing by setting m=0 until dataset upload is complete

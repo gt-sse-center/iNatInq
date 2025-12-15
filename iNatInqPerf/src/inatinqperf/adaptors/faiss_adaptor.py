@@ -67,10 +67,8 @@ class Faiss(VectorDatabase):
 
         self.index = None
 
-    def initialize_collection(self, dataset: HuggingFaceDataset, batch_size: int = 8192) -> None:
-        """Create a dataset collection and upload data to it."""
-        super().initialize_collection(dataset, batch_size=batch_size)
-
+    def _upload_collection(self, dataset: HuggingFaceDataset, batch_size: int = 8192) -> None:
+        """Method to upload the collection to the vector database."""
         if self.index_type == FaissIndexType.FLAT:
             self.index = self._build_flat_index(
                 metric=self.metric,

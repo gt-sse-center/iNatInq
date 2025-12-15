@@ -87,9 +87,8 @@ def container_context(config: Config | dict, *, auto_stop: bool = True) -> Gener
         yield containers
 
     finally:
-        logger.info("Cleaning up containers")
-
         if auto_stop:
+            logger.info("Cleaning up containers")
             try:
                 # Stop containers in reverse order
                 for container in containers[::-1]:

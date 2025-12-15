@@ -69,6 +69,12 @@ class VectorDatabase(ABC):
         logger.info(f"Creating collection {self.collection_name}, and uploading with {batch_size=}")
         self.dim = len(dataset["embedding"][0])
 
+        self._upload_collection(dataset, batch_size)
+
+    @abstractmethod
+    def _upload_collection(self, dataset: HuggingFaceDataset, batch_size: int) -> None:
+        """Method to upload the collection to the vector database."""
+
     @staticmethod
     @abstractmethod
     def _translate_metric(metric: Metric) -> str:

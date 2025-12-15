@@ -249,12 +249,11 @@ class WeaviateCluster(Weaviate):
         )
         self.client.connect()
 
-    def initialize_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
-        """Create a dataset collection and upload data to it."""
+    def _upload_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
+        """Method to upload the collection to the vector database."""
+
         if self.client.collections.exists(self.collection_name):
             self.client.collections.delete(self.collection_name)
-
-        super().super().initialize_collection(dataset, batch_size=batch_size)
 
         index_type_func = self._get_index_type(WeaviateIndexType(self.index_type))
 

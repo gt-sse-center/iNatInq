@@ -63,14 +63,13 @@ class Milvus(VectorDatabase):
         # NOTE: pymilvus is very slow to connect, takes ~8 seconds as per profiling.
         self.client = MilvusClient(uri=f"http://{url}:{port}")
 
-    def initialize_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
-        """Create a dataset collection and upload data to it."""
+    def _upload_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
+        """Method to upload the collection to the vector database."""
+
         ## Create collection. If it exists, then log warning and return
         if self.client.has_collection(self.collection_name):
             logger.warning("Specified collection already exists, exiting...")
             return
-
-        super().initialize_collection(dataset, batch_size=batch_size)
 
         # Define collection schema
         schema = (
