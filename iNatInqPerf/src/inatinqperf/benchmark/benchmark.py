@@ -180,7 +180,7 @@ class Benchmarker:
             for idx, (row_id, vector) in enumerate(zip(dataset["id"], dataset["embedding"], strict=True))
         ]
 
-    def search(self, vectordb: VectorDatabase, baseline_results_path: Path) -> None:
+    def search(self, vectordb: VectorDatabase, baseline_results_path: Path | None = None) -> None:
         """Profile search and compute recall@K vs exact baseline."""
         params = self.cfg.vectordb.params
         model_id = self.cfg.embedding.model_id
