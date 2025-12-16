@@ -71,7 +71,8 @@ def dataset_fixture(dim, N):
 def vectordb_fixture(dataset, collection_name):
     """Return an instance of the Qdrant vector database."""
 
-    vectordb = Qdrant(dataset=dataset, metric=Metric.COSINE, url="localhost", collection_name=collection_name)
+    vectordb = Qdrant(metric=Metric.COSINE, url="localhost", collection_name=collection_name)
+    vectordb.initialize_collection(dataset)
 
     yield vectordb
 
@@ -80,14 +81,15 @@ def vectordb_fixture(dataset, collection_name):
 
 @pytest.mark.parametrize("metric", [Metric.INNER_PRODUCT, Metric.COSINE, Metric.L2, Metric.MANHATTAN])
 def test_constructor(dataset, collection_name, metric):
-    vectordb = Qdrant(dataset, metric=metric, url="localhost", collection_name=collection_name)
+    vectordb = Qdrant(metric=metric, url="localhost", collection_name=collection_name)
+    vectordb.initialize_collection(dataset)
     assert vectordb.client.collection_exists(collection_name)
     vectordb.delete_collection()
 
 
-def test_constructor_invalid_metric(dataset, collection_name):
+def test_constructor_invalid_metric(collection_name):
     with pytest.raises(ValueError):
-        Qdrant(dataset, metric="INVALID", url="localhost", collection_name=collection_name)
+        Qdrant(metric="INVALID", url="localhost", collection_name=collection_name)
 
 
 def test_upsert(collection_name, vectordb, dataset, N):

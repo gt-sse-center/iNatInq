@@ -62,7 +62,8 @@ def query_fixture():
 
 @pytest.mark.parametrize("metric", [Metric.INNER_PRODUCT, Metric.L2])
 def test_faiss_flat_lifecycle(metric, ivfpq_trainset, query):
-    vdb = Faiss(ivfpq_trainset, metric=metric, index_type="FLAT", m=1)
+    vdb = Faiss(metric=metric, index_type="FLAT", m=1)
+    vdb.initialize_collection(ivfpq_trainset, batch_size=8192)
 
     ids = ivfpq_trainset["id"]
     st = vdb.stats()
@@ -86,9 +87,8 @@ def test_faiss_flat_lifecycle(metric, ivfpq_trainset, query):
 
 def test_faiss_ivfpq_build_and_search_with_large_training(ivfpq_trainset, small_data, query):
     # Use fewer PQ centroids (nbits=4 -> 16) so 300 training points suffice without warnings
-    vdb = Faiss(
-        ivfpq_trainset, metric=Metric.INNER_PRODUCT, index_type="IVFPQ", nlist=2, m=1, nbits=4, nprobe=2
-    )
+    vdb = Faiss(metric=Metric.INNER_PRODUCT, index_type="IVFPQ", nlist=2, m=1, nbits=4, nprobe=2)
+    vdb.initialize_collection(ivfpq_trainset, batch_size=8192)
 
     # upsert a small, known set for deterministic checks
     ids = small_data["id"]
@@ -120,7 +120,8 @@ def test_faiss_ivfpq_build_and_search_with_large_training(ivfpq_trainset, small_
 
 def test_faiss_ivfpq_l2_metric_delete(ivfpq_trainset, small_data, query):
     # Fewer centroids to prevent FAISS training warnings
-    vdb = Faiss(ivfpq_trainset, metric="l2", index_type="IVFPQ", nlist=2, m=1, nbits=4, nprobe=2)
+    vdb = Faiss(metric="l2", index_type="IVFPQ", nlist=2, m=1, nbits=4, nprobe=2)
+    vdb.initialize_collection(ivfpq_trainset, batch_size=8192)
 
     ids = small_data["id"]
     X = small_data["embedding"]
@@ -148,9 +149,8 @@ def test_faiss_ivfpq_l2_metric_delete(ivfpq_trainset, small_data, query):
 def test_faiss_ivfpq_runtime_nprobe_override_and_upsert_replace(ivfpq_trainset, small_data, query):
     """Cover runtime nprobe override branch and upsert replacement semantics for IVFPQ."""
 
-    vdb = Faiss(
-        ivfpq_trainset, metric=Metric.INNER_PRODUCT, index_type="IVFPQ", nlist=2, m=1, nbits=4, nprobe=1
-    )
+    vdb = Faiss(metric=Metric.INNER_PRODUCT, index_type="IVFPQ", nlist=2, m=1, nbits=4, nprobe=1)
+    vdb.initialize_collection(ivfpq_trainset, batch_size=8192)
 
     # First insert
     ids = small_data["id"]
@@ -177,32 +177,33 @@ def test_faiss_ivfpq_runtime_nprobe_override_and_upsert_replace(ivfpq_trainset, 
 
 def test_faiss_flat_topk_greater_than_ntotal_and_idempotent_delete(small_data):
     """Cover branch where topk > ntotal and deleting non-existent IDs is a no-op."""
-    be = Faiss(small_data, metric=Metric.INNER_PRODUCT, index_type="FLAT")
+    vdb = Faiss(metric=Metric.INNER_PRODUCT, index_type="FLAT")
+    vdb.initialize_collection(small_data, batch_size=8192)
 
     q = Query(vector=[0.2, 0.9])
     # Ask for more neighbors than we have to ensure code handles it
-    results = be.search(q, topk=10)
+    results = vdb.search(q, topk=10)
     assert len(results) == 10
 
     # Deleting IDs that do not exist should not raise and should keep counts stable
-    nt_before = be.stats()["ntotal"]
-    be.delete([999, 1000])
-    assert be.stats()["ntotal"] == nt_before
+    nt_before = vdb.stats()["ntotal"]
+    vdb.delete([999, 1000])
+    assert vdb.stats()["ntotal"] == nt_before
 
 
 def test_metric_mapping_and_unwrap_real_index(ivfpq_trainset, small_data):
     # Build a real IVFPQ index and ensure unwrap hits the IVF layer
-    be = Faiss(
-        ivfpq_trainset, metric=Metric.INNER_PRODUCT, index_type="IVFPQ", nlist=2, m=1, nbits=4, nprobe=2
-    )
+    vdb = Faiss(metric=Metric.INNER_PRODUCT, index_type="IVFPQ", nlist=2, m=1, nbits=4, nprobe=2)
+    vdb.initialize_collection(ivfpq_trainset, batch_size=8192)
 
-    ivf = faiss_adaptor._unwrap_to_ivf(be.index.index)
+    ivf = faiss_adaptor._unwrap_to_ivf(vdb.index.index)
     assert ivf is not None and hasattr(ivf, "nlist")
 
 
 def test_faiss_ivfpq_cosine_metric_and_topk_gt_ntotal(ivfpq_trainset, small_data, query):
     # Cosine path should map to inner-product internally
-    vdb = Faiss(ivfpq_trainset, metric="cosine", index_type="IVFPQ", nlist=2, m=1, nbits=4, nprobe=2)
+    vdb = Faiss(metric="cosine", index_type="IVFPQ", nlist=2, m=1, nbits=4, nprobe=2)
+    vdb.initialize_collection(ivfpq_trainset, batch_size=8192)
 
     ids = small_data["id"]
     X = small_data["embedding"]
@@ -218,9 +219,8 @@ def test_faiss_ivfpq_cosine_metric_and_topk_gt_ntotal(ivfpq_trainset, small_data
 
 
 def test_faiss_ivfpq_empty_delete_noop(ivfpq_trainset, small_data):
-    vdb = Faiss(
-        ivfpq_trainset, metric=Metric.INNER_PRODUCT, index_type="IVFPQ", nlist=2, m=1, nbits=4, nprobe=2
-    )
+    vdb = Faiss(metric=Metric.INNER_PRODUCT, index_type="IVFPQ", nlist=2, m=1, nbits=4, nprobe=2)
+    vdb.initialize_collection(ivfpq_trainset, batch_size=8192)
 
     ids = small_data["id"]
     X = small_data["embedding"]
@@ -235,9 +235,8 @@ def test_faiss_ivfpq_empty_delete_noop(ivfpq_trainset, small_data):
 
 def test_query_edge_cases(ivfpq_trainset):
     """Test various query edge cases."""
-    vdb = Faiss(
-        ivfpq_trainset, metric=Metric.INNER_PRODUCT, index_type="IVFPQ", nlist=2, m=1, nbits=4, nprobe=2
-    )
+    vdb = Faiss(metric=Metric.INNER_PRODUCT, index_type="IVFPQ", nlist=2, m=1, nbits=4, nprobe=2)
+    vdb.initialize_collection(ivfpq_trainset, batch_size=8192)
 
     topk = 5
 
@@ -287,8 +286,9 @@ def test_faiss_ivfpq_reduces_nlist_and_clamps_nprobe(ivfpq_small_trainset):
     # Start with large nlist, tiny PQ (nbits=2, m=1)
     # so training with small set triggers reduce.
     vdb = Faiss(
-        ivfpq_small_trainset, metric=Metric.INNER_PRODUCT, index_type="IVFPQ", nlist=64, m=1, nbits=2
+        metric=Metric.INNER_PRODUCT, index_type="IVFPQ", nlist=64, m=1, nbits=2
     )  # nprobe defaults to 32
+    vdb.initialize_collection(ivfpq_small_trainset, batch_size=8192)
 
     X = np.asarray(ivfpq_small_trainset["embedding"])
 

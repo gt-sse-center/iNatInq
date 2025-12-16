@@ -37,7 +37,6 @@ class Milvus(VectorDatabase):
     @logger.catch(reraise=True)
     def __init__(
         self,
-        dataset: HuggingFaceDataset,
         metric: Metric,
         index_type: MilvusIndexType,
         index_params: dict | None = None,
@@ -45,13 +44,13 @@ class Milvus(VectorDatabase):
         port: int = 19530,
         grpc_port: int = 19530,
         collection_name: str = "default_collection",
-        batch_size: int = 1000,
         **params,  # noqa: ARG002
     ) -> None:
-        super().__init__(dataset, metric)
+        super().__init__(metric)
 
         self.index_type = MilvusIndexType(index_type)
         self.index_name: str = f"{collection_name}_index"
+        self.index_params = index_params
         self.collection_name = collection_name
 
         try:
@@ -64,9 +63,13 @@ class Milvus(VectorDatabase):
         # NOTE: pymilvus is very slow to connect, takes ~8 seconds as per profiling.
         self.client = MilvusClient(uri=f"http://{url}:{port}")
 
-        # Remove collection if it already exists
+    def _upload_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
+        """Method to upload the collection to the vector database."""
+
+        ## Create collection. If it exists, then log warning and return
         if self.client.has_collection(self.collection_name):
-            self.client.drop_collection(self.collection_name)
+            logger.warning("Specified collection already exists, exiting...")
+            return
 
         # Define collection schema
         schema = (
@@ -92,7 +95,7 @@ class Milvus(VectorDatabase):
             index_type=self.index_type.value,
             index_name=self.index_name,
             metric_type=self._translate_metric(self.metric),
-            params=index_params if index_params else {},
+            params=self.index_params if self.index_params else {},
         )
 
         self.client.create_collection(

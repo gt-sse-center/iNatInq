@@ -33,18 +33,16 @@ class Weaviate(VectorDatabase):
     @logger.catch(reraise=True)
     def __init__(
         self,
-        dataset: HuggingFaceDataset,
         metric: Metric,
         index_type: WeaviateIndexType,
         url: str = "http://localhost",
         port: int = 8080,
         grpc_port: int = 50051,
         collection_name: str = "collection_name",
-        batch_size: int = 1000,
         **params: object,  # noqa: ARG002
     ) -> None:
         """Initialise the adaptor with a dataset template and connectivity details."""
-        super().__init__(dataset=dataset, metric=metric)
+        super().__init__(metric=metric)
 
         self.collection_name = collection_name
 
@@ -56,17 +54,21 @@ class Weaviate(VectorDatabase):
         )
         self.client.connect()
 
-        ## Create collection. If it exists, then delete the previous one.
-        if self.client.collections.exists(self.collection_name):
-            self.client.collections.delete(self.collection_name)
+        self.index_type_func = self._get_index_type(WeaviateIndexType(index_type))
 
-        index_type_func = self._get_index_type(WeaviateIndexType(index_type))
+    def _upload_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
+        """Create a dataset collection and upload data to it."""
+
+        ## Create collection. If it exists, then log warning and return
+        if self.client.collections.exists(self.collection_name):
+            logger.warning("Specified collection already exists, exiting...")
+            return
 
         # The `id` and `vector` properties are created by default
         self.client.collections.create(
             self.collection_name,
             vector_config=Configure.Vectors.self_provided(
-                vector_index_config=index_type_func(distance_metric=self._translate_metric(metric)),
+                vector_index_config=self.index_type_func(distance_metric=self._translate_metric(self.metric)),
             ),
             properties=[
                 Property(
@@ -205,9 +207,8 @@ class WeaviateCluster(Weaviate):
     """Adaptor for running benchmarks against a multi-node Weaviate deployment."""
 
     @logger.catch(reraise=True)
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
-        dataset: HuggingFaceDataset,
         metric: Metric,
         index_type: WeaviateIndexType,
         url: str = "http://localhost",
@@ -218,11 +219,10 @@ class WeaviateCluster(Weaviate):
         virtual_per_physical: int | None = None,
         grpc_port: str | int | None = None,
         collection_name: str = "collection_name",
-        batch_size: int = 1000,
         **params: object,  # noqa: ARG002
     ) -> None:
         """Initialise the adaptor for a sharded Weaviate cluster."""
-        VectorDatabase.__init__(self, dataset=dataset, metric=metric)
+        VectorDatabase.__init__(self, metric=metric)
 
         if replication_factor is not None and (shard_count is not None or virtual_per_physical is not None):
             msg = "WeaviateCluster does not support configuring sharding and replication at the same time."
@@ -233,6 +233,8 @@ class WeaviateCluster(Weaviate):
         self.shard_count = shard_count
         self.replication_factor = replication_factor
         self.virtual_per_physical = virtual_per_physical
+        self.index_type = index_type
+        self.shard_count = shard_count
 
         grpc = int(grpc_port) if grpc_port is not None else 50051
         connection_params = ConnectionParams.from_url(url=self.node_urls[0], grpc_port=grpc)
@@ -243,26 +245,29 @@ class WeaviateCluster(Weaviate):
         )
         self.client.connect()
 
+    def _upload_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
+        """Method to upload the collection to the vector database."""
+
         if self.client.collections.exists(self.collection_name):
             self.client.collections.delete(self.collection_name)
 
-        index_type_func = self._get_index_type(WeaviateIndexType(index_type))
+        index_type_func = self._get_index_type(WeaviateIndexType(self.index_type))
 
         sharding_config = None
-        if shard_count is not None or virtual_per_physical is not None:
+        if self.shard_count is not None or self.virtual_per_physical is not None:
             sharding_config = Configure.sharding(
-                desired_count=shard_count,
-                virtual_per_physical=virtual_per_physical,
+                desired_count=self.shard_count,
+                virtual_per_physical=self.virtual_per_physical,
             )
 
         replication_config = None
-        if replication_factor is not None:
-            replication_config = Configure.replication(factor=replication_factor)
+        if self.replication_factor is not None:
+            replication_config = Configure.replication(factor=self.replication_factor)
 
         self.client.collections.create(
             self.collection_name,
             vector_config=Configure.Vectors.self_provided(
-                vector_index_config=index_type_func(distance_metric=self._translate_metric(metric)),
+                vector_index_config=index_type_func(distance_metric=self._translate_metric(self.metric)),
             ),
             properties=[
                 Property(

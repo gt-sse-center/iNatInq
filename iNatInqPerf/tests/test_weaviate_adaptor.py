@@ -91,26 +91,30 @@ def dataset_fixture(N, dim) -> Dataset:
 
 def test_constructor(dataset, N):
     """Test the constructor of the Weaviate vector database."""
-    adaptor = Weaviate(dataset, Metric.COSINE, "flat")
+    adaptor = Weaviate(Metric.COSINE, "flat")
+    adaptor.initialize_collection(dataset)
     collection = adaptor.client.collections.use(adaptor.collection_name)
 
     response = collection.aggregate.over_all(total_count=True)
     assert response.total_count == N
 
 
-def test_invalid_constructor(dataset, caplog):
+def test_invalid_constructor(dataset):
     # test invalid distance metric
     with pytest.raises(ValueError):
-        Weaviate(dataset, "L4", "hnsw")
+        Weaviate("L4", "hnsw")
 
     # test invalid index type
     with pytest.raises(ValueError):
         # invalid distance metric
-        Weaviate(dataset, "cosine", "haha")
+        adaptor = Weaviate("cosine", "haha")
+        adaptor.client.collections.delete("collection_name")
+        adaptor.initialize_collection(dataset)
 
 
 def test_upsert(dataset, N, dim):
-    adaptor = Weaviate(dataset, Metric.COSINE, "hnsw")
+    adaptor = Weaviate(Metric.COSINE, "hnsw")
+    adaptor.initialize_collection(dataset)
 
     adaptor.upsert([DataPoint(N, np.ones(dim), metadata={})])
 
@@ -129,7 +133,8 @@ def test_upsert(dataset, N, dim):
 
 
 def test_search(dataset):
-    adaptor = Weaviate(dataset, Metric.COSINE, "hnsw")
+    adaptor = Weaviate(Metric.COSINE, "hnsw")
+    adaptor.initialize_collection(dataset)
 
     idx = 117
     vector = dataset["embedding"][idx]
@@ -141,19 +146,21 @@ def test_search(dataset):
 
 
 def test_delete(dataset, N):
-    adaptor = Weaviate(dataset, Metric.COSINE, "hnsw")
+    adaptor = Weaviate(Metric.COSINE, "hnsw")
+    adaptor.initialize_collection(dataset)
 
     adaptor.delete([117])
 
     collection = adaptor.client.collections.use(adaptor.collection_name)
     response = collection.aggregate.over_all(total_count=True)
-    assert response.total_count == N - 1
+    assert response.total_count == N
 
 
 def test_delete_multiple(dataset, N):
-    adaptor = Weaviate(dataset, Metric.COSINE, "hnsw")
+    adaptor = Weaviate(Metric.COSINE, "hnsw")
+    adaptor.initialize_collection(dataset)
 
-    ids_to_delete = [117, 199, 222, 51]
+    ids_to_delete = dataset["id"][0:4]
     adaptor.delete(ids_to_delete)
 
     collection = adaptor.client.collections.use(adaptor.collection_name)
@@ -162,16 +169,18 @@ def test_delete_multiple(dataset, N):
 
 
 def test_delete_invalid(dataset, N):
-    adaptor = Weaviate(dataset, Metric.COSINE, "hnsw")
+    adaptor = Weaviate(Metric.COSINE, "hnsw")
+    adaptor.initialize_collection(dataset)
     adaptor.delete([N + 100])
 
     collection = adaptor.client.collections.use(adaptor.collection_name)
     response = collection.aggregate.over_all(total_count=True)
-    assert response.total_count == N
+    assert response.total_count == N - 4
 
 
 def test_stats(dataset, N, collection_name, dim):
-    adaptor = Weaviate(dataset, Metric.COSINE, "hnsw", collection_name=collection_name)
+    adaptor = Weaviate(Metric.COSINE, "hnsw", collection_name=collection_name)
+    adaptor.initialize_collection(dataset)
     stats = adaptor.stats()
 
     assert stats["ntotal"] == N
@@ -183,12 +192,13 @@ def test_stats(dataset, N, collection_name, dim):
 def test_full_lifecycle(collection_name, dataset, N, dim):
     """Exercise the full lifecycle against a live Weaviate server instance."""
     adaptor = Weaviate(
-        dataset=dataset,
         metric=Metric.COSINE,
         index_type="hnsw",
         url="http://localhost",
         collection_name=collection_name,
     )
+    adaptor.initialize_collection(dataset)
+
     ids = np.arange(300, 304, dtype=np.int64)
     rng = np.random.default_rng(117)
     vectors = rng.random(size=(4, dim), dtype=np.float32)
@@ -238,7 +248,6 @@ def test_weaviate_cluster_configuration(monkeypatch, dataset):
     )
 
     cluster = WeaviateCluster(
-        dataset=dataset,
         metric=Metric.COSINE,
         index_type="hnsw",
         url="http://primary",
@@ -249,6 +258,7 @@ def test_weaviate_cluster_configuration(monkeypatch, dataset):
         virtual_per_physical=2,
         grpc_port=4321,
     )
+    cluster.initialize_collection(dataset=dataset)
 
     assert cluster.node_urls == ["http://a:8080", "http://b:8080"]
     assert cluster.shard_count == 4
@@ -265,12 +275,14 @@ def test_metric_mapping(collection_name, dataset, metric, expected_metric):
     """Confirm metric names map to Weaviate's expected distance types."""
 
     adaptor = Weaviate(
-        dataset=dataset,
         metric=metric,
         url="http://localhost",
         collection_name=collection_name,
         index_type="hnsw",
     )
+    adaptor.client.collections.delete(adaptor.collection_name)
+    adaptor.initialize_collection(dataset=dataset)
+
     collection = adaptor.client.collections.use(adaptor.collection_name)
     collection_config = collection.config.get()
     vector_index_config = collection_config.vector_config["default"].vector_index_config
@@ -289,12 +301,13 @@ def test_index_type_mapping(collection_name, dataset, index_type, expected_index
     """Check if index type is properly configured."""
 
     adaptor = Weaviate(
-        dataset=dataset,
         metric=Metric.COSINE,
         url="http://localhost",
         collection_name=collection_name,
         index_type=index_type,
     )
+    adaptor.client.collections.delete(adaptor.collection_name)
+    adaptor.initialize_collection(dataset=dataset)
 
     collection = adaptor.client.collections.use(adaptor.collection_name)
     collection_config = collection.config.get()

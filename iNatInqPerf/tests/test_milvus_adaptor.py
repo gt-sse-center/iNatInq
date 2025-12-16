@@ -1,4 +1,4 @@
-"""Tests for the Milvus vector database adaptor class."""
+"""Tests for the Milvus vector database vectordb class."""
 
 import docker
 import numpy as np
@@ -181,11 +181,11 @@ def dataset_fixture(dim, N):
 def vectordb_fixture(dataset):
     """Return an instance of the Milvus vector database."""
     vectordb = Milvus(
-        dataset=dataset,
         metric=Metric.L2,
         index_type=MilvusIndexType.IVF_FLAT,
         index_params=index_params[MilvusIndexType.IVF_FLAT],
     )
+    vectordb.initialize_collection(dataset)
 
     # NOTE: this typically happens automatically when upserting, but we'll do it explicitly for testing purposes
     vectordb.client.flush(collection_name=vectordb.collection_name)
@@ -208,11 +208,12 @@ def vectordb_fixture(dataset):
 def test_constructor(dataset, metric, index_type):
     """Test Milvus constructor with different metrics."""
     vectordb = Milvus(
-        dataset=dataset,
         metric=metric,
         index_type=index_type,
         index_params=index_params[index_type],
     )
+    vectordb.client.drop_collection(vectordb.collection_name)
+    vectordb.initialize_collection(dataset)
 
     # NOTE: this typically happens automatically when upserting, but we'll do it explicitly for testing purposes
     vectordb.client.flush(collection_name=vectordb.collection_name)

@@ -118,17 +118,25 @@ class Benchmarker:
 
         return ds
 
-    def build(self, dataset: Dataset) -> VectorDatabase:
-        """Build index for the specified vectordb."""
+    def get_vector_db(self) -> VectorDatabase:
+        """Method to initialize the vector database."""
         vdb_type = self.cfg.vectordb.type
         logger.info(f"Building {vdb_type} vector database")
 
         vectordb_cls = self._resolve_vectordb_class(vdb_type)
         init_params = self.cfg.vectordb.params.to_dict()
         metric: Metric = init_params.pop("metric")
+        return vectordb_cls(metric=metric, **init_params)
+
+    def build(self, dataset: Dataset) -> VectorDatabase:
+        """Build index for the specified vectordb."""
+        vdb_type = self.cfg.vectordb.type
 
         with Profiler(f"build-{vdb_type}", containers=self.container_configs):
-            vdb = vectordb_cls(dataset=dataset, metric=metric, **init_params)
+            # Get the vector database adaptor
+            vdb = self.get_vector_db()
+            # Upload the dataset to the vector db collection
+            vdb.initialize_collection(dataset)
 
             index = getattr(vdb, "index", None)
             index_size = getattr(index, "ntotal", None) if index is not None else None
@@ -170,13 +178,17 @@ class Benchmarker:
         metric = self.cfg.vectordb.params.metric.lower()
 
         # Create exact baseline
-        faiss_flat_db = Faiss(dataset, metric=metric, index_type="FLAT")
+        faiss_flat_db = Faiss(metric=metric, index_type="FLAT")
+        faiss_flat_db.initialize_collection(dataset, batch_size=8192)
+
         logger.info("Created exact baseline index")
 
         return faiss_flat_db
 
     def search(
-        self, dataset: Dataset, vectordb: VectorDatabase, baseline_vectordb: VectorDatabase = None
+        self,
+        vectordb: VectorDatabase,
+        baseline_vectordb: VectorDatabase = None,
     ) -> None:
         """Profile search and compute recall@K vs exact baseline."""
         params = self.cfg.vectordb.params
@@ -184,14 +196,8 @@ class Benchmarker:
 
         topk = self.cfg.search.topk
 
-        dataset_dir = self.base_path / self.cfg.dataset.directory
-        ds = Dataset.load_from_disk(dataset_dir)
-        if "query" in ds.column_names:
-            queries = ds["query"]
-
-        else:
-            queries_file = Path(__file__).resolve().parent.parent / self.cfg.search.queries_file
-            queries = [q.strip() for q in queries_file.read_text(encoding="utf-8").splitlines() if q.strip()]
+        queries_file = Path(__file__).resolve().parent.parent / self.cfg.search.queries_file
+        queries = [q.strip() for q in queries_file.read_text(encoding="utf-8").splitlines() if q.strip()]
 
         # Limit the queries
         # If limit is negative, use the full query set
@@ -237,8 +243,6 @@ class Benchmarker:
             "index_type": self.cfg.vectordb.params.index_type,
             "topk": topk,
             "lat_ms_avg": float(np.mean(latencies)),
-            # Use dataset length directly to avoid materialising the embeddings again.
-            "ntotal": len(dataset),
         }
 
         if self.cfg.compute_recall:
@@ -301,7 +305,7 @@ class Benchmarker:
         if baseline_vectordb is not None:
             self.update(dataset, baseline_vectordb)
 
-        self.search(dataset, vectordb, baseline_vectordb)
+        self.search(vectordb, baseline_vectordb)
 
     def run(self) -> None:
         """Run end-to-end benchmark with all steps."""
@@ -323,7 +327,7 @@ class Benchmarker:
             vectordb = self.build(dataset)
 
             # Perform search
-            self.search(dataset, vectordb, baseline_vectordb)
+            self.search(vectordb, baseline_vectordb)
 
             # Update operations followed by search to measure impact
             self.update_and_search(dataset, vectordb, baseline_vectordb)
