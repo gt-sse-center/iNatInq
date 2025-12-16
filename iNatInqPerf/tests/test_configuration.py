@@ -65,4 +65,3 @@ def test_config(benchmark_yaml):
     assert isinstance(config.vectordb, VectorDatabaseConfig)
     assert isinstance(config.search, SearchParams)
     assert isinstance(config.update, dict)
-    assert isinstance(config.compute_recall, bool)

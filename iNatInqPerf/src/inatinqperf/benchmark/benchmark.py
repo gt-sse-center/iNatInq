@@ -11,7 +11,7 @@ from datasets import Dataset
 from loguru import logger
 from tqdm import tqdm
 
-from inatinqperf.adaptors import VECTORDBS, DataPoint, Faiss, Query, SearchResult, VectorDatabase
+from inatinqperf.adaptors import VECTORDBS, DataPoint, Query, SearchResult, VectorDatabase
 from inatinqperf.configuration import Config
 from inatinqperf.container import container_context
 from inatinqperf.utils import (
@@ -50,6 +50,8 @@ class Benchmarker:
         else:
             self.base_path = base_path
         self.container_configs = list(self.cfg.containers)
+
+        self.ntotal = 0
 
     def download(self) -> None:
         """Download HF dataset and optionally export images."""
@@ -97,7 +99,12 @@ class Benchmarker:
         with Profiler("embed-images", containers=self.container_configs):
             dse: Dataset = embed_images(dataset_dir, model_id, batch_size)
 
-        return self.save_as_huggingface_dataset(dse, embeddings_dir=embeddings_dir)
+        dataset = self.save_as_huggingface_dataset(dse, embeddings_dir=embeddings_dir)
+
+        # Set the dataset length at the time of generation
+        self.ntotal = len(dataset)
+
+        return dataset
 
     def save_as_huggingface_dataset(
         self,
@@ -173,23 +180,7 @@ class Benchmarker:
             for idx, (row_id, vector) in enumerate(zip(dataset["id"], dataset["embedding"], strict=True))
         ]
 
-    def build_baseline(self, dataset: Dataset) -> VectorDatabase:
-        """Build the FAISS vector database with a `IndexFlat` index as a baseline."""
-        metric = self.cfg.vectordb.params.metric.lower()
-
-        # Create exact baseline
-        faiss_flat_db = Faiss(metric=metric, index_type="FLAT")
-        faiss_flat_db.initialize_collection(dataset, batch_size=8192)
-
-        logger.info("Created exact baseline index")
-
-        return faiss_flat_db
-
-    def search(
-        self,
-        vectordb: VectorDatabase,
-        baseline_vectordb: VectorDatabase = None,
-    ) -> None:
+    def search(self, vectordb: VectorDatabase, baseline_results_path: Path | None = None) -> None:
         """Profile search and compute recall@K vs exact baseline."""
         params = self.cfg.vectordb.params
         model_id = self.cfg.embedding.model_id
@@ -207,17 +198,7 @@ class Benchmarker:
         q = embed_text(queries, model_id)
         logger.info("Embedded all queries")
 
-        if self.cfg.compute_recall:
-            logger.info("Performing search on baseline")
-            with Profiler("search-baseline-FaissFlat", containers=self.container_configs) as p:
-                i0 = np.full((q.shape[0], topk), -1.0, dtype=float)
-                for i in tqdm(range(q.shape[0])):
-                    assert baseline_vectordb is not None
-                    base_results = baseline_vectordb.search(Query(q[i]), topk)  # exact
-                    padded = _ids_to_fixed_array(base_results, topk)
-                    i0[i] = padded
-
-        # search + profile
+        # Compute search latencies
         logger.info(f"Performing search on {self.cfg.vectordb.type}")
         with Profiler(f"search-{self.cfg.vectordb.type}", containers=self.container_configs) as p:
             latencies = []
@@ -228,7 +209,22 @@ class Benchmarker:
 
             p.sample()
 
+        stats = {
+            "vectordb": self.cfg.vectordb.type,
+            "index_type": self.cfg.vectordb.params.index_type,
+            "topk": topk,
+            "lat_ms_avg": float(np.mean(latencies)),
+            "lat_ms_p50": float(np.percentile(latencies, 50)),
+            "lat_ms_p95": float(np.percentile(latencies, 95)),
+        }
+
         if self.cfg.compute_recall:
+            with Path.open(baseline_results_path, mode="rb+") as baseline_results:
+                i0 = np.load(baseline_results)
+
+            if i0.shape != (q.shape[0], topk):
+                raise RuntimeWarning("Baseline search is not the correct shape, results may be incorrect.")
+
             logger.info("recall@K (compare last retrieved to baseline per query")
             # For simplicity compute approximate on whole Q at once:
             i1 = np.full((q.shape[0], topk), -1.0, dtype=float)
@@ -238,17 +234,7 @@ class Benchmarker:
                 i1[i] = padded
             rec = recall_at_k(i1, i0, topk)
 
-        stats = {
-            "vectordb": self.cfg.vectordb.type,
-            "index_type": self.cfg.vectordb.params.index_type,
-            "topk": topk,
-            "lat_ms_avg": float(np.mean(latencies)),
-        }
-
-        if self.cfg.compute_recall:
             stats["recall@k"] = rec
-            stats["lat_ms_p50"] = float(np.percentile(latencies, 50))
-            stats["lat_ms_p95"] = float(np.percentile(latencies, 95))
 
         # Make values as lists so `tabulate` can print properly.
         table = get_table(stats)
@@ -297,15 +283,11 @@ class Benchmarker:
         self,
         dataset: Dataset,
         vectordb: VectorDatabase,
-        baseline_vectordb: VectorDatabase | None = None,
     ) -> None:
         """Run update workflow then search again to capture post-update performance."""
         self.update(dataset, vectordb)
-
-        if baseline_vectordb is not None:
-            self.update(dataset, baseline_vectordb)
-
-        self.search(vectordb, baseline_vectordb)
+        # Pass in the updated baseline results to compute new recall
+        self.search(vectordb, self.cfg.baseline.results_post_update)
 
     def run(self) -> None:
         """Run end-to-end benchmark with all steps."""
@@ -315,22 +297,15 @@ class Benchmarker:
         # Compute embeddings
         dataset = self.embed()
 
-        vectordb: VectorDatabase | None = None
-
         with container_context(self.cfg):
-            # Build baseline vector database
-            baseline_vectordb = None
-            if self.cfg.compute_recall:
-                baseline_vectordb = self.build_baseline(dataset)
-
             # Build specified vector database
             vectordb = self.build(dataset)
 
             # Perform search
-            self.search(vectordb, baseline_vectordb)
+            self.search(vectordb, self.cfg.baseline.results)
 
             # Update operations followed by search to measure impact
-            self.update_and_search(dataset, vectordb, baseline_vectordb)
+            self.update_and_search(dataset, vectordb)
 
 
 def ensure_dir(p: Path) -> Path:

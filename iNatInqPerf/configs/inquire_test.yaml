@@ -1,6 +1,6 @@
 dataset:
-  dataset_id: gt-csse/iNat24-vit-b-16
-  splits: "train"
+  dataset_id: gt-csse/iNat24-vit-b-16-test
+  splits: train
   directory: data/inquire_inat/emb
   export_images: false
 

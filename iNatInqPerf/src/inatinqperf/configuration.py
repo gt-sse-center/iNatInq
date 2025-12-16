@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Annotated, Any
 
-from pydantic import BaseModel, BeforeValidator, Field, PositiveInt, StringConstraints
+from pydantic import BaseModel, BeforeValidator, Field, PositiveInt, StringConstraints, field_validator
 from simpleeval import simple_eval
 
 from inatinqperf.adaptors.enums import Metric
@@ -129,6 +129,23 @@ class ContainerConfig(BaseModel):
                 self.volumes[i] = str(project_dir / volume)
 
 
+class BaselineResults(BaseModel):
+    """Configuration for holding paths for search results on baseline vector database.
+
+    Paths should be specified with respect to the iNatInqPerf root directory.
+    Used for computing recall.
+    """
+
+    results: Path
+    results_post_update: Path
+
+    @field_validator("results", "results_post_update", mode="after")
+    @classmethod
+    def get_absolute_path(cls, value: Path) -> Path:
+        """Get the absolute path for the results."""
+        return Path(__file__).parent.parent.parent / value
+
+
 class Config(BaseModel):
     """Class encapsulating benchmark configuration with data validation."""
 
@@ -140,3 +157,4 @@ class Config(BaseModel):
     search: SearchParams
     update: dict[str, PositiveInt]
     compute_recall: bool = False
+    baseline: BaselineResults

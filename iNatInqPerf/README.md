@@ -45,6 +45,9 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv venv .venv && source .venv/bin/activate
 uv sync
 
+# First run baseline benchmark (e.g. FAISS with flat index)
+uv run python scripts/run_baseline_benchmark.py configs/inquire_benchmark.yaml
+
 # Run an end-to-end benchmark (FAISS IVF+PQ vectordb) on the INQUIRE dataset.
 uv run python scripts/run_benchmark.py configs/inquire_benchmark.yaml
 

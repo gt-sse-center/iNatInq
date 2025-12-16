@@ -45,3 +45,7 @@ search:
 update:
   add_count: 50
   delete_count: 30
+
+baseline:
+  results: "tests/fixtures/baseline_results.npy"
+  results_post_update: "tests/fixtures/baseline_results_post_update.npy"

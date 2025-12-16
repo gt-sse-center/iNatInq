@@ -117,3 +117,7 @@ update:
   delete_count: 30
 
 compute_recall: false
+
+baseline:
+  results: "baseline_results.npy"
+  results_post_update: "baseline_results_post_update.npy"
