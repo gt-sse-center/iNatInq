@@ -198,7 +198,7 @@ class Benchmarker:
         q = embed_text(queries, model_id)
         logger.info("Embedded all queries")
 
-        # search + profile
+        # Compute search latencies
         logger.info(f"Performing search on {self.cfg.vectordb.type}")
         with Profiler(f"search-{self.cfg.vectordb.type}", containers=self.container_configs) as p:
             latencies = []
@@ -209,28 +209,32 @@ class Benchmarker:
 
             p.sample()
 
-        with Path.open(baseline_results_path, mode="rb+") as baseline_results:
-            i0 = np.load(baseline_results)
-
-        logger.info("recall@K (compare last retrieved to baseline per query")
-        # For simplicity compute approximate on whole Q at once:
-        i1 = np.full((q.shape[0], topk), -1.0, dtype=float)
-        for i in tqdm(range(q.shape[0])):
-            results = vectordb.search(Query(q[i]), topk, **params.to_dict())
-            padded = _ids_to_fixed_array(results, topk)
-            i1[i] = padded
-        rec = recall_at_k(i1, i0, topk)
-
         stats = {
             "vectordb": self.cfg.vectordb.type,
             "index_type": self.cfg.vectordb.params.index_type,
             "topk": topk,
             "lat_ms_avg": float(np.mean(latencies)),
+            "lat_ms_p50": float(np.percentile(latencies, 50)),
+            "lat_ms_p95": float(np.percentile(latencies, 95)),
         }
 
-        stats["recall@k"] = rec
-        stats["lat_ms_p50"] = float(np.percentile(latencies, 50))
-        stats["lat_ms_p95"] = float(np.percentile(latencies, 95))
+        if self.cfg.compute_recall:
+            with Path.open(baseline_results_path, mode="rb+") as baseline_results:
+                i0 = np.load(baseline_results)
+
+            if i0.shape != (q.shape[0], topk):
+                raise RuntimeWarning("Baseline search is not the correct shape, results may be incorrect.")
+
+            logger.info("recall@K (compare last retrieved to baseline per query")
+            # For simplicity compute approximate on whole Q at once:
+            i1 = np.full((q.shape[0], topk), -1.0, dtype=float)
+            for i in tqdm(range(q.shape[0])):
+                results = vectordb.search(Query(q[i]), topk, **params.to_dict())
+                padded = _ids_to_fixed_array(results, topk)
+                i1[i] = padded
+            rec = recall_at_k(i1, i0, topk)
+
+            stats["recall@k"] = rec
 
         # Make values as lists so `tabulate` can print properly.
         table = get_table(stats)
