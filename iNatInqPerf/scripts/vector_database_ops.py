@@ -43,7 +43,10 @@ def build(
     with container_context(benchmarker.cfg, auto_stop=False):
         # Build specified vector database
         dataset = load_dataset(dataset_name, revision=dataset_revision, split="train")
-        dataset = dataset.rename_column("photo_id", "id")
+
+        if "id" not in dataset.column_names:
+            dataset = dataset.rename_column("photo_id", "id")
+
         benchmarker.build(dataset)
 
 
