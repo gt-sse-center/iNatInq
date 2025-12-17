@@ -5,7 +5,8 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
+from loguru import logger
 
 from inatinqperf.benchmark.benchmark import Benchmarker
 from inatinqperf.container import container_context
@@ -31,9 +32,12 @@ def build(
             help="The base path relative to which various artifacts are saved.",
         ),
     ] = Path(__file__).parent.parent,
-    dataset_name: Annotated[
-        str, typer.Option(help="The name of the dataset to ")
-    ] = "gt-csse/inat-open-data-embeddings",
+    dataset_path: Annotated[
+        Path | None, typer.Option(exists=True, help="The path to the local Hugging Face dataset directory")
+    ] = None,
+    dataset_id: Annotated[
+        str | None, typer.Option(help="The name/id of the dataset on HuggingFace.co")
+    ] = None,
     dataset_revision: Annotated[str, typer.Option(help="The dataset revision on Hugging Face")] = "main",
 ) -> None:
     """Create the vector database."""
@@ -42,7 +46,14 @@ def build(
 
     with container_context(benchmarker.cfg, auto_stop=False):
         # Build specified vector database
-        dataset = load_dataset(dataset_name, revision=dataset_revision, split="train")
+
+        if dataset_path:
+            dataset = load_from_disk(dataset_path=dataset_path)
+        elif dataset_id:
+            dataset = load_dataset(dataset_id, revision=dataset_revision, split="train")
+        else:
+            logger.error("No dataset provided, exiting...")
+            return
 
         if "id" not in dataset.column_names:
             dataset = dataset.rename_column("photo_id", "id")
