@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Annotated, Any
 
-from pydantic import BaseModel, BeforeValidator, Field, PositiveInt, StringConstraints
+from pydantic import BaseModel, BeforeValidator, Field, PositiveInt, StringConstraints, field_validator
 from simpleeval import simple_eval
 
 from inatinqperf.adaptors.enums import Metric
@@ -34,10 +34,9 @@ class VectorDatabaseParams(BaseModel):
     """Configuration for parameters initializing a Vector Database."""
 
     url: NonEmptyStr = "localhost"
-    # The vector db clients expect the port as a string
-    port: NonEmptyStr = "0"
+    port: NonEmptyStr  # The vector db clients expect the port as a string
+    grpc_port: NonEmptyStr | None = None
     collection_name: NonEmptyStr = "benchmark"
-
     metric: Metric
     index_type: NonEmptyStr
 
@@ -50,6 +49,11 @@ class VectorDatabaseParams(BaseModel):
     ########
 
     batch_size: int = 1000
+    node_urls: Sequence[NonEmptyStr] | None = None
+    shard_count: int | None = None
+    replication_factor: int | None = None
+    virtual_per_physical: int | None = None
+    container_names: Sequence[NonEmptyStr] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return parameters, including extra fields, omitting unset values."""
@@ -119,6 +123,29 @@ class ContainerConfig(BaseModel):
         # convert the model to a dictionary and store it.
         self.healthcheck = self.healthcheck.model_dump()
 
+        # Update the volumes path within containers to be relative to the current project path
+        project_dir = Path(__file__).parent.parent.parent
+        for i, volume in enumerate(self.volumes):
+            if ".yaml" in volume:
+                self.volumes[i] = str(project_dir / volume)
+
+
+class BaselineResults(BaseModel):
+    """Configuration for holding paths for search results on baseline vector database.
+
+    Paths should be specified with respect to the iNatInqPerf root directory.
+    Used for computing recall.
+    """
+
+    results: Path
+    results_post_update: Path
+
+    @field_validator("results", "results_post_update", mode="after")
+    @classmethod
+    def get_absolute_path(cls, value: Path) -> Path:
+        """Get the absolute path for the results."""
+        return Path(__file__).parent.parent.parent / value
+
 
 class Config(BaseModel):
     """Class encapsulating benchmark configuration with data validation."""
@@ -130,3 +157,5 @@ class Config(BaseModel):
     vectordb: VectorDatabaseConfig
     search: SearchParams
     update: dict[str, PositiveInt]
+    compute_recall: bool = False
+    baseline: BaselineResults

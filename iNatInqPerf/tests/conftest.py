@@ -24,7 +24,6 @@ def source_dir_fixture():
 
 @pytest.fixture(name="fixtures_dir")
 def fixtures_dir_fixture(source_dir):
-    """Get the path to the fixtures directory."""
     return source_dir / "tests" / "fixtures"
 
 

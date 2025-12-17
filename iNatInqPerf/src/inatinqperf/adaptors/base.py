@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from datasets import Dataset as HuggingFaceDataset
+from loguru import logger
 
 from inatinqperf.adaptors.enums import Metric
 
@@ -47,7 +48,6 @@ class VectorDatabase(ABC):
     @abstractmethod
     def __init__(
         self,
-        dataset: HuggingFaceDataset,
         metric: str | Metric,
         *args,
         **kwargs,
@@ -62,7 +62,18 @@ class VectorDatabase(ABC):
         """
         # Will raise exception if `metric` is not valid.
         self.metric = Metric(metric)
+        self.dim = 0
+
+    def initialize_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
+        """Create a dataset collection and upload data to it."""
+        logger.info(f"Creating collection {self.collection_name}, and uploading with {batch_size=}")
         self.dim = len(dataset["embedding"][0])
+
+        self._upload_collection(dataset, batch_size)
+
+    @abstractmethod
+    def _upload_collection(self, dataset: HuggingFaceDataset, batch_size: int) -> None:
+        """Method to upload the collection to the vector database."""
 
     @staticmethod
     @abstractmethod

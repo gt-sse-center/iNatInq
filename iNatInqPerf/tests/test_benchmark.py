@@ -9,7 +9,7 @@ from inatinqperf import adaptors
 from inatinqperf.adaptors.base import SearchResult
 from inatinqperf.adaptors.enums import Metric
 from inatinqperf.benchmark import Benchmarker, benchmark
-from inatinqperf.benchmark.configuration import VectorDatabaseParams
+from inatinqperf.configuration import VectorDatabaseParams
 
 
 @pytest.fixture(name="data_path", scope="session")
@@ -182,13 +182,11 @@ def test_search(config_yaml, data_path, caplog):
     dataset = benchmarker.embed()
     vectordb = benchmarker.build(dataset)
 
-    benchmarker.search(dataset, vectordb, MockExactBaseline())
+    benchmarker.search(vectordb, benchmarker.cfg.baseline.results)
 
-    assert "faiss" in caplog.text
     # The configured index type drives the log message; assert against the configured value.
     expected_index_type = benchmarker.cfg.vectordb.params.index_type.upper()
     assert expected_index_type in caplog.text
-    assert "recall@k" in caplog.text
 
 
 def test_search_parallel(config_yaml, tmp_path, monkeypatch, caplog):
@@ -244,6 +242,31 @@ def test_update(data_path, config_yaml, benchmark_module):
         vectordb.index.ntotal
         == previous_total + benchmarker.cfg.update["add_count"] - benchmarker.cfg.update["delete_count"]
     )
+
+
+def test_update_and_search_invokes_all(monkeypatch, config_yaml, data_path):
+    """Ensure the combined post-update search operation runs both updates and search."""
+    benchmarker = Benchmarker(config_yaml, data_path)
+
+    calls: dict[str, list] = {"update": [], "search": []}
+
+    def fake_update(dataset, db):
+        calls["update"].append(db)
+
+    def fake_search(vdb, path):
+        calls["search"].append(vdb)
+
+    monkeypatch.setattr(benchmarker, "update", fake_update)
+    monkeypatch.setattr(benchmarker, "search", fake_search)
+
+    dataset = object()
+    vectordb = object()
+    baseline = object()
+
+    benchmarker.update_and_search(dataset, vectordb)
+
+    assert calls["update"] == [vectordb]
+    assert calls["search"] == [vectordb]
 
 
 # ---------- Edge cases for helpers ----------

@@ -27,12 +27,12 @@ vectordb:
   params:
     url: localhost
     port: "6333"
-    collection_name: benchmark
+    collection_name: benchmark_collection
     index_type: hnsw
     metric: cosine
     m: 64
     ef: 32
-    batch_size: 1000
+    batch_size: 2048
 
 search:
   topk: 10
@@ -41,3 +41,9 @@ search:
 update:
   add_count: 50
   delete_count: 30
+
+compute_recall: false
+
+baseline:
+  results: "baseline_results.npy"
+  results_post_update: "baseline_results_post_update.npy"

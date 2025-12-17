@@ -12,16 +12,19 @@ requires-python = ">= 3.11"
 dependencies = [
     "inquire_api",
     "inatinqperf",
+    "inat-toolkit",
     "datasets>=4.4.1",
     "docker>=7.1.0",
     "loguru>=0.7.3",
+    "numpy>=2.2.6",
+    "pillow>=12.0.0",
     "pydantic>=2.11.9",
     "python-dotenv>=1.2.1",
     "qdrant-client>=1.15.1",
     "torch>=2.9.0",
     "tqdm>=4.67.1",
     "transformers>=4.57.1",
-    "typer>=0.17.4",
+    "typer>=0.20.0",
 ]
 
 [dependency-groups]
@@ -36,12 +39,14 @@ dev = [
 
 [tool.uv.sources]
 inquire_api = { workspace = true }
-iNatInqPerf = { workspace = true }
+inatinqperf = { workspace = true }
+inat_toolkit = { workspace = true }
 
 [tool.uv.workspace]
 members = [
     "inquire_api",
     "iNatInqPerf",
+    "inat_toolkit",
 ]
 
 [project.license]
