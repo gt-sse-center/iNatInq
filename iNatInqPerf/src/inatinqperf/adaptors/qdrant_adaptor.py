@@ -90,14 +90,16 @@ class Qdrant(VectorDatabase):
             wait=False,
         )
 
-    def _upload_dataset(self, dataset: HuggingFaceDataset, batch_size: int, *, parallel: bool = True) -> None:
+    def _upload_dataset(
+        self, dataset: HuggingFaceDataset, batch_size: int, parallel_threads: int = 16
+    ) -> None:
         """Upload `dataset` in batches of size `batch_size`."""
         # Compute total number of batches
         num_batches = int(np.ceil(len(dataset) / batch_size))
 
-        if parallel:
+        if parallel_threads > 1:
             ctx = get_context(self.get_mp_start_method())
-            with ctx.Pool(processes=16) as pool:
+            with ctx.Pool(processes=parallel_threads) as pool:
                 pool.imap(
                     self._upload_batch,
                     tqdm(dataset.iter(batch_size=batch_size), total=num_batches),
