@@ -2,7 +2,9 @@
 
 import time
 from collections.abc import Generator, Sequence
+from multiprocessing import get_context
 from shutil import which
+from typing import Any
 from urllib.parse import urlparse
 
 import numpy as np
@@ -71,22 +73,39 @@ class Qdrant(VectorDatabase):
             on_disk=False,  # Don't store index to disk so upload is efficient.
         )
 
-    def _upload_dataset(self, dataset: HuggingFaceDataset, batch_size: int) -> None:
-        """Upload `dataset` in batches of size `batch_size`."""
-        # Batch insert dataset
-        num_batches = int(np.ceil(len(dataset) / batch_size))
-        for batch in tqdm(dataset.iter(batch_size=batch_size), total=num_batches):
-            ids = batch["id"]
-            vectors = batch["embedding"]
+    @staticmethod
+    def _upload_batch(client: QdrantClient, collection_name: str, batch: dict[str, Any]) -> None:
+        """Method to upload dataset batch.
 
-            self.client.upsert(
-                collection_name=self.collection_name,
-                points=models.Batch.model_construct(
-                    ids=ids,
-                    vectors=vectors,
-                ),
-                wait=False,
-            )
+        This method has been separated out so we can parallelize it.
+        """
+        ids = batch["id"]
+        vectors = batch["embedding"]
+        client.upsert(
+            collection_name=collection_name,
+            points=models.Batch.model_construct(
+                ids=ids,
+                vectors=vectors,
+            ),
+            wait=False,
+        )
+
+    def _upload_dataset(self, dataset: HuggingFaceDataset, batch_size: int, *, parallel: bool = True) -> None:
+        """Upload `dataset` in batches of size `batch_size`."""
+        # Compute total number of batches
+        num_batches = int(np.ceil(len(dataset) / batch_size))
+
+        if parallel:
+            ctx = get_context(self.get_mp_start_method())
+            with ctx.Pool(processes=16) as pool:
+                pool.imap(
+                    self._upload_batch,
+                    tqdm(dataset.iter(batch_size=batch_size), total=num_batches),
+                )
+
+        else:
+            for batch in tqdm(dataset.iter(batch_size=batch_size), total=num_batches):
+                self._upload_batch(self.client, collection_name=self.collection_name, batch=batch)
 
     def _post_upload(self) -> None:
         """Perform post upload operations and logging."""
