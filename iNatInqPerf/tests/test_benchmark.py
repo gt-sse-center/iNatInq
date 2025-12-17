@@ -191,6 +191,40 @@ def test_search(config_yaml, data_path, caplog):
     assert "recall@k" in caplog.text
 
 
+def test_search_parallel(config_yaml, tmp_path, monkeypatch, caplog):
+    """Test vector DB search running in multiple processes."""
+    benchmarker = Benchmarker(config_yaml, base_path=tmp_path)
+    benchmarker.cfg.vectordb.params.index_type = "FLAT"
+    benchmarker.cfg.containers = []
+    benchmarker.cfg.container_network = ""
+
+    dim = 8
+    rng = np.random.default_rng(0)
+    dataset = HuggingFaceDataset.from_dict(
+        {
+            "id": list(range(12)),
+            "embedding": rng.random((12, dim), dtype=np.float32).tolist(),
+        }
+    )
+    vectordb = benchmarker.build(dataset)
+
+    queries = ["one", "two", "three", "four"]
+    query_ds = HuggingFaceDataset.from_dict({"query": queries})
+    dataset_dir = tmp_path / benchmarker.cfg.dataset.directory
+    dataset_dir.parent.mkdir(parents=True, exist_ok=True)
+    query_ds.save_to_disk(dataset_dir)
+
+    def _fake_embed_text(qs, model_id, batch_size=128):  # noqa: ARG001
+        return rng.random((len(qs), dim), dtype=np.float32)
+
+    monkeypatch.setattr(benchmark, "embed_text", _fake_embed_text)
+
+    benchmarker.search_parallel(dataset, vectordb, MockExactBaseline(), processes=2)
+
+    assert "search-parallel" in caplog.text
+    assert "parallel_processes" in caplog.text
+
+
 def test_update(data_path, config_yaml, benchmark_module):
     dataset = benchmark_module.load_huggingface_dataset(data_path)
     benchmarker = Benchmarker(config_yaml, data_path)

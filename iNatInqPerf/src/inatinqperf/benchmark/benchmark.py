@@ -1,5 +1,8 @@
 """Vector database-agnostic benchmark orchestrator."""
 
+import math
+import multiprocessing as mp
+import queue
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -243,6 +246,119 @@ class Benchmarker:
         table = get_table(stats)
         logger.info(f"\n\n{table}\n\n")
 
+    def search_parallel(
+        self,
+        dataset: Dataset,
+        vectordb: VectorDatabase,
+        baseline_vectordb: VectorDatabase,
+        processes: int | None = None,
+    ) -> None:
+        """Profile search in parallel processes and compute recall@K vs exact baseline.
+
+        Uses forked processes so each worker can reuse the built vector DB instance.
+        """
+        params = self.cfg.vectordb.params
+        model_id = self.cfg.embedding.model_id
+        topk = self.cfg.search.topk
+
+        dataset_dir = self.base_path / self.cfg.dataset.directory
+        ds = Dataset.load_from_disk(dataset_dir)
+        if "query" in ds.column_names:
+            queries = ds["query"]
+
+        else:
+            queries_file = Path(__file__).resolve().parent.parent / self.cfg.search.queries_file
+            queries = [q.strip() for q in queries_file.read_text(encoding="utf-8").splitlines() if q.strip()]
+
+        limit = len(queries) if self.cfg.search.limit < 0 else self.cfg.search.limit
+        queries = queries[:limit]
+
+        if not queries:
+            logger.warning("No queries available for parallel search")
+            return
+
+        q = embed_text(queries, model_id)
+        logger.info("Embedded all queries")
+
+        logger.info("Performing search on baseline")
+        with Profiler("search-baseline-FaissFlat", containers=self.container_configs):
+            i0 = np.full((q.shape[0], topk), -1.0, dtype=float)
+            for i in tqdm(range(q.shape[0])):
+                base_results = baseline_vectordb.search(Query(q[i]), topk)  # exact
+                padded = _ids_to_fixed_array(base_results, topk)
+                i0[i] = padded
+
+        configured_processes = getattr(self.cfg.search, "parallel_processes", None)
+        requested_workers = processes if processes and processes > 0 else configured_processes
+        if not requested_workers or requested_workers <= 0:
+            requested_workers = mp.cpu_count() or 1
+
+        worker_count = max(1, min(int(requested_workers), q.shape[0]))
+        params_dict = params.to_dict()
+
+        logger.info(f"Performing parallel search on {self.cfg.vectordb.type} with {worker_count} processes")
+        with Profiler(f"search-parallel-{self.cfg.vectordb.type}", containers=self.container_configs) as p:
+            if "fork" not in mp.get_all_start_methods():
+                msg = "Parallel search requires a 'fork' start method to reuse the built vector database"
+                logger.error(msg)
+                raise RuntimeError(msg)
+            ctx = mp.get_context("fork")
+            tasks = _split_work(q.shape[0], worker_count)
+            latencies: list[float] = [0.0] * q.shape[0]
+            i1 = np.full((q.shape[0], topk), -1.0, dtype=float)
+            results: mp.Queue = ctx.Queue()
+
+            procs = []
+            for start, end in tasks:
+                proc = ctx.Process(
+                    target=_search_worker,
+                    args=(start, q[start:end], topk, params_dict, vectordb, results),
+                )
+                proc.start()
+                procs.append(proc)
+
+            try:
+                collected = 0
+                while collected < len(procs):
+                    try:
+                        idx, worker_latencies, worker_results = results.get(timeout=1)
+                    except queue.Empty:
+                        if any(proc.is_alive() for proc in procs):
+                            continue
+                        break
+                    latencies[idx : idx + len(worker_latencies)] = worker_latencies
+                    i1[idx : idx + worker_results.shape[0], :] = worker_results
+                    collected += 1
+
+                if collected != len(procs):
+                    msg = f"Parallel search workers produced {collected}/{len(procs)} result sets"
+                    logger.error(msg)
+                    raise RuntimeError(msg)
+            finally:
+                for proc in procs:
+                    proc.join()
+                    if proc.exitcode not in (0, None):
+                        logger.error(f"Parallel search worker exited with code {proc.exitcode}")
+
+            p.sample()
+
+        rec = recall_at_k(i1, i0, topk)
+
+        stats = {
+            "vectordb": self.cfg.vectordb.type,
+            "index_type": self.cfg.vectordb.params.index_type,
+            "topk": topk,
+            "parallel_processes": worker_count,
+            "lat_ms_avg": float(np.mean(latencies)),
+            "lat_ms_p50": float(np.percentile(latencies, 50)),
+            "lat_ms_p95": float(np.percentile(latencies, 95)),
+            "recall@k": rec,
+            "ntotal": len(dataset),
+        }
+
+        table = get_table(stats)
+        logger.info(f"\n\n{table}\n\n")
+
     def update(self, dataset: Dataset, vectordb: VectorDatabase) -> None:
         """Upsert + delete small batch and re-search."""
         vdb_type = self.cfg.vectordb.type
@@ -330,3 +446,33 @@ def _ids_to_fixed_array(results: Sequence[SearchResult], topk: int) -> np.ndarra
     count = min(topk, len(results))
     arr[:count] = [float(results[i].id) for i in range(count)]
     return arr
+
+
+def _split_work(total: int, workers: int) -> list[tuple[int, int]]:
+    """Evenly split ``total`` items into ``workers`` ranges."""
+    if total <= 0:
+        return []
+    workers = max(1, min(workers, total))
+    chunk = math.ceil(total / workers)
+    return [(start, min(start + chunk, total)) for start in range(0, total, chunk)]
+
+
+def _search_worker(
+    start_idx: int,
+    queries: np.ndarray,
+    topk: int,
+    params: dict[str, object],
+    vectordb: VectorDatabase,
+    result_queue: mp.Queue,
+) -> None:
+    """Run search over a slice of queries and push results to ``result_queue``."""
+    latencies: list[float] = []
+    padded_ids = np.full((len(queries), topk), -1.0, dtype=float)
+
+    for i, vector in enumerate(queries):
+        t0 = time.perf_counter()
+        results = vectordb.search(Query(vector), topk, **params)
+        latencies.append((time.perf_counter() - t0) * 1000.0)
+        padded_ids[i] = _ids_to_fixed_array(results, topk)
+
+    result_queue.put((start_idx, latencies, padded_ids))

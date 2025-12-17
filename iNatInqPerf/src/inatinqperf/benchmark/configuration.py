@@ -69,6 +69,7 @@ class SearchParams(BaseModel):
     topk: int
     queries_file: Path
     limit: int = -1
+    parallel_processes: PositiveInt | None = None
 
 
 class ContainerHealthCheck(BaseModel):
