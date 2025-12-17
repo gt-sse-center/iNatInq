@@ -39,20 +39,25 @@ class Weaviate(VectorDatabase):
         port: int = 8080,
         grpc_port: int = 50051,
         collection_name: str = "collection_name",
+        m: int = 32,
+        ef: int = 128,
         **params: object,  # noqa: ARG002
     ) -> None:
         """Initialise the adaptor with a dataset template and connectivity details."""
         super().__init__(metric=metric)
 
-        self.collection_name = collection_name
-
         connection_params = ConnectionParams.from_url(url=f"{url}:{port}", grpc_port=grpc_port)
-        object.__setattr__(connection_params, "grpc_port", grpc_port)
+        # The default timeout is 90 seconds
         self.client = weaviate.WeaviateClient(
             connection_params=connection_params,
             skip_init_checks=False,
         )
         self.client.connect()
+
+        self.collection_name = collection_name
+        self.m = m
+        # The ef value used during collection construction
+        self.ef = ef
 
         self.index_type_func = self._get_index_type(WeaviateIndexType(index_type))
 

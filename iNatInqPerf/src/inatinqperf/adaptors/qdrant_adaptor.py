@@ -46,7 +46,7 @@ class Qdrant(VectorDatabase):
             port=port,
             grpc_port=grpc_port,
             prefer_grpc=prefer_grpc,  # Use gRPC since it is faster
-            timeout=10,  # Extend the timeout to 10 seconds
+            timeout=60,  # Extend the timeout to 60 seconds
         )
         self.collection_name = collection_name
 
@@ -59,7 +59,7 @@ class Qdrant(VectorDatabase):
         return models.VectorParams(
             size=self.dim,
             distance=self._translate_metric(self.metric),
-            on_disk=True,  # save to disk immediately
+            on_disk=True,  # save to disk immediately, uses memmap
         )
 
     def _get_index_params(self, m: int) -> models.HnswConfigDiff:
@@ -68,7 +68,7 @@ class Qdrant(VectorDatabase):
             m=m,
             ef_construct=self.ef,
             max_indexing_threads=0,
-            on_disk=True,  # Store index on disk
+            on_disk=False,  # Don't store index to disk so upload is efficient.
         )
 
     def _upload_dataset(self, dataset: HuggingFaceDataset, batch_size: int) -> None:
@@ -95,22 +95,24 @@ class Qdrant(VectorDatabase):
             return
 
         vectors_config = self._get_vectors_config()
-        # disable indexing by setting m=0 until dataset upload is complete
-        index_params = self._get_index_params(m=0)
+        index_params = self._get_index_params(m=self.m)
 
         self.client.create_collection(
             collection_name=self.collection_name,
             vectors_config=vectors_config,
             hnsw_config=index_params,
+            optimizers_config=models.OptimizersConfigDiff(
+                indexing_threshold=0
+            ),  # disable indexing during initial upload
             shard_number=4,  # reasonable default as per qdrant docs
         )
 
         self._upload_dataset(dataset, batch_size)
 
-        # Set the indexing params
+        # Re-enable indexing
         self.client.update_collection(
             collection_name=self.collection_name,
-            hnsw_config=models.HnswConfigDiff(m=self.m),
+            optimizers_config=models.OptimizersConfigDiff(indexing_threshold=20000),  # This the default value
         )
 
         # Log the number of point uploaded
