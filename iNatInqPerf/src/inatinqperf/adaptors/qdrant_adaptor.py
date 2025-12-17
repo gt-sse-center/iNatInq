@@ -95,23 +95,24 @@ class Qdrant(VectorDatabase):
             return
 
         vectors_config = self._get_vectors_config()
-        # disable indexing by setting m=0 until dataset upload is complete
-        index_params = self._get_index_params(m=0)
+        index_params = self._get_index_params(m=self.m)
 
         self.client.create_collection(
             collection_name=self.collection_name,
-            vectors_config=models.VectorsConfigDiff(vectors_config),
+            vectors_config=vectors_config,
             hnsw_config=index_params,
+            optimizers_config=models.OptimizersConfigDiff(
+                indexing_threshold=0
+            ),  # disable indexing during initial upload
             shard_number=4,  # reasonable default as per qdrant docs
         )
 
         self._upload_dataset(dataset, batch_size)
 
-        # Set the indexing params
+        # Re-enable indexing
         self.client.update_collection(
             collection_name=self.collection_name,
-            vectors_config=vectors_config,
-            hnsw_config=models.HnswConfigDiff(m=self.m),
+            optimizers_config=models.OptimizersConfigDiff(indexing_threshold=20000),  # This the default value
         )
 
         # Log the number of point uploaded
