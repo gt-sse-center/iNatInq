@@ -27,6 +27,8 @@ dependencies = [
     "pymilvus>=2.6.3",
     "weaviate-client>=4.17.0",
     "simpleeval>=1.0.3",
+    "datasets>=4.4.1",
+    "loguru>=0.7.3",
 ]
 
 classifiers = [
