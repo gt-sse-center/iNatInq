@@ -100,7 +100,7 @@ class Qdrant(VectorDatabase):
 
         self.client.create_collection(
             collection_name=self.collection_name,
-            vectors_config=vectors_config,
+            vectors_config=models.VectorsConfigDiff(vectors_config),
             hnsw_config=index_params,
             shard_number=4,  # reasonable default as per qdrant docs
         )
