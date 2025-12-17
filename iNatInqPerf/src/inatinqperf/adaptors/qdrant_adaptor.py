@@ -46,7 +46,7 @@ class Qdrant(VectorDatabase):
             port=port,
             grpc_port=grpc_port,
             prefer_grpc=prefer_grpc,  # Use gRPC since it is faster
-            timeout=10,  # Extend the timeout to 10 seconds
+            timeout=60,  # Extend the timeout to 60 seconds
         )
         self.collection_name = collection_name
 
@@ -59,7 +59,7 @@ class Qdrant(VectorDatabase):
         return models.VectorParams(
             size=self.dim,
             distance=self._translate_metric(self.metric),
-            on_disk=True,  # save to disk immediately
+            on_disk=True,  # save to disk immediately, uses memmap
         )
 
     def _get_index_params(self, m: int) -> models.HnswConfigDiff:
@@ -68,7 +68,7 @@ class Qdrant(VectorDatabase):
             m=m,
             ef_construct=self.ef,
             max_indexing_threads=0,
-            on_disk=True,  # Store index on disk
+            on_disk=False,  # Don't store index to disk so upload is efficient.
         )
 
     def _upload_dataset(self, dataset: HuggingFaceDataset, batch_size: int) -> None:
@@ -110,6 +110,7 @@ class Qdrant(VectorDatabase):
         # Set the indexing params
         self.client.update_collection(
             collection_name=self.collection_name,
+            vectors_config=vectors_config,
             hnsw_config=models.HnswConfigDiff(m=self.m),
         )
 
