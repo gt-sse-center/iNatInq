@@ -98,7 +98,7 @@ class Qdrant(VectorDatabase):
         num_batches = int(np.ceil(len(dataset) / batch_size))
 
         if parallel_threads > 1:
-            ctx = get_context(self.get_mp_start_method())
+            ctx = get_context()
             with ctx.Pool(processes=parallel_threads) as pool:
                 pool.imap(
                     self._upload_batch,
