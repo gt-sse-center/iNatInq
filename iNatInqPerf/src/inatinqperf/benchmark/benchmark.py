@@ -143,7 +143,7 @@ class Benchmarker:
             # Get the vector database adaptor
             vdb = self.get_vector_db()
             # Upload the dataset to the vector db collection
-            vdb.initialize_collection(dataset)
+            vdb.initialize_collection(dataset, self.cfg.vectordb.params.batch_size)
 
             index = getattr(vdb, "index", None)
             index_size = getattr(index, "ntotal", None) if index is not None else None

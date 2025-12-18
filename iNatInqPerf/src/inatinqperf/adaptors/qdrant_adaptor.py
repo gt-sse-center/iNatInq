@@ -81,11 +81,26 @@ class Qdrant(VectorDatabase):
 
             self.client.upsert(
                 collection_name=self.collection_name,
-                points=models.Batch(
+                points=models.Batch.model_construct(
                     ids=ids,
                     vectors=vectors,
                 ),
+                wait=False,
             )
+
+    def _post_upload(self) -> None:
+        """Perform post upload operations and logging."""
+
+        # Log the number of point uploaded
+        num_points_in_db = self.client.count(
+            collection_name=self.collection_name,
+            exact=True,
+        ).count
+        logger.info(f"Number of points in Qdrant database: {num_points_in_db}")
+
+        logger.info("Waiting for indexing to complete")
+        self.wait_for_index_ready(self.collection_name)
+        logger.info("Indexing complete!")
 
     def _upload_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
         """Method to upload the collection to the vector database."""
@@ -115,16 +130,7 @@ class Qdrant(VectorDatabase):
             optimizers_config=models.OptimizersConfigDiff(indexing_threshold=20000),  # This the default value
         )
 
-        # Log the number of point uploaded
-        num_points_in_db = self.client.count(
-            collection_name=self.collection_name,
-            exact=True,
-        ).count
-        logger.info(f"Number of points in Qdrant database: {num_points_in_db}")
-
-        logger.info("Waiting for indexing to complete")
-        self.wait_for_index_ready(self.collection_name)
-        logger.info("Indexing complete!")
+        self._post_upload()
 
     @staticmethod
     def _translate_metric(metric: Metric) -> Distance:
@@ -271,13 +277,15 @@ class QdrantCluster(Qdrant):
         logger.info(f"Creating collection {self.collection_name} with {self.shard_number} shards")
 
         vectors_config = self._get_vectors_config()
-        # disable indexing by setting m=0 until dataset upload is complete
-        index_params = self._get_index_params(m=0)
+        index_params = self._get_index_params(m=self.m)
 
         self.client.create_collection(
             collection_name=self.collection_name,
             vectors_config=vectors_config,
             hnsw_config=index_params,
+            optimizers_config=models.OptimizersConfigDiff(
+                indexing_threshold=0
+            ),  # disable indexing during initial upload
             shard_number=self.shard_number,
             replication_factor=self.replication_factor,
             write_consistency_factor=self.write_consistency_factor,
@@ -285,15 +293,13 @@ class QdrantCluster(Qdrant):
 
         self._upload_dataset(dataset, batch_size)
 
-        num_points_in_db = self.client.count(
+        # Re-enable indexing
+        self.client.update_collection(
             collection_name=self.collection_name,
-            exact=True,
-        ).count
-        logger.info(f"Number of points in Qdrant database: {num_points_in_db}")
+            optimizers_config=models.OptimizersConfigDiff(indexing_threshold=20000),  # This the default value
+        )
 
-        logger.info("Waiting for indexing to complete")
-        self.wait_for_index_ready(self.collection_name)
-        logger.info("Indexing complete!")
+        self._post_upload()
 
     @staticmethod
     def _resolve_node_urls(
