@@ -25,6 +25,7 @@ dependencies = [
     "tqdm>=4.67.1",
     "transformers>=4.57.1",
     "typer>=0.20.0",
+    "pyspark>=4.1.0",
 ]
 
 [dependency-groups]

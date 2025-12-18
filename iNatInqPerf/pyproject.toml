@@ -27,6 +27,7 @@ dependencies = [
     "pymilvus>=2.6.3",
     "weaviate-client>=4.17.0",
     "simpleeval>=1.0.3",
+    "spark>=0.2.1",
 ]
 
 classifiers = [
