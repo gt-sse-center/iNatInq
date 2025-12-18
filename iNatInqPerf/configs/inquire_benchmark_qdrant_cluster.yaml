@@ -106,7 +106,7 @@ vectordb:
     write_consistency_factor: 2
     m: 32
     ef: 128
-    batch_size: 1000
+    batch_size: 10000
 
 search:
   topk: 10
