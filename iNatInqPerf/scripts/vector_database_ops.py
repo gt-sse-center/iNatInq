@@ -86,5 +86,43 @@ def search(
     )
 
 
+@app.command()
+def search_parallel(
+    config_file: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            dir_okay=False,
+            help="The configuration file to use for creating the benchmark.",
+        ),
+    ],
+    base_path: Annotated[
+        Path,
+        typer.Option(
+            exists=True,
+            file_okay=False,
+            help="The base path relative to which various artifacts are saved.",
+        ),
+    ] = Path(__file__).parent.parent,
+    baseline_results_filepath: Annotated[
+        Path | None,
+        typer.Option(
+            exists=True,
+            file_okay=False,
+            help="The (optional) path to the baseline results.",
+        ),
+    ] = None,
+    processes: Annotated[int | None, typer.Option(help="Number of parallel worker processes to use.")] = None,
+) -> None:
+    """Run search benchmark using multiple worker processes."""
+
+    benchmarker = Benchmarker(config_file, base_path=base_path)
+    benchmarker.search_parallel(
+        benchmarker.get_vector_db(),
+        baseline_results_path=baseline_results_filepath,
+        processes=processes,
+    )
+
+
 if __name__ == "__main__":
     app()

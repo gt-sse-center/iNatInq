@@ -120,3 +120,7 @@ class VectorDatabase(ABC):
     def __del__(self) -> None:
         """Destructor method, which automatically closes any open connections."""
         self.close()
+
+    def spawn_searcher(self) -> "VectorDatabase":
+        """Return a search-capable instance for parallel queries. Defaults to self."""
+        return self

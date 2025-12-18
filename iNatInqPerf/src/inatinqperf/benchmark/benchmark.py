@@ -1,9 +1,9 @@
 """Vector database-agnostic benchmark orchestrator."""
 
-import concurrent.futures as futures
 import os
 import time
 from collections.abc import Sequence
+from concurrent import futures
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -246,7 +246,7 @@ class Benchmarker:
         self,
         vectordb: VectorDatabase,
         baseline_results_path: Path | None = None,
-        processes: int = 2,
+        processes: int | None = None,
     ) -> None:
         """Profile search in parallel processes and compute recall@K vs baseline results."""
         params = self.cfg.vectordb.params
@@ -280,7 +280,7 @@ class Benchmarker:
         configured_processes = getattr(self.cfg.search, "parallel_processes", None)
         requested_workers = processes if processes and processes > 0 else configured_processes
         if not requested_workers or requested_workers <= 0:
-            cpu = os.cpu_count()
+            cpu = os.cpu_count() or 1
             requested_workers = min(32, cpu + 4)
         worker_count = max(1, min(int(requested_workers), q.shape[0]))
         params_dict = params.to_dict()
@@ -289,21 +289,43 @@ class Benchmarker:
         with Profiler(f"search-parallel-{self.cfg.vectordb.type}", containers=self.container_configs) as p:
             latencies: list[float] = [0.0] * q.shape[0]
             i1 = np.full((q.shape[0], topk), -1.0, dtype=float) if self.cfg.compute_recall else None
+            searchers = [vectordb.spawn_searcher() for _ in range(worker_count)]
+            spawned = sum(1 for s in searchers if s is not vectordb)
+            if spawned:
+                logger.info(f"Parallel search created {spawned}/{worker_count} per-thread clients")
+            else:
+                logger.info("Parallel search reusing shared client for all threads")
 
-            def _task(idx: int, vec: np.ndarray) -> tuple[int, float, np.ndarray]:
+            def _task(
+                searcher: VectorDatabase, idx: int, vec: np.ndarray
+            ) -> tuple[int, float, np.ndarray]:
                 t0 = time.perf_counter()
-                results = vectordb.search(Query(vec), topk, **params_dict)
+                results = searcher.search(Query(vec), topk, **params_dict)
                 latency = (time.perf_counter() - t0) * 1000.0
                 padded = _ids_to_fixed_array(results, topk)
                 return idx, latency, padded
 
-            with futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
-                futs = [executor.submit(_task, i, q[i]) for i in range(q.shape[0])]
-                for fut in futures.as_completed(futs):
-                    idx, latency, padded = fut.result()
-                    latencies[idx] = latency
-                    if i1 is not None:
-                        i1[idx] = padded
+            try:
+                with futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
+                    futs = [
+                        executor.submit(_task, searchers[i % worker_count], i, q[i])
+                        for i in range(q.shape[0])
+                    ]
+                    for fut in futures.as_completed(futs):
+                        idx, latency, padded = fut.result()
+                        latencies[idx] = latency
+                        if i1 is not None:
+                            i1[idx] = padded
+            finally:
+                seen: set[int] = set()
+                for searcher in searchers:
+                    if searcher is vectordb:
+                        continue
+                    ident = id(searcher)
+                    if ident in seen:
+                        continue
+                    seen.add(ident)
+                    searcher.close()
 
             p.sample()
 
@@ -410,11 +432,9 @@ class Benchmarker:
                 processes=self.cfg.search.parallel_processes,
             )
 
-            # Perform search
-            self.search(vectordb, self.cfg.baseline.results)
-
             # Update operations followed by search to measure impact
             self.update_and_search(dataset, vectordb)
+
 
 def ensure_dir(p: Path) -> Path:
     """Ensure directory exists."""

@@ -2,11 +2,9 @@
 
 import numpy as np
 import pytest
-from collections.abc import Sequence
 from datasets import Dataset as HuggingFaceDataset
 
 from inatinqperf import adaptors
-from inatinqperf.adaptors.base import SearchResult
 from inatinqperf.adaptors.enums import Metric
 from inatinqperf.benchmark import Benchmarker, benchmark
 from inatinqperf.configuration import VectorDatabaseParams
@@ -52,15 +50,6 @@ def mocked_benchmark_module(monkeypatch):
     # patch benchmark.load_huggingface_dataset
     monkeypatch.setattr(benchmark, "load_huggingface_dataset", _fake_ds_embeddings)
     return benchmark
-
-
-class MockExactBaseline:
-    """A mock of an exact baseline index such as FAISS Flat."""
-
-    def search(self, q, k) -> Sequence[SearchResult]:
-        ids = np.arange(k)
-        scores = np.zeros_like(ids, dtype=np.float32)
-        return [SearchResult(id=i, score=score) for i, score in zip(ids, scores)]
 
 
 def test_load_cfg(config_yaml, data_path):
@@ -206,18 +195,12 @@ def test_search_parallel(config_yaml, tmp_path, monkeypatch, caplog):
     )
     vectordb = benchmarker.build(dataset)
 
-    queries = ["one", "two", "three", "four"]
-    query_ds = HuggingFaceDataset.from_dict({"query": queries})
-    dataset_dir = tmp_path / benchmarker.cfg.dataset.directory
-    dataset_dir.parent.mkdir(parents=True, exist_ok=True)
-    query_ds.save_to_disk(dataset_dir)
-
     def _fake_embed_text(qs, model_id, batch_size=128):  # noqa: ARG001
         return rng.random((len(qs), dim), dtype=np.float32)
 
     monkeypatch.setattr(benchmark, "embed_text", _fake_embed_text)
 
-    benchmarker.search_parallel(dataset, vectordb, MockExactBaseline(), processes=2)
+    benchmarker.search_parallel(vectordb, processes=2)
 
     assert "search-parallel" in caplog.text
     assert "parallel_processes" in caplog.text

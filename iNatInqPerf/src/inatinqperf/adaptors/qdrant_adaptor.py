@@ -41,6 +41,17 @@ class Qdrant(VectorDatabase):
     ) -> None:
         super().__init__(metric)
 
+        self._spawn_kwargs = {
+            "metric": metric,
+            "url": url,
+            "port": port,
+            "grpc_port": grpc_port,
+            "prefer_grpc": prefer_grpc,
+            "collection_name": collection_name,
+            "m": m,
+            "ef": ef,
+        }
+
         self.client = QdrantClient(
             url=url,
             port=port,
@@ -212,6 +223,10 @@ class Qdrant(VectorDatabase):
             client_close = getattr(self.client, "close", None)
             if callable(client_close):
                 client_close()
+
+    def spawn_searcher(self) -> "Qdrant":
+        """Create a new client instance sharing the same collection configuration."""
+        return Qdrant(**self._spawn_kwargs)
 
 
 class QdrantCluster(Qdrant):

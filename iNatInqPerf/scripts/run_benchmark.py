@@ -34,7 +34,7 @@ def main(
 
     benchmarker = Benchmarker(config_file, base_path=base_path)
 
-    benchmarker.run()
+    benchmarker.run_parallel()
 
 
 if __name__ == "__main__":

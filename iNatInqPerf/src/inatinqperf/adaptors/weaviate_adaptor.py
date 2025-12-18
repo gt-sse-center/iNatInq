@@ -44,6 +44,15 @@ class Weaviate(VectorDatabase):
         """Initialise the adaptor with a dataset template and connectivity details."""
         super().__init__(metric=metric)
 
+        self._spawn_kwargs = {
+            "metric": metric,
+            "index_type": index_type,
+            "url": url,
+            "port": port,
+            "grpc_port": grpc_port,
+            "collection_name": collection_name,
+        }
+
         self.collection_name = collection_name
 
         connection_params = ConnectionParams.from_url(url=f"{url}:{port}", grpc_port=grpc_port)
@@ -202,6 +211,10 @@ class Weaviate(VectorDatabase):
             if callable(client_close):
                 client_close()
 
+    def spawn_searcher(self) -> "Weaviate":
+        """Create a new client instance sharing the same collection configuration."""
+        return Weaviate(**self._spawn_kwargs)
+
 
 class WeaviateCluster(Weaviate):
     """Adaptor for running benchmarks against a multi-node Weaviate deployment."""
@@ -223,6 +236,19 @@ class WeaviateCluster(Weaviate):
     ) -> None:
         """Initialise the adaptor for a sharded Weaviate cluster."""
         VectorDatabase.__init__(self, metric=metric)
+
+        self._spawn_kwargs = {
+            "metric": metric,
+            "index_type": index_type,
+            "url": url,
+            "port": port,
+            "node_urls": node_urls,
+            "shard_count": shard_count,
+            "replication_factor": replication_factor,
+            "virtual_per_physical": virtual_per_physical,
+            "grpc_port": grpc_port,
+            "collection_name": collection_name,
+        }
 
         if replication_factor is not None and (shard_count is not None or virtual_per_physical is not None):
             msg = "WeaviateCluster does not support configuring sharding and replication at the same time."
@@ -325,3 +351,7 @@ class WeaviateCluster(Weaviate):
             }
         )
         return stats
+
+    def spawn_searcher(self) -> "WeaviateCluster":
+        """Create a new client instance sharing the same cluster configuration."""
+        return WeaviateCluster(**self._spawn_kwargs)
