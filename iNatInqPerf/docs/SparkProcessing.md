@@ -16,22 +16,22 @@ There are a total of 6 CSV files:
 - observers.csv
 - photos.csv
 - taxa.csv
-- obsservations_projects.csv
+- observations_projects.csv
 - projects.csv
 
-The one that is currently revelant to us is `photos.csv`. It has the following data structure:
+The one that is currently revelant to us is `photos.csv`. It has the following data structure with types corresponding to Postgres data types:
 
 ```yaml
 photos:
-  photo_uuid
-  photo_id
-  observation_uuid
-  observer_id
-  extension
-  license
-  width
-  height
-  position
+  photo_uuid: uuid
+  photo_id: integer
+  observation_uuid: uuid
+  observer_id: integer
+  extension: character
+  license: character
+  width: smallint
+  height: smallint
+  position: smallint
 ```
 
 ## S3 Metadata
@@ -101,7 +101,7 @@ This looks like a simple call to `streamingContext.checkpoint(checkpointDirector
 
 Since Spark uses a driver-work parallelization model, this is highly dependent on the number of CPUs and threads available to Spark.
 
-For a quick introduction alongwith a discussion of various considerations, [this blog post](https://medium.com/@harshita.motwani23/parallelism-in-azure-databricks-process-multiple-data-at-scale-153aa3c03442) is a good resource.
+For a quick introduction along with a discussion of various considerations, [this blog post](https://medium.com/@harshita.motwani23/parallelism-in-azure-databricks-process-multiple-data-at-scale-153aa3c03442) is a good resource.
 
 
 Azure supports job parallelization in a cluster through the use of [Azure Databricks](https://azure.microsoft.com/en-us/products/databricks).
