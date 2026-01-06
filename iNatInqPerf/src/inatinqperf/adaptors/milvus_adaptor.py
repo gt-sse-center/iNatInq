@@ -144,6 +144,7 @@ class Milvus(VectorDatabase):
 
         The score returned in this case is the distance, so smaller is better.
         """
+        # TODO: update this method to use FastAPI search route
         results = self.client.search(
             collection_name=self.collection_name,
             anns_field="vector",

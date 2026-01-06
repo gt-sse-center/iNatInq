@@ -168,6 +168,8 @@ class Weaviate(VectorDatabase):
     def search(self, q: Query, topk: int, **kwargs) -> Sequence[SearchResult]:  # NOQA: ARG002
         """Search for the `topk` nearest vectors based on the query point `q`."""
 
+        # TODO: update this method to use FastAPI search route
+
         collection = self.client.collections.use(self.collection_name)
         response = collection.query.near_vector(
             near_vector=q.vector, limit=topk, return_metadata=MetadataQuery(distance=True, score=True)

@@ -185,6 +185,8 @@ class Qdrant(VectorDatabase):
         """Search for top-k nearest neighbors."""
         # Has support for attribute filter: https://qdrant.tech/documentation/quickstart/#add-a-filter
 
+        # TODO: update this method to use FastAPI search route
+
         ef = kwargs.get("ef", 128)
         search_result = self.client.query_points(
             collection_name=self.collection_name,
