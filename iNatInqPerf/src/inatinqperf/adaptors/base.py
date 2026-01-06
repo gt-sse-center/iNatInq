@@ -64,29 +64,10 @@ class VectorDatabase(ABC):
         self.metric = Metric(metric)
         self.dim = 0
 
-    def initialize_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
-        """Create a dataset collection and upload data to it."""
-        logger.info(f"Creating collection {self.collection_name}, and uploading with {batch_size=}")
-        self.dim = len(dataset["embedding"][0])
-
-        self._upload_collection(dataset, batch_size)
-
-    @abstractmethod
-    def _upload_collection(self, dataset: HuggingFaceDataset, batch_size: int) -> None:
-        """Method to upload the collection to the vector database."""
-
     @staticmethod
     @abstractmethod
     def _translate_metric(metric: Metric) -> str:
         """Map the metric value to a string value which is used by the vector database client."""
-
-    @abstractmethod
-    def upsert(self, x: Sequence[DataPoint]) -> None:
-        """Upsert vectors with given IDs.
-
-        Args:
-            x (Sequence[DataPoint]): A sequence of `DataPoints` from the dataset.
-        """
 
     @abstractmethod
     def search(self, q: Query, topk: int, **kwargs) -> Sequence[SearchResult]:
@@ -99,14 +80,6 @@ class VectorDatabase(ABC):
 
         Returns:
             Sequence[SearchResult]: A list of SearchResult objects.
-        """
-
-    @abstractmethod
-    def delete(self, ids: Sequence[int]) -> None:
-        """Delete data points associated with IDs `ids`.
-
-        Args:
-            ids (Sequence[int]): The IDs of the data points to delete.
         """
 
     @abstractmethod

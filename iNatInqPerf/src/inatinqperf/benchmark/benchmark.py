@@ -145,7 +145,7 @@ class Benchmarker:
     def run(self) -> None:
         """Run end-to-end benchmark with all steps."""
         with container_context(self.cfg):
-            vectordb = None # TODO: should be adaptor for vectorDB. Will need to update search method to use FastAPI search route
+            vectordb = None  # TODO: should be adaptor for vectorDB. Will need to update search method to use FastAPI search route
 
             # Perform search
             self.search(vectordb, self.cfg.baseline.results)

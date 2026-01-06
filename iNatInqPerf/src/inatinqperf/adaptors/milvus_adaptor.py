@@ -63,58 +63,6 @@ class Milvus(VectorDatabase):
         # NOTE: pymilvus is very slow to connect, takes ~8 seconds as per profiling.
         self.client = MilvusClient(uri=f"http://{url}:{port}")
 
-    def _upload_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
-        """Method to upload the collection to the vector database."""
-
-        ## Create collection. If it exists, then log warning and return
-        if self.client.has_collection(self.collection_name):
-            logger.warning("Specified collection already exists, exiting...")
-            return
-
-        # Define collection schema
-        schema = (
-            self.client.create_schema(
-                auto_id=False,
-                enable_dynamic_schema=True,
-            )
-            .add_field(
-                field_name="id",
-                datatype=DataType.INT64,
-                is_primary=True,
-            )
-            .add_field(
-                field_name="vector",
-                datatype=DataType.FLOAT_VECTOR,
-                dim=self.dim,
-            )
-        )
-
-        # This calls `.add_index` internally
-        milvus_index_params = self.client.prepare_index_params(
-            field_name="vector",
-            index_type=self.index_type.value,
-            index_name=self.index_name,
-            metric_type=self._translate_metric(self.metric),
-            params=self.index_params if self.index_params else {},
-        )
-
-        self.client.create_collection(
-            collection_name=self.collection_name,
-            schema=schema,
-            index_params=milvus_index_params,
-        )
-
-        num_batches = int(np.ceil(len(dataset) / batch_size))
-        for batch in tqdm(dataset.iter(batch_size=batch_size), total=num_batches):
-            batch_data = [
-                {"id": batch["id"][i], "vector": batch["embedding"][i]}
-                for i in range(len(batch["embedding"]))
-            ]
-            self.client.insert(collection_name=self.collection_name, data=batch_data)
-
-        # loads the index files and fields raw data into memory for rapid response to searches and queries
-        self.client.load_collection(collection_name=self.collection_name)
-
     @staticmethod
     def _translate_metric(metric: Metric) -> str:
         """Translate metric to Milvus metric type."""
@@ -127,17 +75,6 @@ class Milvus(VectorDatabase):
 
         msg = f"{metric} metric specified is not a valid one for Milvus."
         raise ValueError(msg)
-
-    def upsert(self, x: Sequence[DataPoint]) -> None:
-        """Upsert vectors with given IDs."""
-
-        data = [{"id": int(dp.id), "vector": dp.vector} for dp in x]
-
-        self.client.upsert(collection_name=self.collection_name, data=data)
-
-    def delete(self, ids: Sequence[int]) -> None:
-        """Delete vectors with given IDs."""
-        self.client.delete(collection_name=self.collection_name, ids=ids)
 
     def search(self, q: Query, topk: int, **kwargs) -> Sequence[SearchResult]:  # NOQA: ARG002
         """Search for top-k nearest neighbors.
@@ -170,10 +107,3 @@ class Milvus(VectorDatabase):
     def stats(self) -> None:
         """Return index statistics."""
         return self.client.describe_index(collection_name=self.collection_name, index_name=self.index_name)
-
-    def close(self) -> None:
-        """Teardown the Milvus vector database."""
-        if hasattr(self, "client") and self.client:
-            self.client.drop_collection(self.collection_name)
-            self.client.close()
-        connections.disconnect(alias="default")

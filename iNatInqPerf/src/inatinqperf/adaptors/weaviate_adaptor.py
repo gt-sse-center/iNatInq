@@ -61,32 +61,6 @@ class Weaviate(VectorDatabase):
 
         self.index_type_func = self._get_index_type(WeaviateIndexType(index_type))
 
-    def _upload_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
-        """Create a dataset collection and upload data to it."""
-
-        ## Create collection. If it exists, then log warning and return
-        if self.client.collections.exists(self.collection_name):
-            logger.warning("Specified collection already exists, exiting...")
-            return
-
-        # The `id` and `vector` properties are created by default
-        self.client.collections.create(
-            self.collection_name,
-            vector_config=Configure.Vectors.self_provided(
-                vector_index_config=self.index_type_func(distance_metric=self._translate_metric(self.metric)),
-            ),
-            properties=[
-                Property(
-                    name="dataset_id",
-                    data_type=DataType.INT,
-                    description="The original ID of this data point in the dataset",
-                )
-            ],
-        )
-
-        # Upload the dataset to prepare the database.
-        self._upload_dataset(dataset, batch_size)
-
     @staticmethod
     def _get_index_type(index_type: WeaviateIndexType) -> callable:
         if index_type == WeaviateIndexType.FLAT:
@@ -114,57 +88,6 @@ class Weaviate(VectorDatabase):
         msg = f"Unsupported metric '{metric}'"
         raise ValueError(msg)
 
-    def _upload_dataset(self, dataset: HuggingFaceDataset, batch_size: int) -> None:
-        """Upload the HuggingFaceDataset to the vector database."""
-
-        # Avoid materialising embeddings up front; the client batching API will iterate the dataset.
-        num_vectors = len(dataset)
-        if num_vectors == 0:
-            logger.warning("Dataset contains no embeddings; skipping ingest")
-            return
-
-        # Validate dataset schema early so we fail before issuing network calls.
-        if "id" not in dataset.column_names or "embedding" not in dataset.column_names:
-            msg = "Dataset must contain both 'id' and 'embedding' columns for Weaviate upload."
-            raise ValueError(msg)
-
-        collection = self.client.collections.use(self.collection_name)
-
-        with collection.batch.fixed_size(batch_size=batch_size) as batch:
-            for data_row in dataset:
-                dataset_id = data_row["id"]
-                uuid = weaviate.util.generate_uuid5(dataset_id)
-                vector = data_row["embedding"]
-
-                batch.add_object(uuid=uuid, vector=vector, properties={"dataset_id": dataset_id})
-
-                if batch.number_errors >= 10:  # noqa: PLR2004
-                    raise RuntimeError("Batch import stopped due to excessive errors.")
-
-    def upsert(self, x: Sequence[DataPoint]) -> None:
-        """Insert or update vectors and associated metadata."""
-
-        collection = self.client.collections.use(self.collection_name)
-
-        for dp in x:
-            uuid = weaviate.util.generate_uuid5(dp.id)
-
-            # Check if data point exists in database. If not, returns None
-            data_object = collection.query.fetch_object_by_id(uuid)
-
-            if data_object is None:
-                collection.data.insert(
-                    uuid=uuid,
-                    vector=dp.vector,
-                    properties={"dataset_id": dp.id},
-                )
-            else:
-                collection.data.replace(
-                    uuid=uuid,
-                    vector=dp.vector,
-                    properties={"dataset_id": dp.id},
-                )
-
     def search(self, q: Query, topk: int, **kwargs) -> Sequence[SearchResult]:  # NOQA: ARG002
         """Search for the `topk` nearest vectors based on the query point `q`."""
 
@@ -176,18 +99,6 @@ class Weaviate(VectorDatabase):
         )
 
         return [SearchResult(id=o.properties["dataset_id"], score=o.metadata.score) for o in response.objects]
-
-    def delete(self, ids: Sequence[int]) -> None:
-        """Delete objects corresponding to the provided `ids`.
-
-        If an ID is not present, nothing happens, i.e. it is an idempotent operation.
-        """
-
-        collection = self.client.collections.get(self.collection_name)
-
-        # https://docs.weaviate.io/weaviate/manage-objects/delete#delete-multiple-objects-by-id
-        ids_to_delete = [weaviate.util.generate_uuid5(i) for i in ids]
-        collection.data.delete_many(where=Filter.by_id().contains_any(ids_to_delete))
 
     def stats(self) -> dict[str, object]:
         """Return summary statistics sourced via a Weaviate aggregation query."""
@@ -201,13 +112,6 @@ class Weaviate(VectorDatabase):
             "collection_name": self.collection_name,
             "dim": self.dim,
         }
-
-    def close(self) -> None:
-        """Close database connection."""
-        if hasattr(self, "client") and self.client:
-            client_close = getattr(self.client, "close", None)
-            if callable(client_close):
-                client_close()
 
 
 class WeaviateCluster(Weaviate):
@@ -251,43 +155,6 @@ class WeaviateCluster(Weaviate):
             skip_init_checks=False,
         )
         self.client.connect()
-
-    def _upload_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
-        """Method to upload the collection to the vector database."""
-
-        if self.client.collections.exists(self.collection_name):
-            self.client.collections.delete(self.collection_name)
-
-        index_type_func = self._get_index_type(WeaviateIndexType(self.index_type))
-
-        sharding_config = None
-        if self.shard_count is not None or self.virtual_per_physical is not None:
-            sharding_config = Configure.sharding(
-                desired_count=self.shard_count,
-                virtual_per_physical=self.virtual_per_physical,
-            )
-
-        replication_config = None
-        if self.replication_factor is not None:
-            replication_config = Configure.replication(factor=self.replication_factor)
-
-        self.client.collections.create(
-            self.collection_name,
-            vector_config=Configure.Vectors.self_provided(
-                vector_index_config=index_type_func(distance_metric=self._translate_metric(self.metric)),
-            ),
-            properties=[
-                Property(
-                    name="dataset_id",
-                    data_type=DataType.INT,
-                    description="The original ID of this data point in the dataset",
-                )
-            ],
-            sharding_config=sharding_config,
-            replication_config=replication_config,
-        )
-
-        self._upload_dataset(dataset, batch_size)
 
     @staticmethod
     def _resolve_node_urls(
