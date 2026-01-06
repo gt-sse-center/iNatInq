@@ -71,67 +71,6 @@ class Qdrant(VectorDatabase):
             on_disk=False,  # Don't store index to disk so upload is efficient.
         )
 
-    def _upload_dataset(self, dataset: HuggingFaceDataset, batch_size: int) -> None:
-        """Upload `dataset` in batches of size `batch_size`."""
-        # Batch insert dataset
-        num_batches = int(np.ceil(len(dataset) / batch_size))
-        for batch in tqdm(dataset.iter(batch_size=batch_size), total=num_batches):
-            ids = batch["id"]
-            vectors = batch["embedding"]
-
-            self.client.upsert(
-                collection_name=self.collection_name,
-                points=models.Batch.model_construct(
-                    ids=ids,
-                    vectors=vectors,
-                ),
-                wait=False,
-            )
-
-    def _post_upload(self) -> None:
-        """Perform post upload operations and logging."""
-
-        # Log the number of point uploaded
-        num_points_in_db = self.client.count(
-            collection_name=self.collection_name,
-            exact=True,
-        ).count
-        logger.info(f"Number of points in Qdrant database: {num_points_in_db}")
-
-        logger.info("Waiting for indexing to complete")
-        self.wait_for_index_ready(self.collection_name)
-        logger.info("Indexing complete!")
-
-    def _upload_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
-        """Method to upload the collection to the vector database."""
-
-        if self.client.collection_exists(collection_name=self.collection_name):
-            logger.warning("Specified collection already exists, exiting...")
-            return
-
-        vectors_config = self._get_vectors_config()
-        index_params = self._get_index_params(m=self.m)
-
-        self.client.create_collection(
-            collection_name=self.collection_name,
-            vectors_config=vectors_config,
-            hnsw_config=index_params,
-            optimizers_config=models.OptimizersConfigDiff(
-                indexing_threshold=0
-            ),  # disable indexing during initial upload
-            shard_number=4,  # reasonable default as per qdrant docs
-        )
-
-        self._upload_dataset(dataset, batch_size)
-
-        # Re-enable indexing
-        self.client.update_collection(
-            collection_name=self.collection_name,
-            optimizers_config=models.OptimizersConfigDiff(indexing_threshold=20000),  # This the default value
-        )
-
-        self._post_upload()
-
     @staticmethod
     def _translate_metric(metric: Metric) -> Distance:
         """Helper method to convert from Metric enum to Qdrant Distance."""
@@ -168,19 +107,6 @@ class Qdrant(VectorDatabase):
         for data_point in data_points:
             yield PointStruct(id=data_point.id, vector=data_point.vector)
 
-    def upsert(self, x: Sequence[DataPoint]) -> None:
-        """Upsert vectors with given IDs. This also builds the HNSW index."""
-        # Qdrant will override points with the same ID if they already exist,
-        # which is the same behavior as `upsert`.
-        # Hence we use `upload_points` for performance.
-        logger.info("Uploading points to database")
-        self.client.upload_points(
-            collection_name=self.collection_name,
-            points=self._points_iterator(data_points=x),
-            parallel=4,
-            wait=True,
-        )
-
     def search(self, q: Query, topk: int, **kwargs) -> Sequence[SearchResult]:
         """Search for top-k nearest neighbors."""
         # Has support for attribute filter: https://qdrant.tech/documentation/quickstart/#add-a-filter
@@ -198,15 +124,6 @@ class Qdrant(VectorDatabase):
         )
 
         return [SearchResult(point.id, point.score) for point in search_result.points]
-
-    def delete(self, ids: Sequence[int]) -> None:
-        """Delete vectors with given IDs."""
-        self.client.delete(collection_name=self.collection_name, points_selector=ids)
-
-    def delete_collection(self) -> None:
-        """Delete the collection associated with this adaptor instance."""
-        logger.info(f"Deleting collection {self.collection_name}")
-        self.client.delete_collection(collection_name=self.collection_name)
 
     def stats(self) -> dict[str, object]:
         """Return index statistics."""
@@ -268,40 +185,6 @@ class QdrantCluster(Qdrant):
             batch_size=batch_size,
             params=params,
         )
-
-    def _upload_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
-        """Method to upload the collection to the vector database."""
-
-        if self.client.collection_exists(collection_name=self.collection_name):
-            logger.warning("Specified collection already exists, exiting...")
-            return
-
-        logger.info(f"Creating collection {self.collection_name} with {self.shard_number} shards")
-
-        vectors_config = self._get_vectors_config()
-        index_params = self._get_index_params(m=self.m)
-
-        self.client.create_collection(
-            collection_name=self.collection_name,
-            vectors_config=vectors_config,
-            hnsw_config=index_params,
-            optimizers_config=models.OptimizersConfigDiff(
-                indexing_threshold=0
-            ),  # disable indexing during initial upload
-            shard_number=self.shard_number,
-            replication_factor=self.replication_factor,
-            write_consistency_factor=self.write_consistency_factor,
-        )
-
-        self._upload_dataset(dataset, batch_size)
-
-        # Re-enable indexing
-        self.client.update_collection(
-            collection_name=self.collection_name,
-            optimizers_config=models.OptimizersConfigDiff(indexing_threshold=20000),  # This the default value
-        )
-
-        self._post_upload()
 
     @staticmethod
     def _resolve_node_urls(
