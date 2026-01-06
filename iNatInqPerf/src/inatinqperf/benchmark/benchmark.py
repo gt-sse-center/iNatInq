@@ -53,78 +53,6 @@ class Benchmarker:
 
         self.ntotal = 0
 
-    def download(self) -> None:
-        """Download HF dataset and optionally export images."""
-        dataset_id = self.cfg.dataset.dataset_id
-
-        dataset_dir = self.base_path / self.cfg.dataset.directory
-
-        if dataset_dir.exists():
-            logger.info(f"Dataset already exists at {dataset_dir}, continuing...")
-            return
-
-        ensure_dir(dataset_dir)
-        export_raw_images = self.cfg.dataset.export_images
-        splits = self.cfg.dataset.splits
-
-        with Profiler(
-            f"download-{dataset_id.split('/')[-1]}-{splits}",
-            containers=self.container_configs,
-        ):
-            ds = load_huggingface_dataset(dataset_id, splits)
-            ds.save_to_disk(dataset_dir)
-
-            if export_raw_images:
-                export_dir = dataset_dir / "images"
-                manifest = export_images(ds, export_dir)
-                logger.info(f"Exported images to: {export_dir}\nManifest: {manifest}")
-
-        logger.info(f"Downloaded HuggingFace dataset to: {dataset_dir}")
-
-    def embed(self) -> Dataset:
-        """Compute CLIP embeddings of the dataset images and save to embedding directory."""
-
-        embeddings_dir = self.base_path / self.cfg.embedding.directory
-
-        if embeddings_dir.exists():
-            logger.info(f"Embeddings found at {embeddings_dir}, loading instead of computing")
-            return Dataset.load_from_disk(dataset_path=embeddings_dir)
-
-        model_id = self.cfg.embedding.model_id
-        batch_size = self.cfg.embedding.batch_size
-
-        dataset_dir = self.base_path / self.cfg.dataset.directory
-        logger.info(f"Generating embeddings with model={model_id} and saving to {dataset_dir}")
-
-        with Profiler("embed-images", containers=self.container_configs):
-            dse: Dataset = embed_images(dataset_dir, model_id, batch_size)
-
-        dataset = self.save_as_huggingface_dataset(dse, embeddings_dir=embeddings_dir)
-
-        # Set the dataset length at the time of generation
-        self.ntotal = len(dataset)
-
-        return dataset
-
-    def save_as_huggingface_dataset(
-        self,
-        ds: Dataset,
-        embeddings_dir: Path | None = None,
-    ) -> Dataset:
-        """Convert to HuggingFace dataset format and save to `embeddings_dir`."""
-
-        if embeddings_dir is None:
-            embeddings_dir = self.base_path / self.cfg.embedding.directory
-
-        ensure_dir(embeddings_dir)
-
-        logger.info(f"Saving dataset to {embeddings_dir}")
-        ds.save_to_disk(embeddings_dir)
-
-        logger.info(f"Embeddings: {len(ds['embedding'][0])} -> {embeddings_dir}")
-
-        return ds
-
     def get_vector_db(self) -> VectorDatabase:
         """Method to initialize the vector database."""
         vdb_type = self.cfg.vectordb.type
@@ -134,32 +62,6 @@ class Benchmarker:
         init_params = self.cfg.vectordb.params.to_dict()
         metric: Metric = init_params.pop("metric")
         return vectordb_cls(metric=metric, **init_params)
-
-    def build(self, dataset: Dataset) -> VectorDatabase:
-        """Build index for the specified vectordb."""
-        vdb_type = self.cfg.vectordb.type
-
-        with Profiler(f"build-{vdb_type}", containers=self.container_configs):
-            # Get the vector database adaptor
-            vdb = self.get_vector_db()
-            # Upload the dataset to the vector db collection
-            vdb.initialize_collection(dataset, self.cfg.vectordb.params.batch_size)
-
-            index = getattr(vdb, "index", None)
-            index_size = getattr(index, "ntotal", None) if index is not None else None
-            # The guard here is really just avoiding an unnecessary rewrite when the newly built
-            # vector DB already has its index populated; it does not exist because a repeat upsert
-            # would corrupt data, just to avoid work if nothing needs to be written.
-            if index_size == 0:
-                data_points = self._dataset_to_datapoints(dataset)
-                if data_points:
-                    vdb.upsert(data_points)
-
-        logger.info(f"Stats: {vdb.stats()}")
-
-        # Emit a closing marker so benchmark logs clearly delimit setup time.
-        logger.info(f"Exiting building {vdb_type} vector database")
-        return vdb
 
     @staticmethod
     def _resolve_vectordb_class(vdb_type: str) -> type[VectorDatabase]:
@@ -240,72 +142,13 @@ class Benchmarker:
         table = get_table(stats)
         logger.info(f"\n\n{table}\n\n")
 
-    def update(self, dataset: Dataset, vectordb: VectorDatabase) -> None:
-        """Upsert + delete small batch and re-search."""
-        vdb_type = self.cfg.vectordb.type
-
-        add_n = self.cfg.update["add_count"]
-        del_n = self.cfg.update["delete_count"]
-
-        logger.info(f"Performing update with {add_n} additions and {del_n} deletions.")
-
-        # Dataset columns may arrive as NumPy arrays; normalise to a plain list so max()
-        # doesn't trip over array truthiness (avoids ValueError about ambiguous truth value).
-        existing_raw = dataset["id"] if "id" in dataset.column_names else list(range(len(dataset)))
-        existing_ids = existing_raw.tolist() if hasattr(existing_raw, "tolist") else list(existing_raw)
-        max_existing_id = max(existing_ids) if existing_ids else -1
-        next_id = max_existing_id + 1
-
-        # craft new vectors by slight noise around existing (simulating fresh writes)
-        rng = np.random.default_rng(42)
-
-        # Get subset of vectors to add to vector db
-        add_vecs_subset = dataset["embedding"][:add_n]
-
-        # convert to numpy array
-        add_vecs = np.asarray(add_vecs_subset, dtype=np.float32)
-        add_vecs += rng.normal(0, 0.01, size=add_vecs.shape).astype(np.float32)
-        add_ids = list(range(next_id, next_id + add_n))
-
-        logger.info("Update-Add Profiling")
-        with Profiler(f"update-add-{vdb_type}", containers=self.container_configs):
-            data_points = [DataPoint(id=i, vector=v, metadata={}) for i, v in zip(add_ids, add_vecs)]
-            vectordb.upsert(data_points)
-
-        logger.info("Update-Delete Profiling")
-        with Profiler(f"update-delete-{vdb_type}", containers=self.container_configs):
-            del_ids = add_ids[:del_n]
-            vectordb.delete(del_ids)
-
-        logger.info(f"Update complete: {vectordb.stats()}")
-
-    def update_and_search(
-        self,
-        dataset: Dataset,
-        vectordb: VectorDatabase,
-    ) -> None:
-        """Run update workflow then search again to capture post-update performance."""
-        self.update(dataset, vectordb)
-        # Pass in the updated baseline results to compute new recall
-        self.search(vectordb, self.cfg.baseline.results_post_update)
-
     def run(self) -> None:
         """Run end-to-end benchmark with all steps."""
-        # Download dataset
-        self.download()
-
-        # Compute embeddings
-        dataset = self.embed()
-
         with container_context(self.cfg):
-            # Build specified vector database
-            vectordb = self.build(dataset)
+            vectordb = None # TODO: should be adaptor for vectorDB. Will need to update search method to use FastAPI search route
 
             # Perform search
             self.search(vectordb, self.cfg.baseline.results)
-
-            # Update operations followed by search to measure impact
-            self.update_and_search(dataset, vectordb)
 
 
 def ensure_dir(p: Path) -> Path:
