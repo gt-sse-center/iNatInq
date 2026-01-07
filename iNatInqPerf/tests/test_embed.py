@@ -34,6 +34,7 @@ def clip_model_fixture(mocker):
 # Tests
 # -----------------------
 
+
 def test_embed_text():
     X = embed.embed_text(["hello", "world"], "dummy-model")
     assert isinstance(X, np.ndarray)

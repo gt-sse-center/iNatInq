@@ -3,28 +3,19 @@
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import numpy as np
 import yaml
-from datasets import Dataset
 from loguru import logger
 from tqdm import tqdm
 
-from inatinqperf.adaptors import VECTORDBS, DataPoint, Query, SearchResult, VectorDatabase
+from inatinqperf.adaptors import VECTORDBS, Query, SearchResult, VectorDatabase
 from inatinqperf.configuration import Config
-from inatinqperf.container import container_context
 from inatinqperf.utils import (
     Profiler,
-    embed_images,
     embed_text,
-    export_images,
     get_table,
-    load_huggingface_dataset,
 )
-
-if TYPE_CHECKING:
-    from inatinqperf.adaptors.enums import Metric
 
 
 class Benchmarker:
@@ -49,43 +40,23 @@ class Benchmarker:
             self.base_path = Path(__file__).resolve().parent.parent
         else:
             self.base_path = base_path
-        self.container_configs = list(self.cfg.containers)
 
         self.ntotal = 0
 
     def get_vector_db(self) -> VectorDatabase:
         """Method to initialize the vector database."""
         vdb_type = self.cfg.vectordb.type
-        logger.info(f"Building {vdb_type} vector database")
 
         vectordb_cls = self._resolve_vectordb_class(vdb_type)
-        init_params = self.cfg.vectordb.params.to_dict()
-        metric: Metric = init_params.pop("metric")
-        return vectordb_cls(metric=metric, **init_params)
+        return vectordb_cls()
 
     @staticmethod
     def _resolve_vectordb_class(vdb_type: str) -> type[VectorDatabase]:
         """Return the adaptor class associated with `vdb_type`."""
         return VECTORDBS[vdb_type.lower()]
 
-    @staticmethod
-    def _dataset_to_datapoints(dataset: Dataset) -> list[DataPoint]:
-        """Convert a HuggingFace dataset to a list of DataPoint objects."""
-
-        # TODO: add metadata info from dataset if available
-        return [
-            DataPoint(
-                id=int(row_id),
-                vector=vector,
-                metadata={},
-            )
-            for idx, (row_id, vector) in enumerate(zip(dataset["id"], dataset["embedding"], strict=True))
-        ]
-
     def search(self, vectordb: VectorDatabase, baseline_results_path: Path | None = None) -> None:
         """Profile search and compute recall@K vs exact baseline."""
-        params = self.cfg.vectordb.params
-        model_id = self.cfg.embedding.model_id
 
         topk = self.cfg.search.topk
 
@@ -97,23 +68,22 @@ class Benchmarker:
         limit = len(queries) if self.cfg.search.limit < 0 else self.cfg.search.limit
         queries = queries[:limit]
 
-        q = embed_text(queries, model_id)
+        q = embed_text(queries, self.cfg.embedding_model.model_id)
         logger.info("Embedded all queries")
 
         # Compute search latencies
         logger.info(f"Performing search on {self.cfg.vectordb.type}")
-        with Profiler(f"search-{self.cfg.vectordb.type}", containers=self.container_configs) as p:
+        with Profiler(f"search-{self.cfg.vectordb.type}") as p:
             latencies = []
             for i in tqdm(range(q.shape[0])):
                 t0 = time.perf_counter()
-                vectordb.search(Query(q[i]), topk, **params.to_dict())
+                vectordb.search(Query(q[i]), topk)
                 latencies.append((time.perf_counter() - t0) * 1000.0)
 
             p.sample()
 
         stats = {
             "vectordb": self.cfg.vectordb.type,
-            "index_type": self.cfg.vectordb.params.index_type,
             "topk": topk,
             "lat_ms_avg": float(np.mean(latencies)),
             "lat_ms_p50": float(np.percentile(latencies, 50)),
@@ -131,7 +101,7 @@ class Benchmarker:
             # For simplicity compute approximate on whole Q at once:
             i1 = np.full((q.shape[0], topk), -1.0, dtype=float)
             for i in tqdm(range(q.shape[0])):
-                results = vectordb.search(Query(q[i]), topk, **params.to_dict())
+                results = vectordb.search(Query(q[i]), topk)
                 padded = _ids_to_fixed_array(results, topk)
                 i1[i] = padded
             rec = recall_at_k(i1, i0, topk)
@@ -144,11 +114,11 @@ class Benchmarker:
 
     def run(self) -> None:
         """Run end-to-end benchmark with all steps."""
-        with container_context(self.cfg):
-            vectordb = None  # TODO: should be adaptor for vectorDB. Will need to update search method to use FastAPI search route
 
-            # Perform search
-            self.search(vectordb, self.cfg.baseline.results)
+        vectordb = self.get_vector_db()
+
+        # Perform search
+        self.search(vectordb, self.cfg.baseline.results)
 
 
 def ensure_dir(p: Path) -> Path:
