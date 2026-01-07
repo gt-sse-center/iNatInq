@@ -13,7 +13,6 @@ from tqdm import tqdm
 
 from inatinqperf.adaptors import VECTORDBS, DataPoint, Query, SearchResult, VectorDatabase
 from inatinqperf.configuration import Config
-from inatinqperf.container import container_context
 from inatinqperf.utils import (
     Profiler,
     embed_images,
@@ -49,43 +48,23 @@ class Benchmarker:
             self.base_path = Path(__file__).resolve().parent.parent
         else:
             self.base_path = base_path
-        self.container_configs = list(self.cfg.containers)
 
         self.ntotal = 0
 
     def get_vector_db(self) -> VectorDatabase:
         """Method to initialize the vector database."""
         vdb_type = self.cfg.vectordb.type
-        logger.info(f"Building {vdb_type} vector database")
 
         vectordb_cls = self._resolve_vectordb_class(vdb_type)
-        init_params = self.cfg.vectordb.params.to_dict()
-        metric: Metric = init_params.pop("metric")
-        return vectordb_cls(metric=metric, **init_params)
+        return vectordb_cls()
 
     @staticmethod
     def _resolve_vectordb_class(vdb_type: str) -> type[VectorDatabase]:
         """Return the adaptor class associated with `vdb_type`."""
         return VECTORDBS[vdb_type.lower()]
 
-    @staticmethod
-    def _dataset_to_datapoints(dataset: Dataset) -> list[DataPoint]:
-        """Convert a HuggingFace dataset to a list of DataPoint objects."""
-
-        # TODO: add metadata info from dataset if available
-        return [
-            DataPoint(
-                id=int(row_id),
-                vector=vector,
-                metadata={},
-            )
-            for idx, (row_id, vector) in enumerate(zip(dataset["id"], dataset["embedding"], strict=True))
-        ]
-
     def search(self, vectordb: VectorDatabase, baseline_results_path: Path | None = None) -> None:
         """Profile search and compute recall@K vs exact baseline."""
-        params = self.cfg.vectordb.params
-        model_id = self.cfg.embedding.model_id
 
         topk = self.cfg.search.topk
 
