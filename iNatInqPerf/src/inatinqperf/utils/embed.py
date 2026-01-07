@@ -1,6 +1,5 @@
 """Utilities for embedding images and text using CLIP models."""
 
-
 import numpy as np
 import torch
 from loguru import logger

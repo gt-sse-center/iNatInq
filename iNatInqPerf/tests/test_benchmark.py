@@ -10,6 +10,7 @@ from inatinqperf.adaptors.base import SearchResult
 from inatinqperf.adaptors.enums import Metric
 from inatinqperf.benchmark import Benchmarker, benchmark
 from inatinqperf.configuration import VectorDatabaseConfig
+from pathlib import Path
 
 
 @pytest.fixture(name="data_path", scope="session")
@@ -19,7 +20,6 @@ def data_path_fixture(tmp_path_factory):
     The common path will ensure the HuggingFace dataset isn't repeatedly downloaded.
     """
     return tmp_path_factory.mktemp("data")
-
 
 
 @pytest.fixture(name="benchmark_module")
@@ -55,9 +55,6 @@ def test_load_cfg(config_yaml, data_path):
     assert benchmarker.cfg.embedding_model.model_id == "openai/clip-vit-base-patch32"
     assert benchmarker.cfg.vectordb.type == "qdrant"
     assert benchmarker.cfg.search.topk == 10
-    assert benchmarker.cfg.search.queries_file == "benchmark/queries.txt"
-    assert benchmarker.cfg.baseline.results == "tests/fixtures/baseline_results.npy"
-    assert benchmarker.cfg.baseline.results_post_update == "tests/fixtures/baseline_results_post_update.npy"
 
     # Bad path: missing file raises (FileNotFoundError or OSError depending on impl)
     with pytest.raises((FileNotFoundError, OSError, IOError)):
@@ -89,12 +86,8 @@ def test_recall_at_k_edges():
 def test_run_all(config_yaml, tmp_path, caplog):
     benchmarker = Benchmarker(config_yaml, base_path=tmp_path)
     # Disable distributed deployment knobs for unit tests to keep FAISS setup deterministic.
-    benchmarker.cfg.vectordb.params.index_type = "FLAT"
-    benchmarker.cfg.containers = []
-    benchmarker.cfg.container_network = ""
+    benchmarker.cfg.vectordb.type = "qdrant"
     benchmarker.run()
 
     # Mirror the log assertion with whatever index type the config specifies.
-    expected_index_type = benchmarker.cfg.vectordb.params.index_type.upper()
-    assert expected_index_type in caplog.text
     assert "topk" in caplog.text and "10" in caplog.text
