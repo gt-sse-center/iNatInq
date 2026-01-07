@@ -9,7 +9,7 @@ from inatinqperf import adaptors
 from inatinqperf.adaptors.base import SearchResult
 from inatinqperf.adaptors.enums import Metric
 from inatinqperf.benchmark import Benchmarker, benchmark
-from inatinqperf.configuration import VectorDatabaseParams
+from inatinqperf.configuration import VectorDatabaseConfig
 
 
 @pytest.fixture(name="data_path", scope="session")
@@ -20,20 +20,6 @@ def data_path_fixture(tmp_path_factory):
     """
     return tmp_path_factory.mktemp("data")
 
-
-@pytest.fixture(name="vector_database_params")
-def vdb_params_fixture():
-    params = {
-        "url": "localhost",
-        "port": "8000",
-        "metric": Metric.INNER_PRODUCT,
-        "nlist": 123,
-        "m": 16,
-        "nbits": 2,  # This decides the number of clusters in PQ
-        "nprobe": 2,
-        "index_type": "IVFPQ",
-    }
-    return params
 
 
 @pytest.fixture(name="benchmark_module")
