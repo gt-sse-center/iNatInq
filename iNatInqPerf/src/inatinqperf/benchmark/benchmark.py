@@ -3,24 +3,19 @@
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import numpy as np
 import yaml
-from datasets import Dataset
 from loguru import logger
 from tqdm import tqdm
 
-from inatinqperf.adaptors import VECTORDBS, DataPoint, Query, SearchResult, VectorDatabase
+from inatinqperf.adaptors import VECTORDBS, Query, SearchResult, VectorDatabase
 from inatinqperf.configuration import Config
 from inatinqperf.utils import (
     Profiler,
     embed_text,
     get_table,
 )
-
-if TYPE_CHECKING:
-    from inatinqperf.adaptors.enums import Metric
 
 
 class Benchmarker:
@@ -89,7 +84,6 @@ class Benchmarker:
 
         stats = {
             "vectordb": self.cfg.vectordb.type,
-            "index_type": self.cfg.vectordb.params.index_type,
             "topk": topk,
             "lat_ms_avg": float(np.mean(latencies)),
             "lat_ms_p50": float(np.percentile(latencies, 50)),

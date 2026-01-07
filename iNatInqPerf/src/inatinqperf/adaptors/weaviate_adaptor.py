@@ -6,6 +6,7 @@ Docs can be found here:
 """
 
 from collections.abc import Sequence
+
 from loguru import logger
 
 from inatinqperf.adaptors.base import Query, SearchResult, VectorDatabase

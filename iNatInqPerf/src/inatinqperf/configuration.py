@@ -1,13 +1,9 @@
 """Modules with classes for loading configurations with Pydantic validation."""
 
-from collections.abc import Sequence
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 
-from pydantic import BaseModel, BeforeValidator, Field, PositiveInt, StringConstraints, field_validator
-from simpleeval import simple_eval
-
-from inatinqperf.adaptors.enums import Metric
+from pydantic import BaseModel, StringConstraints, field_validator
 
 NonEmptyStr = Annotated[str, StringConstraints(min_length=1)]
 
@@ -53,6 +49,7 @@ class Config(BaseModel):
     """Class encapsulating benchmark configuration with data validation."""
 
     search: SearchParams
+    vectordb: VectorDatabaseConfig
     compute_recall: bool = False
     baseline: BaselineResults
     embedding_model: EmbeddingModelConfig

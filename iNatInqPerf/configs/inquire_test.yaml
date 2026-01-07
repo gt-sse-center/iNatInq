@@ -5,10 +5,6 @@ search:
   topk: 10
   queries_file: benchmark/queries.txt
 
-update:
-  add_count: 50
-  delete_count: 30
-
 compute_recall: false
 
 baseline:

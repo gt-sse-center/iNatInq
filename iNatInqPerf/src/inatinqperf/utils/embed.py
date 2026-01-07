@@ -1,14 +1,13 @@
 """Utilities for embedding images and text using CLIP models."""
 
-from pathlib import Path
 
 import numpy as np
 import torch
-from datasets import Dataset, DatasetInfo, Features, Value, load_from_disk
-from datasets import List as HFList
+from PIL import Image
 from loguru import logger
-from tqdm import tqdm
 from transformers import CLIPModel, CLIPProcessor
+
+
 
 _EMBED_MATRIX_NDIM = 2
 

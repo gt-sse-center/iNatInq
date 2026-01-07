@@ -1,7 +1,6 @@
 """Qdrant vector database adaptor."""
 
 from collections.abc import Sequence
-from qdrant_client.models import Distance
 
 from inatinqperf.adaptors.base import Query, SearchResult, VectorDatabase
 

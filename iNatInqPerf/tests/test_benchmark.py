@@ -65,7 +65,13 @@ class MockExactBaseline:
 
 def test_load_cfg(config_yaml, data_path):
     benchmarker = Benchmarker(config_yaml, base_path=data_path)
-    assert benchmarker.cfg.dataset.dataset_id == "sagecontinuum/INQUIRE-Benchmark-small"
+
+    assert benchmarker.cfg.embedding_model.model_id == "openai/clip-vit-base-patch32"
+    assert benchmarker.cfg.vectordb.type == "qdrant"
+    assert benchmarker.cfg.search.topk == 10
+    assert benchmarker.cfg.search.queries_file == "benchmark/queries.txt"
+    assert benchmarker.cfg.baseline.results == "tests/fixtures/baseline_results.npy"
+    assert benchmarker.cfg.baseline.results_post_update == "tests/fixtures/baseline_results_post_update.npy"
 
     # Bad path: missing file raises (FileNotFoundError or OSError depending on impl)
     with pytest.raises((FileNotFoundError, OSError, IOError)):

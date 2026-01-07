@@ -5,14 +5,11 @@ import json
 import os
 import time
 import tracemalloc
-from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import TracebackType
-from typing import Any
 
 import psutil
 from loguru import logger
-from pydantic import ValidationError
 
 # Set logger to record the calling function in the profiler
 logger = logger.opt(depth=1)

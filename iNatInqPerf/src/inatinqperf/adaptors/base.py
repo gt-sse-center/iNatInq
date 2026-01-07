@@ -4,11 +4,6 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from datasets import Dataset as HuggingFaceDataset
-from loguru import logger
-
-from inatinqperf.adaptors.enums import Metric
-
 
 @dataclass
 class DataPoint:
