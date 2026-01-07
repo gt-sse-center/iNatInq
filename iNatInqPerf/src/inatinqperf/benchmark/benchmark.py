@@ -15,11 +15,8 @@ from inatinqperf.adaptors import VECTORDBS, DataPoint, Query, SearchResult, Vect
 from inatinqperf.configuration import Config
 from inatinqperf.utils import (
     Profiler,
-    embed_images,
     embed_text,
-    export_images,
     get_table,
-    load_huggingface_dataset,
 )
 
 if TYPE_CHECKING:
@@ -76,16 +73,16 @@ class Benchmarker:
         limit = len(queries) if self.cfg.search.limit < 0 else self.cfg.search.limit
         queries = queries[:limit]
 
-        q = embed_text(queries, model_id)
+        q = embed_text(queries, self.cfg.embedding_model.model_id)
         logger.info("Embedded all queries")
 
         # Compute search latencies
         logger.info(f"Performing search on {self.cfg.vectordb.type}")
-        with Profiler(f"search-{self.cfg.vectordb.type}", containers=self.container_configs) as p:
+        with Profiler(f"search-{self.cfg.vectordb.type}") as p:
             latencies = []
             for i in tqdm(range(q.shape[0])):
                 t0 = time.perf_counter()
-                vectordb.search(Query(q[i]), topk, **params.to_dict())
+                vectordb.search(Query(q[i]), topk)
                 latencies.append((time.perf_counter() - t0) * 1000.0)
 
             p.sample()
@@ -110,7 +107,7 @@ class Benchmarker:
             # For simplicity compute approximate on whole Q at once:
             i1 = np.full((q.shape[0], topk), -1.0, dtype=float)
             for i in tqdm(range(q.shape[0])):
-                results = vectordb.search(Query(q[i]), topk, **params.to_dict())
+                results = vectordb.search(Query(q[i]), topk)
                 padded = _ids_to_fixed_array(results, topk)
                 i1[i] = padded
             rec = recall_at_k(i1, i0, topk)
@@ -123,11 +120,11 @@ class Benchmarker:
 
     def run(self) -> None:
         """Run end-to-end benchmark with all steps."""
-        with container_context(self.cfg):
-            vectordb = None  # TODO: should be adaptor for vectorDB. Will need to update search method to use FastAPI search route
 
-            # Perform search
-            self.search(vectordb, self.cfg.baseline.results)
+        vectordb = self.get_vector_db()
+
+        # Perform search
+        self.search(vectordb, self.cfg.baseline.results)
 
 
 def ensure_dir(p: Path) -> Path:

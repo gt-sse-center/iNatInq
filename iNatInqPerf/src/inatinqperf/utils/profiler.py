@@ -19,6 +19,7 @@ logger = logger.opt(depth=1)
 
 _MB = 1024 * 1024
 
+
 class Profiler:
     """Lightweight in-process profiler.
 

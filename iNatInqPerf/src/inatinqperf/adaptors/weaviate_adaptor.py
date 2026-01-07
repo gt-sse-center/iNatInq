@@ -21,7 +21,7 @@ class Weaviate(VectorDatabase):
         """Initialise the adaptor with a dataset template and connectivity details."""
         super().__init__()
 
-    def search(self, q: Query, topk: int, **kwargs) -> Sequence[SearchResult]:  # NOQA: ARG002
+    def search(self, q: Query, topk: int) -> Sequence[SearchResult]:  # NOQA: ARG002
         """Search for the `topk` nearest vectors based on the query point `q`."""
 
         return []

@@ -19,7 +19,7 @@ class Qdrant(VectorDatabase):
     ) -> None:
         super().__init__()
 
-    def search(self, q: Query, topk: int, **kwargs) -> Sequence[SearchResult]:
+    def search(self, q: Query, topk: int) -> Sequence[SearchResult]:
         """Search for top-k nearest neighbors."""
 
         # TODO: update this method to use FastAPI search route

@@ -62,13 +62,12 @@ class VectorDatabase(ABC):
         self.dim = 0
 
     @abstractmethod
-    def search(self, q: Query, topk: int, **kwargs) -> Sequence[SearchResult]:
+    def search(self, q: Query, topk: int) -> Sequence[SearchResult]:
         """Search for top-k nearest neighbors.
 
         Args:
             q (Query): A single query point.
             topk (int): The number of closest results to return.
-            **kwargs (dict): Additional search parameters.
 
         Returns:
             Sequence[SearchResult]: A list of SearchResult objects.

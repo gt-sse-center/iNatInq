@@ -11,10 +11,18 @@ from inatinqperf.adaptors.enums import Metric
 
 NonEmptyStr = Annotated[str, StringConstraints(min_length=1)]
 
+
+class EmbeddingModelConfig(BaseModel):
+    """Configuration for embedding."""
+
+    model_id: NonEmptyStr
+
+
 class VectorDatabaseConfig(BaseModel):
     """Configuration for Vector Database."""
 
     type: NonEmptyStr
+
 
 class SearchParams(BaseModel):
     """Configuration for search parameters."""
@@ -47,3 +55,4 @@ class Config(BaseModel):
     search: SearchParams
     compute_recall: bool = False
     baseline: BaselineResults
+    embedding_model: EmbeddingModelConfig
