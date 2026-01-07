@@ -8,8 +8,8 @@ search:
 compute_recall: false
 
 baseline:
-  results: "baseline_results.npy"
-  results_post_update: "baseline_results_post_update.npy"
+  results: "tests/fixtures/baseline_results.npy"
+  results_post_update: "tests/fixtures/baseline_results_post_update.npy"
 
 embedding_model:
   model_id: openai/clip-vit-base-patch32
