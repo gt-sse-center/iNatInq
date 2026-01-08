@@ -4,11 +4,6 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from datasets import Dataset as HuggingFaceDataset
-from loguru import logger
-
-from inatinqperf.adaptors.enums import Metric
-
 
 @dataclass
 class DataPoint:
@@ -48,7 +43,6 @@ class VectorDatabase(ABC):
     @abstractmethod
     def __init__(
         self,
-        metric: str | Metric,
         *args,
         **kwargs,
     ) -> None:
@@ -60,63 +54,16 @@ class VectorDatabase(ABC):
             *args (Sequence[object]): Optional positional arguments.
             **kwargs (dict[object, object]): Optional key-word arguments.
         """
-        # Will raise exception if `metric` is not valid.
-        self.metric = Metric(metric)
         self.dim = 0
 
-    def initialize_collection(self, dataset: HuggingFaceDataset, batch_size: int = 1024) -> None:
-        """Create a dataset collection and upload data to it."""
-        logger.info(f"Creating collection {self.collection_name}, and uploading with {batch_size=}")
-        self.dim = len(dataset["embedding"][0])
-
-        self._upload_collection(dataset, batch_size)
-
     @abstractmethod
-    def _upload_collection(self, dataset: HuggingFaceDataset, batch_size: int) -> None:
-        """Method to upload the collection to the vector database."""
-
-    @staticmethod
-    @abstractmethod
-    def _translate_metric(metric: Metric) -> str:
-        """Map the metric value to a string value which is used by the vector database client."""
-
-    @abstractmethod
-    def upsert(self, x: Sequence[DataPoint]) -> None:
-        """Upsert vectors with given IDs.
-
-        Args:
-            x (Sequence[DataPoint]): A sequence of `DataPoints` from the dataset.
-        """
-
-    @abstractmethod
-    def search(self, q: Query, topk: int, **kwargs) -> Sequence[SearchResult]:
+    def search(self, q: Query, topk: int) -> Sequence[SearchResult]:
         """Search for top-k nearest neighbors.
 
         Args:
             q (Query): A single query point.
             topk (int): The number of closest results to return.
-            **kwargs (dict): Additional search parameters.
 
         Returns:
             Sequence[SearchResult]: A list of SearchResult objects.
         """
-
-    @abstractmethod
-    def delete(self, ids: Sequence[int]) -> None:
-        """Delete data points associated with IDs `ids`.
-
-        Args:
-            ids (Sequence[int]): The IDs of the data points to delete.
-        """
-
-    @abstractmethod
-    def stats(self) -> dict[str, object]:
-        """Return database statistics."""
-
-    def close(self) -> None:
-        """Method to perform cleanup when the adaptor is about to be deleted."""
-        return
-
-    def __del__(self) -> None:
-        """Destructor method, which automatically closes any open connections."""
-        self.close()

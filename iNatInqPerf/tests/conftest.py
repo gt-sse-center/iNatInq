@@ -30,20 +30,13 @@ def fixtures_dir_fixture(source_dir):
 @pytest.fixture(name="config_yaml")
 def config_yaml_fixture(fixtures_dir):
     """The config as a yaml file within a fake source directory."""
-    config_file = fixtures_dir / "inquire_benchmark_small.yaml"
+    config_file = fixtures_dir / "inquire_test.yaml"
 
     return config_file
 
 
 @pytest.fixture(name="benchmark_yaml")
 def benchmark_config_fixture(config_yaml: Path):
-    with config_yaml.open() as f:
-        return yaml.safe_load(f)
-
-
-@pytest.fixture(name="milvus_yaml")
-def milvus_config_fixture(fixtures_dir):
-    config_yaml = fixtures_dir / "inquire_milvus.yaml"
     with config_yaml.open() as f:
         return yaml.safe_load(f)
 
@@ -66,11 +59,3 @@ def weaviate_config_fixture(fixtures_dir):
 # in test output but is still captured for testing.
 logger.remove()
 logger.add(sys.stderr, level="CRITICAL")
-
-
-# Keep thread counts low and avoid at-fork init issues that can trip FAISS/Torch on macOS
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-os.environ.setdefault("MKL_NUM_THREADS", "1")
-os.environ.setdefault("OMP_WAIT_POLICY", "PASSIVE")
-os.environ.setdefault("KMP_INIT_AT_FORK", "FALSE")
-os.environ.setdefault("FAISS_DISABLE_GPU", "1")
