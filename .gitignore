@@ -11,6 +11,8 @@ wheels/
 
 coverage.xml
 .coverage
+htmlcov/
+.pytest_cache/
 
 # Data directory
 data/
