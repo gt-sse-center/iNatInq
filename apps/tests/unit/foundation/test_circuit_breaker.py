@@ -209,13 +209,11 @@ class TestCreateCircuitBreaker:
           - Custom name is preserved
           - Custom failure_threshold is applied
           - Custom recovery_timeout is applied
-          - expected_exception parameter is accepted (note: pybreaker doesn't use it in __init__)
         """
         breaker = create_circuit_breaker(
             name="custom_service",
             failure_threshold=10,
             recovery_timeout=120,
-            expected_exception=ConnectionError,
         )
 
         assert breaker.name == "custom_service"
@@ -262,8 +260,7 @@ class TestCreateCircuitBreaker:
         breaker = create_circuit_breaker(
             name="test_service",
             failure_threshold=2,
-            expected_exception=ConnectionError,
-        )
+                    )
 
         @breaker
         def test_func() -> str:
@@ -288,8 +285,7 @@ class TestCreateCircuitBreaker:
         """
         breaker = create_circuit_breaker(
             name="test_service",
-            expected_exception=ConnectionError,
-        )
+                    )
 
         def test_func() -> str:
             return "success"

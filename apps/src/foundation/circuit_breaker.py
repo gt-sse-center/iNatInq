@@ -14,7 +14,6 @@ ollama_breaker = create_circuit_breaker(
     name="ollama",
     failure_threshold=5,
     recovery_timeout=30,
-    expected_exception=ConnectionError,
 )
 
 # Use with decorator
@@ -49,8 +48,6 @@ result = ollama_breaker.call(lambda: expensive_operation())
 - recovery_timeout: 120s (storage recovery takes longer)
 - Rationale: S3 failures often transient, allow time for recovery
 """
-
-from __future__ import annotations
 
 import logging
 from typing import Callable, NoReturn
@@ -154,7 +151,6 @@ def create_circuit_breaker(
     name: str,
     failure_threshold: int = 5,
     recovery_timeout: int = 60,
-    expected_exception: type[Exception] | None = None,
 ) -> pybreaker.CircuitBreaker:
     """Create a circuit breaker for an external service dependency.
 
@@ -164,9 +160,6 @@ def create_circuit_breaker(
             Default: 5.
         recovery_timeout: Seconds to wait before attempting recovery (moving to
             half-open state). Default: 60.
-        expected_exception: Exception type that should trigger the circuit breaker.
-            Default: None (catches all exceptions). Note: pybreaker doesn't support
-            filtering by exception type in __init__, so this parameter is ignored.
 
     Returns:
         Configured CircuitBreaker instance with logging listener.

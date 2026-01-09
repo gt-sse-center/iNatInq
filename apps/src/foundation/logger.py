@@ -1,7 +1,7 @@
 """Logging configuration with structured JSON formatter.
 
 This module provides a custom JSON formatter and logging configuration
-that matches the pattern used in the smarts service (services-main).
+for structured logging with OpenTelemetry support.
 """
 
 import json

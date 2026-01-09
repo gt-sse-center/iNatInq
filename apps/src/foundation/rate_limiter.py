@@ -20,21 +20,21 @@ class RateLimiter:
     Attributes:
         _interval: Time interval between allowed operations (in seconds).
         _last: Timestamp of the last operation (monotonic time).
-        _lock: Async lock to ensure thread-safe rate limiting.
+        _throttle_lock: Async lock to ensure thread-safe rate limiting.
 
     Example:
         ```python
         from pipeline.foundation.rate_limiter import RateLimiter
 
         limiter = RateLimiter(rate_per_sec=5)
-        await limiter.acquire()  # Blocks if necessary to respect rate limit
+        await limiter.acquire_permission()  # Blocks if necessary to respect rate limit
         # Perform operation
         ```
 
     Note:
         This implementation uses monotonic time to avoid issues with system clock
-        adjustments. The internal lock ensures thread-safe operation when called
-        concurrently from multiple coroutines.
+        adjustments. The internal throttle lock ensures thread-safe operation when
+        called concurrently from multiple coroutines.
     """
 
     def __init__(self, rate_per_sec: int) -> None:
@@ -51,9 +51,9 @@ class RateLimiter:
             raise ValueError("rate_per_sec must be greater than 0")
         self._interval = 1.0 / rate_per_sec
         self._last = 0.0
-        self._lock = asyncio.Lock()
+        self._throttle_lock = asyncio.Lock()
 
-    async def acquire(self) -> None:
+    async def acquire_permission(self) -> None:
         """Acquire permission to perform an operation.
 
         Blocks (via sleep) if necessary to ensure the rate limit is not exceeded.
@@ -67,11 +67,11 @@ class RateLimiter:
             ```python
             limiter = RateLimiter(rate_per_sec=10)
             for _ in range(100):
-                await limiter.acquire()
+                await limiter.acquire_permission()
                 await perform_operation()
             ```
         """
-        async with self._lock:
+        async with self._throttle_lock:
             now = time.monotonic()
             delta = now - self._last
             if delta < self._interval:

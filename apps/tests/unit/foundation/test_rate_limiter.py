@@ -9,7 +9,7 @@ The tests cover:
   - Initialization: Valid rate configuration, zero/negative rate validation
   - Rate Retrieval: get_rate() method correctness
   - Rate Limiting: First call behavior, rate limit enforcement, timing accuracy
-  - Concurrency: Concurrent acquire() calls, thread safety
+  - Concurrency: Concurrent acquire_permission() calls, thread safety
   - Edge Cases: Fast rates (small intervals), slow rates (large intervals)
 
 # Test Structure
@@ -136,7 +136,7 @@ class TestRateLimiter:
         limiter = RateLimiter(rate_per_sec=10)
 
         start = time.monotonic()
-        await limiter.acquire()
+        await limiter.acquire_permission()
         elapsed = time.monotonic() - start
 
         # First call should be immediate (or very fast)
@@ -160,11 +160,11 @@ class TestRateLimiter:
         expected_interval = 0.5
 
         # First call should be immediate
-        await limiter.acquire()
+        await limiter.acquire_permission()
 
         # Second call should wait approximately expected_interval
         start = time.monotonic()
-        await limiter.acquire()
+        await limiter.acquire_permission()
         elapsed = time.monotonic() - start
 
         # Allow small tolerance for timing
@@ -190,7 +190,7 @@ class TestRateLimiter:
 
         start = time.monotonic()
         for _ in range(num_calls):
-            await limiter.acquire()
+            await limiter.acquire_permission()
         total_elapsed = time.monotonic() - start
 
         # Should take at least (num_calls - 1) * interval
@@ -222,7 +222,7 @@ class TestRateLimiter:
         # Create multiple coroutines that acquire simultaneously
         async def acquire_once() -> float:
             start = time.monotonic()
-            await limiter.acquire()
+            await limiter.acquire_permission()
             return time.monotonic() - start
 
         # Run multiple acquire calls concurrently
@@ -255,8 +255,8 @@ class TestRateLimiter:
         limiter = RateLimiter(rate_per_sec=1000)  # Very fast rate
 
         start = time.monotonic()
-        await limiter.acquire()
-        await limiter.acquire()
+        await limiter.acquire_permission()
+        await limiter.acquire_permission()
         elapsed = time.monotonic() - start
 
         # Should be very fast, but may have small delay
@@ -278,10 +278,10 @@ class TestRateLimiter:
         """
         limiter = RateLimiter(rate_per_sec=1)  # 1 second between calls
 
-        await limiter.acquire()
+        await limiter.acquire_permission()
 
         start = time.monotonic()
-        await limiter.acquire()
+        await limiter.acquire_permission()
         elapsed = time.monotonic() - start
 
         # Should wait approximately 1 second

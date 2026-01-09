@@ -47,6 +47,8 @@ norecursedirs = []
 line-length = 110
 
 [tool.ruff.lint]
+exclude = ["tests/**"]
+
 select = ["ALL"]
 
 ignore = [
@@ -55,22 +57,26 @@ ignore = [
     "BLE001", # Do not catch blind exception: `Exception`
     "B905", # `zip()` without an explicit `strict=` parameter
     "COM812", # Trailing comma missing
+    "D104", # Missing docstring in public package
     "D105", # Missing docstring in magic method
     "D107", # Missing docstring in `__init__` method
     "D202", # No blank lines allowed after function docstring
     "D203", # Incorrect blank line before class
     "D213", # Multi line summary second line
+    "E501", # Line too long
     "EM101", # Separate message assignment for exception
     "FIX002", # Line contains TODO, consider resolving the issue
+    "I001", # Import block is un-sorted or un-formatted
     "N802", # Function name `xxx` should be lowercase
     "N999", # Invalid module name
+    "RSE102", # Unnecessary parentheses on raise exception
     "S101", # Use of assert detected
     "TC006", # Add quotes to type expression in `typing.cast()`
     "TD002", # Missing author in TODO
     "TD003", # Missing issue link for this TODO
     "TRY002", # Create your own exception
-    "TRY003", # Avoid specifying long messages outside the exception class
     "TRY300", # Consider moving this statement to an `else` block
+    "UP032", # Use f-string instead of `format` call
 ]
 
 [tool.ruff.lint.per-file-ignores]
