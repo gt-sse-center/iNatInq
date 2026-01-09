@@ -44,6 +44,7 @@ inat_toolkit = { workspace = true }
 
 [tool.uv.workspace]
 members = [
+    "apps",
     "inquire_api",
     "iNatInqPerf",
     "inat_toolkit",
