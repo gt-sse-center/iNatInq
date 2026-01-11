@@ -4,7 +4,6 @@ This module provides a token bucket rate limiter implementation for controlling
 the rate of async operations, ensuring operations do not exceed specified limits.
 """
 
-from __future__ import annotations
 
 import asyncio
 import time
@@ -24,7 +23,7 @@ class RateLimiter:
 
     Example:
         ```python
-        from pipeline.foundation.rate_limiter import RateLimiter
+        from foundation.rate_limiter import RateLimiter
 
         limiter = RateLimiter(rate_per_sec=5)
         await limiter.acquire_permission()  # Blocks if necessary to respect rate limit

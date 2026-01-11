@@ -81,37 +81,35 @@ class CustomJSONFormatter(logging.Formatter):
 
         # Add request information if present (from LoggerMiddleware)
         request_data = getattr(record, "request", None)
-        if request_data is not None:
-            if isinstance(request_data, dict):
-                path = request_data.get("path")
-                method = request_data.get("method")
-                remote_addr = request_data.get("remoteAddr")
-                if path is not None:
-                    d["path"] = path
-                if method is not None:
-                    d["method"] = method
-                if remote_addr is not None:
-                    d["remoteAddr"] = remote_addr
+        if request_data is not None and isinstance(request_data, dict):
+            path = request_data.get("path")
+            method = request_data.get("method")
+            remote_addr = request_data.get("remoteAddr")
+            if path is not None:
+                d["path"] = path
+            if method is not None:
+                d["method"] = method
+            if remote_addr is not None:
+                d["remoteAddr"] = remote_addr
 
         # Add response information if present (from LoggerMiddleware)
         response_data = getattr(record, "response", None)
-        if response_data is not None:
-            if isinstance(response_data, dict):
-                path = response_data.get("path")
-                method = response_data.get("method")
-                statuscode = response_data.get("statuscode")
-                since = response_data.get("since")
-                remote_addr = response_data.get("remoteAddr")
-                if path is not None:
-                    d["path"] = path
-                if method is not None:
-                    d["method"] = method
-                if statuscode is not None:
-                    d["statuscode"] = statuscode
-                if since is not None:
-                    d["since"] = since
-                if remote_addr is not None:
-                    d["remoteAddr"] = remote_addr
+        if response_data is not None and isinstance(response_data, dict):
+            path = response_data.get("path")
+            method = response_data.get("method")
+            statuscode = response_data.get("statuscode")
+            since = response_data.get("since")
+            remote_addr = response_data.get("remoteAddr")
+            if path is not None:
+                d["path"] = path
+            if method is not None:
+                d["method"] = method
+            if statuscode is not None:
+                d["statuscode"] = statuscode
+            if since is not None:
+                d["since"] = since
+            if remote_addr is not None:
+                d["remoteAddr"] = remote_addr
 
         # Add error information if present (from ExceptionHandlerMiddleware)
         error_data = getattr(record, "error", None)

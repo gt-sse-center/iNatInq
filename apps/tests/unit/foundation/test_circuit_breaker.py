@@ -21,7 +21,6 @@ Circuit breaker state transitions are tested using pybreaker's built-in function
 Run with: pytest tests/unit/foundation/test_circuit_breaker.py
 """
 
-from __future__ import annotations
 
 import logging
 from unittest.mock import MagicMock, patch

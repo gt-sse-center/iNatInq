@@ -3,8 +3,8 @@
 Foundation utilities and shared infrastructure components.
 
 This directory contains foundational components that provide cross-cutting
-functionality for the pipeline service, such as logging configuration and shared
-utilities.
+functionality for applications, such as logging configuration, retry logic,
+circuit breakers, and shared utilities.
 
 ## Design Principles
 
@@ -33,8 +33,8 @@ Shared HTTP utilities for retry logic and session management.
 **Purpose:**
 
 - Provides reusable HTTP client utilities for consistent retry behavior
-- Enables connection pooling across the pipeline package
-- Used by Ollama client and Spark jobs for better performance
+- Enables connection pooling across the application
+- Used by HTTP clients for better performance
 
 **Functions:**
 
@@ -44,7 +44,7 @@ Shared HTTP utilities for retry logic and session management.
 **Usage:**
 
 ```python
-from pipeline.foundation.http import create_retry_session
+from foundation.http import create_retry_session
 
 # Create session with default retry configuration
 session = create_retry_session()
@@ -58,7 +58,7 @@ session = create_retry_session(
 )
 
 # Use with Ollama client for connection pooling
-from pipeline.clients.ollama import OllamaClient
+from clients.ollama import OllamaClient
 client = OllamaClient(base_url="http://ollama:11434", model="nomic-embed-text")
 client.set_session(session)
 ```
@@ -86,7 +86,7 @@ Retry utilities with exponential backoff using tenacity.
 - Provides reusable retry mechanism with exponential backoff
 - Integrates with structured logging for observability
 - Configurable exception filtering and retry strategies
-- Used across the pipeline package for consistent retry behavior
+- Used across the application for consistent retry behavior
 
 **Classes:**
 
@@ -96,7 +96,7 @@ Retry utilities with exponential backoff using tenacity.
 **Usage:**
 
 ```python
-from pipeline.foundation.retry import RetryWithBackoff
+from foundation.retry import RetryWithBackoff
 
 # Create retry utility with default settings
 retry = RetryWithBackoff()
@@ -139,14 +139,14 @@ result = retry.call(
 
 **Benefits:**
 
-- Consistent retry behavior across the pipeline package
+- Consistent retry behavior across the application
 - Better observability with structured logging
 - Reusable across different modules
 - Easy to configure and customize
 
-### `logger/`
+### `logger.py`
 
-Structured JSON logging configuration for the pipeline service.
+Structured JSON logging configuration for applications.
 
 **Purpose:**
 
@@ -172,7 +172,7 @@ Main logging configuration module.
 
 ```python
 from logging.config import dictConfig
-from pipeline.foundation.logger import LOGGING_CONFIG
+from foundation.logger import LOGGING_CONFIG
 
 dictConfig(config=LOGGING_CONFIG)
 ```
@@ -187,8 +187,8 @@ dictConfig(config=LOGGING_CONFIG)
   "thread_name": "MainThread",
   "thread_id": 281473789468704,
   "level": "INFO",
-  "logger_name": "pipeline.access",
-  "pathname": "/app/src/pipeline/middleware/logger.py",
+  "logger_name": "app.access",
+  "pathname": "/app/src/middleware/logger.py",
   "line": 67,
   "message": "request started",
   "request": {
@@ -206,8 +206,8 @@ dictConfig(config=LOGGING_CONFIG)
   LoggerMiddleware instead)
 - `uvicorn.error`: Error logs (INFO level)
 - `uvicorn.asgi`: ASGI logs (INFO level)
-- `pipeline.access`: Custom logger for LoggerMiddleware (INFO level)
-- `pipeline.error`: Custom logger for ExceptionHandlerMiddleware (ERROR level)
+- `app.access`: Custom logger for application access logs (INFO level)
+- `app.error`: Custom logger for application error logs (ERROR level)
 
 **OpenTelemetry Integration:** If `LoggingInstrumentor` is used, the formatter
 automatically includes:
@@ -226,13 +226,13 @@ automatically includes:
 
 ## Integration
 
-Foundation components are initialized in `pipeline.app.create_app()`:
+Foundation components are initialized at application startup:
 
 ```python
 from logging.config import dictConfig
-from pipeline.foundation.logger import LOGGING_CONFIG
+from foundation.logger import LOGGING_CONFIG
 
-def create_app() -> FastAPI:
+def create_app():
     # Initialize logging
     dictConfig(config=LOGGING_CONFIG)
 
@@ -258,14 +258,14 @@ Foundation components can be tested independently:
 
 ```python
 from logging.config import dictConfig
-from pipeline.foundation.logger import LOGGING_CONFIG
+from foundation.logger import LOGGING_CONFIG
 import logging
 
 # Apply configuration
 dictConfig(config=LOGGING_CONFIG)
 
 # Test logging
-logger = logging.getLogger("pipeline.access")
+logger = logging.getLogger("app.access")
 logger.info("test message", extra={"request": {"path": "/test"}})
 ```
 
