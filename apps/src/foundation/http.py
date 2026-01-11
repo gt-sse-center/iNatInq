@@ -4,7 +4,6 @@ This module provides reusable HTTP client utilities that can be used across the
 pipeline package for consistent retry behavior and connection pooling.
 """
 
-from __future__ import annotations
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -42,7 +41,7 @@ def create_retry_session(
 
     Example:
         ```python
-        from pipeline.foundation.http import create_retry_session
+        from foundation.http import create_retry_session
 
         session = create_retry_session(max_retries=5)
         response = session.post("http://api.example.com/endpoint", json={"data": "value"})

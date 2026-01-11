@@ -8,7 +8,6 @@ import statements. Keep fixtures small, composable, and focused on setup/teardow
 Do NOT put business logic in fixtures.
 """
 
-from __future__ import annotations
 
 # The foundation package is installed in the workspace environment via uv,
 # so no path manipulation is needed for imports.

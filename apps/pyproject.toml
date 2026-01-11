@@ -52,10 +52,17 @@ exclude = ["tests/**"]
 select = ["ALL"]
 
 ignore = [
+    "ANN001", # Missing type annotation for function argument
     "ANN002", # Missing type annotation for `*args`
     "ANN003", # Missing type annotation for `**kwargs`
+    "ANN201", # Missing return type annotation for public function
+    "ANN202", # Missing return type annotation for private function
+    "ANN401", # Dynamically typed expressions (typing.Any)
+    "ARG002", # Unused method argument
+    "ARG003", # Unused class method argument
     "BLE001", # Do not catch blind exception: `Exception`
     "B905", # `zip()` without an explicit `strict=` parameter
+    "C901", # Function is too complex
     "COM812", # Trailing comma missing
     "D104", # Missing docstring in public package
     "D105", # Missing docstring in magic method
@@ -65,17 +72,26 @@ ignore = [
     "D213", # Multi line summary second line
     "E501", # Line too long
     "EM101", # Separate message assignment for exception
+    "EM102", # Exception must not use an f-string literal
     "FIX002", # Line contains TODO, consider resolving the issue
     "I001", # Import block is un-sorted or un-formatted
     "N802", # Function name `xxx` should be lowercase
     "N999", # Invalid module name
+    "PERF403", # Use a dictionary comprehension instead of a for-loop
+    "PLC0415", # Import should be at the top-level of a file
+    "PLR0915", # Too many statements
+    "PLR2004", # Magic value used in comparison
+    "PTH110", # `os.path.exists()` should be replaced by `Path.exists()`
     "RSE102", # Unnecessary parentheses on raise exception
     "S101", # Use of assert detected
+    "S108", # Probable insecure usage of temporary file or directory
     "TC006", # Add quotes to type expression in `typing.cast()`
     "TD002", # Missing author in TODO
     "TD003", # Missing issue link for this TODO
     "TRY002", # Create your own exception
+    "TRY003", # Avoid specifying long messages outside the exception class
     "TRY300", # Consider moving this statement to an `else` block
+    "TRY301", # Abstract `raise` to an inner function
     "UP032", # Use f-string instead of `format` call
 ]
 

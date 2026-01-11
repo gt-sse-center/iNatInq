@@ -23,7 +23,6 @@ Async operations are tested using pytest-asyncio when applicable.
 Run with: pytest tests/unit/foundation/test_retry.py
 """
 
-from __future__ import annotations
 
 import logging
 from unittest.mock import MagicMock
@@ -397,8 +396,8 @@ class TestRetryWithBackoff:
 
         # Should log error for final failure (after callback is invoked)
         # The after callback is called by tenacity after all retries are exhausted
-        assert mock_logger.error.called
-        call_kwargs = mock_logger.error.call_args[1]
+        assert mock_logger.exception.called
+        call_kwargs = mock_logger.exception.call_args[1]
         assert call_kwargs["extra"]["max_attempts"] == 2
         assert call_kwargs["extra"]["error"] == "always fails"
         assert call_kwargs["extra"]["error_type"] == "ValueError"

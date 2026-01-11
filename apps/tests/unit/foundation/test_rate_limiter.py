@@ -22,7 +22,6 @@ tolerance ranges to account for system scheduling variability.
 Run with: pytest tests/unit/foundation/test_rate_limiter.py
 """
 
-from __future__ import annotations
 
 import asyncio
 import time

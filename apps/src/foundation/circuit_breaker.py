@@ -7,7 +7,7 @@ failing fast when a service is degraded or unavailable.
 ## Usage
 
 ```python
-from pipeline.foundation.circuit_breaker import create_circuit_breaker
+from foundation.circuit_breaker import create_circuit_breaker
 
 # Create a circuit breaker for a service
 ollama_breaker = create_circuit_breaker(
@@ -50,10 +50,10 @@ result = ollama_breaker.call(lambda: expensive_operation())
 """
 
 import logging
-from typing import Callable, NoReturn
+from typing import NoReturn
+from collections.abc import Callable
 
 import pybreaker
-
 from foundation.exceptions import UpstreamError
 
 logger = logging.getLogger("foundation.circuit_breaker")
@@ -129,7 +129,6 @@ class CircuitBreakerListener(pybreaker.CircuitBreakerListener):
                 "exception_type": type(exc).__name__,
                 "exception_message": str(exc),
             },
-            exc_info=True,
         )
 
     def success(self, cb: pybreaker.CircuitBreaker) -> None:
@@ -222,8 +221,79 @@ def handle_circuit_breaker_error(service_name: str) -> NoReturn:
             handle_circuit_breaker_error("ollama")
         ```
     """
-    raise UpstreamError(
+    msg = (
         f"{service_name} service is currently unavailable. "
         "The circuit breaker is open due to repeated failures. "
         "The service will be retried automatically after the recovery timeout."
     )
+    raise UpstreamError(
+        msg
+    )
+
+
+def with_circuit_breaker(service_name: str):
+    """Decorator to wrap method calls with circuit breaker protection.
+
+    This decorator eliminates the need for nested function definitions and
+    repetitive try/except blocks. It automatically:
+    1. Checks if the circuit breaker is open (fail fast)
+    2. Wraps the method call with the circuit breaker
+    3. Handles CircuitBreakerError by raising UpstreamError
+
+    Args:
+        service_name: Service name for error messages and breaker identification.
+
+    Returns:
+        Decorator function that wraps methods with circuit breaker logic.
+
+    Example:
+        ```python
+        @attrs.define(frozen=False, slots=True)
+        class MyClient(CircuitBreakerMixin):
+            _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
+
+            @with_circuit_breaker("myclient")
+            def fetch_data(self, key: str) -> dict:
+                # Method body without nested functions or try/except
+                response = requests.get(f"{self.url}/data/{key}")
+                response.raise_for_status()
+                return response.json()
+        ```
+
+    Note:
+        This decorator expects the instance to have a `_breaker` attribute
+        (typically provided by CircuitBreakerMixin).
+    """
+    import functools
+
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(self, *args, **kwargs):
+            # Get breaker from self._breaker
+            breaker = getattr(self, "_breaker", None)
+            if breaker is None:
+                msg = (
+                    f"{self.__class__.__name__} has no circuit breaker. "
+                    "Ensure the class inherits from CircuitBreakerMixin and "
+                    "calls _init_circuit_breaker() in __attrs_post_init__."
+                )
+                raise RuntimeError(
+                    msg
+                )
+
+            # Check if open first (fail fast)
+            if breaker.current_state == pybreaker.STATE_OPEN:
+                handle_circuit_breaker_error(service_name)
+
+            # Wrap the function call
+            def _impl():
+                return func(self, *args, **kwargs)
+
+            try:
+                return breaker.call(_impl)
+            except pybreaker.CircuitBreakerError:
+                handle_circuit_breaker_error(service_name)
+
+        return wrapper
+
+    return decorator
