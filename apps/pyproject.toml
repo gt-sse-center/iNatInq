@@ -60,6 +60,7 @@ ignore = [
     "ANN401", # Dynamically typed expressions (typing.Any)
     "ARG002", # Unused method argument
     "ARG003", # Unused class method argument
+    "ARG004", # Unused static method argument
     "BLE001", # Do not catch blind exception: `Exception`
     "B905", # `zip()` without an explicit `strict=` parameter
     "C901", # Function is too complex
@@ -70,6 +71,7 @@ ignore = [
     "D202", # No blank lines allowed after function docstring
     "D203", # Incorrect blank line before class
     "D213", # Multi line summary second line
+    "D417", # Missing argument descriptions in the docstring
     "E501", # Line too long
     "EM101", # Separate message assignment for exception
     "EM102", # Exception must not use an f-string literal

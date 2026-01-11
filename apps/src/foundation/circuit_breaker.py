@@ -28,7 +28,8 @@ result = ollama_breaker.call(lambda: expensive_operation())
 ## Circuit Breaker States
 
 - **CLOSED**: Normal operation, requests pass through
-- **OPEN**: Service is failing, requests fail immediately without calling service
+- **OPEN**: Service is failing, requests fail immediately without calling
+service
 - **HALF_OPEN**: Testing if service has recovered, allows limited requests
 
 ## Configuration Guidelines
@@ -50,8 +51,8 @@ result = ollama_breaker.call(lambda: expensive_operation())
 """
 
 import logging
-from typing import NoReturn
 from collections.abc import Callable
+from typing import NoReturn
 
 import pybreaker
 from foundation.exceptions import UpstreamError
@@ -89,8 +90,8 @@ class CircuitBreakerListener(pybreaker.CircuitBreakerListener):
             },
         )
 
+    @staticmethod
     def before_call(
-        self,
         cb: pybreaker.CircuitBreaker,
         func: Callable,
         *args: object,
@@ -101,8 +102,8 @@ class CircuitBreakerListener(pybreaker.CircuitBreakerListener):
         Args:
             cb: The circuit breaker instance.
             func: Function being called.
-            *args: Positional arguments (unused but required for signature match).
-            **kwargs: Keyword arguments (unused but required for signature match).
+            *args: Positional arguments (unused but required for signature).
+            **kwargs: Keyword arguments (unused but required for signature).
         """
         logger.debug(
             "Circuit breaker call",
@@ -113,7 +114,11 @@ class CircuitBreakerListener(pybreaker.CircuitBreakerListener):
             },
         )
 
-    def failure(self, cb: pybreaker.CircuitBreaker, exc: BaseException) -> None:
+    def failure(
+        self,
+        cb: pybreaker.CircuitBreaker,
+        exc: BaseException,
+    ) -> None:
         """Log when a call fails.
 
         Args:
@@ -155,8 +160,8 @@ def create_circuit_breaker(
 
     Args:
         name: Unique name for the circuit breaker (e.g., "ollama", "qdrant").
-        failure_threshold: Number of consecutive failures before opening circuit.
-            Default: 5.
+        failure_threshold: Number of consecutive failures before opening
+        circuit. Default: 5.
         recovery_timeout: Seconds to wait before attempting recovery (moving to
             half-open state). Default: 60.
 
@@ -226,9 +231,7 @@ def handle_circuit_breaker_error(service_name: str) -> NoReturn:
         "The circuit breaker is open due to repeated failures. "
         "The service will be retried automatically after the recovery timeout."
     )
-    raise UpstreamError(
-        msg
-    )
+    raise UpstreamError(msg)
 
 
 def with_circuit_breaker(service_name: str):
@@ -241,7 +244,8 @@ def with_circuit_breaker(service_name: str):
     3. Handles CircuitBreakerError by raising UpstreamError
 
     Args:
-        service_name: Service name for error messages and breaker identification.
+        service_name: Service name for error messages and breaker
+        identification.
 
     Returns:
         Decorator function that wraps methods with circuit breaker logic.
@@ -277,9 +281,7 @@ def with_circuit_breaker(service_name: str):
                     "Ensure the class inherits from CircuitBreakerMixin and "
                     "calls _init_circuit_breaker() in __attrs_post_init__."
                 )
-                raise RuntimeError(
-                    msg
-                )
+                raise RuntimeError(msg)
 
             # Check if open first (fail fast)
             if breaker.current_state == pybreaker.STATE_OPEN:

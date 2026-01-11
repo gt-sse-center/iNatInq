@@ -9,7 +9,8 @@ The tests cover:
   - Initialization: Default and custom configuration values
   - Success Paths: Immediate success, function arguments/kwargs passing
   - Retry Logic: Retryable exception handling, max attempts exhaustion
-  - Exception Filtering: Non-retryable exceptions (TypeError, AttributeError, KeyError)
+  - Exception Filtering: Non-retryable exceptions (TypeError, AttributeError,
+    KeyError)
   - Custom Configuration: Custom retry_exceptions parameter override
   - Logging: Retry attempt logging, final failure logging
 
@@ -22,7 +23,6 @@ Async operations are tested using pytest-asyncio when applicable.
 
 Run with: pytest tests/unit/foundation/test_retry.py
 """
-
 
 import logging
 from unittest.mock import MagicMock
@@ -68,9 +68,11 @@ class TestRetryWithBackoff:
         """Test that RetryWithBackoff accepts custom initialization values.
 
         **Why this test is important:**
-          - Custom configuration allows tuning retry behavior for specific use cases
+          - Custom configuration allows tuning retry behavior for specific use
+          cases
           - Ensures all parameters can be overridden
-          - Critical for flexibility and adapting to different service requirements
+          - Critical for flexibility and adapting to different service
+          requirements
           - Validates custom logger integration
 
         **What it tests:**
@@ -106,7 +108,8 @@ class TestRetryWithBackoff:
         """Test that call() returns result when function succeeds immediately.
 
         **Why this test is important:**
-          - Most operations succeed on first attempt, so this is the common path
+          - Most operations succeed on first attempt, so this is the common
+            path
           - Ensures no unnecessary overhead when operations succeed
           - Validates that successful results are returned correctly
           - Critical for performance and correctness
@@ -220,7 +223,8 @@ class TestRetryWithBackoff:
         """Test that TypeError is not retried (programming error).
 
         **Why this test is important:**
-          - Programming errors (TypeError, AttributeError, KeyError) should fail fast
+          - Programming errors (TypeError, AttributeError, KeyError) should
+          fail fast
           - Retrying programming errors masks bugs and wastes resources
           - Ensures type errors are caught immediately
           - Critical for developer experience and debugging
@@ -245,7 +249,8 @@ class TestRetryWithBackoff:
         """Test that AttributeError is not retried (programming error).
 
         **Why this test is important:**
-          - AttributeError indicates missing attribute/method (programming error)
+          - AttributeError indicates missing attribute/method (programming
+          error)
           - Should fail fast to surface bugs immediately
           - Retrying would mask the issue
           - Critical for catching API misuse and bugs
@@ -323,7 +328,10 @@ class TestRetryWithBackoff:
             return "success"
 
         # Override with RuntimeError as retryable
-        result = retry.call(runtime_error_func, retry_exceptions=(RuntimeError,))
+        result = retry.call(
+            runtime_error_func,
+            retry_exceptions=(RuntimeError,),
+        )
 
         assert result == "success"
         assert call_count == 2
@@ -394,8 +402,8 @@ class TestRetryWithBackoff:
         with pytest.raises(ValueError):
             retry.call(always_failing_func)
 
-        # Should log error for final failure (after callback is invoked)
-        # The after callback is called by tenacity after all retries are exhausted
+        # Should log error for final failure (after callback is invoked) The
+        # after callback is called by tenacity after all retries are exhausted
         assert mock_logger.exception.called
         call_kwargs = mock_logger.exception.call_args[1]
         assert call_kwargs["extra"]["max_attempts"] == 2
@@ -423,7 +431,11 @@ class TestRetryWithBackoff:
         mock_retry_state.outcome = None
 
         # Call _log_retry directly - should return early
-        RetryWithBackoff._log_retry(mock_retry_state, mock_logger, 3)  # type: ignore[attr-defined]
+        RetryWithBackoff._log_retry(
+            mock_retry_state,
+            mock_logger,
+            3,
+        )
 
         # Should not have logged anything
         mock_logger.warning.assert_not_called()
@@ -451,7 +463,11 @@ class TestRetryWithBackoff:
         mock_retry_state.outcome = mock_outcome
 
         # Call _log_retry directly - should return early
-        RetryWithBackoff._log_retry(mock_retry_state, mock_logger, 3)  # type: ignore[attr-defined]
+        RetryWithBackoff._log_retry(
+            mock_retry_state,
+            mock_logger,
+            3,
+        )
 
         # Should not have logged anything
         mock_logger.warning.assert_not_called()
@@ -477,8 +493,10 @@ class TestRetryWithBackoff:
         mock_retry_state.outcome = None
 
         # Call _log_failure directly - should return early
-        RetryWithBackoff._log_failure(  # type: ignore[attr-defined]
-            mock_retry_state, mock_logger, 3
+        RetryWithBackoff._log_failure(
+            mock_retry_state,
+            mock_logger,
+            3,
         )
 
         # Should not have logged anything
@@ -507,8 +525,10 @@ class TestRetryWithBackoff:
         mock_retry_state.outcome = mock_outcome
 
         # Call _log_failure directly - should return early
-        RetryWithBackoff._log_failure(  # type: ignore[attr-defined]
-            mock_retry_state, mock_logger, 3
+        RetryWithBackoff._log_failure(
+            mock_retry_state,
+            mock_logger,
+            3,
         )
 
         # Should not have logged anything

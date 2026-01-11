@@ -39,7 +39,6 @@ except Exception as e:
 ```
 """
 
-
 # Re-export UpstreamError from foundation for compatibility
 from foundation.exceptions import UpstreamError  # noqa: F401
 
@@ -74,7 +73,8 @@ class _UpstreamError(PipelineError):
 
     This exception indicates that a required external service (MinIO, Spark,
     Ollama, Qdrant, or Kubernetes API) is unavailable, returned an error, or
-    failed to complete a request. It maps to HTTP 502 (Bad Gateway) in API routes.
+    failed to complete a request. It maps to HTTP 502 (Bad Gateway) in API
+    routes.
 
     Examples:
         - Ollama service is unreachable or returns an error
@@ -84,12 +84,12 @@ class _UpstreamError(PipelineError):
         - Spark job fails to start or crashes
 
     Note:
-        This is a catch-all for dependency failures. In production, you might want
-        to create more specific exceptions (e.g., `OllamaError`, `QdrantError`) for
-        better error categorization and monitoring.
+        This is a catch-all for dependency failures. In production, you might
+        want to create more specific exceptions (e.g., `OllamaError`,
+        `QdrantError`) for better error categorization and monitoring.
 
-        This class is kept for documentation but UpstreamError is re-exported from
-        foundation.exceptions to ensure consistency across the codebase.
+        This class is kept for documentation but UpstreamError is re-exported
+        from foundation.exceptions to ensure consistency across the codebase.
     """
 
 
@@ -106,6 +106,7 @@ class PipelineTimeoutError(PipelineError):
         - Waiting for Kubernetes Job status times out
 
     Note:
-        We use `PipelineTimeoutError` instead of Python's built-in `TimeoutError`
+        We use `PipelineTimeoutError` instead of Python's built-in
+        `TimeoutError`
         to avoid conflicts and maintain our exception hierarchy.
     """

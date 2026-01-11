@@ -19,7 +19,8 @@ def create_s3_client(config: "MinIOConfig | None" = None) -> "S3ClientWrapper":
     """Create a configured S3/MinIO client.
 
     Args:
-        config: Optional MinIOConfig. If None, uses settings from get_settings().
+        config: Optional MinIOConfig. If None, uses settings from
+        get_settings().
 
     Returns:
         Configured S3ClientWrapper instance.
@@ -49,7 +50,8 @@ def create_embedding_client(
     """Create a configured embedding provider.
 
     Args:
-        config: Optional EmbeddingConfig. If None, uses settings from get_settings().
+        config: Optional EmbeddingConfig. If None, uses settings from
+        get_settings().
 
     Returns:
         EmbeddingProvider instance (OllamaClient, OpenAIClient, etc.).
@@ -63,8 +65,8 @@ def create_embedding_client(
         ```
     """
     if config is None:
-        # get_settings().embedding is EmbeddingProviderConfig (alias for EmbeddingConfig)
-        # Cast to EmbeddingConfig for type checker
+        # get_settings().embedding is EmbeddingProviderConfig (alias for
+        # EmbeddingConfig) Cast to EmbeddingConfig for type checker
         config = cast(EmbeddingConfig, get_settings().embedding)
 
     return create_embedding_provider(config)
@@ -76,7 +78,8 @@ def create_vector_db_client(
     """Create a configured vector database provider.
 
     Args:
-        config: Optional VectorDBConfig. If None, uses settings from get_settings().
+        config: Optional VectorDBConfig. If None, uses settings from
+        get_settings().
 
     Returns:
         VectorDBProvider instance (QdrantClientWrapper, WeaviateClient, etc.).
@@ -86,12 +89,13 @@ def create_vector_db_client(
         from clients import create_vector_db_client
 
         provider = create_vector_db_client()
-        results = provider.search(collection="documents", query_vector=[...], limit=10)
+        results = provider.search(collection="documents", query_vector=[...],
+        limit=10)
         ```
     """
     if config is None:
-        # get_settings().vector_db is VectorDBProviderConfig (alias for VectorDBConfig)
-        # Cast to VectorDBConfig for type checker
+        # get_settings().vector_db is VectorDBProviderConfig (alias for
+        # VectorDBConfig) Cast to VectorDBConfig for type checker
         config = cast(VectorDBConfig, get_settings().vector_db)
 
     return create_vector_db_provider(config)

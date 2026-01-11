@@ -1,8 +1,9 @@
 """Qdrant client wrapper class for vector database operations.
 
-This module provides a Qdrant client wrapper class that encapsulates configuration
-and provides methods for collection management and vector operations. This replaces
-the functional API with an object-oriented approach using attrs.
+This module provides a Qdrant client wrapper class that encapsulates
+configuration and provides methods for collection management and vector
+operations. This replaces the functional API with an object-oriented approach
+using attrs.
 
 ## Usage
 
@@ -23,20 +24,19 @@ The client wrapper:
 - Uses attrs for concise, correct class definition
 """
 
-
 import asyncio
 
 import attrs
 import pybreaker
-from qdrant_client import AsyncQdrantClient, QdrantClient
-from qdrant_client.http import models as qmodels
-from qdrant_client.models import PointStruct  # Qdrant's native point type
-
 from config import VectorDBConfig
 from core.exceptions import UpstreamError
 from core.models import SearchResultItem, SearchResults
 from foundation.async_utils import close_async_resource
 from foundation.circuit_breaker import handle_circuit_breaker_error
+from qdrant_client import AsyncQdrantClient, QdrantClient
+from qdrant_client.http import models as qmodels
+from qdrant_client.models import PointStruct  # Qdrant's native point type
+
 from .base import VectorDBClientBase
 from .interfaces.vector_db import VectorDBProvider
 
@@ -49,8 +49,9 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         url: Qdrant service URL (e.g., `http://qdrant.ml-system:6333`).
 
     Note:
-        This class uses AsyncQdrantClient internally but provides a sync interface
-        to match the VectorDBProvider ABC. Async operations are wrapped with asyncio.run().
+        This class uses AsyncQdrantClient internally but provides a sync
+        interface to match the VectorDBProvider ABC. Async operations are
+        wrapped with asyncio.run().
     """
 
     url: str
@@ -70,8 +71,12 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
 
     def __attrs_post_init__(self) -> None:
         """Initialize the Qdrant async and sync clients and circuit breaker."""
-        object.__setattr__(self, "_client", AsyncQdrantClient(url=self.url, timeout=300))
-        object.__setattr__(self, "_sync_client", QdrantClient(url=self.url, timeout=300))
+        object.__setattr__(
+            self, "_client", AsyncQdrantClient(url=self.url, timeout=300)
+        )
+        object.__setattr__(
+            self, "_sync_client", QdrantClient(url=self.url, timeout=300)
+        )
 
         # Initialize circuit breaker from base class
         self._init_circuit_breaker()
@@ -99,25 +104,32 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         assert config.qdrant_url is not None
         return cls(url=config.qdrant_url)
 
-    async def ensure_collection(self, *, collection: str, vector_size: int) -> None:
+    async def ensure_collection(
+        self,
+        *,
+        collection: str,
+        vector_size: int,
+    ) -> None:
         """Create a Qdrant collection if it does not already exist.
 
-        This is a dev convenience function that checks for collection existence and
-        creates it with sensible defaults if missing. In production, you might want
-        to manage collections via infrastructure-as-code or separate tooling.
+        This is a dev convenience function that checks for collection existence
+        and creates it with sensible defaults if missing. In production, you
+        might want to manage collections via infrastructure-as-code or separate
+        tooling.
 
         Args:
             collection: Collection name to ensure exists.
-            vector_size: Dimension of vectors that will be stored in this collection.
-                Must match the embedding dimension from your model (e.g., 768 for
-                `nomic-embed-text`).
+            vector_size: Dimension of vectors that will be stored in this
+            collection.  Must match the embedding dimension from your model
+            (e.g., 768 for `nomic-embed-text`).
 
         Note:
             The collection is created with:
             - **Distance metric**: Cosine similarity (standard for embeddings)
             - **Vector size**: As specified by `vector_size`
 
-            If the collection already exists, this function does nothing (no-op).
+            If the collection already exists, this function does nothing
+            (no-op).
         """
         existing_collections = await self._client.get_collections()
         existing = {c.name for c in existing_collections.collections}
@@ -125,7 +137,9 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             return
         await self._client.create_collection(
             collection_name=collection,
-            vectors_config=qmodels.VectorParams(size=vector_size, distance=qmodels.Distance.COSINE),
+            vectors_config=qmodels.VectorParams(
+                size=vector_size, distance=qmodels.Distance.COSINE
+            ),
         )
 
     async def search(
@@ -135,17 +149,19 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
 
         Args:
             collection: Collection name to search.
-            query_vector: Query embedding vector (must match collection dimension).
+            query_vector: Query embedding vector (must match collection
+            dimension).
             limit: Maximum number of results to return.
 
         Returns:
             A `SearchResults` instance containing:
-            - `items`: List of search result items, ordered by similarity (highest first)
+            - `items`: List of search result items, ordered by similarity
+            (highest first)
             - `total`: Total number of results found
 
         Raises:
-            UpstreamError: If collection doesn't exist or search fails. Also raised when
-                circuit breaker is open.
+            UpstreamError: If collection doesn't exist or search fails. Also
+            raised when circuit breaker is open.
 
         Example:
             ```python
@@ -186,8 +202,9 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
     async def disable_indexing(self, *, collection: str) -> None:
         """Disable indexing for a collection during bulk operations.
 
-        This method optimizes performance during bulk data ingestion by disabling
-        the HNSW index building. The index will be built after re-enabling indexing.
+        This method optimizes performance during bulk data ingestion by
+        disabling the HNSW index building. The index will be built after
+        re-enabling indexing.
 
         Args:
             collection: Collection name to disable indexing for.
@@ -202,7 +219,9 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         try:
             await self._client.update_collection(
                 collection_name=collection,
-                optimizer_config=qmodels.OptimizersConfigDiff(indexing_threshold=0),
+                optimizer_config=qmodels.OptimizersConfigDiff(
+                    indexing_threshold=0,
+                ),
                 hnsw_config=qmodels.HnswConfigDiff(m=0),
             )
             self._logger.info(  # type: ignore[attr-defined]
@@ -227,8 +246,8 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
 
         Args:
             collection: Collection name to enable indexing for.
-            indexing_threshold: Number of points before indexing starts (default: 20000).
-            hnsw_m: HNSW parameter m (default: 16).
+            indexing_threshold: Number of points before indexing starts
+            (default: 20000).  hnsw_m: HNSW parameter m (default: 16).
 
         Raises:
             UpstreamError: If Qdrant operations fail.
@@ -256,7 +275,9 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             msg = f"Failed to enable indexing: {e}"
             raise UpstreamError(msg) from e
 
-    async def _do_batch_upsert(self, *, collection: str, points: list[PointStruct]) -> None:
+    async def _do_batch_upsert(
+        self, *, collection: str, points: list[PointStruct]
+    ) -> None:
         """Qdrant-specific batch upsert implementation.
 
         Args:
@@ -277,8 +298,9 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
     ) -> None:
         """Batch upsert points into a Qdrant collection (async version).
 
-        This method uses the base class template which ensures the collection exists
-        before upserting and performs batch upserts for better performance.
+        This method uses the base class template which ensures the collection
+        exists before upserting and performs batch upserts for better
+        performance.
 
         Args:
             collection: Collection name to upsert into.
@@ -293,8 +315,12 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         Example:
             ```python
             points = [
-                PointStruct(id="1", vector=[0.1, 0.2, ...], payload={"text": "hello"}),
-                PointStruct(id="2", vector=[0.3, 0.4, ...], payload={"text": "world"}),
+                PointStruct(
+                    id="1", vector=[0.1, 0.2, ...], payload={"text": "hello"},
+                ),
+                PointStruct(
+                    id="2", vector=[0.3, 0.4, ...], payload={"text": "world"},
+                ),
             ]
             await client.batch_upsert(
                 collection="documents",
@@ -337,8 +363,12 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         Example:
             ```python
             points = [
-                PointStruct(id="1", vector=[0.1, 0.2, ...], payload={"text": "hello"}),
-                PointStruct(id="2", vector=[0.3, 0.4, ...], payload={"text": "world"}),
+                PointStruct(
+                    id="1", vector=[0.1, 0.2, ...], payload={"text": "hello"},
+                ),
+                PointStruct(
+                    id="2", vector=[0.3, 0.4, ...], payload={"text": "world"},
+                ),
             ]
             client.batch_upsert_sync(
                 collection="documents",
@@ -367,7 +397,10 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
                 )
                 self._logger.info(  # type: ignore[attr-defined]
                     "Created Qdrant collection",
-                    extra={"collection": collection, "vector_size": vector_size},
+                    extra={
+                        "collection": collection,
+                        "vector_size": vector_size,
+                    },
                 )
         except Exception as e:
             msg = f"Failed to ensure collection exists: {e}"
@@ -387,7 +420,11 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         except Exception as e:
             self._logger.exception(  # type: ignore[attr-defined]
                 "Qdrant sync upsert failed",
-                extra={"collection": collection, "points_count": len(points), "error": str(e)},
+                extra={
+                    "collection": collection,
+                    "points_count": len(points),
+                    "error": str(e),
+                },
             )
             msg = f"Qdrant batch upsert failed: {e}"
             raise UpstreamError(msg) from e
@@ -400,8 +437,8 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         closed independently - if one fails, the other will still be closed.
 
         **Event Loop Handling for Async Client:**
-        The async client close operation uses the `close_async_resource` utility
-        which handles three scenarios automatically:
+        The async client close operation uses the `close_async_resource`
+        utility which handles three scenarios automatically:
 
         1. **Running event loop** (e.g., called from async context):
            - Schedules close as a background task
@@ -418,8 +455,8 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         **Error Handling:**
         This method never raises exceptions. All errors are caught, logged with
         full context, and suppressed to ensure both clients are closed even if
-        one fails. This is important for cleanup operations where partial cleanup
-        is better than no cleanup.
+        one fails. This is important for cleanup operations where partial
+        cleanup is better than no cleanup.
 
         Note:
             This method is idempotent - calling it multiple times is safe.
@@ -440,7 +477,9 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         if self._client is not None:
             client_to_close = self._client
             object.__setattr__(self, "_client", None)
-            asyncio.run(close_async_resource(client_to_close, "qdrant_async_client"))
+            asyncio.run(
+                close_async_resource(client_to_close, "qdrant_async_client"),
+            )
 
         # Close sync client (early exit if None)
         if self._sync_client is not None:
