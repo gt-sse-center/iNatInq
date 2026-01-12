@@ -38,8 +38,9 @@ clients/
 │   └── vector_db.py     # VectorDBProvider ABC
 ├── ollama.py            # OllamaClient (implements EmbeddingProvider)
 ├── qdrant.py            # QdrantClientWrapper (implements VectorDBProvider)
+├── weaviate.py          # WeaviateClientWrapper (implements VectorDBProvider)
 ├── s3.py                # S3ClientWrapper
-└── k8s.py               # KubernetesClient
+└── k8s_spark.py         # SparkJobClient (Kubernetes Spark Operator)
 ```
 
 This design allows:
@@ -222,50 +223,55 @@ provider = create_embedding_provider(config)  # Returns OllamaClient
 vector = provider.embed("hello world")
 ```
 
-### `k8s.py`
+### `k8s_spark.py`
 
-Kubernetes client for Spark job management.
+Kubernetes client for managing Spark jobs via the Spark Operator.
 
-**Class:** `KubernetesClient`
+**Class:** `SparkJobClient`
 
 **Methods:**
 
-- `batch`: Property that returns the Kubernetes Batch API client (lazy
-  initialization)
-- `submit_s3_to_qdrant_job(...) -> str`: Submits an S3-to-vector-database
-  processing job to the cluster
-- `wait_for_job(namespace: str, name: str, timeout_s: int = 180) -> None`: Waits
-  for a job to complete (with timeout)
+- `submit_job(name, s3_prefix, collection, executor_instances, executor_memory, ...)`: Submit Spark job
+- `get_job_status(name)`: Get SparkApplication status
+- `list_jobs()`: List all SparkApplications in namespace
+- `delete_job(name)`: Delete SparkApplication and terminate pods
 
 **Usage:**
 
 ```python
-from clients.k8s import KubernetesClient
+from clients.k8s_spark import SparkJobClient
 
-# Create client (auto-detects in-cluster or local config)
-client = KubernetesClient()
+# Create client
+client = SparkJobClient(namespace="ml-system")
 
-# Submit job
-job_name = client.submit_s3_to_qdrant_job(
-    namespace="ml-system",
-    spark_master_url="spark://spark-master:7077",
-    s3_endpoint="http://minio.ml-system:9000",
-    s3_access_key_id="minioadmin",
-    s3_secret_access_key="minioadmin",
-    s3_bucket="pipeline",
+# Submit Spark job
+response = client.submit_job(
+    name="s3-to-vector-db-20260112",
     s3_prefix="inputs/",
-    embedding_provider_type="ollama",
-    embedding_vector_size=768,
-    ollama_base_url="http://ollama.ml-system:11434",
-    ollama_model="nomic-embed-text",
-    vector_db_provider_type="qdrant",
-    qdrant_url="http://qdrant.ml-system:6333",
     collection="documents",
+    executor_instances=2,
+    executor_memory="1g"
 )
 
-# Wait for completion
-client.wait_for_job(namespace="ml-system", name=job_name, timeout_s=180)
+# Monitor job
+status = client.get_job_status("s3-to-vector-db-20260112")
+print(f"State: {status['status']['applicationState']['state']}")
+
+# List all jobs
+jobs = client.list_jobs()
+for job in jobs['items']:
+    print(f"{job['metadata']['name']}: {job['status']['applicationState']['state']}")
+
+# Cleanup
+client.delete_job("s3-to-vector-db-20260112")
 ```
+
+**Implementation Details:**
+
+- Uses Kubernetes Python client to interact with custom resources
+- Supports in-cluster config (service account) and kubeconfig (local dev)
+- Builds SparkApplication manifests with proper env vars and resources
+- Handles Spark Operator API v1beta2
 
 ## Provider Abstraction
 

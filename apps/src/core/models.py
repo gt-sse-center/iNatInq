@@ -11,10 +11,12 @@ All classes use `attrs` for concise, correct class definitions.
 """
 
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import attrs
-from qdrant_client.models import PointStruct as QdrantPointStruct
+
+if TYPE_CHECKING:
+    from qdrant_client.models import PointStruct as QdrantPointStruct
 
 
 @attrs.define(frozen=False, slots=True)
@@ -35,12 +37,14 @@ class VectorPoint:
     vector: Any  # Accepts list[float] or dict[str, list[float]] for named vectors
     payload: dict[str, Any] | None = None
 
-    def to_qdrant(self) -> QdrantPointStruct:
+    def to_qdrant(self) -> "QdrantPointStruct":
         """Convert to Qdrant PointStruct for use with Qdrant client.
 
         Returns:
             QdrantPointStruct instance.
         """
+        from qdrant_client.models import PointStruct as QdrantPointStruct
+
         return QdrantPointStruct(
             id=self.id,
             vector=self.vector,
@@ -48,7 +52,7 @@ class VectorPoint:
         )
 
     @classmethod
-    def from_qdrant(cls, point: QdrantPointStruct) -> "VectorPoint":
+    def from_qdrant(cls, point: "QdrantPointStruct") -> "VectorPoint":
         """Create VectorPoint from Qdrant PointStruct.
 
         Args:

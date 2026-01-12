@@ -18,10 +18,35 @@ This directory contains fundamental data structures and exception classes that a
 core/
 ├── __init__.py          # Package exports
 ├── exceptions.py        # Exception hierarchy
-└── models.py            # Domain models and data structures
+├── models.py            # Domain models and data structures
+└── services/            # Business logic orchestration layer
+    ├── __init__.py
+    ├── README.md
+    ├── search_service.py    # Semantic search orchestration
+    ├── spark_service.py     # Spark job management
+    └── ray_service.py       # Ray job orchestration
 ```
 
 ## Modules
+
+### `services/`
+
+Business logic orchestration layer that coordinates multiple clients to accomplish workflows.
+
+**Purpose:**
+
+- Provides framework-agnostic business logic
+- Orchestrates multiple clients for complex operations  
+- Implements validation and error handling
+- Can be used from APIs, CLIs, or tests
+
+**Services:**
+
+- `SearchService`: Semantic search orchestration
+- `SparkService`: Spark job management via Kubernetes
+- `RayService`: Ray job orchestration
+
+See `services/README.md` for detailed documentation.
 
 ### `exceptions.py`
 

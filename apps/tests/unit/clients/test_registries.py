@@ -20,8 +20,7 @@ that providers can be created using the registry functions.
 Run with: pytest tests/unit/clients/test_registries.py
 """
 
-
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from clients.interfaces.embedding import create_embedding_provider
 from clients.interfaces.vector_db import create_vector_db_provider
@@ -111,8 +110,15 @@ class TestProviderRegistration:
             weaviate_url="http://weaviate.example.com:8080",
         )
 
-        with patch("clients.weaviate.WeaviateAsyncClient"):
-            provider = create_vector_db_provider(config)
+        # Use MagicMock with spec to avoid AsyncMock behavior and patch ConnectionParams
+        mock_client = MagicMock()
+        with patch("clients.weaviate.WeaviateAsyncClient") as mock_weaviate_cls:
+            with patch(
+                "clients.weaviate.ConnectionParams.from_params"
+            ) as mock_conn_params:
+                mock_weaviate_cls.return_value = mock_client
+                mock_conn_params.return_value = MagicMock()
+                provider = create_vector_db_provider(config)
 
         assert isinstance(provider, WeaviateClientWrapper)
         assert provider.url == "http://weaviate.example.com:8080"

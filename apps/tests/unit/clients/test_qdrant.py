@@ -23,16 +23,15 @@ The underlying Qdrant clients and circuit breaker are mocked to isolate client l
 Run with: pytest tests/unit/clients/test_qdrant.py
 """
 
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pybreaker
 import pytest
-from qdrant_client.models import PointStruct
 from clients.qdrant import QdrantClientWrapper
 from config import VectorDBConfig
 from core.exceptions import UpstreamError
 from core.models import SearchResults
+from qdrant_client.models import PointStruct
 
 # =============================================================================
 # Client Initialization Tests
@@ -46,7 +45,6 @@ class TestQdrantClientWrapperInit:
     @patch("clients.qdrant.QdrantClient")
     def test_creates_client_with_config(
         self,
-
         mock_async_qdrant_client: MagicMock,
         mock_qdrant_client: MagicMock,
     ) -> None:
@@ -200,7 +198,9 @@ class TestQdrantClientWrapperEnsureCollection:
         mock_collections.collections = []  # Empty, collection doesn't exist
         mock_async_client.get_collections.return_value = mock_collections
 
-        await qdrant_client.ensure_collection(collection="test-collection", vector_size=768)
+        await qdrant_client.ensure_collection(
+            collection="test-collection", vector_size=768
+        )
 
         mock_async_client.get_collections.assert_called_once()
         mock_async_client.create_collection.assert_called_once()
@@ -230,7 +230,9 @@ class TestQdrantClientWrapperEnsureCollection:
         mock_collections.collections = [mock_collection]
         mock_async_client.get_collections.return_value = mock_collections
 
-        await qdrant_client.ensure_collection(collection="test-collection", vector_size=768)
+        await qdrant_client.ensure_collection(
+            collection="test-collection", vector_size=768
+        )
 
         mock_async_client.get_collections.assert_called_once()
         mock_async_client.create_collection.assert_not_called()
@@ -331,7 +333,9 @@ class TestQdrantClientWrapperSearch:
         mock_breaker.current_state = pybreaker.STATE_OPEN
         object.__setattr__(qdrant_client, "_breaker", mock_breaker)
 
-        with pytest.raises(UpstreamError, match="qdrant service is currently unavailable"):
+        with pytest.raises(
+            UpstreamError, match="qdrant service is currently unavailable"
+        ):
             await qdrant_client.search(
                 collection="test-collection", query_vector=[0.1, 0.2], limit=10
             )
@@ -396,7 +400,9 @@ class TestQdrantClientWrapperBatchUpsert:
         **What it tests:**
           - Empty points list returns without API calls
         """
-        await qdrant_client.batch_upsert(collection="test-collection", points=[], vector_size=768)
+        await qdrant_client.batch_upsert(
+            collection="test-collection", points=[], vector_size=768
+        )
 
         mock_async_client.upsert.assert_not_called()
 
@@ -452,7 +458,9 @@ class TestQdrantClientWrapperBatchUpsert:
 
         points = [PointStruct(id="1", vector=[0.1, 0.2], payload={"text": "hello"})]
 
-        with pytest.raises(UpstreamError, match="qdrant service is currently unavailable"):
+        with pytest.raises(
+            UpstreamError, match="qdrant service is currently unavailable"
+        ):
             await qdrant_client.batch_upsert(
                 collection="test-collection", points=points, vector_size=768
             )
@@ -510,7 +518,9 @@ class TestQdrantClientWrapperBatchUpsertSync:
         **What it tests:**
           - Empty points list returns without API calls
         """
-        qdrant_client.batch_upsert_sync(collection="test-collection", points=[], vector_size=768)
+        qdrant_client.batch_upsert_sync(
+            collection="test-collection", points=[], vector_size=768
+        )
 
         mock_sync_client.upsert.assert_not_called()
 
@@ -716,6 +726,15 @@ class TestQdrantClientWrapperAdditional:
         with patch("asyncio.get_event_loop") as mock_get_loop:
             mock_get_loop.side_effect = RuntimeError("No event loop")
             with patch("asyncio.run") as mock_run:
+                # Make mock_run actually consume the coroutine to avoid RuntimeWarning
+                def consume_coro(coro):
+                    try:
+                        coro.close()
+                    except:
+                        pass
+
+                mock_run.side_effect = consume_coro
+
                 qdrant_client.close()
 
                 mock_run.assert_called_once()
@@ -723,11 +742,12 @@ class TestQdrantClientWrapperAdditional:
 
     def test_close_with_none_clients(self) -> None:
         """Test that close handles None clients gracefully."""
-        with patch("clients.qdrant.AsyncQdrantClient") as mock_client_cls:
-            mock_client_cls.return_value = None
-            client = QdrantClientWrapper(url="http://qdrant.example.com:6333")
-            object.__setattr__(client, "_client", None)
-            object.__setattr__(client, "_sync_client", None)
+        # Use MagicMock to avoid AsyncMock behavior on instantiation
+        with patch("clients.qdrant.AsyncQdrantClient", return_value=MagicMock()):
+            with patch("clients.qdrant.QdrantClient", return_value=MagicMock()):
+                client = QdrantClientWrapper(url="http://qdrant.example.com:6333")
+                object.__setattr__(client, "_client", None)
+                object.__setattr__(client, "_sync_client", None)
 
-            # Should not raise
-            client.close()
+                # Should not raise
+                client.close()
