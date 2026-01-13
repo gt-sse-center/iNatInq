@@ -113,9 +113,7 @@ class TestProviderRegistration:
         # Use MagicMock with spec to avoid AsyncMock behavior and patch ConnectionParams
         mock_client = MagicMock()
         with patch("clients.weaviate.WeaviateAsyncClient") as mock_weaviate_cls:
-            with patch(
-                "clients.weaviate.ConnectionParams.from_params"
-            ) as mock_conn_params:
+            with patch("clients.weaviate.ConnectionParams.from_params") as mock_conn_params:
                 mock_weaviate_cls.return_value = mock_client
                 mock_conn_params.return_value = MagicMock()
                 provider = create_vector_db_provider(config)

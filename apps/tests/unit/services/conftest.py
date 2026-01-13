@@ -128,9 +128,7 @@ def vector_db_config() -> VectorDBConfig:
         VectorDBConfig: Test vector database configuration.
     """
     return VectorDBConfig(
-        provider_type="qdrant",
-        qdrant_url="http://qdrant.test:6333",
-        collection="test_documents"
+        provider_type="qdrant", qdrant_url="http://qdrant.test:6333", collection="test_documents"
     )
 
 
@@ -175,9 +173,7 @@ def ray_service() -> RayService:
 
 
 @pytest.fixture
-def search_service(
-    mock_embedding_provider: MagicMock, mock_vector_db_provider: MagicMock
-) -> SearchService:
+def search_service(mock_embedding_provider: MagicMock, mock_vector_db_provider: MagicMock) -> SearchService:
     """Create a SearchService instance with mocked providers.
 
     Args:
@@ -191,4 +187,3 @@ def search_service(
         embedding_provider=mock_embedding_provider,
         vector_db_provider=mock_vector_db_provider,
     )
-

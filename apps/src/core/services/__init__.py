@@ -13,4 +13,3 @@ __all__ = [
     "SearchService",
     "SparkService",
 ]
-

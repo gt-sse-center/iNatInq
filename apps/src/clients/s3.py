@@ -27,7 +27,6 @@ The client wrapper:
 - Uses attrs for concise, correct class definition
 """
 
-
 import asyncio
 from typing import Any, cast
 
@@ -78,16 +77,12 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
     def __attrs_post_init__(self) -> None:
         """Initialize the boto3 S3 client and circuit breaker after attrs construction."""
-        object.__setattr__(
-            self,
-            "_client",
-            boto3.client(
-                "s3",
-                endpoint_url=self.endpoint_url,
-                aws_access_key_id=self.access_key_id,
-                aws_secret_access_key=self.secret_access_key,
-                region_name=self.region_name,
-            ),
+        self._client = boto3.client(
+            "s3",
+            endpoint_url=self.endpoint_url,
+            aws_access_key_id=self.access_key_id,
+            aws_secret_access_key=self.secret_access_key,
+            region_name=self.region_name,
         )
 
         # Initialize circuit breaker from base class

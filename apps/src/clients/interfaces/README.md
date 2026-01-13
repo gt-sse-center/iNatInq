@@ -44,20 +44,18 @@ Abstract interface for embedding generation providers.
 
 **ABC:** `EmbeddingProvider`
 
-**Abstract Methods:**
+Defines the contract for embedding providers with support for both synchronous
+and asynchronous operations, single and batch embedding generation. See the
+module docstrings and class definition for complete method signatures and usage examples.
 
-- `embed(text: str) -> list[float]`: Generate embedding for a single text (sync)
-- `embed_async(text: str) -> list[float]`: Generate embedding for a single text
-  (async)
-- `vector_size: int`: Property returning the embedding dimension
-- `from_config(config: EmbeddingConfig, session: requests.Session | None = None) -> EmbeddingProvider`:
-  Class method to create instance from config
+**Key capabilities:**
+
+- Sync and async embedding generation (single and batch)
+- Configuration-driven provider instantiation via `from_config()`
+- Provider registry for extensibility
 
 **Configuration:** `EmbeddingConfig`
 
-- `provider_type: EmbeddingProviderType`: Provider type ("ollama", "openai",
-  etc.)
-- `vector_size: int | None`: Expected vector dimension (optional, auto-detected)
 - Provider-specific fields (e.g., `ollama_url`, `ollama_model`,
   `openai_api_key`)
 

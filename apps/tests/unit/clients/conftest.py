@@ -7,7 +7,6 @@ including mock clients, circuit breakers, and client instances.
 # pylint: disable=redefined-outer-name
 # Pytest fixtures intentionally redefine fixture names - this is expected behavior
 
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pybreaker
@@ -201,8 +200,6 @@ def weaviate_client(mock_weaviate_client: AsyncMock) -> WeaviateClientWrapper:
     Returns:
         WeaviateClientWrapper: Configured client with mocked Weaviate client.
     """
-    with patch(
-        "clients.weaviate.WeaviateAsyncClient", return_value=mock_weaviate_client
-    ):
+    with patch("clients.weaviate.WeaviateAsyncClient", return_value=mock_weaviate_client):
         client = WeaviateClientWrapper(url="http://weaviate.example.com:8080")
     return client

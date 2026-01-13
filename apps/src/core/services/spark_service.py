@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from clients.k8s_spark import SparkJobClient
 
@@ -33,7 +33,7 @@ class SparkService:
         s3-to-vector-db-20260112-153045-a1b2c3d4
     """
 
-    def __init__(self, namespace: str = "ml-system"):
+    def __init__(self, namespace: str = "ml-system") -> None:
         """Initialize Spark service.
 
         Args:
@@ -78,7 +78,7 @@ class SparkService:
         """
         # Generate unique job name if not provided
         if not job_name:
-            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+            timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
             unique_id = str(uuid.uuid4())[:8]
             job_name = f"s3-to-vector-db-{timestamp}-{unique_id}"
 
@@ -108,13 +108,12 @@ class SparkService:
                 "namespace": self.namespace,
                 "s3_prefix": s3_prefix,
                 "collection": collection,
-                "submitted_at": datetime.now(timezone.utc).isoformat(),
+                "submitted_at": datetime.now(UTC).isoformat(),
             }
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Failed to submit Spark job",
                 extra={"job_name": job_name, "error": str(e)},
-                exc_info=True,
             )
             raise
 
@@ -202,4 +201,3 @@ class SparkService:
         logger.info("Deleting Spark job", extra={"job_name": job_name})
         self.client.delete_job(job_name)
         return {"job_name": job_name, "status": "deleted"}
-

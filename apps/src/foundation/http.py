@@ -4,7 +4,6 @@ This module provides reusable HTTP client utilities that can be used across the
 pipeline package for consistent retry behavior and connection pooling.
 """
 
-
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry

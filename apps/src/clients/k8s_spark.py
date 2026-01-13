@@ -32,7 +32,7 @@ class SparkJobClient:
         >>> status = client.get_job_status("my-spark-job")
     """
 
-    def __init__(self, namespace: str = "ml-system"):
+    def __init__(self, namespace: str = "ml-system") -> None:
         """Initialize Kubernetes client for SparkApplication CRDs.
 
         Args:
@@ -152,7 +152,7 @@ class SparkJobClient:
             )
             return response
         except ApiException as e:
-            logger.error(
+            logger.exception(
                 "Failed to submit Spark job",
                 extra={
                     "job_name": name,
@@ -160,7 +160,6 @@ class SparkJobClient:
                     "status": e.status,
                     "reason": e.reason,
                 },
-                exc_info=True,
             )
             raise RuntimeError(f"Failed to submit Spark job: {e}") from e
 
@@ -185,7 +184,7 @@ class SparkJobClient:
                 name=name,
             )
         except ApiException as e:
-            logger.error(
+            logger.exception(
                 "Failed to get Spark job status",
                 extra={"job_name": name, "error": str(e)},
             )
@@ -216,7 +215,7 @@ class SparkJobClient:
             logger.info("Deleted Spark job", extra={"job_name": name})
             return response
         except ApiException as e:
-            logger.error(
+            logger.exception(
                 "Failed to delete Spark job",
                 extra={"job_name": name, "error": str(e)},
             )
@@ -236,7 +235,7 @@ class SparkJobClient:
                 plural=self.plural,
             )
         except ApiException as e:
-            logger.error(
+            logger.exception(
                 "Failed to list Spark jobs",
                 extra={"namespace": self.namespace, "error": str(e)},
             )
@@ -288,4 +287,3 @@ class SparkJobClient:
             {"name": "SPARK_EXECUTOR_CORES", "value": "1"},
             {"name": "SPARK_DRIVER_MEMORY", "value": "512m"},
         ]
-

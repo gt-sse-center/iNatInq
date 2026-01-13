@@ -5,7 +5,6 @@ that define the contracts for different types of providers (embedding, vector
 database, etc.). Concrete implementations live in the parent `clients` package.
 """
 
-
 from config import EmbeddingConfig, VectorDBConfig
 from .embedding import EmbeddingProvider, create_embedding_provider
 from .embedding import register_provider as register_embedding_provider

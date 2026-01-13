@@ -24,7 +24,6 @@ The underlying requests.Session and circuit breaker are mocked to isolate client
 Run with: pytest tests/unit/clients/test_ollama.py
 """
 
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pybreaker
@@ -77,9 +76,7 @@ class TestOllamaClientInit:
           - Custom timeout_s value is applied
           - Other default values are preserved
         """
-        client = OllamaClient(
-            base_url="http://ollama.example.com:11434", model="test-model", timeout_s=120
-        )
+        client = OllamaClient(base_url="http://ollama.example.com:11434", model="test-model", timeout_s=120)
 
         assert client.timeout_s == 120
 
@@ -354,9 +351,7 @@ class TestOllamaClientEmbed:
 class TestOllamaClientEmbedBatch:
     """Test suite for OllamaClient.embed_batch method."""
 
-    def test_embed_batch_success(
-        self, ollama_client: OllamaClient, mock_session: MagicMock
-    ) -> None:
+    def test_embed_batch_success(self, ollama_client: OllamaClient, mock_session: MagicMock) -> None:
         """Test that embed_batch returns embeddings on success.
 
         **Why this test is important:**
@@ -385,9 +380,7 @@ class TestOllamaClientEmbedBatch:
         # Check keyword arguments
         assert call_args[1]["json"] == {"model": "nomic-embed-text", "input": ["hello", "world"]}
 
-    def test_embed_batch_raises_value_error_on_empty_list(
-        self, ollama_client: OllamaClient
-    ) -> None:
+    def test_embed_batch_raises_value_error_on_empty_list(self, ollama_client: OllamaClient) -> None:
         """Test that embed_batch raises ValueError for empty list.
 
         **Why this test is important:**
@@ -464,7 +457,7 @@ class TestOllamaClientEmbedBatch:
             mock_response_success,
         ]
 
-        result = ollama_client.embed_batch(["hello", "world"])
+        result = ollama_client.embed_batch(["hello", "world"], fallback_to_individual=True)
 
         assert result == [[0.1, 0.2], [0.3, 0.4]]
         assert mock_session.post.call_count == 3  # 1 batch + 2 individual
@@ -508,9 +501,7 @@ class TestOllamaClientVectorSize:
           - nomic-embed-text returns 768
           - all-minilm returns 384
         """
-        client_nomic = OllamaClient(
-            base_url="http://ollama.example.com:11434", model="nomic-embed-text"
-        )
+        client_nomic = OllamaClient(base_url="http://ollama.example.com:11434", model="nomic-embed-text")
         client_minilm = OllamaClient(base_url="http://ollama.example.com:11434", model="all-minilm")
 
         assert client_nomic.vector_size == 768
@@ -525,9 +516,7 @@ class TestOllamaClientVectorSize:
 class TestOllamaClientClose:
     """Test suite for OllamaClient.close method."""
 
-    def test_close_closes_session(
-        self, ollama_client: OllamaClient, mock_session: MagicMock
-    ) -> None:
+    def test_close_closes_session(self, ollama_client: OllamaClient, mock_session: MagicMock) -> None:
         """Test that close closes the session.
 
         **Why this test is important:**
@@ -735,10 +724,8 @@ class TestOllamaClientEmbedBatchAsync:
         mock_async_client_cls.return_value = mock_client
 
         # Mock individual embed_async calls
-        with patch.object(
-            ollama_client, "embed_async", side_effect=[[0.1, 0.2], [0.3, 0.4]]
-        ) as mock_embed:
-            result = await ollama_client.embed_batch_async(["hello", "world"])
+        with patch.object(ollama_client, "embed_async", side_effect=[[0.1, 0.2], [0.3, 0.4]]) as mock_embed:
+            result = await ollama_client.embed_batch_async(["hello", "world"], fallback_to_individual=True)
 
             assert result == [[0.1, 0.2], [0.3, 0.4]]
             assert mock_embed.call_count == 2

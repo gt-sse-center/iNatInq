@@ -118,10 +118,7 @@ class RayService:
         # Convert ray:// address to http:// for dashboard API
         # ray://ray-head.ml-system.svc.cluster.local:10001 -> http://ray-head.ml-system:8265
         dashboard_address = (
-            ray_config.ray_address.replace("ray://", "http://").split(":")[0]
-            + ":"
-            + namespace
-            + ":8265"
+            ray_config.ray_address.replace("ray://", "http://").split(":")[0] + ":" + namespace + ":8265"
         )
         # Better: construct from namespace
         dashboard_address = f"http://ray-head.{namespace}:8265"
@@ -168,7 +165,7 @@ class RayService:
             return str(job_id)
 
         except Exception as e:
-            logger.error("Failed to submit Ray job", extra={"error": str(e)}, exc_info=True)
+            logger.exception("Failed to submit Ray job", extra={"error": str(e)})
             raise UpstreamError(f"Failed to submit Ray job: {e!s}") from e
 
     def get_job_status(self, job_id: str, namespace: str) -> dict[str, Any]:
@@ -206,7 +203,7 @@ class RayService:
             }
 
         except Exception as e:
-            logger.error("Failed to get Ray job status", extra={"job_id": job_id}, exc_info=True)
+            logger.exception("Failed to get Ray job status", extra={"job_id": job_id})
             raise UpstreamError(f"Failed to get job status: {e!s}") from e
 
     def get_job_logs(self, job_id: str, namespace: str) -> str:
@@ -230,7 +227,7 @@ class RayService:
             return str(logs)
 
         except Exception as e:
-            logger.error("Failed to get Ray job logs", extra={"job_id": job_id}, exc_info=True)
+            logger.exception("Failed to get Ray job logs", extra={"job_id": job_id})
             raise UpstreamError(f"Failed to get job logs: {e!s}") from e
 
     def stop_job(self, job_id: str, namespace: str) -> None:
@@ -251,6 +248,5 @@ class RayService:
             logger.info("Ray job stopped", extra={"job_id": job_id})
 
         except Exception as e:
-            logger.error("Failed to stop Ray job", extra={"job_id": job_id}, exc_info=True)
+            logger.exception("Failed to stop Ray job", extra={"job_id": job_id})
             raise UpstreamError(f"Failed to stop job: {e!s}") from e
-

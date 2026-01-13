@@ -12,10 +12,13 @@ import asyncio
 
 import attrs
 
-from clients.interfaces.embedding import EmbeddingProvider
-from clients.interfaces.vector_db import VectorDBProvider
 from core.exceptions import BadRequestError
-from core.models import SearchResults
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.models import SearchResults
+    from clients.interfaces.vector_db import VectorDBProvider
+    from clients.interfaces.embedding import EmbeddingProvider
 
 
 @attrs.define(frozen=True, slots=True)
@@ -105,15 +108,13 @@ class SearchService:
         query_embedding = self.embedding_provider.embed(query.strip())
 
         # 2. Search vector database (async, run in event loop)
-        search_results = asyncio.run(
+        return asyncio.run(
             self.vector_db_provider.search(
                 collection=collection,
                 query_vector=query_embedding,
                 limit=limit,
             )
         )
-
-        return search_results
 
     async def search_documents_async(
         self,
@@ -162,10 +163,8 @@ class SearchService:
         query_embedding = await self.embedding_provider.embed_async(query.strip())
 
         # 2. Search vector database (async)
-        search_results = await self.vector_db_provider.search(
+        return await self.vector_db_provider.search(
             collection=collection,
             query_vector=query_embedding,
             limit=limit,
         )
-        return search_results
-

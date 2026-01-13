@@ -144,7 +144,6 @@ This module uses Pydantic Settings for configuration management, providing:
 - Multiple configuration sources (env vars)
 """
 
-
 import os
 from functools import lru_cache
 from typing import Any, Literal
@@ -240,9 +239,7 @@ class EmbeddingConfig(BaseModel):
         valid_providers = ("ollama", "openai", "huggingface", "sagemaker")
         if provider_type not in valid_providers:
             msg = f"Invalid EMBEDDING_PROVIDER: {provider_type}. Must be one of: {valid_providers}"
-            raise ValueError(
-                msg
-            )
+            raise ValueError(msg)
 
         in_cluster = _is_in_cluster()
 
@@ -255,9 +252,7 @@ class EmbeddingConfig(BaseModel):
 
         if provider_type == "ollama":
             # Default URL based on environment
-            default_url = (
-                f"http://ollama.{namespace}:11434" if in_cluster else "http://localhost:11434"
-            )
+            default_url = f"http://ollama.{namespace}:11434" if in_cluster else "http://localhost:11434"
             ollama_url_val = os.getenv("OLLAMA_BASE_URL") or default_url
             ollama_model_val = os.getenv("OLLAMA_MODEL") or "nomic-embed-text"
             return cls(
@@ -423,9 +418,7 @@ class VectorDBConfig(BaseModel):
         valid_providers = ("qdrant", "weaviate", "pinecone", "milvus")
         if provider_type not in valid_providers:
             msg = f"Invalid VECTOR_DB_PROVIDER: {provider_type}. Must be one of: {valid_providers}"
-            raise ValueError(
-                msg
-            )
+            raise ValueError(msg)
 
         in_cluster = _is_in_cluster()
 
@@ -434,9 +427,7 @@ class VectorDBConfig(BaseModel):
 
         if provider_type == "qdrant":
             # Default URL based on environment
-            default_url = (
-                f"http://qdrant.{namespace}:6333" if in_cluster else "http://localhost:6333"
-            )
+            default_url = f"http://qdrant.{namespace}:6333" if in_cluster else "http://localhost:6333"
             return cls(
                 provider_type="qdrant",
                 collection=collection,
@@ -444,9 +435,7 @@ class VectorDBConfig(BaseModel):
             )
 
         if provider_type == "weaviate":
-            default_url = (
-                f"http://weaviate.{namespace}:8080" if in_cluster else "http://localhost:8080"
-            )
+            default_url = f"http://weaviate.{namespace}:8080" if in_cluster else "http://localhost:8080"
             return cls(
                 provider_type="weaviate",
                 collection=collection,

@@ -4,7 +4,6 @@ This module provides a reusable retry utility class that can be used across
 the pipeline package for consistent retry behavior with structured logging.
 """
 
-
 import logging
 from collections.abc import Callable
 from functools import partial
@@ -162,9 +161,7 @@ class RetryWithBackoff:
         # Configure exponential backoff with min/max bounds
         # tenacity's wait_exponential formula: min * (multiplier ** attempt)
         # This matches our desired behavior: wait_min * (multiplier ** attempt)
-        wait_strategy = wait_exponential(
-            multiplier=self.multiplier, min=self.wait_min, max=self.wait_max
-        )
+        wait_strategy = wait_exponential(multiplier=self.multiplier, min=self.wait_min, max=self.wait_max)
 
         # Create callbacks with bound parameters using partial
         log_retry = partial(
@@ -196,6 +193,5 @@ class RetryWithBackoff:
             self.logger.exception(
                 "Unexpected error, not retrying",
                 extra={"error": str(e), "error_type": type(e).__name__},
-
             )
             raise

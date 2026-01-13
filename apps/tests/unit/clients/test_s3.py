@@ -23,7 +23,6 @@ The underlying boto3 S3 client and circuit breaker are mocked to isolate client 
 Run with: pytest tests/unit/clients/test_s3.py
 """
 
-
 from unittest.mock import MagicMock, patch
 
 import pybreaker
@@ -42,9 +41,7 @@ class TestS3ClientWrapperInit:
     """Test suite for S3ClientWrapper initialization."""
 
     @patch("clients.s3.boto3.client")
-    def test_creates_client_with_config(
-        self,  mock_boto3: MagicMock
-    ) -> None:
+    def test_creates_client_with_config(self, mock_boto3: MagicMock) -> None:
         """Test that client is created with configuration.
 
         **Why this test is important:**
@@ -171,9 +168,7 @@ class TestS3ClientWrapperBucket:
 class TestS3ClientWrapperPutObject:
     """Test suite for S3ClientWrapper.put_object method."""
 
-    def test_put_object_success(
-        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
-    ) -> None:
+    def test_put_object_success(self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock) -> None:
         """Test that put_object succeeds on valid input.
 
         **Why this test is important:**
@@ -244,9 +239,7 @@ class TestS3ClientWrapperPutObject:
 class TestS3ClientWrapperGetObject:
     """Test suite for S3ClientWrapper.get_object method."""
 
-    def test_get_object_success(
-        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
-    ) -> None:
+    def test_get_object_success(self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock) -> None:
         """Test that get_object returns object content on success.
 
         **Why this test is important:**
@@ -320,9 +313,7 @@ class TestS3ClientWrapperGetObject:
 class TestS3ClientWrapperListObjects:
     """Test suite for S3ClientWrapper.list_objects method."""
 
-    def test_list_objects_success(
-        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
-    ) -> None:
+    def test_list_objects_success(self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock) -> None:
         """Test that list_objects returns object keys on success.
 
         **Why this test is important:**

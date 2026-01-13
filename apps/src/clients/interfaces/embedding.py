@@ -5,7 +5,6 @@ providers. Configuration classes are in `pipeline.config`.
 Concrete implementations live in the parent `clients` package (e.g., `OllamaClient`).
 """
 
-
 from abc import ABC, abstractmethod
 
 import requests
@@ -237,9 +236,7 @@ def create_embedding_provider(
             f"Provider type '{config.provider_type}' is not registered. "
             f"Available providers: {list(_PROVIDER_REGISTRY.keys())}"
         )
-        raise ValueError(
-            msg
-        )
+        raise ValueError(msg)
 
     # Instantiate provider - each provider class knows how to construct itself from config
     # This delegates the construction logic to the provider class

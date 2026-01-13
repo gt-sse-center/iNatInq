@@ -10,7 +10,6 @@ the codebase. Using classes instead of tuples provides:
 All classes use `attrs` for concise, correct class definitions.
 """
 
-
 from typing import TYPE_CHECKING, Any
 
 import attrs
