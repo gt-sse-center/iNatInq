@@ -22,8 +22,6 @@ Session creation is tested in isolation without network calls.
 Run with: pytest tests/unit/foundation/test_http.py
 """
 
-from __future__ import annotations
-
 import requests
 from foundation.http import (
     DEFAULT_ALLOWED_METHODS,

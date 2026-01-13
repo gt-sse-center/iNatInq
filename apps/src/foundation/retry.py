@@ -4,8 +4,6 @@ This module provides a reusable retry utility class that can be used across
 the pipeline package for consistent retry behavior with structured logging.
 """
 
-from __future__ import annotations
-
 import logging
 from collections.abc import Callable
 from functools import partial
@@ -39,7 +37,7 @@ class RetryWithBackoff:
 
     Example:
         ```python
-        from pipeline.foundation.retry import RetryWithBackoff
+        from foundation.retry import RetryWithBackoff
 
         retry = RetryWithBackoff(max_attempts=5, wait_min=1.0, wait_max=30.0)
         result = retry.call(lambda: some_function(arg1, arg2))
@@ -125,7 +123,7 @@ class RetryWithBackoff:
             return
 
         exception = retry_state.outcome.exception()
-        logger.error(
+        logger.exception(
             "All retry attempts exhausted",
             extra={
                 "max_attempts": max_attempts,
@@ -163,9 +161,7 @@ class RetryWithBackoff:
         # Configure exponential backoff with min/max bounds
         # tenacity's wait_exponential formula: min * (multiplier ** attempt)
         # This matches our desired behavior: wait_min * (multiplier ** attempt)
-        wait_strategy = wait_exponential(
-            multiplier=self.multiplier, min=self.wait_min, max=self.wait_max
-        )
+        wait_strategy = wait_exponential(multiplier=self.multiplier, min=self.wait_min, max=self.wait_max)
 
         # Create callbacks with bound parameters using partial
         log_retry = partial(
@@ -194,9 +190,8 @@ class RetryWithBackoff:
             return result
         except (TypeError, AttributeError, KeyError) as e:
             # Don't retry on unexpected exceptions (programming errors, etc.)
-            self.logger.error(
+            self.logger.exception(
                 "Unexpected error, not retrying",
                 extra={"error": str(e), "error_type": type(e).__name__},
-                exc_info=True,
             )
             raise

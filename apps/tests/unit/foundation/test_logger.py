@@ -21,8 +21,6 @@ to test formatter behavior in isolation without actual logging infrastructure.
 Run with: pytest tests/unit/foundation/test_logger.py
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import sys

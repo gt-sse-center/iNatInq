@@ -15,6 +15,26 @@ The `apps` package is organized into modular components that can be reused acros
   - HTTP session management with retries
   - Structured JSON logging utilities
   - Custom exception hierarchy
+  - Async resource management utilities
+
+- **`clients/`**: External service client wrappers
+  - S3/MinIO client for object storage
+  - Qdrant client for vector database operations
+  - Weaviate client for vector database operations
+  - Ollama client for embedding generation
+  - Provider abstraction layer (ABCs) for swappable implementations
+  - Registry pattern for provider discovery
+  - Circuit breaker integration for fault tolerance
+
+- **`core/`**: Core domain models and exceptions
+  - Data models (SearchResult, SearchResults, VectorPoint, etc.)
+  - Exception hierarchy (UpstreamError, etc.)
+  - Shared types and interfaces
+
+- **`config.py`**: Centralized configuration management
+  - Pydantic-based settings
+  - Environment variable loading
+  - Type-safe configuration for all services
 
 ### Planned Components
 
@@ -26,7 +46,7 @@ As we migrate from the `modern-web-application` repository, this package will ex
   - Semantic search over indexed documents
   - Kubernetes-native batch job orchestration
 
-The pipeline service will integrate foundation utilities for resilient communication with external services (MinIO, Spark, Ollama, Qdrant).
+The pipeline service will integrate foundation utilities and client wrappers for resilient communication with external services.
 
 ## Setup
 
@@ -47,27 +67,41 @@ pip install -e ".[dev]"
 Tests require dependencies to be installed. Once installed, run:
 
 ```bash
-# From the root iNatInq directory
-uv run pytest apps/tests/
+# From the apps directory
+cd apps
+uv run pytest
 
 # Or with specific test file
-uv run pytest apps/tests/unit/foundation/test_http.py
+uv run pytest tests/unit/foundation/test_http.py
 
-# With coverage (already configured in pyproject.toml)
+# Or from root iNatInq directory
 uv run pytest apps/tests/ -v
+
+# With coverage report
+uv run pytest --cov
 ```
 
-The foundation package is installed in the workspace via uv, so imports like `from foundation import ...` work correctly.
+The packages (`foundation`, `clients`, `core`) are configured in `pyproject.toml` with `pythonpath = ["src"]`, so imports like `from foundation import ...`, `from clients import ...`, and `from core import ...` work correctly in tests.
 
 ## Structure
 
 ```text
 apps/
 ├── src/
-│   └── foundation/          # Package source code
+│   ├── foundation/          # Core utilities (retry, circuit breaker, logging, etc.)
+│   ├── clients/             # External service clients (S3, Qdrant, Ollama, etc.)
+│   ├── core/                # Domain models and exceptions
+│   └── config.py            # Configuration management
 ├── tests/
-│   └── unit/
-│       └── foundation/      # Unit tests
+│   ├── unit/
+│   │   ├── foundation/      # Foundation unit tests
+│   │   └── clients/         # Client unit tests
+│   └── conftest.py          # Shared test fixtures
 └── pyproject.toml           # Package configuration
 ```
 
+### Test Coverage
+
+- **168 tests** covering foundation utilities, clients, and core models
+- **92.59% code coverage** (exceeds 70% requirement)
+- Tests use pytest with async support and comprehensive mocking
