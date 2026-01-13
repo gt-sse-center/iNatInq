@@ -37,7 +37,7 @@ class VectorDBClientBase(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin
         The interface contract (ensure_collection, search) is defined in VectorDBProvider.
     """
 
-    async def batch_upsert(self, *, collection: str, points: list[Any], vector_size: int) -> None:
+    async def batch_upsert_async(self, *, collection: str, points: list[Any], vector_size: int) -> None:
         """Batch upsert points into a collection with common error handling.
 
         This template method handles common logic:
@@ -66,7 +66,7 @@ class VectorDBClientBase(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin
         # Ensure collection exists before upserting
         # Note: ensure_collection is defined in VectorDBProvider interface.
         # Concrete classes inherit from both VectorDBClientBase and VectorDBProvider.
-        await self.ensure_collection(collection=collection, vector_size=vector_size)  # type: ignore[attr-defined]
+        await self.ensure_collection_async(collection=collection, vector_size=vector_size)  # type: ignore[attr-defined]
 
         # Delegate to provider-specific implementation with error handling
         try:

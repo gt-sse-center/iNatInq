@@ -89,7 +89,7 @@ def create_vector_db_client(
         from clients import create_vector_db_client
 
         provider = create_vector_db_client()
-        results = provider.search(collection="documents", query_vector=[...],
+        results = provider.search_async(collection="documents", query_vector=[...],
         limit=10)
         ```
     """

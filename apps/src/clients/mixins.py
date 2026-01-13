@@ -4,7 +4,6 @@ This module provides reusable mixins that can be combined with client classes
 to add common functionality like circuit breaker support, config validation, and logging.
 """
 
-
 import logging
 from abc import ABC, abstractmethod
 from typing import Any
@@ -57,14 +56,10 @@ class CircuitBreakerMixin(ABC):
         is fully initialized.
         """
         name, failure_threshold, recovery_timeout = self._circuit_breaker_config()
-        object.__setattr__(
-            self,
-            "_breaker",
-            create_circuit_breaker(
-                name=name,
-                failure_threshold=failure_threshold,
-                recovery_timeout=recovery_timeout,
-            ),
+        self._breaker = create_circuit_breaker(
+            name=name,
+            failure_threshold=failure_threshold,
+            recovery_timeout=recovery_timeout,
         )
 
 
@@ -76,9 +71,7 @@ class ConfigValidationMixin:
     """
 
     @classmethod
-    def _validate_config(
-        cls, config: Any, expected_provider: str, required_fields: list[str]
-    ) -> None:
+    def _validate_config(cls, config: Any, expected_provider: str, required_fields: list[str]) -> None:
         """Validate config has correct provider type and required fields.
 
         Args:
@@ -99,16 +92,12 @@ class ConfigValidationMixin:
         """
         if config.provider_type != expected_provider:
             msg = f"Config provider_type must be '{expected_provider}', got '{config.provider_type}'"
-            raise ValueError(
-                msg
-            )
+            raise ValueError(msg)
 
         missing = [f for f in required_fields if not getattr(config, f, None)]
         if missing:
             msg = f"{expected_provider.capitalize()} provider requires: {', '.join(missing)}"
-            raise ValueError(
-                msg
-            )
+            raise ValueError(msg)
 
 
 class LoggerMixin:
@@ -127,4 +116,3 @@ class LoggerMixin:
         super().__init_subclass__(**kwargs)
         module = cls.__module__
         cls._logger = logging.getLogger(module)  # type: ignore[attr-defined]
-

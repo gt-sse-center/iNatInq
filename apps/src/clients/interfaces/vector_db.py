@@ -34,17 +34,17 @@ class VectorDBProvider(ABC):
     Example:
         ```python
         class MyVectorDB(VectorDBProvider):
-            def ensure_collection(self, collection: str, vector_size: int) -> None:
+            async def ensure_collection_async(self, collection: str, vector_size: int) -> None:
                 # Implementation
                 ...
 
-            def search(
+            async def search_async(
                 self, collection: str, query_vector: list[float], limit: int
             ) -> SearchResults:
                 # Implementation
                 ...
 
-            def batch_upsert(
+            async def batch_upsert_async(
                 self, collection: str, points: list[VECTOR_DB_POINT], vector_size: int
             ) -> None:
                 # Implementation
@@ -53,7 +53,7 @@ class VectorDBProvider(ABC):
     """
 
     @abstractmethod
-    async def ensure_collection(self, *, collection: str, vector_size: int) -> None:
+    async def ensure_collection_async(self, collection: str, vector_size: int) -> None:
         """Create a collection if it does not already exist.
 
         This is a dev convenience function that checks for collection existence
@@ -72,8 +72,8 @@ class VectorDBProvider(ABC):
         """
 
     @abstractmethod
-    async def search(
-        self, *, collection: str, query_vector: list[float], limit: int = 10
+    async def search_async(
+        self, collection: str, query_vector: list[float], limit: int = 10
     ) -> SearchResults:
         """Search for similar vectors in a collection.
 
@@ -92,9 +92,8 @@ class VectorDBProvider(ABC):
         """
 
     @abstractmethod
-    async def batch_upsert(
+    async def batch_upsert_async(
         self,
-        *,
         collection: str,
         points: list[VectorDBPoint],
         vector_size: int,
@@ -203,7 +202,7 @@ def create_vector_db_provider(config: VectorDBConfig) -> "VectorDBProvider":
 
         config = VectorDBConfig.from_env()
         provider = create_vector_db_provider(config)
-        results = provider.search(collection="documents", query_vector=[...], limit=10)
+        results = await provider.search_async(collection="documents", query_vector=[...], limit=10)
         ```
     """
     provider_class = _PROVIDER_REGISTRY.get(config.provider_type)

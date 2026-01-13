@@ -11,8 +11,8 @@ using attrs.
 from clients.qdrant import QdrantClientWrapper
 
 client = QdrantClientWrapper(url="http://qdrant.ml-system:6333")
-client.ensure_collection(collection="documents", vector_size=768)
-results = client.search(collection="documents", query_vector=[...], limit=10)
+client.ensure_collection_async(collection="documents", vector_size=768)
+results = client.search_async(collection="documents", query_vector=[...], limit=10)
 ```
 
 ## Design
@@ -71,12 +71,8 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
 
     def __attrs_post_init__(self) -> None:
         """Initialize the Qdrant async and sync clients and circuit breaker."""
-        object.__setattr__(
-            self, "_client", AsyncQdrantClient(url=self.url, timeout=300)
-        )
-        object.__setattr__(
-            self, "_sync_client", QdrantClient(url=self.url, timeout=300)
-        )
+        self._client = AsyncQdrantClient(url=self.url, timeout=300)
+        self._sync_client = QdrantClient(url=self.url, timeout=300)
 
         # Initialize circuit breaker from base class
         self._init_circuit_breaker()
@@ -104,7 +100,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         assert config.qdrant_url is not None
         return cls(url=config.qdrant_url)
 
-    async def ensure_collection(
+    async def ensure_collection_async(
         self,
         *,
         collection: str,
@@ -142,7 +138,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             ),
         )
 
-    async def search(
+    async def search_async(
         self, *, collection: str, query_vector: list[float], limit: int = 10
     ) -> SearchResults:
         """Search for similar vectors in a Qdrant collection.
@@ -165,7 +161,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
 
         Example:
             ```python
-            results = await client.search(
+            results = await client.search_async(
                 collection="documents",
                 query_vector=[0.1, 0.2, ...],  # 768-dimensional vector
                 limit=10
@@ -289,7 +285,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         """
         await self._client.upsert(collection_name=collection, points=points)
 
-    async def batch_upsert(
+    async def batch_upsert_async(
         self,
         *,
         collection: str,
@@ -322,7 +318,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
                     id="2", vector=[0.3, 0.4, ...], payload={"text": "world"},
                 ),
             ]
-            await client.batch_upsert(
+            await client.batch_upsert_async(
                 collection="documents",
                 points=points,
                 vector_size=768
@@ -334,7 +330,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             Empty point lists are ignored (no-op).
         """
         # Use base class template method for common logic
-        await VectorDBClientBase.batch_upsert(
+        await VectorDBClientBase.batch_upsert_async(
             self, collection=collection, points=points, vector_size=vector_size
         )
 
@@ -473,15 +469,15 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
                 client.close()  # Always closes, even if errors occur
             ```
         """
-        # Close async client using utility (early exit if None)
+        # Close async client using utility
         if self._client is not None:
             client_to_close = self._client
-            object.__setattr__(self, "_client", None)
+            self._client = None
             asyncio.run(
                 close_async_resource(client_to_close, "qdrant_async_client"),
             )
 
-        # Close sync client (early exit if None)
+        # Close sync client
         if self._sync_client is not None:
             try:
                 self._sync_client.close()
@@ -491,4 +487,4 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
                     extra={"error": str(e)},
                 )
             finally:
-                object.__setattr__(self, "_sync_client", None)
+                self._sync_client = None

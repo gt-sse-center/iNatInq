@@ -88,7 +88,7 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
     def __attrs_post_init__(self) -> None:
         """Initialize the requests session and circuit breaker."""
         if self._session is None:
-            object.__setattr__(self, "_session", create_retry_session())
+            self._session = create_retry_session()
 
         # Initialize circuit breaker from base class
         self._init_circuit_breaker()
@@ -100,7 +100,7 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         Creates one if needed.
         """
         if self._session is None:
-            object.__setattr__(self, "_session", create_retry_session())
+            self._session = create_retry_session()
         # Type narrowing: we just set _session if it was None
         assert self._session is not None
         return self._session
@@ -111,7 +111,7 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         Args:
             session: Requests session to use for API calls.
         """
-        object.__setattr__(self, "_session", session)
+        self._session = session
 
     @classmethod
     def from_config(
@@ -205,17 +205,19 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         return [float(x) for x in emb]
 
     @with_circuit_breaker("ollama")
-    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+    def embed_batch(
+        self, texts: list[str], fallback_to_individual: bool = False
+    ) -> list[list[float]]:
         """Generate embeddings for multiple texts in one API call.
 
         Ollama supports batch embeddings via the `input` parameter (not `prompt`).
         This is much more efficient than individual calls.
 
-        If batch embedding fails (e.g., Ollama version doesn't support it),
-        falls back to individual embedding calls.
-
         Args:
             texts: List of input texts to embed.
+            fallback_to_individual: If True, fall back to individual embedding calls
+                when the batch API fails (e.g., unsupported Ollama version). If False,
+                raise UpstreamError on batch API failure. Defaults to False.
 
         Returns:
             List of embedding vectors, one per input text. Each vector has the
@@ -224,18 +226,21 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         Raises:
             UpstreamError: If Ollama is unreachable, returns an error status code,
                 or the response is invalid. Also raised when circuit breaker is open.
+                When fallback_to_individual is False, also raised on batch API failures.
             ValueError: If texts is empty.
 
         Example:
             ```python
             vectors = client.embed_batch(["hello world", "foo bar"])
             # Returns: [[0.1, 0.2, ...], [0.3, 0.4, ...]]  # Two 768-d vectors
+
+            # With fallback for older Ollama versions:
+            vectors = client.embed_batch(["hello", "world"], fallback_to_individual=True)
             ```
 
         Note:
             Ollama batch embeddings may degrade in quality at batch sizes >= 16.
             Consider limiting batch size to 8-12 for best results.
-            If batch API is not supported, falls back to individual calls.
         """
         if not texts:
             raise ValueError("texts list cannot be empty")
@@ -276,15 +281,17 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
             return [[float(x) for x in emb] for emb in embeddings]
 
         except (requests.RequestException, UpstreamError) as e:
-            # Fall back to individual calls if batch API fails
-            # This handles cases where Ollama version doesn't support batch embeddings
-            self._logger.warning(  # type: ignore[attr-defined]
-                "Ollama batch embedding failed, falling back to individual calls",
-                extra={"error": str(e), "texts_count": len(texts)},
-            )
-
-            # Fall back to individual embedding calls
-            return [self.embed(text) for text in texts]
+            # Fall back to individual calls only if explicitly enabled
+            if fallback_to_individual:
+                self._logger.warning(  # type: ignore[attr-defined]
+                    "Ollama batch embedding failed, falling back to individual calls",
+                    extra={"error": str(e), "texts_count": len(texts)},
+                )
+                # Fall back to individual embedding calls
+                return [self.embed(text) for text in texts]
+            else:
+                # Re-raise the error if fallback is not enabled
+                raise
 
     async def embed_async(self, text: str) -> list[float]:
         """Generate an embedding vector for a single text string (async).
@@ -341,14 +348,18 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
             msg = f"Ollama request failed: {e}"
             raise UpstreamError(msg) from e
 
-    async def embed_batch_async(self, texts: list[str]) -> list[list[float]]:
+    async def embed_batch_async(
+        self, texts: list[str], fallback_to_individual: bool = False
+    ) -> list[list[float]]:
         """Generate embeddings for multiple texts in one API call (async).
 
         Ollama supports batch embeddings via the `input` parameter (not `prompt`).
-        If batch embedding fails, falls back to individual embedding calls.
 
         Args:
             texts: List of input texts to embed.
+            fallback_to_individual: If True, fall back to individual embedding calls
+                when the batch API fails (e.g., unsupported Ollama version). If False,
+                raise UpstreamError on batch API failure. Defaults to False.
 
         Returns:
             List of embedding vectors, one per input text.
@@ -356,16 +367,17 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         Raises:
             UpstreamError: If Ollama is unreachable, returns an error status code,
                 or the response is invalid. Also raised when circuit breaker is open.
+                When fallback_to_individual is False, also raised on batch API failures.
             ValueError: If texts is empty.
 
         Example:
             ```python
             vectors = await client.embed_batch_async(["hello", "world"])
             # Returns: [[0.1, 0.2, ...], [0.3, 0.4, ...]]
-            ```
 
-        Note:
-            If batch API is not supported, falls back to individual async calls.
+            # With fallback for older Ollama versions:
+            vectors = await client.embed_batch_async(["hello", "world"], fallback_to_individual=True)
+            ```
         """
         if not texts:
             raise ValueError("texts list cannot be empty")
@@ -399,14 +411,17 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
 
                 return [[float(x) for x in emb] for emb in embeddings]
         except (httpx.HTTPStatusError, httpx.RequestError, UpstreamError) as e:
-            # Fall back to individual async calls if batch API fails
-            self._logger.warning(  # type: ignore[attr-defined]
-                "Ollama batch embedding failed, falling back to individual calls",
-                extra={"error": str(e), "texts_count": len(texts)},
-            )
-
-            # Fall back to individual async embedding calls
-            return await asyncio.gather(*[self.embed_async(text) for text in texts])
+            # Fall back to individual async calls only if explicitly enabled
+            if fallback_to_individual:
+                self._logger.warning(  # type: ignore[attr-defined]
+                    "Ollama batch embedding failed, falling back to individual calls",
+                    extra={"error": str(e), "texts_count": len(texts)},
+                )
+                # Fall back to individual async embedding calls
+                return await asyncio.gather(*[self.embed_async(text) for text in texts])
+            else:
+                # Re-raise the error if fallback is not enabled
+                raise
 
     def close(self) -> None:
         """Close the HTTP session and release resources.
@@ -416,4 +431,4 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         """
         if self._session is not None:
             self._session.close()
-            object.__setattr__(self, "_session", None)
+            self._session = None
