@@ -57,15 +57,8 @@ from api.middleware import (
     LoggerMiddleware,
 )
 from api.routes import router
-from core.exceptions import (
-    BadRequestError,
-    PipelineError,
-    PipelineTimeoutError,
-    UpstreamError,
-)
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from foundation.logger import LOGGING_CONFIG
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -180,54 +173,6 @@ def create_app() -> FastAPI:
     # Exception handler - catches unhandled exceptions and converts to HTTP
     # responses
     app.add_middleware(ExceptionHandlerMiddleware)
-
-    #             ╭─────────────────────────────────────────────────────────╮
-    #             │                   Exception Handlers                     │
-    #             ╰─────────────────────────────────────────────────────────╯
-
-    # Add custom exception handlers for specific exception types
-    # These run before the middleware and allow us to handle HTTPException
-    @app.exception_handler(HTTPException)
-    async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:
-        """Handle HTTPException from FastAPI routes."""
-        logger.exception(
-            "http exception",
-            extra={"error": {"statuscode": exc.status_code}},
-        )
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={"error": "Client Error", "message": str(exc.detail)},
-        )
-
-    @app.exception_handler(BadRequestError)
-    async def bad_request_handler(_request: Request, exc: BadRequestError) -> JSONResponse:
-        """Handle BadRequestError from service layer."""
-        logger.exception("bad request", extra={"error": {"statuscode": 400, "message": str(exc)}})
-        return JSONResponse(status_code=400, content={"error": "Bad Request", "message": str(exc)})
-
-    @app.exception_handler(PipelineTimeoutError)
-    async def timeout_handler(_request: Request, exc: PipelineTimeoutError) -> JSONResponse:
-        """Handle PipelineTimeoutError from service layer."""
-        logger.exception(
-            "pipeline timeout",
-            extra={"error": {"statuscode": 504, "message": str(exc)}},
-        )
-        return JSONResponse(status_code=504, content={"error": "Gateway Timeout", "message": str(exc)})
-
-    @app.exception_handler(UpstreamError)
-    async def upstream_handler(_request: Request, exc: UpstreamError) -> JSONResponse:
-        """Handle UpstreamError from service layer."""
-        logger.exception("upstream error", extra={"error": {"statuscode": 502, "message": str(exc)}})
-        return JSONResponse(status_code=502, content={"error": "Bad Gateway", "message": str(exc)})
-
-    @app.exception_handler(PipelineError)
-    async def pipeline_error_handler(_request: Request, exc: PipelineError) -> JSONResponse:
-        """Handle generic PipelineError from service layer."""
-        logger.exception("pipeline error", extra={"error": {"statuscode": 500, "message": str(exc)}})
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Internal Server Error", "message": str(exc)},
-        )
 
     #             ╭─────────────────────────────────────────────────────────╮
     #             │                        Routers                          │
