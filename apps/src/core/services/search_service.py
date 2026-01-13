@@ -109,7 +109,7 @@ class SearchService:
 
         # 2. Search vector database (async, run in event loop)
         return asyncio.run(
-            self.vector_db_provider.search(
+            self.vector_db_provider.search_async(
                 collection=collection,
                 query_vector=query_embedding,
                 limit=limit,
@@ -163,7 +163,7 @@ class SearchService:
         query_embedding = await self.embedding_provider.embed_async(query.strip())
 
         # 2. Search vector database (async)
-        return await self.vector_db_provider.search(
+        return await self.vector_db_provider.search_async(
             collection=collection,
             query_vector=query_embedding,
             limit=limit,

@@ -80,7 +80,7 @@ def mock_vector_db_provider() -> MagicMock:
         MagicMock: A mock vector database provider with search method.
     """
     provider = MagicMock(spec=VectorDBProvider)
-    provider.search = AsyncMock(
+    provider.search_async = AsyncMock(
         return_value=SearchResults(
             items=[
                 SearchResultItem(
