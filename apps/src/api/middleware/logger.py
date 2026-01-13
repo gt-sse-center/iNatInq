@@ -5,17 +5,12 @@ request start and completion with timing information. This follows the pattern
 used in the smarts service (services-main) for consistent logging across services.
 """
 
-from __future__ import annotations
-
 import time
+from collections.abc import Awaitable, Callable
 from logging import Logger, getLogger
 
+from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from fastapi import Request, Response
-    from collections.abc import Awaitable, Callable
 
 # Use a separate logger for our middleware to avoid conflicts with uvicorn.access
 logger: Logger = getLogger("pipeline.access")

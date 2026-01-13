@@ -7,8 +7,6 @@ including mock clients, test FastAPI clients, and service mocks.
 # pylint: disable=redefined-outer-name
 # Pytest fixtures intentionally redefine fixture names - this is expected behavior
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

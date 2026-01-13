@@ -33,8 +33,6 @@ FastAPI automatically generates OpenAPI/Swagger documentation at:
 - `/openapi.json`: OpenAPI schema JSON
 """
 
-from __future__ import annotations
-
 import os
 from datetime import UTC, datetime
 from typing import Annotated

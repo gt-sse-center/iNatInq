@@ -25,8 +25,6 @@ Pydantic automatically validates:
 - Optional fields can be omitted or set to `None`
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pydantic import BaseModel, Field

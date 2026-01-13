@@ -48,8 +48,6 @@ FastAPI automatically generates OpenAPI 3.0 documentation:
 The OpenAPI schema includes detailed descriptions from route docstrings and Pydantic models.
 """
 
-from __future__ import annotations
-
 import logging
 from logging.config import dictConfig
 

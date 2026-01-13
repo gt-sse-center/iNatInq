@@ -8,16 +8,11 @@ middleware level, which is more reliable than filtering log records after they'r
 created.
 """
 
-from __future__ import annotations
-
 import logging
+from collections.abc import Awaitable, Callable
 
+from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from fastapi import Request, Response
-    from collections.abc import Awaitable, Callable
 
 # Get the uvicorn access logger
 _access_logger = logging.getLogger("uvicorn.access")

@@ -4,19 +4,14 @@ This middleware catches unhandled exceptions and converts them to appropriate
 HTTP responses with proper error formatting.
 """
 
-from __future__ import annotations
-
 import logging
+from collections.abc import Awaitable, Callable
 
 from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from core.exceptions import BadRequestError, PipelineError, PipelineTimeoutError, UpstreamError
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
 
 logger = logging.getLogger("uvicorn.error")
 
