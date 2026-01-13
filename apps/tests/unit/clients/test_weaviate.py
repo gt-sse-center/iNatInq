@@ -22,7 +22,6 @@ The underlying WeaviateAsyncClient and circuit breaker are mocked to isolate cli
 Run with: pytest tests/unit/clients/test_weaviate.py
 """
 
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pybreaker
@@ -42,9 +41,7 @@ class TestWeaviateClientWrapperInit:
     """Test suite for WeaviateClientWrapper initialization."""
 
     @patch("clients.weaviate.WeaviateAsyncClient")
-    def test_creates_client_with_config(
-        self,  mock_weaviate_async_client: MagicMock
-    ) -> None:
+    def test_creates_client_with_config(self, mock_weaviate_async_client: MagicMock) -> None:
         """Test that client is created with configuration.
 
         **Why this test is important:**
@@ -69,9 +66,7 @@ class TestWeaviateClientWrapperInit:
         assert client._client == mock_client
 
     @patch("clients.weaviate.WeaviateAsyncClient")
-    def test_creates_client_with_api_key(
-        self,  mock_weaviate_async_client: MagicMock
-    ) -> None:
+    def test_creates_client_with_api_key(self, mock_weaviate_async_client: MagicMock) -> None:
         """Test that client is created with API key.
 
         **Why this test is important:**
@@ -93,9 +88,7 @@ class TestWeaviateClientWrapperInit:
         mock_weaviate_async_client.assert_called_once()
 
     @patch("clients.weaviate.WeaviateAsyncClient")
-    def test_creates_circuit_breaker(
-        self,  mock_weaviate_async_client: MagicMock
-    ) -> None:
+    def test_creates_circuit_breaker(self, mock_weaviate_async_client: MagicMock) -> None:
         """Test that circuit breaker is created during initialization.
 
         **Why this test is important:**
@@ -180,9 +173,7 @@ class TestWeaviateClientWrapperInit:
         **What it tests:**
           - ValueError is raised for missing weaviate_url
         """
-        config = VectorDBConfig(
-            provider_type="weaviate", collection="test-collection", weaviate_url=None
-        )
+        config = VectorDBConfig(provider_type="weaviate", collection="test-collection", weaviate_url=None)
 
         with pytest.raises(ValueError, match="requires: weaviate_url"):
             WeaviateClientWrapper.from_config(config)
@@ -218,7 +209,7 @@ class TestWeaviateClientWrapperEnsureCollection:
         mock_weaviate_client.__aenter__ = AsyncMock(return_value=mock_weaviate_client)
         mock_weaviate_client.__aexit__ = AsyncMock(return_value=None)
 
-        await weaviate_client.ensure_collection(collection="test-collection", vector_size=768)
+        await weaviate_client.ensure_collection_async(collection="test-collection", vector_size=768)
 
         mock_weaviate_client.collections.exists.assert_called_once_with("test-collection")
         mock_weaviate_client.collections.create.assert_called_once()
@@ -243,7 +234,7 @@ class TestWeaviateClientWrapperEnsureCollection:
         mock_weaviate_client.__aenter__ = AsyncMock(return_value=mock_weaviate_client)
         mock_weaviate_client.__aexit__ = AsyncMock(return_value=None)
 
-        await weaviate_client.ensure_collection(collection="test-collection", vector_size=768)
+        await weaviate_client.ensure_collection_async(collection="test-collection", vector_size=768)
 
         mock_weaviate_client.collections.exists.assert_called_once_with("test-collection")
         mock_weaviate_client.collections.create.assert_not_called()
@@ -301,7 +292,7 @@ class TestWeaviateClientWrapperSearch:
         mock_weaviate_client.__aenter__ = AsyncMock(return_value=mock_weaviate_client)
         mock_weaviate_client.__aexit__ = AsyncMock(return_value=None)
 
-        result = await weaviate_client.search(
+        result = await weaviate_client.search_async(
             collection="test-collection", query_vector=[0.1, 0.2, 0.3], limit=10
         )
 
@@ -335,7 +326,7 @@ class TestWeaviateClientWrapperSearch:
         mock_weaviate_client.collections.get.side_effect = Exception("Search failed")
 
         with pytest.raises(UpstreamError, match="Weaviate search failed"):
-            await weaviate_client.search(
+            await weaviate_client.search_async(
                 collection="test-collection", query_vector=[0.1, 0.2], limit=10
             )
 
@@ -362,7 +353,7 @@ class TestWeaviateClientWrapperSearch:
         object.__setattr__(weaviate_client, "_breaker", mock_breaker)
 
         with pytest.raises(UpstreamError, match="weaviate service is currently unavailable"):
-            await weaviate_client.search(
+            await weaviate_client.search_async(
                 collection="test-collection", query_vector=[0.1, 0.2], limit=10
             )
 
@@ -407,9 +398,7 @@ class TestWeaviateClientWrapperBatchUpsert:
             WeaviateDataObject(uuid="uuid-2", properties={"text": "world"}, vector=[0.4, 0.5, 0.6]),
         ]
 
-        await weaviate_client.batch_upsert(
-            collection="test-collection", points=points, vector_size=768
-        )
+        await weaviate_client.batch_upsert_async(collection="test-collection", points=points, vector_size=768)
 
         mock_data.insert_many.assert_called_once()
         call_args = mock_data.insert_many.call_args[0]
@@ -430,7 +419,7 @@ class TestWeaviateClientWrapperBatchUpsert:
         **What it tests:**
           - Empty points list returns without API calls
         """
-        await weaviate_client.batch_upsert(collection="test-collection", points=[], vector_size=768)
+        await weaviate_client.batch_upsert_async(collection="test-collection", points=[], vector_size=768)
 
         mock_weaviate_client.collections.get.assert_not_called()
 
@@ -455,12 +444,10 @@ class TestWeaviateClientWrapperBatchUpsert:
         mock_weaviate_client.__aexit__ = AsyncMock(return_value=None)
         mock_weaviate_client.collections.get.side_effect = Exception("Upsert failed")
 
-        points = [
-            WeaviateDataObject(uuid="uuid-1", properties={"text": "hello"}, vector=[0.1, 0.2])
-        ]
+        points = [WeaviateDataObject(uuid="uuid-1", properties={"text": "hello"}, vector=[0.1, 0.2])]
 
         with pytest.raises(UpstreamError, match="Weaviate batch upsert failed"):
-            await weaviate_client.batch_upsert(
+            await weaviate_client.batch_upsert_async(
                 collection="test-collection", points=points, vector_size=768
             )
 
@@ -486,12 +473,10 @@ class TestWeaviateClientWrapperBatchUpsert:
         mock_breaker.current_state = pybreaker.STATE_OPEN
         object.__setattr__(weaviate_client, "_breaker", mock_breaker)
 
-        points = [
-            WeaviateDataObject(uuid="uuid-1", properties={"text": "hello"}, vector=[0.1, 0.2])
-        ]
+        points = [WeaviateDataObject(uuid="uuid-1", properties={"text": "hello"}, vector=[0.1, 0.2])]
 
         with pytest.raises(UpstreamError, match="weaviate service is currently unavailable"):
-            await weaviate_client.batch_upsert(
+            await weaviate_client.batch_upsert_async(
                 collection="test-collection", points=points, vector_size=768
             )
 
@@ -519,7 +504,7 @@ class TestWeaviateClientWrapperAdditional:
         mock_weaviate_client.collections.create.side_effect = Exception("Collection already exists")
 
         # Should not raise
-        await weaviate_client.ensure_collection(collection="TestCollection", vector_size=768)
+        await weaviate_client.ensure_collection_async(collection="TestCollection", vector_size=768)
 
     @pytest.mark.asyncio
     async def test_ensure_collection_handles_duplicate_error(
@@ -530,7 +515,7 @@ class TestWeaviateClientWrapperAdditional:
         mock_weaviate_client.collections.create.side_effect = Exception("Duplicate class name")
 
         # Should not raise
-        await weaviate_client.ensure_collection(collection="TestCollection", vector_size=768)
+        await weaviate_client.ensure_collection_async(collection="TestCollection", vector_size=768)
 
     @pytest.mark.asyncio
     async def test_ensure_collection_raises_on_other_errors(
@@ -541,11 +526,9 @@ class TestWeaviateClientWrapperAdditional:
         mock_weaviate_client.collections.create.side_effect = Exception("API Error")
 
         with pytest.raises(UpstreamError, match="Weaviate collection creation failed"):
-            await weaviate_client.ensure_collection(collection="TestCollection", vector_size=768)
+            await weaviate_client.ensure_collection_async(collection="TestCollection", vector_size=768)
 
-    def test_close_with_client(
-        self, weaviate_client: WeaviateClientWrapper
-    ) -> None:
+    def test_close_with_client(self, weaviate_client: WeaviateClientWrapper) -> None:
         """Test that close clears the client reference."""
         weaviate_client.close()
 

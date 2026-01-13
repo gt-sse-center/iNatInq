@@ -27,7 +27,6 @@ The client wrapper:
 - Uses attrs for concise, correct class definition
 """
 
-
 import asyncio
 from typing import Any, cast
 

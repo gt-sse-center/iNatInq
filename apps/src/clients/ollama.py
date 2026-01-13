@@ -27,7 +27,6 @@ The client class:
 - Uses attrs for concise, correct class definition
 """
 
-
 import asyncio
 
 import attrs
@@ -37,8 +36,7 @@ import requests
 
 from config import EmbeddingConfig
 from core.exceptions import UpstreamError
-from foundation.circuit_breaker import (handle_circuit_breaker_error,
-                                          with_circuit_breaker)
+from foundation.circuit_breaker import handle_circuit_breaker_error, with_circuit_breaker
 from foundation.http import create_retry_session
 from .interfaces.embedding import EmbeddingProvider
 from .mixins import CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin
@@ -114,9 +112,7 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         self._session = session
 
     @classmethod
-    def from_config(
-        cls, config: EmbeddingConfig, session: requests.Session | None = None
-    ) -> "OllamaClient":
+    def from_config(cls, config: EmbeddingConfig, session: requests.Session | None = None) -> "OllamaClient":
         """Create OllamaClient from EmbeddingConfig.
 
         Args:
@@ -186,9 +182,7 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         """
         url = f"{self.base_url.rstrip('/')}/api/embeddings"
         try:
-            resp = self.session.post(
-                url, json={"model": self.model, "prompt": text}, timeout=self.timeout_s
-            )
+            resp = self.session.post(url, json={"model": self.model, "prompt": text}, timeout=self.timeout_s)
         except requests.RequestException as e:
             msg = f"Ollama request failed: {e}"
             raise UpstreamError(msg) from e
@@ -205,9 +199,7 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         return [float(x) for x in emb]
 
     @with_circuit_breaker("ollama")
-    def embed_batch(
-        self, texts: list[str], fallback_to_individual: bool = False
-    ) -> list[list[float]]:
+    def embed_batch(self, texts: list[str], *, fallback_to_individual: bool = False) -> list[list[float]]:
         """Generate embeddings for multiple texts in one API call.
 
         Ollama supports batch embeddings via the `input` parameter (not `prompt`).
@@ -274,9 +266,7 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
 
             if len(embeddings) != len(texts):
                 msg = f"Ollama returned {len(embeddings)} embeddings for {len(texts)} texts"
-                raise UpstreamError(
-                    msg
-                )
+                raise UpstreamError(msg)
 
             return [[float(x) for x in emb] for emb in embeddings]
 
@@ -289,9 +279,8 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
                 )
                 # Fall back to individual embedding calls
                 return [self.embed(text) for text in texts]
-            else:
-                # Re-raise the error if fallback is not enabled
-                raise
+            # Re-raise the error if fallback is not enabled
+            raise
 
     async def embed_async(self, text: str) -> list[float]:
         """Generate an embedding vector for a single text string (async).
@@ -349,7 +338,7 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
             raise UpstreamError(msg) from e
 
     async def embed_batch_async(
-        self, texts: list[str], fallback_to_individual: bool = False
+        self, texts: list[str], *, fallback_to_individual: bool = False
     ) -> list[list[float]]:
         """Generate embeddings for multiple texts in one API call (async).
 
@@ -405,9 +394,7 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
 
                 if len(embeddings) != len(texts):
                     msg = f"Ollama returned {len(embeddings)} embeddings for {len(texts)} texts"
-                    raise UpstreamError(
-                        msg
-                    )
+                    raise UpstreamError(msg)
 
                 return [[float(x) for x in emb] for emb in embeddings]
         except (httpx.HTTPStatusError, httpx.RequestError, UpstreamError) as e:
@@ -419,9 +406,8 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
                 )
                 # Fall back to individual async embedding calls
                 return await asyncio.gather(*[self.embed_async(text) for text in texts])
-            else:
-                # Re-raise the error if fallback is not enabled
-                raise
+            # Re-raise the error if fallback is not enabled
+            raise
 
     def close(self) -> None:
         """Close the HTTP session and release resources.

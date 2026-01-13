@@ -4,7 +4,6 @@ This module provides base classes for client wrappers that provide common
 functionality through composition with mixins.
 """
 
-
 from abc import ABC, abstractmethod
 from typing import Any
 

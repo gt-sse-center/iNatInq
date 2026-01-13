@@ -133,9 +133,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             return
         await self._client.create_collection(
             collection_name=collection,
-            vectors_config=qmodels.VectorParams(
-                size=vector_size, distance=qmodels.Distance.COSINE
-            ),
+            vectors_config=qmodels.VectorParams(size=vector_size, distance=qmodels.Distance.COSINE),
         )
 
     async def search_async(
@@ -254,9 +252,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         try:
             await self._client.update_collection(
                 collection_name=collection,
-                optimizer_config=qmodels.OptimizersConfigDiff(
-                    indexing_threshold=indexing_threshold
-                ),
+                optimizer_config=qmodels.OptimizersConfigDiff(indexing_threshold=indexing_threshold),
                 hnsw_config=qmodels.HnswConfigDiff(m=hnsw_m),
             )
             self._logger.info(  # type: ignore[attr-defined]
@@ -271,9 +267,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             msg = f"Failed to enable indexing: {e}"
             raise UpstreamError(msg) from e
 
-    async def _do_batch_upsert(
-        self, *, collection: str, points: list[PointStruct]
-    ) -> None:
+    async def _do_batch_upsert(self, *, collection: str, points: list[PointStruct]) -> None:
         """Qdrant-specific batch upsert implementation.
 
         Args:
@@ -387,9 +381,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             if collection not in collection_names:
                 self._sync_client.create_collection(
                     collection_name=collection,
-                    vectors_config=qmodels.VectorParams(
-                        size=vector_size, distance=qmodels.Distance.COSINE
-                    ),
+                    vectors_config=qmodels.VectorParams(size=vector_size, distance=qmodels.Distance.COSINE),
                 )
                 self._logger.info(  # type: ignore[attr-defined]
                     "Created Qdrant collection",

@@ -23,7 +23,6 @@ The underlying Qdrant clients and circuit breaker are mocked to isolate client l
 Run with: pytest tests/unit/clients/test_qdrant.py
 """
 
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pybreaker
@@ -46,7 +45,6 @@ class TestQdrantClientWrapperInit:
     @patch("clients.qdrant.QdrantClient")
     def test_creates_client_with_config(
         self,
-
         mock_async_qdrant_client: MagicMock,
         mock_qdrant_client: MagicMock,
     ) -> None:
@@ -71,12 +69,8 @@ class TestQdrantClientWrapperInit:
 
         client = QdrantClientWrapper(url="http://qdrant.example.com:6333")
 
-        mock_qdrant_client.assert_called_once_with(
-            url="http://qdrant.example.com:6333", timeout=300
-        )
-        mock_async_qdrant_client.assert_called_once_with(
-            url="http://qdrant.example.com:6333", timeout=300
-        )
+        mock_qdrant_client.assert_called_once_with(url="http://qdrant.example.com:6333", timeout=300)
+        mock_async_qdrant_client.assert_called_once_with(url="http://qdrant.example.com:6333", timeout=300)
         assert client.url == "http://qdrant.example.com:6333"
         assert client._client == mock_async_client
         assert client._sync_client == mock_sync_client
@@ -164,9 +158,7 @@ class TestQdrantClientWrapperInit:
         **What it tests:**
           - ValueError is raised for missing qdrant_url
         """
-        config = VectorDBConfig(
-            provider_type="qdrant", collection="test-collection", qdrant_url=None
-        )
+        config = VectorDBConfig(provider_type="qdrant", collection="test-collection", qdrant_url=None)
 
         with pytest.raises(ValueError, match="requires: qdrant_url"):
             QdrantClientWrapper.from_config(config)
@@ -200,7 +192,7 @@ class TestQdrantClientWrapperEnsureCollection:
         mock_collections.collections = []  # Empty, collection doesn't exist
         mock_async_client.get_collections.return_value = mock_collections
 
-        await qdrant_client.ensure_collection(collection="test-collection", vector_size=768)
+        await qdrant_client.ensure_collection_async(collection="test-collection", vector_size=768)
 
         mock_async_client.get_collections.assert_called_once()
         mock_async_client.create_collection.assert_called_once()
@@ -230,7 +222,7 @@ class TestQdrantClientWrapperEnsureCollection:
         mock_collections.collections = [mock_collection]
         mock_async_client.get_collections.return_value = mock_collections
 
-        await qdrant_client.ensure_collection(collection="test-collection", vector_size=768)
+        await qdrant_client.ensure_collection_async(collection="test-collection", vector_size=768)
 
         mock_async_client.get_collections.assert_called_once()
         mock_async_client.create_collection.assert_not_called()
@@ -273,7 +265,7 @@ class TestQdrantClientWrapperSearch:
 
         mock_async_client.search.return_value = [mock_point1, mock_point2]
 
-        result = await qdrant_client.search(
+        result = await qdrant_client.search_async(
             collection="test-collection", query_vector=[0.1, 0.2, 0.3], limit=10
         )
 
@@ -305,9 +297,7 @@ class TestQdrantClientWrapperSearch:
         mock_async_client.search.side_effect = Exception("Search failed")
 
         with pytest.raises(UpstreamError, match="Qdrant search failed"):
-            await qdrant_client.search(
-                collection="test-collection", query_vector=[0.1, 0.2], limit=10
-            )
+            await qdrant_client.search_async(collection="test-collection", query_vector=[0.1, 0.2], limit=10)
 
     @pytest.mark.asyncio
     async def test_search_handles_circuit_breaker_open(
@@ -332,9 +322,7 @@ class TestQdrantClientWrapperSearch:
         object.__setattr__(qdrant_client, "_breaker", mock_breaker)
 
         with pytest.raises(UpstreamError, match="qdrant service is currently unavailable"):
-            await qdrant_client.search(
-                collection="test-collection", query_vector=[0.1, 0.2], limit=10
-            )
+            await qdrant_client.search_async(collection="test-collection", query_vector=[0.1, 0.2], limit=10)
 
 
 # =============================================================================
@@ -372,9 +360,7 @@ class TestQdrantClientWrapperBatchUpsert:
             PointStruct(id="2", vector=[0.3, 0.4], payload={"text": "world"}),
         ]
 
-        await qdrant_client.batch_upsert(
-            collection="test-collection", points=points, vector_size=768
-        )
+        await qdrant_client.batch_upsert_async(collection="test-collection", points=points, vector_size=768)
 
         mock_async_client.upsert.assert_called_once()
         call_kwargs = mock_async_client.upsert.call_args[1]
@@ -396,7 +382,7 @@ class TestQdrantClientWrapperBatchUpsert:
         **What it tests:**
           - Empty points list returns without API calls
         """
-        await qdrant_client.batch_upsert(collection="test-collection", points=[], vector_size=768)
+        await qdrant_client.batch_upsert_async(collection="test-collection", points=[], vector_size=768)
 
         mock_async_client.upsert.assert_not_called()
 
@@ -424,7 +410,7 @@ class TestQdrantClientWrapperBatchUpsert:
         points = [PointStruct(id="1", vector=[0.1, 0.2], payload={"text": "hello"})]
 
         with pytest.raises(UpstreamError, match="Qdrant batch upsert failed"):
-            await qdrant_client.batch_upsert(
+            await qdrant_client.batch_upsert_async(
                 collection="test-collection", points=points, vector_size=768
             )
 
@@ -453,7 +439,7 @@ class TestQdrantClientWrapperBatchUpsert:
         points = [PointStruct(id="1", vector=[0.1, 0.2], payload={"text": "hello"})]
 
         with pytest.raises(UpstreamError, match="qdrant service is currently unavailable"):
-            await qdrant_client.batch_upsert(
+            await qdrant_client.batch_upsert_async(
                 collection="test-collection", points=points, vector_size=768
             )
 
@@ -487,9 +473,7 @@ class TestQdrantClientWrapperBatchUpsertSync:
             PointStruct(id="2", vector=[0.3, 0.4], payload={"text": "world"}),
         ]
 
-        qdrant_client.batch_upsert_sync(
-            collection="test-collection", points=points, vector_size=768
-        )
+        qdrant_client.batch_upsert_sync(collection="test-collection", points=points, vector_size=768)
 
         mock_sync_client.upsert.assert_called_once()
         call_kwargs = mock_sync_client.upsert.call_args[1]
@@ -537,9 +521,7 @@ class TestQdrantClientWrapperBatchUpsertSync:
         points = [PointStruct(id="1", vector=[0.1, 0.2], payload={"text": "hello"})]
 
         with pytest.raises(UpstreamError, match="Qdrant batch upsert failed"):
-            qdrant_client.batch_upsert_sync(
-                collection="test-collection", points=points, vector_size=768
-            )
+            qdrant_client.batch_upsert_sync(collection="test-collection", points=points, vector_size=768)
 
 
 # =============================================================================
@@ -616,9 +598,7 @@ class TestQdrantClientWrapperIndexing:
         """
         mock_async_client.update_collection.return_value = None
 
-        await qdrant_client.enable_indexing(
-            collection="test-collection", indexing_threshold=10000, hnsw_m=32
-        )
+        await qdrant_client.enable_indexing(collection="test-collection", indexing_threshold=10000, hnsw_m=32)
 
         mock_async_client.update_collection.assert_called_once()
         call_kwargs = mock_async_client.update_collection.call_args[1]
@@ -633,9 +613,7 @@ class TestQdrantClientWrapperIndexing:
 class TestQdrantClientWrapperAdditional:
     """Test suite for additional QdrantClientWrapper coverage."""
 
-    def test_client_property(
-        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
-    ) -> None:
+    def test_client_property(self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock) -> None:
         """Test that client property returns the async client."""
         assert qdrant_client.client is mock_async_client
 
@@ -669,9 +647,7 @@ class TestQdrantClientWrapperAdditional:
         points = [PointStruct(id=1, vector=[0.1, 0.2], payload={"text": "test"})]
 
         with pytest.raises(UpstreamError, match="Qdrant batch upsert failed"):
-            await qdrant_client.batch_upsert(
-                collection="test-collection", points=points, vector_size=2
-            )
+            await qdrant_client.batch_upsert_async(collection="test-collection", points=points, vector_size=2)
 
     def test_close_with_running_loop(
         self,

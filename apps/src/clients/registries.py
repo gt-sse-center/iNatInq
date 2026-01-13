@@ -5,7 +5,6 @@ Registration happens at module import time to avoid circular dependencies betwee
 interface definitions and concrete implementations.
 """
 
-
 from .interfaces.embedding import register_provider as register_embedding_provider
 from .interfaces.vector_db import register_provider as register_vector_db_provider
 from .ollama import OllamaClient

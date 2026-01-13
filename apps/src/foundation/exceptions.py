@@ -14,4 +14,3 @@ class UpstreamError(FoundationError):
     This exception indicates that a required external service is unavailable,
     returned an error, or failed to complete a request.
     """
-

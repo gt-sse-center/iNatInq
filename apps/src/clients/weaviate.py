@@ -27,7 +27,6 @@ The client wrapper:
 - Implements VectorDBProvider ABC for provider-agnostic usage
 """
 
-
 from typing import Any
 from urllib.parse import urlparse
 

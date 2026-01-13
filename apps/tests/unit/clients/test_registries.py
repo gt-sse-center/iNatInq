@@ -20,7 +20,6 @@ that providers can be created using the registry functions.
 Run with: pytest tests/unit/clients/test_registries.py
 """
 
-
 from unittest.mock import patch
 
 from clients.interfaces.embedding import create_embedding_provider

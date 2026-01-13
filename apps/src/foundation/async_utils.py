@@ -4,7 +4,6 @@ This module provides utilities for handling async resources, particularly
 focused on properly closing async clients across different event loop scenarios.
 """
 
-
 import asyncio
 import logging
 from typing import Any
@@ -30,15 +29,12 @@ def _create_close_callback(resource_name: str):
             logger.exception(
                 "Error closing async resource",
                 extra={"resource": resource_name, "error": str(e)},
-
             )
 
     return callback
 
 
-async def close_async_resource(
-    resource: Any, resource_name: str, close_method: str = "close"
-) -> None:
+async def close_async_resource(resource: Any, resource_name: str, close_method: str = "close") -> None:
     """Close an async resource, handling all event loop scenarios.
 
     This function handles three possible event loop states:
@@ -98,7 +94,6 @@ async def close_async_resource(
                 logger.exception(
                     "Error closing async resource",
                     extra={"resource": resource_name, "error": str(e)},
-
                 )
     except RuntimeError:
         # No event loop exists
@@ -113,5 +108,4 @@ async def close_async_resource(
             logger.exception(
                 "Error closing async resource",
                 extra={"resource": resource_name, "error": str(e)},
-
             )

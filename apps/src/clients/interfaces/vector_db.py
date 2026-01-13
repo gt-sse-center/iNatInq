@@ -5,7 +5,6 @@ database providers. Configuration classes are in `pipeline.config`.
 Concrete implementations live in the parent `clients` package (e.g., `QdrantClientWrapper`).
 """
 
-
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, TypeAlias
 
@@ -211,9 +210,7 @@ def create_vector_db_provider(config: VectorDBConfig) -> "VectorDBProvider":
             f"Provider type '{config.provider_type}' is not registered. "
             f"Available providers: {list(_PROVIDER_REGISTRY.keys())}"
         )
-        raise ValueError(
-            msg
-        )
+        raise ValueError(msg)
 
     # Instantiate provider - each provider class knows how to construct itself from config
     # This delegates the construction logic to the provider class
