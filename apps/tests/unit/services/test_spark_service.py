@@ -24,8 +24,6 @@ The underlying SparkJobClient is mocked to isolate service logic.
 Run with: pytest tests/unit/services/test_spark_service.py
 """
 
-from __future__ import annotations
-
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 

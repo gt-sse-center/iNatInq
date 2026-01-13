@@ -6,19 +6,14 @@ This module provides a service class for semantic search orchestration:
 3. Format and return results
 """
 
-from __future__ import annotations
-
 import asyncio
 
 import attrs
 
+from clients.interfaces.embedding import EmbeddingProvider
+from clients.interfaces.vector_db import VectorDBProvider
 from core.exceptions import BadRequestError
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from core.models import SearchResults
-    from clients.interfaces.vector_db import VectorDBProvider
-    from clients.interfaces.embedding import EmbeddingProvider
+from core.models import SearchResults
 
 
 @attrs.define(frozen=True, slots=True)
