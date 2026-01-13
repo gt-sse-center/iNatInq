@@ -15,8 +15,6 @@ The service layer uses Ray Jobs API to:
 This allows the API to return immediately while Ray cluster manages job execution.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import Any
 

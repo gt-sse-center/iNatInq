@@ -23,8 +23,6 @@ The embedding provider and vector DB provider are mocked to isolate service logi
 Run with: pytest tests/unit/services/test_search_service.py
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock
 
 import attrs.exceptions

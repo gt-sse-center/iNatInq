@@ -4,8 +4,6 @@ This module provides a high-level service layer for submitting and managing
 Spark jobs via the Kubernetes Spark Operator.
 """
 
-from __future__ import annotations
-
 import logging
 import uuid
 from datetime import datetime, UTC

@@ -4,8 +4,6 @@ This module provides a Python client to programmatically create and manage
 SparkApplication custom resources in Kubernetes, enabling API-driven Spark job submission.
 """
 
-from __future__ import annotations
-
 import logging
 import os
 from typing import Any

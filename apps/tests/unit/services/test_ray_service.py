@@ -23,8 +23,6 @@ The Ray JobSubmissionClient is mocked to isolate service logic.
 Run with: pytest tests/unit/services/test_ray_service.py
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock, patch
 
 import pytest
