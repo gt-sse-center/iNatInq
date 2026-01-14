@@ -107,8 +107,8 @@ def create_app() -> FastAPI:
         ),
         version="0.1.0",
         contact={
-            "name": "Pipeline Service",
-            "url": "https://github.com/modern-web-application",
+            "name": "iNatInq ML Pipeline",
+            "url": "https://github.com/gt-sse-center/iNatInq",
         },
         license_info={
             "name": "MIT",
