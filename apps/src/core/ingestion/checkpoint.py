@@ -30,7 +30,7 @@ def is_s3_path(path: str | Path) -> bool:
         True if path is an S3 URI (s3:// or s3a://), False otherwise.
     """
     path_str = str(path)
-    return path_str.startswith("s3://") or path_str.startswith("s3a://")
+    return path_str.startswith(("s3://", "s3a://"))
 
 
 def _parse_s3_path(s3_uri: str) -> tuple[str, str]:
@@ -234,4 +234,3 @@ class CheckpointManager:
                 "Failed to save checkpoint",
                 extra={"path": checkpoint_str, "error": str(e)},
             )
-

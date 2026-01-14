@@ -85,7 +85,7 @@ def init_ray_cluster(config: RayJobConfig) -> None:
             )
             raise
     except ImportError:
-        logger.error("Ray is not installed. Install with: pip install ray[default]")
+        logger.exception("Ray is not installed. Install with: pip install ray[default]")
         raise
     except (RuntimeError, ValueError) as e:
         logger.error(
@@ -108,4 +108,3 @@ def shutdown_ray_cluster() -> None:
         pass
     except (RuntimeError, ValueError) as e:
         logger.warning("Error shutting down Ray cluster", extra={"error": str(e)})
-

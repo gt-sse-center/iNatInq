@@ -509,4 +509,3 @@ class TestModelsIntegration:
         assert qdrant_point.id == "doc-123"
         assert len(qdrant_point.vector) == 4
         assert qdrant_point.payload["text"] == "Example document"
-

@@ -77,7 +77,7 @@ class SparkProcessingPipeline:
         >>> results = await pipeline.process_keys_async(["doc1.txt", "doc2.txt"])
     """
 
-    def __init__(self, config: SparkProcessingConfig):
+    def __init__(self, config: SparkProcessingConfig) -> None:
         """Initialize the pipeline.
 
         Args:
@@ -273,4 +273,3 @@ def process_partition_async_wrapper(*args, **kwargs) -> Iterable[tuple[str, bool
         Iterable of tuples (s3_key, success, error_message).
     """
     return asyncio.run(process_partition_async(*args, **kwargs))
-

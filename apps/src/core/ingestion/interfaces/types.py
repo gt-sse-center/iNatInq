@@ -236,4 +236,3 @@ class ProcessingClients:
             await self.session.close()
         except Exception as e:
             logger.warning("Error closing HTTP session", extra={"error": str(e)})
-

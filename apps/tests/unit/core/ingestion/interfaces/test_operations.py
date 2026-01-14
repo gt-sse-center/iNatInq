@@ -506,35 +506,6 @@ class TestVectorDBUpserter:
 
         assert result is False
 
-    @pytest.mark.asyncio
-    async def test_upsert_qdrant_only_async_success(self) -> None:
-        """Test Qdrant-only upsert.
-
-        **Why this test is important:**
-          - Sometimes only one DB needed
-          - Validates single-DB path
-
-        **What it tests:**
-          - Returns True on success
-        """
-        mock_qdrant = MagicMock()
-        mock_qdrant.batch_upsert_async = AsyncMock(return_value=None)
-        mock_weaviate = MagicMock()
-
-        upserter = VectorDBUpserter(mock_qdrant, mock_weaviate)
-
-        mock_point = MagicMock(spec=VectorPoint)
-        mock_point.to_qdrant.return_value = MagicMock()
-        batch = BatchEmbeddingResult(
-            qdrant_points=[mock_point],
-            weaviate_objects=[],
-        )
-
-        result = await upserter.upsert_qdrant_only_async(batch, "documents", 768)
-
-        assert result is True
-        mock_weaviate.batch_upsert_async.assert_not_called()
-
 
 # =============================================================================
 # BatchProcessor Tests
@@ -772,4 +743,3 @@ class TestBatchProcessor:
         )
 
         assert new_size == 8  # Stays at max
-

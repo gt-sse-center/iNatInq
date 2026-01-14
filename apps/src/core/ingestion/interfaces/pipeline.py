@@ -93,4 +93,3 @@ class BatchProcessingPipeline(ProcessingPipeline):
         Returns:
             Current batch size for processing.
         """
-

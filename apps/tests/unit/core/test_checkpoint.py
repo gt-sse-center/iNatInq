@@ -449,4 +449,3 @@ class TestCheckpointManagerSave:
 
         # Should not raise, just log warning and return
         manager.save("s3://bucket/checkpoint.json", {"key1"})
-

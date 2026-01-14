@@ -35,7 +35,7 @@ class VectorDBConfigFactory:
         >>> qdrant_cfg, weaviate_cfg = factory.create_both()
     """
 
-    def __init__(self, namespace: str = "ml-system"):
+    def __init__(self, namespace: str = "ml-system") -> None:
         """Initialize the factory.
 
         Args:
@@ -71,9 +71,7 @@ class VectorDBConfigFactory:
         Returns:
             VectorDBConfig configured for Qdrant.
         """
-        default_url = (
-            f"http://qdrant.{self.namespace}:6333" if self._in_cluster else "http://localhost:6333"
-        )
+        default_url = f"http://qdrant.{self.namespace}:6333" if self._in_cluster else "http://localhost:6333"
         return VectorDBConfig(
             provider_type="qdrant",
             collection=self._get_collection(),
@@ -87,9 +85,7 @@ class VectorDBConfigFactory:
             VectorDBConfig configured for Weaviate.
         """
         default_url = (
-            f"http://weaviate.{self.namespace}:8080"
-            if self._in_cluster
-            else "http://localhost:8080"
+            f"http://weaviate.{self.namespace}:8080" if self._in_cluster else "http://localhost:8080"
         )
         return VectorDBConfig(
             provider_type="weaviate",
@@ -122,7 +118,7 @@ class ProcessingClientsFactory:
         ...     clients.close_sync()
     """
 
-    def __init__(self, vector_db_factory: VectorDBConfigFactory | None = None):
+    def __init__(self, vector_db_factory: VectorDBConfigFactory | None = None) -> None:
         """Initialize the factory.
 
         Args:
@@ -178,7 +174,7 @@ class VectorPointFactory:
         >>> batch = factory.create_batch(contents, vectors)
     """
 
-    def __init__(self, s3_bucket: str):
+    def __init__(self, s3_bucket: str) -> None:
         """Initialize the factory.
 
         Args:
@@ -284,9 +280,7 @@ class VectorPointFactory:
             ValueError: If contents and vectors have different lengths.
         """
         if len(contents) != len(vectors):
-            raise ValueError(
-                f"Contents ({len(contents)}) and vectors ({len(vectors)}) must have same length"
-            )
+            raise ValueError(f"Contents ({len(contents)}) and vectors ({len(vectors)}) must have same length")
 
         qdrant_points: list[VectorPoint] = []
         weaviate_objects: list[WeaviateDataObject] = []
@@ -300,4 +294,3 @@ class VectorPointFactory:
             qdrant_points=qdrant_points,
             weaviate_objects=weaviate_objects,
         )
-
