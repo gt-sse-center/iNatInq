@@ -138,7 +138,8 @@ class TestExceptionHandlerMiddleware:
         assert response.status_code == 504
         data = response.json()
         assert data["error"] == "Gateway Timeout"
-        assert "Operation timed out" in data["message"]
+        # Generic message to avoid leaking internal details
+        assert data["message"] == "Request timed out."
 
     def test_upstream_error_returns_502(self, app_with_exception_handler: FastAPI) -> None:
         """Test that UpstreamError is converted to 502 Bad Gateway.
@@ -155,7 +156,8 @@ class TestExceptionHandlerMiddleware:
         assert response.status_code == 502
         data = response.json()
         assert data["error"] == "Bad Gateway"
-        assert "Ollama service unavailable" in data["message"]
+        # Generic message to avoid leaking internal service details
+        assert data["message"] == "An upstream service error occurred."
 
     def test_pipeline_error_returns_500(self, app_with_exception_handler: FastAPI) -> None:
         """Test that PipelineError is converted to 500 Internal Server Error.
@@ -172,7 +174,8 @@ class TestExceptionHandlerMiddleware:
         assert response.status_code == 500
         data = response.json()
         assert data["error"] == "Internal Server Error"
-        assert "Internal pipeline error" in data["message"]
+        # Generic message to avoid leaking internal details
+        assert data["message"] == "A pipeline error occurred."
 
     def test_http_exception_is_handled_correctly(self, app_with_exception_handler: FastAPI) -> None:
         """Test that HTTPException is handled correctly by custom handler.

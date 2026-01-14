@@ -522,6 +522,72 @@ class VectorDBConfig(BaseModel):
         msg = f"Unsupported provider type: {provider_type}"
         raise ValueError(msg)
 
+    @classmethod
+    def from_env_for_provider(cls, provider_type: str, namespace: str = "ml-system") -> "VectorDBConfig":
+        """Create VectorDBConfig for a specific provider type.
+
+        Unlike `from_env()` which reads VECTOR_DB_PROVIDER from the environment,
+        this method accepts the provider type as a parameter. Useful when routes
+        need to target a specific provider regardless of the default configuration.
+
+        Args:
+            provider_type: Provider type ("qdrant", "weaviate", "pinecone", "milvus").
+            namespace: Kubernetes namespace for service discovery.
+
+        Returns:
+            Configured VectorDBConfig for the specified provider.
+
+        Raises:
+            ValueError: If provider type is invalid or required config is missing.
+        """
+        valid_providers = ("qdrant", "weaviate", "pinecone", "milvus")
+        if provider_type not in valid_providers:
+            msg = f"Invalid provider type: {provider_type}. Must be one of: {valid_providers}"
+            raise ValueError(msg)
+
+        in_cluster = _is_in_cluster()
+        collection = os.getenv("VECTOR_DB_COLLECTION", "documents")
+
+        if provider_type == "qdrant":
+            default_url = f"http://qdrant.{namespace}:6333" if in_cluster else "http://localhost:6333"
+            return cls(
+                provider_type="qdrant",
+                collection=collection,
+                qdrant_url=os.getenv("QDRANT_URL", default_url),
+            )
+
+        if provider_type == "weaviate":
+            default_url = f"http://weaviate.{namespace}:8080" if in_cluster else "http://localhost:8080"
+            return cls(
+                provider_type="weaviate",
+                collection=collection,
+                weaviate_url=os.getenv("WEAVIATE_URL", default_url),
+                weaviate_api_key=os.getenv("WEAVIATE_API_KEY"),
+            )
+
+        if provider_type == "pinecone":
+            api_key = os.getenv("PINECONE_API_KEY")
+            if not api_key:
+                raise ValueError("PINECONE_API_KEY is required for Pinecone provider")
+            return cls(
+                provider_type="pinecone",
+                collection=collection,
+                pinecone_api_key=api_key,
+                pinecone_environment=os.getenv("PINECONE_ENVIRONMENT", "us-east-1"),
+            )
+
+        if provider_type == "milvus":
+            default_host = f"milvus.{namespace}" if in_cluster else "localhost"
+            return cls(
+                provider_type="milvus",
+                collection=collection,
+                milvus_host=os.getenv("MILVUS_HOST", default_host),
+                milvus_port=int(os.getenv("MILVUS_PORT", "19530")),
+            )
+
+        msg = f"Unsupported provider type: {provider_type}"
+        raise ValueError(msg)
+
 
 class SparkJobConfig(BaseModel):
     """Configuration for Spark job execution.
