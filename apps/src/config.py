@@ -1,85 +1,110 @@
 """Configuration management for the dev pipeline orchestrator.
 
-This module provides configuration system for the pipeline service using Pydantic Settings.
-All settings are loaded from environment variables with sensible dev defaults.
+This module provides configuration system for the pipeline service using
+Pydantic Settings. All settings are loaded from environment variables
+with sensible dev defaults.
 
 ## Configuration Sources
 
-Configuration is read from environment variables at process startup. The `get_settings()`
-function uses `@lru_cache` to ensure settings are loaded once per process (containers
-have static env vars, so this is safe and efficient).
+Configuration is read from environment variables at process startup. The
+`get_settings()` function uses `@lru_cache` to ensure settings are
+loaded once per process (containers have static env vars, so this is
+safe and efficient).
 
 ## Environment Variables
 
-The following environment variables are supported (all optional with defaults):
+The following environment variables are supported (all optional with
+defaults):
 
 **Ollama (Embeddings Service)**
-- `OLLAMA_BASE_URL`: Base URL for Ollama API (default: `http://ollama.ml-system:11434`)
-- `OLLAMA_MODEL`: Default embedding model name (default: `nomic-embed-text`)
+- `OLLAMA_BASE_URL`: Base URL for Ollama API
+  (default: `http://ollama.ml-system:11434`)
+- `OLLAMA_MODEL`: Default embedding model name
+  (default: `nomic-embed-text`)
 
 **Qdrant (Vector Database)**
 - `QDRANT_URL`: Qdrant service URL. Auto-detected based on environment:
   - In-cluster: `http://qdrant.{namespace}:6333` (default)
   - Local: `http://localhost:6333` (default)
-- `QDRANT_COLLECTION`: Default collection name for storing vectors (default: `documents`)
+- `QDRANT_COLLECTION`: Default collection name for storing vectors
+  (default: `documents`)
 - `QDRANT_API_KEY`: Optional API key for Qdrant Cloud authentication
 - `QDRANT_TIMEOUT`: Request timeout in seconds (default: `30`)
-- `QDRANT_PREFER_GRPC`: Whether to prefer gRPC over HTTP (default: `false`)
+- `QDRANT_PREFER_GRPC`: Whether to prefer gRPC over HTTP
+  (default: `false`)
 
 **S3/MinIO (Object Storage)**
-- `S3_ENDPOINT`: S3-compatible service endpoint. Auto-detected based on environment:
+- `S3_ENDPOINT`: S3-compatible service endpoint. Auto-detected based
+  on environment:
   - In-cluster: `http://minio.{namespace}:9000` (default)
   - Local: `http://localhost:9000` (default)
 - `S3_ACCESS_KEY_ID`: S3 access key (default: `minioadmin`)
 - `S3_SECRET_ACCESS_KEY`: S3 secret key (default: `minioadmin`)
-- `S3_BUCKET`: Default bucket name for pipeline data (default: `pipeline`)
+- `S3_BUCKET`: Default bucket name for pipeline data
+  (default: `pipeline`)
 - `S3_REGION`: AWS region name (default: `us-east-1`)
 - `S3_USE_SSL`: Whether to use SSL/TLS (default: `false`)
-- `S3_PATH_STYLE`: Whether to use path-style addressing (default: `true`)
+- `S3_PATH_STYLE`: Whether to use path-style addressing
+  (default: `true`)
 
 **Environment Detection**
-- `PIPELINE_ENV`: Explicit environment override (`cluster` or `local`). If not set,
-  automatically detected via Kubernetes service account token or `KUBERNETES_SERVICE_HOST`.
+- `PIPELINE_ENV`: Explicit environment override (`cluster` or `local`).
+  If not set, automatically detected via Kubernetes service account
+  token or `KUBERNETES_SERVICE_HOST`.
 
 **Spark/Kubernetes**
-- `SPARK_MASTER_URL`: Spark master URL (default: `spark://spark-master:7077` or
-  `local[*]` for local mode)
+- `SPARK_MASTER_URL`: Spark master URL
+  (default: `spark://spark-master:7077` or `local[*]` for local mode)
 - `SPARK_EXECUTOR_MEMORY`: Memory per executor (default: `2g`)
 - `SPARK_EXECUTOR_CORES`: Cores per executor (default: `2`)
 - `SPARK_DRIVER_MEMORY`: Driver memory (default: `1g`)
 - `SPARK_DEFAULT_PARALLELISM`: Default RDD partitions (default: `200`)
 - `SPARK_SHUFFLE_PARTITIONS`: Shuffle partitions (default: `200`)
 - `SPARK_NETWORK_TIMEOUT`: Network timeout (default: `600s`)
-- `SPARK_HEARTBEAT_INTERVAL`: Executor heartbeat interval (default: `60s`)
-- `SPARK_CHECKPOINT_DIR`: Checkpoint directory (default: `/tmp/spark-checkpoints` or S3 URI)
+- `SPARK_HEARTBEAT_INTERVAL`: Executor heartbeat interval
+  (default: `60s`)
+- `SPARK_CHECKPOINT_DIR`: Checkpoint directory
+  (default: `/tmp/spark-checkpoints` or S3 URI)
 - `SPARK_CHECKPOINT_ENABLED`: Enable checkpointing (default: `true`)
-- `SPARK_CHECKPOINT_SAVE_INTERVAL`: Save checkpoint every N items (default: `10`)
-- `SPARK_CHECKPOINT_SAVE_INTERVAL_SECONDS`: Save checkpoint every N seconds (default: `30.0`)
-- `SPARK_PARTITION_TARGET_SIZE`: Target keys per partition (default: `100`)
+- `SPARK_CHECKPOINT_SAVE_INTERVAL`: Save checkpoint every N items
+  (default: `10`)
+- `SPARK_CHECKPOINT_SAVE_INTERVAL_SECONDS`: Save checkpoint every N
+  seconds (default: `30.0`)
+- `SPARK_PARTITION_TARGET_SIZE`: Target keys per partition
+  (default: `100`)
 - `SPARK_MAX_PARTITIONS`: Maximum partitions (default: `200`)
 - `SPARK_BATCH_UPSERT_SIZE`: Qdrant batch upsert size (default: `200`)
 - `SPARK_EMBED_BATCH_SIZE`: Embedding batch size (default: `8`)
-- `SPARK_MAX_CONCURRENT_PER_PARTITION`: Max concurrent ops per partition (default: `20`)
-- `SPARK_MAX_CONCURRENT_BATCH_UPSERTS`: Max concurrent batch upsert operations
-  per partition (default: `5`)
+- `SPARK_MAX_CONCURRENT_PER_PARTITION`: Max concurrent ops per
+  partition (default: `20`)
+- `SPARK_MAX_CONCURRENT_BATCH_UPSERTS`: Max concurrent batch upsert
+  operations per partition (default: `5`)
 - `SPARK_RETRY_MAX_ATTEMPTS`: Max retry attempts (default: `3`)
 - `SPARK_RETRY_WAIT_MIN`: Min retry wait seconds (default: `2.0`)
 - `SPARK_RETRY_WAIT_MAX`: Max retry wait seconds (default: `10.0`)
-- `SPARK_RETRY_MULTIPLIER`: Retry exponential backoff multiplier (default: `1.0`)
+- `SPARK_RETRY_MULTIPLIER`: Retry exponential backoff multiplier
+  (default: `1.0`)
 
 **Ray Job Configuration**
-- `RAY_ADDRESS`: Ray cluster address (auto-detected in K8s if `K8S_NAMESPACE` is set)
+- `RAY_ADDRESS`: Ray cluster address (auto-detected in K8s if
+  `K8S_NAMESPACE` is set)
 - `RAY_NUM_WORKERS`: Number of Ray worker processes (default: `0`)
 - `RAY_WORKER_CPUS`: CPUs per worker (default: `1.0`)
 - `RAY_WORKER_MEMORY`: Memory per worker in bytes
   (default: `500000000` = 500MB)
 - `RAY_HEAD_CPUS`: CPUs for head node (default: `1.0`)
-- `RAY_HEAD_MEMORY`: Memory for head node in bytes (default: `200000000` = 200MB)
-- `RAY_NAMESPACE`: Ray namespace for job isolation (default: `ml-pipeline`)
-- `RAY_OLLAMA_MAX_CONCURRENCY`: Maximum concurrent Ollama requests per worker (default: `10`)
-- `RAY_OLLAMA_RPS`: Rate limit for Ollama requests per second (default: `5`)
-- `RAY_EMBED_BATCH_MIN`: Minimum batch size for embeddings (default: `1`)
-- `RAY_EMBED_BATCH_MAX`: Maximum batch size for embeddings (default: `8`)
+- `RAY_HEAD_MEMORY`: Memory for head node in bytes
+  (default: `200000000` = 200MB)
+- `RAY_NAMESPACE`: Ray namespace for job isolation
+  (default: `ml-pipeline`)
+- `RAY_OLLAMA_MAX_CONCURRENCY`: Maximum concurrent Ollama requests per
+  worker (default: `10`)
+- `RAY_OLLAMA_RPS`: Rate limit for Ollama requests per second
+  (default: `5`)
+- `RAY_EMBED_BATCH_MIN`: Minimum batch size for embeddings
+  (default: `1`)
+- `RAY_EMBED_BATCH_MAX`: Maximum batch size for embeddings
+  (default: `8`)
 - `RAY_BATCH_UPSERT_SIZE`: Batch size for vector DB upserts
   (default: `200`)
 - `RAY_CHECKPOINT_DIR`: Checkpoint directory
@@ -87,32 +112,44 @@ The following environment variables are supported (all optional with defaults):
 - `RAY_CHECKPOINT_ENABLED`: Enable checkpointing (default: `true`)
 
 **Embedding Provider Configuration**
-- `EMBEDDING_PROVIDER`: Provider type - `ollama`, `openai`, `huggingface`, or
-  `sagemaker` (default: `ollama`)
-- `EMBEDDING_VECTOR_SIZE`: Expected vector dimension (optional, auto-detected if not set)
-- `OLLAMA_BASE_URL`: Ollama service URL (default: auto-detected based on environment)
+- `EMBEDDING_PROVIDER`: Provider type - `ollama`, `openai`,
+  `huggingface`, or `sagemaker` (default: `ollama`)
+- `EMBEDDING_VECTOR_SIZE`: Expected vector dimension (optional,
+  auto-detected if not set)
+- `OLLAMA_BASE_URL`: Ollama service URL (default: auto-detected based
+  on environment)
 - `OLLAMA_MODEL`: Ollama model name (default: `nomic-embed-text`)
-- `OPENAI_API_KEY`: OpenAI API key (required if `EMBEDDING_PROVIDER=openai`)
-- `OPENAI_MODEL`: OpenAI model name (default: `text-embedding-ada-002`)
-- `HUGGINGFACE_MODEL`: HuggingFace model name (required if `EMBEDDING_PROVIDER=huggingface`)
-- `HUGGINGFACE_DEVICE`: Device for HuggingFace models - `cpu` or `cuda` (default: `cpu`)
-- `SAGEMAKER_ENDPOINT`: SageMaker endpoint name (required if `EMBEDDING_PROVIDER=sagemaker`)
+- `OPENAI_API_KEY`: OpenAI API key (required if
+  `EMBEDDING_PROVIDER=openai`)
+- `OPENAI_MODEL`: OpenAI model name
+  (default: `text-embedding-ada-002`)
+- `HUGGINGFACE_MODEL`: HuggingFace model name (required if
+  `EMBEDDING_PROVIDER=huggingface`)
+- `HUGGINGFACE_DEVICE`: Device for HuggingFace models - `cpu` or
+  `cuda` (default: `cpu`)
+- `SAGEMAKER_ENDPOINT`: SageMaker endpoint name (required if
+  `EMBEDDING_PROVIDER=sagemaker`)
 - `SAGEMAKER_REGION`: AWS region for SageMaker (default: `us-east-1`)
 
 **Vector Database Provider Configuration**
-- `VECTOR_DB_PROVIDER`: Provider type - `qdrant`, `weaviate`, `pinecone`, or
-  `milvus` (default: `qdrant`)
+- `VECTOR_DB_PROVIDER`: Provider type - `qdrant`, `weaviate`,
+  `pinecone`, or `milvus` (default: `qdrant`)
 - `VECTOR_DB_COLLECTION`: Collection name (default: `documents`)
-- `QDRANT_URL`: Qdrant service URL (backward compatible, auto-detected if not set)
-- `WEAVIATE_URL`: Weaviate service URL (required if `VECTOR_DB_PROVIDER=weaviate`)
-- `WEAVIATE_API_KEY`: Weaviate API key (optional, for authenticated instances)
-- `PINECONE_API_KEY`: Pinecone API key (required if `VECTOR_DB_PROVIDER=pinecone`)
+- `QDRANT_URL`: Qdrant service URL (backward compatible,
+  auto-detected if not set)
+- `WEAVIATE_URL`: Weaviate service URL (required if
+  `VECTOR_DB_PROVIDER=weaviate`)
+- `WEAVIATE_API_KEY`: Weaviate API key (optional, for authenticated
+  instances)
+- `PINECONE_API_KEY`: Pinecone API key (required if
+  `VECTOR_DB_PROVIDER=pinecone`)
 - `PINECONE_ENVIRONMENT`: Pinecone environment (default: `us-east-1`)
 - `MILVUS_HOST`: Milvus host (required if `VECTOR_DB_PROVIDER=milvus`)
 - `MILVUS_PORT`: Milvus port (default: `19530`)
 
 **Kubernetes**
-- `K8S_NAMESPACE`: Kubernetes namespace for ML components (default: `ml-system`)
+- `K8S_NAMESPACE`: Kubernetes namespace for ML components
+  (default: `ml-system`)
 
 ## Usage
 
@@ -183,22 +220,27 @@ class EmbeddingConfig(BaseModel):
     extended to add new providers without breaking existing code.
 
     Attributes:
-        provider_type: Type of embedding provider. Must be one of: "ollama", "openai",
-            "huggingface", or "sagemaker".
-        vector_size: Expected vector dimension. If None, will be auto-detected from
-            the first embedding or provider default.
-        ollama_url: Ollama service URL. Required if provider_type="ollama".
-            Auto-detected based on environment if not set.
-        ollama_model: Ollama model name. Required if provider_type="ollama".
-            Default: "nomic-embed-text".
-        openai_api_key: OpenAI API key. Required if provider_type="openai".
-        openai_model: OpenAI model name. Required if provider_type="openai".
-            Default: "text-embedding-ada-002".
-        huggingface_model: HuggingFace model name. Required if provider_type="huggingface".
-        huggingface_device: Device for HuggingFace models. Must be "cpu" or "cuda".
-            Default: "cpu".
-        sagemaker_endpoint: SageMaker endpoint name. Required if provider_type="sagemaker".
-        sagemaker_region: AWS region for SageMaker endpoint. Default: "us-east-1".
+        provider_type: Type of embedding provider. Must be one of:
+            "ollama", "openai", "huggingface", or "sagemaker".
+        vector_size: Expected vector dimension. If None, will be
+            auto-detected from the first embedding or provider default.
+        ollama_url: Ollama service URL. Required if
+            provider_type="ollama". Auto-detected based on environment if
+            not set.
+        ollama_model: Ollama model name. Required if
+            provider_type="ollama". Default: "nomic-embed-text".
+        openai_api_key: OpenAI API key. Required if
+            provider_type="openai".
+        openai_model: OpenAI model name. Required if
+            provider_type="openai". Default: "text-embedding-ada-002".
+        huggingface_model: HuggingFace model name. Required if
+            provider_type="huggingface".
+        huggingface_device: Device for HuggingFace models. Must be
+            "cpu" or "cuda". Default: "cpu".
+        sagemaker_endpoint: SageMaker endpoint name. Required if
+            provider_type="sagemaker".
+        sagemaker_region: AWS region for SageMaker endpoint.
+            Default: "us-east-1".
     """
 
     provider_type: Literal["ollama", "openai", "huggingface", "sagemaker"]
@@ -298,7 +340,8 @@ class EmbeddingConfig(BaseModel):
                 sagemaker_region=sagemaker_region_val,
             )
 
-        # This should be unreachable due to validation above, but needed for type checking
+        # This should be unreachable due to validation above, but needed
+        # for type checking
         msg = f"Unsupported provider type: {provider_type}"
         raise ValueError(msg)
 
@@ -307,15 +350,18 @@ class MinIOConfig(BaseModel):
     """Configuration for MinIO/S3-compatible object storage.
 
     Attributes:
-        endpoint_url: S3 service endpoint URL. Automatically resolved based on
-            environment (in-cluster vs local).
-        access_key_id: S3 access key for authentication. Default: "minioadmin".
-        secret_access_key: S3 secret key for authentication. Default: "minioadmin".
+        endpoint_url: S3 service endpoint URL. Automatically resolved
+            based on environment (in-cluster vs local).
+        access_key_id: S3 access key for authentication.
+            Default: "minioadmin".
+        secret_access_key: S3 secret key for authentication.
+            Default: "minioadmin".
         bucket: Default bucket name for operations. Default: "pipeline".
         region: AWS region name. Default: "us-east-1".
-        use_ssl: Whether to use SSL/TLS. Default: False (MinIO typically uses HTTP).
-        path_style: Whether to use path-style addressing. Default: True (required
-            for MinIO compatibility).
+        use_ssl: Whether to use SSL/TLS. Default: False (MinIO
+            typically uses HTTP).
+        path_style: Whether to use path-style addressing. Default: True
+            (required for MinIO compatibility).
     """
 
     endpoint_url: str
@@ -363,22 +409,30 @@ class MinIOConfig(BaseModel):
 class VectorDBConfig(BaseModel):
     """Configuration for vector database provider.
 
-    This configuration class supports multiple vector database providers and can be
-    extended to add new providers without breaking existing code.
+    This configuration class supports multiple vector database providers
+    and can be extended to add new providers without breaking existing
+    code.
 
     Attributes:
-        provider_type: Type of vector database provider. Must be one of: "qdrant",
-            "weaviate", "pinecone", or "milvus".
-        collection: Default collection name to use for storing and querying vectors.
-        qdrant_url: Qdrant service URL. Required if provider_type="qdrant".
-            Auto-detected based on environment if not set.
-        weaviate_url: Weaviate service URL. Required if provider_type="weaviate".
-            Auto-detected based on environment if not set.
-        weaviate_api_key: Weaviate API key. Optional, for authenticated instances.
-        pinecone_api_key: Pinecone API key. Required if provider_type="pinecone".
-        pinecone_environment: Pinecone environment/region. Default: "us-east-1".
-        milvus_host: Milvus host address. Required if provider_type="milvus".
-            Auto-detected based on environment if not set.
+        provider_type: Type of vector database provider. Must be one of:
+            "qdrant", "weaviate", "pinecone", or "milvus".
+        collection: Default collection name to use for storing and
+            querying vectors.
+        qdrant_url: Qdrant service URL. Required if
+            provider_type="qdrant". Auto-detected based on environment
+            if not set.
+        weaviate_url: Weaviate service URL. Required if
+            provider_type="weaviate". Auto-detected based on environment
+            if not set.
+        weaviate_api_key: Weaviate API key. Optional, for authenticated
+            instances.
+        pinecone_api_key: Pinecone API key. Required if
+            provider_type="pinecone".
+        pinecone_environment: Pinecone environment/region.
+            Default: "us-east-1".
+        milvus_host: Milvus host address. Required if
+            provider_type="milvus". Auto-detected based on environment
+            if not set.
         milvus_port: Milvus port number. Default: 19530.
     """
 
@@ -463,7 +517,74 @@ class VectorDBConfig(BaseModel):
                 milvus_port=int(os.getenv("MILVUS_PORT", "19530")),
             )
 
-        # This should be unreachable due to validation above, but needed for type checking
+        # This should be unreachable due to validation above, but needed
+        # for type checking
+        msg = f"Unsupported provider type: {provider_type}"
+        raise ValueError(msg)
+
+    @classmethod
+    def from_env_for_provider(cls, provider_type: str, namespace: str = "ml-system") -> "VectorDBConfig":
+        """Create VectorDBConfig for a specific provider type.
+
+        Unlike `from_env()` which reads VECTOR_DB_PROVIDER from the environment,
+        this method accepts the provider type as a parameter. Useful when routes
+        need to target a specific provider regardless of the default configuration.
+
+        Args:
+            provider_type: Provider type ("qdrant", "weaviate", "pinecone", "milvus").
+            namespace: Kubernetes namespace for service discovery.
+
+        Returns:
+            Configured VectorDBConfig for the specified provider.
+
+        Raises:
+            ValueError: If provider type is invalid or required config is missing.
+        """
+        valid_providers = ("qdrant", "weaviate", "pinecone", "milvus")
+        if provider_type not in valid_providers:
+            msg = f"Invalid provider type: {provider_type}. Must be one of: {valid_providers}"
+            raise ValueError(msg)
+
+        in_cluster = _is_in_cluster()
+        collection = os.getenv("VECTOR_DB_COLLECTION", "documents")
+
+        if provider_type == "qdrant":
+            default_url = f"http://qdrant.{namespace}:6333" if in_cluster else "http://localhost:6333"
+            return cls(
+                provider_type="qdrant",
+                collection=collection,
+                qdrant_url=os.getenv("QDRANT_URL", default_url),
+            )
+
+        if provider_type == "weaviate":
+            default_url = f"http://weaviate.{namespace}:8080" if in_cluster else "http://localhost:8080"
+            return cls(
+                provider_type="weaviate",
+                collection=collection,
+                weaviate_url=os.getenv("WEAVIATE_URL", default_url),
+                weaviate_api_key=os.getenv("WEAVIATE_API_KEY"),
+            )
+
+        if provider_type == "pinecone":
+            api_key = os.getenv("PINECONE_API_KEY")
+            if not api_key:
+                raise ValueError("PINECONE_API_KEY is required for Pinecone provider")
+            return cls(
+                provider_type="pinecone",
+                collection=collection,
+                pinecone_api_key=api_key,
+                pinecone_environment=os.getenv("PINECONE_ENVIRONMENT", "us-east-1"),
+            )
+
+        if provider_type == "milvus":
+            default_host = f"milvus.{namespace}" if in_cluster else "localhost"
+            return cls(
+                provider_type="milvus",
+                collection=collection,
+                milvus_host=os.getenv("MILVUS_HOST", default_host),
+                milvus_port=int(os.getenv("MILVUS_PORT", "19530")),
+            )
+
         msg = f"Unsupported provider type: {provider_type}"
         raise ValueError(msg)
 
@@ -475,36 +596,49 @@ class SparkJobConfig(BaseModel):
     This allows fine-tuning Spark job performance without code changes.
 
     Attributes:
-        master_url: Spark master URL (e.g., `spark://spark-master:7077` or `local[*]`).
-            Set to None when using Spark Operator (operator manages master URL).
-        executor_memory: Memory per executor (e.g., `2g`, `4g`). Default: "2g".
+        master_url: Spark master URL (e.g.,
+            `spark://spark-master:7077` or `local[*]`). Set to None when
+            using Spark Operator (operator manages master URL).
+        executor_memory: Memory per executor (e.g., `2g`, `4g`).
+            Default: "2g".
         executor_cores: Number of CPU cores per executor. Default: 2.
         driver_memory: Driver memory (e.g., `1g`, `2g`). Default: "1g".
-        default_parallelism: Default number of partitions for RDDs. Default: 200.
-        shuffle_partitions: Number of partitions for shuffle operations. Default: 200.
-        network_timeout: Network timeout for Spark operations. Default: "600s".
-        heartbeat_interval: Executor heartbeat interval to Spark master. Default: "60s".
+        default_parallelism: Default number of partitions for RDDs.
+            Default: 200.
+        shuffle_partitions: Number of partitions for shuffle operations.
+            Default: 200.
+        network_timeout: Network timeout for Spark operations.
+            Default: "600s".
+        heartbeat_interval: Executor heartbeat interval to Spark master.
+            Default: "60s".
         checkpoint_dir: Checkpoint directory path (local path or S3 URI).
             Default: "/tmp/spark-checkpoints".
-        checkpoint_enabled: Whether to enable checkpointing for job recovery.
-            Default: True.
-        checkpoint_save_interval: Save checkpoint after this many successful items.
-            Default: 10.
-        checkpoint_save_interval_seconds: Save checkpoint after this many seconds.
-            Default: 30.0.
-        partition_target_size: Target number of S3 keys per partition. Default: 100.
-        max_partitions: Maximum number of partitions to create. Default: 200.
-        batch_upsert_size: Batch size for vector database upserts. Default: 200.
-        embed_batch_size: Batch size for embedding generation. Default: 8.
-        max_concurrent_per_partition: Maximum concurrent operations per partition.
-            Default: 20.
-        max_concurrent_batch_upserts: Maximum concurrent batch upsert operations
-            per partition. Default: 5.
-        retry_max_attempts: Maximum retry attempts for failed operations. Default: 3.
-        retry_wait_min: Minimum wait time between retries in seconds. Default: 2.0.
-        retry_wait_max: Maximum wait time between retries in seconds. Default: 10.0.
-        retry_multiplier: Exponential backoff multiplier for retry delays.
-            Default: 1.0.
+        checkpoint_enabled: Whether to enable checkpointing for job
+            recovery. Default: True.
+        checkpoint_save_interval: Save checkpoint after this many
+            successful items. Default: 10.
+        checkpoint_save_interval_seconds: Save checkpoint after this many
+            seconds. Default: 30.0.
+        partition_target_size: Target number of S3 keys per partition.
+            Default: 100.
+        max_partitions: Maximum number of partitions to create.
+            Default: 200.
+        batch_upsert_size: Batch size for vector database upserts.
+            Default: 200.
+        embed_batch_size: Batch size for embedding generation.
+            Default: 8.
+        max_concurrent_per_partition: Maximum concurrent operations per
+            partition. Default: 20.
+        max_concurrent_batch_upserts: Maximum concurrent batch upsert
+            operations per partition. Default: 5.
+        retry_max_attempts: Maximum retry attempts for failed operations.
+            Default: 3.
+        retry_wait_min: Minimum wait time between retries in seconds.
+            Default: 2.0.
+        retry_wait_max: Maximum wait time between retries in seconds.
+            Default: 10.0.
+        retry_multiplier: Exponential backoff multiplier for retry
+            delays. Default: 1.0.
     """
 
     master_url: str | None
@@ -537,17 +671,21 @@ class SparkJobConfig(BaseModel):
         """Create SparkJobConfig from environment variables.
 
         Args:
-            namespace: Kubernetes namespace for constructing default master URL.
+            namespace: Kubernetes namespace for constructing default master
+                URL.
 
         Returns:
             Configured SparkJobConfig instance.
 
         Raises:
-            ValueError: If SPARK_MASTER_URL is not set and namespace is not provided.
+            ValueError: If SPARK_MASTER_URL is not set and namespace is
+                not provided.
         """
         # Get SPARK_MASTER_URL from environment
-        # If not set and namespace provided, auto-construct for standalone Spark cluster
-        # If not set and running with Spark Operator, leave as None (Spark Operator manages master)
+        # If not set and namespace provided, auto-construct for
+        # standalone Spark cluster
+        # If not set and running with Spark Operator, leave as None
+        # (Spark Operator manages master)
         master_url = os.environ.get("SPARK_MASTER_URL")
         if master_url is not None:
             # Use provided master URL
@@ -560,10 +698,11 @@ class SparkJobConfig(BaseModel):
             master_url = f"spark://spark-master.{namespace}:7077"
         else:
             raise ValueError(
-                "SPARK_MASTER_URL is required when not using Spark Operator. "
-                "Set SPARK_MASTER_URL environment variable or provide namespace to connect "
-                "to external Spark cluster. When using Spark Operator, SPARK_MASTER_URL "
-                "should not be set."
+                "SPARK_MASTER_URL is required when not using Spark "
+                "Operator. Set SPARK_MASTER_URL environment variable or "
+                "provide namespace to connect to external Spark cluster. "
+                "When using Spark Operator, SPARK_MASTER_URL should not "
+                "be set."
             )
 
         return cls(
@@ -601,28 +740,36 @@ class RayJobConfig(BaseModel):
     This allows fine-tuning Ray job performance without code changes.
 
     Attributes:
-        num_workers: Number of Ray worker processes. Default: 0 (auto-scale based on
-            cluster resources when using external Ray cluster).
+        num_workers: Number of Ray worker processes. Default: 0
+            (auto-scale based on cluster resources when using external
+            Ray cluster).
         worker_cpus: Number of CPU cores per worker. Default: 1.0.
-        worker_memory: Memory per worker in bytes. Default: 500000000 (500MB).
+        worker_memory: Memory per worker in bytes.
+            Default: 500000000 (500MB).
         head_cpus: Number of CPU cores for head node. Default: 1.0.
-        head_memory: Memory for head node in bytes. Default: 200000000 (200MB).
-        ray_namespace: Ray namespace for job isolation. Default: "ml-pipeline".
-        ray_address: Ray cluster address. If set, connects to external cluster.
-            Auto-detected in K8s if K8S_NAMESPACE is set. Default: None.
-        runtime_env: Runtime environment configuration (packages, env vars).
-            Default: empty dict.
-        ollama_max_concurrency: Maximum concurrent Ollama requests per worker.
-            Default: 10.
-        ollama_requests_per_second: Rate limit for Ollama requests per second.
-            Default: 5.
-        embed_batch_min: Minimum batch size for embedding generation. Default: 1.
-        embed_batch_max: Maximum batch size for embedding generation. Default: 8.
-        batch_upsert_size: Batch size for vector database upserts. Default: 200.
-        checkpoint_dir: Checkpoint directory path (local path or S3 URI).
-            Default: "/tmp/ray-checkpoints".
-        checkpoint_enabled: Whether to enable checkpointing for job recovery.
-            Default: True.
+        head_memory: Memory for head node in bytes.
+            Default: 200000000 (200MB).
+        ray_namespace: Ray namespace for job isolation.
+            Default: "ml-pipeline".
+        ray_address: Ray cluster address. If set, connects to external
+            cluster. Auto-detected in K8s if K8S_NAMESPACE is set.
+            Default: None.
+        runtime_env: Runtime environment configuration (packages, env
+            vars). Default: empty dict.
+        ollama_max_concurrency: Maximum concurrent Ollama requests per
+            worker. Default: 10.
+        ollama_requests_per_second: Rate limit for Ollama requests per
+            second. Default: 5.
+        embed_batch_min: Minimum batch size for embedding generation.
+            Default: 1.
+        embed_batch_max: Maximum batch size for embedding generation.
+            Default: 8.
+        batch_upsert_size: Batch size for vector database upserts.
+            Default: 200.
+        checkpoint_dir: Checkpoint directory path (local path or S3
+            URI). Default: "/tmp/ray-checkpoints".
+        checkpoint_enabled: Whether to enable checkpointing for job
+            recovery. Default: True.
     """
 
     num_workers: int = 4
@@ -659,19 +806,20 @@ class RayJobConfig(BaseModel):
             k8s_namespace = os.environ.get("K8S_NAMESPACE")
             if not k8s_namespace:
                 raise ValueError(
-                    "RAY_ADDRESS is required. Set RAY_ADDRESS environment variable "
-                    "or K8S_NAMESPACE to connect to external Ray cluster. "
-                    "Local Ray execution is not supported."
+                    "RAY_ADDRESS is required. Set RAY_ADDRESS environment "
+                    "variable or K8S_NAMESPACE to connect to external Ray "
+                    "cluster. Local Ray execution is not supported."
                 )
-            # Auto-detect: if in K8s and RAY_ADDRESS not set, use external cluster
+            # Auto-detect: if in K8s and RAY_ADDRESS not set, use
+            # external cluster
             ray_address = f"ray://ray-head.{k8s_namespace}.svc.cluster.local:10001"
 
         return cls(
             num_workers=int(os.getenv("RAY_NUM_WORKERS", "0")),
             worker_cpus=float(os.getenv("RAY_WORKER_CPUS", "1.0")),
-            worker_memory=int(os.getenv("RAY_WORKER_MEMORY", "500000000")),  # 500MB (reduced)
+            worker_memory=int(os.getenv("RAY_WORKER_MEMORY", "500000000")),
             head_cpus=float(os.getenv("RAY_HEAD_CPUS", "1.0")),
-            head_memory=int(os.getenv("RAY_HEAD_MEMORY", "200000000")),  # 200MB (reduced)
+            head_memory=int(os.getenv("RAY_HEAD_MEMORY", "200000000")),
             ray_namespace=os.getenv("RAY_NAMESPACE", "ml-pipeline"),
             ray_address=ray_address,
             runtime_env={},  # Can be extended to load from env
@@ -693,15 +841,19 @@ class Settings(BaseModel):
 
     Attributes:
         embedding: Embedding provider configuration (provider-agnostic).
-            Supports multiple providers: ollama, openai, huggingface, sagemaker.
-        vector_db: Vector database provider configuration (provider-agnostic).
-            Supports multiple providers: qdrant, weaviate, pinecone, milvus.
-        minio: MinIO/S3 configuration for object storage. Contains endpoint URL,
-            credentials, bucket name, and connection settings.
-        spark: Spark job configuration. Contains master URL, executor/driver resources,
-            checkpoint settings, and performance tuning parameters.
-        k8s_namespace: Kubernetes namespace where ML components are deployed.
-            Used for service discovery and resource naming.
+            Supports multiple providers: ollama, openai, huggingface,
+            sagemaker.
+        vector_db: Vector database provider configuration
+            (provider-agnostic). Supports multiple providers: qdrant,
+            weaviate, pinecone, milvus.
+        minio: MinIO/S3 configuration for object storage. Contains
+            endpoint URL, credentials, bucket name, and connection
+            settings.
+        spark: Spark job configuration. Contains master URL,
+            executor/driver resources, checkpoint settings, and
+            performance tuning parameters.
+        k8s_namespace: Kubernetes namespace where ML components are
+            deployed. Used for service discovery and resource naming.
     """
 
     embedding: EmbeddingConfig
@@ -717,8 +869,8 @@ class Settings(BaseModel):
         """Create Settings from environment variables.
 
         Args:
-            namespace: Kubernetes namespace. If None, uses K8S_NAMESPACE env var
-                or defaults to "ml-system".
+            namespace: Kubernetes namespace. If None, uses K8S_NAMESPACE
+                env var or defaults to "ml-system".
 
         Returns:
             Configured Settings instance.
@@ -738,16 +890,18 @@ class Settings(BaseModel):
 def get_settings() -> "Settings":
     """Load and return application settings (cached per process).
 
-    This function reads all environment variables and constructs a `Settings` instance.
-    The result is cached using `@lru_cache` to avoid re-reading env vars on every call.
+    This function reads all environment variables and constructs a
+    `Settings` instance. The result is cached using `@lru_cache` to
+    avoid re-reading env vars on every call.
 
     Returns:
         A frozen `Settings` instance with all configuration values.
 
     Note:
-        Settings are loaded once per process. In containerized environments, env vars
-        are static for the lifetime of the container, so caching is safe and efficient.
-        For local development with dynamic env changes, restart the service to pick up
-        new values.
+        Settings are loaded once per process. In containerized
+        environments, env vars are static for the lifetime of the
+        container, so caching is safe and efficient. For local
+        development with dynamic env changes, restart the service to
+        pick up new values.
     """
     return Settings.from_env()
