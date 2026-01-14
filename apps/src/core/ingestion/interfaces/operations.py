@@ -7,6 +7,7 @@ These classes are shared between Ray and Spark implementations.
 
 import asyncio
 import logging
+from typing import TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
@@ -17,6 +18,9 @@ from core.exceptions import UpstreamError
 from foundation.rate_limiter import RateLimiter
 
 from .types import BatchEmbeddingResult, ContentResult, ProcessingResult
+
+if TYPE_CHECKING:
+    from .factories import VectorPointFactory
 
 logger = logging.getLogger("pipeline.ingestion")
 
@@ -34,7 +38,7 @@ class S3ContentFetcher:
         ...     print(content.content)
     """
 
-    def __init__(self, s3_client: S3ClientWrapper, bucket: str):
+    def __init__(self, s3_client: S3ClientWrapper, bucket: str) -> None:
         """Initialize the fetcher.
 
         Args:
@@ -91,7 +95,7 @@ class S3ContentFetcher:
             if result is not None:
                 contents.append(result)
             else:
-                failures.append(ProcessingResult.failure_result(key, "S3 fetch failed"))
+                failures.append(ProcessingResult.failure_result(key, "S3 fetch failed in fetch_all"))
 
         return contents, failures
 
@@ -114,7 +118,7 @@ class EmbeddingGenerator:
         self,
         embedder: EmbeddingProvider,
         rate_limiter: RateLimiter | None = None,
-    ):
+    ) -> None:
         """Initialize the generator.
 
         Args:
@@ -221,7 +225,7 @@ class VectorDBUpserter:
         self,
         qdrant_db: VectorDBProvider,
         weaviate_db: VectorDBProvider,
-    ):
+    ) -> None:
         """Initialize the upserter.
 
         Args:
@@ -288,46 +292,6 @@ class VectorDBUpserter:
 
         return any_success
 
-    async def upsert_qdrant_only_async(
-        self,
-        embedding_result: BatchEmbeddingResult,
-        collection: str,
-        vector_size: int,
-    ) -> bool:
-        """Upsert vectors to Qdrant only.
-
-        Args:
-            embedding_result: Batch of points to upsert.
-            collection: Collection name.
-            vector_size: Vector dimension.
-
-        Returns:
-            True if successful, False otherwise.
-        """
-        if embedding_result.is_empty():
-            return True
-
-        qdrant_point_structs = [point.to_qdrant() for point in embedding_result.qdrant_points]
-
-        try:
-            await self.qdrant_db.batch_upsert_async(
-                collection=collection,
-                points=qdrant_point_structs,  # type: ignore[arg-type]
-                vector_size=vector_size,
-            )
-            return True
-        except Exception as e:
-            logger.error(
-                "Qdrant batch upsert failed",
-                extra={
-                    "error": str(e),
-                    "error_type": type(e).__name__,
-                    "batch_size": len(embedding_result),
-                },
-                exc_info=e,
-            )
-            return False
-
 
 class BatchProcessor:
     """Orchestrates batch processing of content through embedding and upsert.
@@ -353,7 +317,7 @@ class BatchProcessor:
         point_factory: "VectorPointFactory",  # Forward ref to avoid circular import
         upserter: VectorDBUpserter,
         collection: str,
-    ):
+    ) -> None:
         """Initialize the processor.
 
         Args:
@@ -398,18 +362,14 @@ class BatchProcessor:
         if vectors is None:
             # Embedding failed - shrink batch size
             new_size = max(current_batch_size // 2, min_batch_size)
-            return [
-                ProcessingResult.failure_result(c.s3_key, "Embedding failed") for c in batch
-            ], new_size
+            return [ProcessingResult.failure_result(c.s3_key, "Embedding failed") for c in batch], new_size
 
         # Create vector points
         embedding_result = self.point_factory.create_batch(batch, vectors)
         vector_size = len(vectors[0]) if vectors else self.embedding_generator.vector_size
 
         # Upsert to databases
-        success = await self.upserter.upsert_batch_async(
-            embedding_result, self.collection, vector_size
-        )
+        success = await self.upserter.upsert_batch_async(embedding_result, self.collection, vector_size)
 
         if success:
             # Success - grow batch size cautiously
@@ -417,11 +377,4 @@ class BatchProcessor:
             return [ProcessingResult.success_result(c.s3_key) for c in batch], new_size
         # Both DBs failed - shrink batch size
         new_size = max(current_batch_size // 2, min_batch_size)
-        return [
-            ProcessingResult.failure_result(c.s3_key, "Upsert failed") for c in batch
-        ], new_size
-
-
-# Import VectorPointFactory for type hint (avoids circular at module level)
-from .factories import VectorPointFactory  # noqa: E402
-
+        return [ProcessingResult.failure_result(c.s3_key, "Upsert failed") for c in batch], new_size

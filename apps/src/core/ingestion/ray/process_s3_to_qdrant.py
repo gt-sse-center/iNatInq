@@ -90,7 +90,7 @@ def main() -> None:
             keys = s3.list_objects(bucket=minio_cfg.bucket, prefix=s3_prefix)
             job_logger.info("S3 objects listed", extra={"count": len(keys)})
         except ClientError as e:
-            job_logger.error("Failed to list S3 objects", extra={"error": str(e)})
+            job_logger.exception("Failed to list S3 objects", extra={"error": str(e)})
             sys.exit(1)
 
         if not keys:
@@ -100,9 +100,7 @@ def main() -> None:
         # Load checkpoint if enabled
         processed: set[str] = set()
         checkpoint_path: str | None = None
-        checkpoint_manager = CheckpointManager(
-            s3_client=s3 if is_s3_path(ray_cfg.checkpoint_dir) else None
-        )
+        checkpoint_manager = CheckpointManager(s3_client=s3 if is_s3_path(ray_cfg.checkpoint_dir) else None)
         if ray_cfg.checkpoint_enabled:
             # Use the same path format regardless of S3 or local
             checkpoint_path = f"{ray_cfg.checkpoint_dir}/{vector_cfg.collection}.json"
@@ -211,4 +209,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

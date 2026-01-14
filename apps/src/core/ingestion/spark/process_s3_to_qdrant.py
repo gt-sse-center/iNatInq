@@ -87,13 +87,11 @@ def main() -> None:
     try:
         keys = s3.list_objects(bucket=minio_cfg.bucket, prefix=s3_prefix)
     except ClientError as e:
-        logger.error("Failed to list S3 objects", extra={"error": str(e)})
+        logger.exception("Failed to list S3 objects", extra={"error": str(e)})
         spark.stop()
         sys.exit(1)
 
-    checkpoint_manager = CheckpointManager(
-        s3_client=s3 if is_s3_path(spark_cfg.checkpoint_dir) else None
-    )
+    checkpoint_manager = CheckpointManager(s3_client=s3 if is_s3_path(spark_cfg.checkpoint_dir) else None)
     if spark_cfg.checkpoint_enabled:
         checkpoint_path = (
             f"{spark_cfg.checkpoint_dir}/{vector_cfg.collection}.json"
@@ -154,4 +152,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

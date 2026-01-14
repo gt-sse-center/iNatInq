@@ -432,4 +432,3 @@ class TestProcessingClientsFactory:
             access_key_id="mykey",
             secret_access_key="mysecret",
         )
-

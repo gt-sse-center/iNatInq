@@ -589,4 +589,3 @@ class TestProcessingClients:
         mock_qdrant._client.close.assert_awaited_once()
         mock_weaviate._client.close.assert_awaited_once()
         mock_session.close.assert_awaited_once()
-

@@ -655,4 +655,3 @@ class TestRayProcessingPipeline:
 
         assert results == []
         mock_create.assert_not_called()
-

@@ -100,12 +100,8 @@ def create_spark_session(
     spark_builder = spark_builder.config("spark.executor.memory", spark_config.executor_memory)
     spark_builder = spark_builder.config("spark.executor.cores", str(spark_config.executor_cores))
     spark_builder = spark_builder.config("spark.driver.memory", spark_config.driver_memory)
-    spark_builder = spark_builder.config(
-        "spark.default.parallelism", str(spark_config.default_parallelism)
-    )
-    spark_builder = spark_builder.config(
-        "spark.sql.shuffle.partitions", str(spark_config.shuffle_partitions)
-    )
+    spark_builder = spark_builder.config("spark.default.parallelism", str(spark_config.default_parallelism))
+    spark_builder = spark_builder.config("spark.sql.shuffle.partitions", str(spark_config.shuffle_partitions))
 
     # Configure driver networking for Kubernetes (required for cluster mode)
     # bindAddress: Listen on all interfaces (0.0.0.0)
@@ -125,9 +121,7 @@ def create_spark_session(
         },
     )
     spark_builder = spark_builder.config("spark.network.timeout", spark_config.network_timeout)
-    spark_builder = spark_builder.config(
-        "spark.executor.heartbeatInterval", spark_config.heartbeat_interval
-    )
+    spark_builder = spark_builder.config("spark.executor.heartbeatInterval", spark_config.heartbeat_interval)
 
     # Configure max frame size to handle large result batches
     # Default is 128MB (134217728 bytes), increase to 256MB for large datasets
@@ -165,4 +159,3 @@ def create_spark_session(
         )
 
     return spark
-

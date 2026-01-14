@@ -63,4 +63,3 @@ class RateLimiterActor:
             Maximum number of requests per second configured for this limiter.
         """
         return self._limiter.get_rate()
-

@@ -27,4 +27,3 @@ def __getattr__(name: str):
         return create_spark_session
     msg = f"module {__name__!r} has no attribute {name!r}"
     raise AttributeError(msg)
-

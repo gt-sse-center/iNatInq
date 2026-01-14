@@ -127,11 +127,7 @@ def discover_files(local_dir: str) -> list[str]:
 
     # Find all .txt files, but filter out macOS metadata files (._*)
     all_files = list(base_path.glob("*.txt"))
-    files = [
-        str(p)
-        for p in all_files
-        if not p.name.startswith("._") and not p.name.endswith(".DS_Store")
-    ]
+    files = [str(p) for p in all_files if not p.name.startswith("._") and not p.name.endswith(".DS_Store")]
 
     # Log if we filtered out any metadata files
     filtered_count = len(all_files) - len(files)
@@ -192,7 +188,7 @@ def read_chunk_files(
                     },
                 )
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Failed to read file",
                 extra={"file": file_path, "error": str(e)},
             )
@@ -257,7 +253,7 @@ def create_upload_partition_fn(
                 return ("success", 1)
 
             except Exception as e:
-                logger.error(
+                logger.exception(
                     "Upload failed",
                     extra={"file": filename, "error": str(e)},
                 )
@@ -406,9 +402,7 @@ def process_chunk(
     )
 
     # Upload files
-    success, failure, upload_elapsed = upload_chunk(
-        sc, chunk_data, upload_fn, chunk_num, default_parallelism
-    )
+    success, failure, upload_elapsed = upload_chunk(sc, chunk_data, upload_fn, chunk_num, default_parallelism)
 
     # Calculate running totals
     new_total_success = running_totals[0] + success
@@ -425,9 +419,7 @@ def process_chunk(
             "read_seconds": round(read_elapsed, 2),
             "upload_seconds": round(upload_elapsed, 2),
             "total_seconds": round(time.time() - chunk_start_time, 2),
-            "upload_files_per_second": round(success / upload_elapsed, 2)
-            if upload_elapsed > 0
-            else 0,
+            "upload_files_per_second": round(success / upload_elapsed, 2) if upload_elapsed > 0 else 0,
             "overall_progress_pct": progress_pct,
         },
     )
@@ -510,9 +502,7 @@ def run_ingestion(
 def main() -> None:
     """Load local files from PVC to S3/MinIO using Spark driver-side batch processing."""
     # Configuration
-    local_dir = (
-        sys.argv[1] if len(sys.argv) > 1 else os.environ.get("LOCAL_DIR", "/data/testdata/inputs")
-    )
+    local_dir = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("LOCAL_DIR", "/data/testdata/inputs")
     s3_prefix = sys.argv[2] if len(sys.argv) > 2 else os.environ.get("S3_PREFIX", "inputs/")
     namespace = os.environ.get("K8S_NAMESPACE", "ml-system")
     pod_ip = os.environ.get("POD_IP", "localhost")
@@ -562,4 +552,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

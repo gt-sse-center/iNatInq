@@ -72,7 +72,7 @@ class RayProcessingPipeline:
         self,
         config: RayProcessingConfig,
         rate_limiter: RateLimiter | None = None,
-    ):
+    ) -> None:
         """Initialize the pipeline.
 
         Args:
@@ -306,7 +306,7 @@ class _RayActorRateLimiter:
     actor transparently.
     """
 
-    def __init__(self, actor: Any):
+    def __init__(self, actor: Any) -> None:
         """Initialize with a Ray rate limiter actor.
 
         Args:
@@ -321,4 +321,3 @@ class _RayActorRateLimiter:
     def get_rate(self) -> float:
         """Get the rate limit (not used, but required by interface)."""
         return 0.0
-

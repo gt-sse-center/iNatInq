@@ -357,9 +357,7 @@ class TestSparkProcessingPipeline:
 
         mock_clients = MagicMock()
         mock_clients.s3 = MagicMock()
-        mock_clients.s3.get_object.side_effect = ClientError(
-            {"Error": {"Code": "NoSuchKey"}}, "GetObject"
-        )
+        mock_clients.s3.get_object.side_effect = ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
         mock_clients.close_async = AsyncMock()
         mock_factory_class.return_value.create.return_value = mock_clients
 
@@ -433,9 +431,7 @@ class TestProcessPartitionAsync:
     @patch("core.ingestion.spark.processing.RateLimiter")
     @patch("core.ingestion.spark.processing.ProcessingClientsFactory")
     @pytest.mark.asyncio
-    async def test_returns_tuples(
-        self, mock_factory_class, mock_rate_limiter_class
-    ) -> None:
+    async def test_returns_tuples(self, mock_factory_class, mock_rate_limiter_class) -> None:
         """Test that results are returned as tuples.
 
         **Why this test is important:**
@@ -487,4 +483,3 @@ class TestProcessPartitionAsync:
         assert len(result_list) == 1
         assert isinstance(result_list[0], tuple)
         assert len(result_list[0]) == 3  # (key, success, error)
-
