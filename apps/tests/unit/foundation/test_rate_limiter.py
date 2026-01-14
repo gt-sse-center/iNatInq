@@ -33,7 +33,6 @@ from foundation.rate_limiter import RateLimiter
 # =============================================================================
 
 
-@pytest.mark.asyncio
 class TestRateLimiter:
     """Test suite for RateLimiter class."""
 
@@ -117,6 +116,7 @@ class TestRateLimiter:
     # Rate Limiting Tests
     # =============================================================================
 
+    @pytest.mark.asyncio
     async def test_acquire_first_call_no_wait(self) -> None:
         """Test that first acquire() call does not wait.
 
@@ -140,6 +140,7 @@ class TestRateLimiter:
         # First call should be immediate (or very fast)
         assert elapsed < 0.01
 
+    @pytest.mark.asyncio
     async def test_acquire_respects_rate_limit(self) -> None:
         """Test that acquire() respects the rate limit.
 
@@ -169,6 +170,7 @@ class TestRateLimiter:
         assert elapsed >= expected_interval - 0.05
         assert elapsed <= expected_interval + 0.05
 
+    @pytest.mark.asyncio
     async def test_acquire_multiple_calls(self) -> None:
         """Test that multiple acquire() calls respect rate limit.
 
@@ -200,6 +202,7 @@ class TestRateLimiter:
     # Concurrency Tests
     # =============================================================================
 
+    @pytest.mark.asyncio
     async def test_acquire_concurrent_calls(self) -> None:
         """Test that concurrent acquire() calls are thread-safe.
 
@@ -236,6 +239,7 @@ class TestRateLimiter:
     # Edge Case Tests
     # =============================================================================
 
+    @pytest.mark.asyncio
     async def test_acquire_fast_rate(self) -> None:
         """Test that acquire() works with fast rate (small interval).
 
@@ -260,6 +264,7 @@ class TestRateLimiter:
         # Should be very fast, but may have small delay
         assert elapsed < 0.05
 
+    @pytest.mark.asyncio
     async def test_acquire_slow_rate(self) -> None:
         """Test that acquire() works with slow rate (large interval).
 
