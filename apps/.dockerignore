@@ -1,0 +1,58 @@
+# =============================================================================
+# Docker Build Ignore
+# =============================================================================
+# Files and directories to exclude from Docker build context.
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Build artifacts
+build/
+dist/
+
+# Local development
+.env
+.env.local
+*.local
+
+# Zarf (infrastructure configs - compose files not needed in image)
+zarf/compose/
+zarf/scripts/
+
+# Test fixtures
+tests/
+
