@@ -73,7 +73,7 @@ class ExceptionHandlerMiddleware(BaseHTTPMiddleware):
             )
             return JSONResponse(
                 status_code=504,
-                content={"error": "Gateway Timeout", "message": str(e)},
+                content={"error": "Gateway Timeout", "message": "Request timed out."},
             )
 
         except UpstreamError as e:
@@ -83,7 +83,7 @@ class ExceptionHandlerMiddleware(BaseHTTPMiddleware):
             )
             return JSONResponse(
                 status_code=502,
-                content={"error": "Bad Gateway", "message": str(e)},
+                content={"error": "Bad Gateway", "message": "An upstream service error occurred."},
             )
 
         except PipelineError as e:
@@ -93,7 +93,7 @@ class ExceptionHandlerMiddleware(BaseHTTPMiddleware):
             )
             return JSONResponse(
                 status_code=500,
-                content={"error": "Internal Server Error", "message": str(e)},
+                content={"error": "Internal Server Error", "message": "A pipeline error occurred."},
             )
 
         except HTTPException as http_exception:

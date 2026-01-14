@@ -33,7 +33,6 @@ FastAPI automatically generates OpenAPI/Swagger documentation at:
 - `/openapi.json`: OpenAPI schema JSON
 """
 
-import os
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -73,58 +72,6 @@ def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
-def _create_vector_db_config_for_provider(provider_type: str, namespace: str = "ml-system") -> VectorDBConfig:
-    """Create VectorDBConfig for a specific provider type using environment variables.
-
-    Args:
-        provider_type: Provider type ("qdrant" or "weaviate").
-        namespace: Kubernetes namespace for service discovery.
-
-    Returns:
-        Configured VectorDBConfig for the specified provider.
-
-    Raises:
-        ValueError: If provider type is invalid or required config is missing.
-    """
-
-    # Helper to read env var with default
-    def env_str(key: str, default: str | None = None) -> str | None:
-        v = os.getenv(key)
-        if v is None or v == "":
-            return default
-        return v
-
-    # Helper to detect if in cluster
-    def _is_in_cluster() -> bool:
-        if os.path.exists(
-            "/var/run/secrets/kubernetes.io/serviceaccount/token",
-        ):
-            return True
-        if os.getenv("KUBERNETES_SERVICE_HOST"):
-            return True
-        return os.getenv("PIPELINE_ENV", "").lower() == "cluster"
-
-    in_cluster = _is_in_cluster()
-    collection = env_str("VECTOR_DB_COLLECTION", "documents") or "documents"
-
-    if provider_type == "qdrant":
-        default_url = f"http://qdrant.{namespace}:6333" if in_cluster else "http://localhost:6333"
-        return VectorDBConfig(
-            provider_type="qdrant",
-            collection=collection,
-            qdrant_url=env_str("QDRANT_URL", default_url),
-        )
-    if provider_type == "weaviate":
-        default_url = f"http://weaviate.{namespace}:8080" if in_cluster else "http://localhost:8080"
-        return VectorDBConfig(
-            provider_type="weaviate",
-            collection=collection,
-            weaviate_url=env_str("WEAVIATE_URL", default_url),
-            weaviate_api_key=env_str("WEAVIATE_API_KEY"),
-        )
-    raise ValueError(f"Invalid provider type: {provider_type}. Must be 'qdrant' or 'weaviate'")
-
-
 @router.get("/search", response_model=models.SearchResponse, tags=["vector-store"])
 async def search(
     q: str,
@@ -134,10 +81,8 @@ async def search(
     provider: Annotated[
         str | None,
         Query(
-            pattern="^(qdrant|weaviate)$",
-            description=(
-                "Vector database provider: qdrant or weaviate (defaults to VECTOR_DB_PROVIDER env var)"
-            ),
+            pattern="^(qdrant|weaviate|pinecone|milvus)$",
+            description=("Vector database provider (defaults to VECTOR_DB_PROVIDER env var)"),
         ),
     ] = None,
 ) -> models.SearchResponse:
@@ -154,7 +99,7 @@ async def search(
         limit: Maximum number of results to return (default: 10, max: 100).
         collection: Optional collection name (defaults to service default).
         model: Optional Ollama model name (defaults to service default).
-        provider: Optional vector database provider ("qdrant" or "weaviate").
+        provider: Optional vector database provider (qdrant, weaviate, pinecone, milvus).
             If not specified, uses VECTOR_DB_PROVIDER environment variable
             (defaults to "qdrant").
 
@@ -210,12 +155,13 @@ async def search(
     # Determine provider type: use query parameter if provided, otherwise use
     # settings
     if provider:
-        provider_type = provider.lower()
-        if provider_type not in ("qdrant", "weaviate"):
-            raise BadRequestError(f"Invalid provider: {provider}. Must be 'qdrant' or 'weaviate'")
-        vector_db_config = _create_vector_db_config_for_provider(
-            provider_type=provider_type, namespace=s.k8s_namespace
-        )
+        try:
+            vector_db_config = VectorDBConfig.from_env_for_provider(
+                provider_type=provider.lower(), namespace=s.k8s_namespace
+            )
+        except ValueError as e:
+            raise BadRequestError(str(e)) from e
+        provider_type = vector_db_config.provider_type
     else:
         # Use default from settings
         vector_db_config = s.vector_db

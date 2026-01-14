@@ -70,7 +70,7 @@ class TestCreateApp:
         app = create_app()
 
         assert app.contact is not None
-        assert app.contact["name"] == "Pipeline Service"
+        assert app.contact["name"] == "iNatInq ML Pipeline"
         assert app.license_info is not None
         assert app.license_info["name"] == "MIT"
 
@@ -272,39 +272,24 @@ class TestMiddlewareIntegration:
 
 
 # =============================================================================
-# OpenAPI Documentation Tests
+# OpenAPI Route Registration Tests
 # =============================================================================
 
 
-class TestOpenAPIDocumentation:
-    """Test suite for OpenAPI documentation."""
-
-    def test_openapi_json_is_valid(self) -> None:
-        """Test that /openapi.json returns valid OpenAPI spec.
-
-        **Why this test is important:**
-          - Validates OpenAPI schema generation
-          - Tests documentation completeness
-          - Ensures API discoverability
-        """
-        app = create_app()
-        client = TestClient(app)
-
-        response = client.get("/openapi.json")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert "openapi" in data
-        assert "info" in data
-        assert "paths" in data
+class TestOpenAPIRouteRegistration:
+    """Test that our routes are properly registered in OpenAPI spec."""
 
     def test_openapi_includes_all_endpoints(self) -> None:
         """Test that OpenAPI spec includes all defined endpoints.
 
         **Why this test is important:**
-          - Validates endpoint documentation
-          - Tests OpenAPI completeness
-          - Ensures all routes are documented
+          - Validates our routes are registered correctly
+          - Catches accidental route removal
+          - Ensures API discoverability
+
+        Note:
+            Other OpenAPI tests (schema validation, Swagger UI, ReDoc) were removed
+            as they test FastAPI internals rather than our application code.
         """
         app = create_app()
         client = TestClient(app)
@@ -318,51 +303,3 @@ class TestOpenAPIDocumentation:
         assert "/search" in paths
         assert "/spark/jobs" in paths
         assert "/ray/jobs" in paths
-
-    def test_openapi_includes_request_response_schemas(self) -> None:
-        """Test that OpenAPI spec includes Pydantic model schemas.
-
-        **Why this test is important:**
-          - Validates schema generation from Pydantic models
-          - Tests model documentation
-          - Ensures type information is available
-        """
-        app = create_app()
-        client = TestClient(app)
-
-        response = client.get("/openapi.json")
-        data = response.json()
-        schemas = data.get("components", {}).get("schemas", {})
-
-        # Verify key models are documented
-        assert "SearchResponse" in schemas or any("search" in s.lower() for s in schemas)
-
-    def test_swagger_ui_is_accessible(self) -> None:
-        """Test that Swagger UI documentation is accessible.
-
-        **Why this test is important:**
-          - Validates interactive API docs
-          - Tests Swagger UI integration
-          - Ensures developer experience
-        """
-        app = create_app()
-        client = TestClient(app)
-
-        response = client.get("/docs", follow_redirects=False)
-        # May be 200 (direct) or 307 (redirect)
-        assert response.status_code in (200, 307, 308)
-
-    def test_redoc_documentation_is_accessible(self) -> None:
-        """Test that ReDoc documentation is accessible.
-
-        **Why this test is important:**
-          - Validates alternative API docs
-          - Tests ReDoc integration
-          - Provides additional documentation view
-        """
-        app = create_app()
-        client = TestClient(app)
-
-        response = client.get("/redoc", follow_redirects=False)
-        # May be 200 (direct) or 307 (redirect)
-        assert response.status_code in (200, 307, 308)
