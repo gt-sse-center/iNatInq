@@ -108,16 +108,16 @@ class RayService:
             # Later: check status with get_job_status(job_id)
             ```
         """
-        # Get Ray dashboard address
+        # Get Ray configuration with dashboard address
         ray_config = RayJobConfig.from_env(namespace)
-        if not ray_config.ray_address:
-            raise UpstreamError("RAY_ADDRESS not configured. Cannot submit job to Ray cluster.")
+        if not ray_config.dashboard_address:
+            raise UpstreamError("RAY_DASHBOARD_ADDRESS not configured. Cannot submit job to Ray cluster.")
 
-        # Construct Ray dashboard address from namespace
-        # Ray dashboard is always available at ray-head.<namespace>:8265
-        dashboard_address = f"http://ray-head.{namespace}:8265"
-
-        logger.info("Submitting Ray job", extra={"s3_prefix": s3_prefix})
+        dashboard_address = ray_config.dashboard_address
+        logger.info(
+            "Submitting Ray job",
+            extra={"s3_prefix": s3_prefix, "dashboard_address": dashboard_address},
+        )
 
         # Build environment variables for the job
         env_vars = {
@@ -167,7 +167,7 @@ class RayService:
 
         Args:
             job_id: Ray job ID returned from submit_s3_to_qdrant.
-            namespace: Kubernetes namespace.
+            namespace: Kubernetes namespace (used for config resolution).
 
         Returns:
             Dictionary with job status information:
@@ -175,7 +175,7 @@ class RayService:
             - message: str (optional error message)
 
         Raises:
-            UpstreamError: If status check fails.
+            UpstreamError: If status check fails or dashboard not configured.
 
         Example:
             ```python
@@ -184,7 +184,10 @@ class RayService:
                 print("Job completed!")
             ```
         """
-        dashboard_address = f"http://ray-head.{namespace}:8265"
+        ray_config = RayJobConfig.from_env(namespace)
+        if not ray_config.dashboard_address:
+            raise UpstreamError("RAY_DASHBOARD_ADDRESS not configured.")
+        dashboard_address = ray_config.dashboard_address
 
         try:
             client = JobSubmissionClient(dashboard_address)
@@ -205,15 +208,18 @@ class RayService:
 
         Args:
             job_id: Ray job ID.
-            namespace: Kubernetes namespace.
+            namespace: Kubernetes namespace (used for config resolution).
 
         Returns:
             Job logs as a string.
 
         Raises:
-            UpstreamError: If log retrieval fails.
+            UpstreamError: If log retrieval fails or dashboard not configured.
         """
-        dashboard_address = f"http://ray-head.{namespace}:8265"
+        ray_config = RayJobConfig.from_env(namespace)
+        if not ray_config.dashboard_address:
+            raise UpstreamError("RAY_DASHBOARD_ADDRESS not configured.")
+        dashboard_address = ray_config.dashboard_address
 
         try:
             client = JobSubmissionClient(dashboard_address)
@@ -229,12 +235,15 @@ class RayService:
 
         Args:
             job_id: Ray job ID.
-            namespace: Kubernetes namespace.
+            namespace: Kubernetes namespace (used for config resolution).
 
         Raises:
-            UpstreamError: If stopping the job fails.
+            UpstreamError: If stopping the job fails or dashboard not configured.
         """
-        dashboard_address = f"http://ray-head.{namespace}:8265"
+        ray_config = RayJobConfig.from_env(namespace)
+        if not ray_config.dashboard_address:
+            raise UpstreamError("RAY_DASHBOARD_ADDRESS not configured.")
+        dashboard_address = ray_config.dashboard_address
 
         try:
             client = JobSubmissionClient(dashboard_address)

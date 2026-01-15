@@ -63,9 +63,9 @@ class TestRayServiceSubmitJob:
           - Environment variables include all required config
           - Job ID is returned
         """
-        # Mock config
+        # Mock config with dashboard_address
         mock_ray_config = MagicMock()
-        mock_ray_config.ray_address = "http://ray-head.ml-system:8265"
+        mock_ray_config.dashboard_address = "http://ray-head.test-namespace:8265"
         mock_config.return_value = mock_ray_config
 
         # Mock client
@@ -87,7 +87,7 @@ class TestRayServiceSubmitJob:
 
         assert job_id == "raysubmit_test123"
 
-        # Verify client was created with correct address
+        # Verify client was created with correct dashboard address from config
         mock_client_cls.assert_called_once_with("http://ray-head.test-namespace:8265")
 
         # Verify job was submitted with correct entrypoint
@@ -127,9 +127,9 @@ class TestRayServiceSubmitJob:
           - Optional vector DB config is included
           - Vector size is converted to string
         """
-        # Mock config
+        # Mock config with dashboard_address
         mock_ray_config = MagicMock()
-        mock_ray_config.ray_address = "http://ray-head.ml-system:8265"
+        mock_ray_config.dashboard_address = "http://ray-head.ml-system:8265"
         mock_config.return_value = mock_ray_config
 
         # Mock client
@@ -170,14 +170,14 @@ class TestRayServiceSubmitJob:
         assert env_vars["QDRANT_URL"] == "http://qdrant.test:6333"
 
     @patch("core.services.ray_service.RayJobConfig.from_env")
-    def test_submit_raises_on_missing_ray_address(
+    def test_submit_raises_on_missing_dashboard_address(
         self,
         mock_config: MagicMock,
         ray_service: RayService,
         embedding_config: EmbeddingConfig,
         vector_db_config: VectorDBConfig,
     ) -> None:
-        """Test that submit raises UpstreamError when RAY_ADDRESS is missing.
+        """Test that submit raises UpstreamError when dashboard_address is missing.
 
         **Why this test is important:**
           - Configuration validation prevents runtime errors
@@ -186,15 +186,15 @@ class TestRayServiceSubmitJob:
           - Validates config validation
 
         **What it tests:**
-          - UpstreamError is raised when ray_address is None
+          - UpstreamError is raised when dashboard_address is None
           - Error message is descriptive
         """
-        # Mock config with missing ray_address
+        # Mock config with missing dashboard_address
         mock_ray_config = MagicMock()
-        mock_ray_config.ray_address = None
+        mock_ray_config.dashboard_address = None
         mock_config.return_value = mock_ray_config
 
-        with pytest.raises(UpstreamError, match="RAY_ADDRESS not configured"):
+        with pytest.raises(UpstreamError, match="RAY_DASHBOARD_ADDRESS not configured"):
             ray_service.submit_s3_to_qdrant(
                 namespace="test-namespace",
                 s3_endpoint="http://minio.test:9000",
@@ -229,9 +229,9 @@ class TestRayServiceSubmitJob:
           - Client exceptions are wrapped in UpstreamError
           - Error message includes context
         """
-        # Mock config
+        # Mock config with dashboard_address
         mock_ray_config = MagicMock()
-        mock_ray_config.ray_address = "http://ray-head.ml-system:8265"
+        mock_ray_config.dashboard_address = "http://ray-head.ml-system:8265"
         mock_config.return_value = mock_ray_config
 
         # Mock client with error
@@ -261,8 +261,11 @@ class TestRayServiceSubmitJob:
 class TestRayServiceGetJobStatus:
     """Test suite for RayService.get_job_status method."""
 
+    @patch("core.services.ray_service.RayJobConfig.from_env")
     @patch("core.services.ray_service.JobSubmissionClient")
-    def test_get_status_success(self, mock_client_cls: MagicMock, ray_service: RayService) -> None:
+    def test_get_status_success(
+        self, mock_client_cls: MagicMock, mock_config: MagicMock, ray_service: RayService
+    ) -> None:
         """Test that get_job_status returns status information.
 
         **Why this test is important:**
@@ -276,6 +279,11 @@ class TestRayServiceGetJobStatus:
           - Status is extracted correctly
           - Message is included if available
         """
+        # Mock config with dashboard_address
+        mock_ray_config = MagicMock()
+        mock_ray_config.dashboard_address = "http://ray-head.test-namespace:8265"
+        mock_config.return_value = mock_ray_config
+
         # Mock client
         mock_client = MagicMock()
         mock_status = MagicMock()
@@ -295,9 +303,10 @@ class TestRayServiceGetJobStatus:
         mock_client.get_job_status.assert_called_once_with("raysubmit_test123")
         mock_client.get_job_info.assert_called_once_with("raysubmit_test123")
 
+    @patch("core.services.ray_service.RayJobConfig.from_env")
     @patch("core.services.ray_service.JobSubmissionClient")
     def test_get_status_handles_missing_message(
-        self, mock_client_cls: MagicMock, ray_service: RayService
+        self, mock_client_cls: MagicMock, mock_config: MagicMock, ray_service: RayService
     ) -> None:
         """Test that get_status handles missing message gracefully.
 
@@ -311,6 +320,11 @@ class TestRayServiceGetJobStatus:
           - Missing message returns None
           - No AttributeError is raised
         """
+        # Mock config
+        mock_ray_config = MagicMock()
+        mock_ray_config.dashboard_address = "http://ray-head.test-namespace:8265"
+        mock_config.return_value = mock_ray_config
+
         # Mock client
         mock_client = MagicMock()
         mock_status = MagicMock()
@@ -324,9 +338,10 @@ class TestRayServiceGetJobStatus:
         assert result["status"] == "PENDING"
         assert result["message"] is None
 
+    @patch("core.services.ray_service.RayJobConfig.from_env")
     @patch("core.services.ray_service.JobSubmissionClient")
     def test_get_status_handles_string_status(
-        self, mock_client_cls: MagicMock, ray_service: RayService
+        self, mock_client_cls: MagicMock, mock_config: MagicMock, ray_service: RayService
     ) -> None:
         """Test that get_status handles string status values.
 
@@ -340,6 +355,11 @@ class TestRayServiceGetJobStatus:
           - String status values are handled
           - Status without .value attribute works
         """
+        # Mock config
+        mock_ray_config = MagicMock()
+        mock_ray_config.dashboard_address = "http://ray-head.test-namespace:8265"
+        mock_config.return_value = mock_ray_config
+
         # Mock client
         mock_client = MagicMock()
         mock_client.get_job_status.return_value = "SUCCEEDED"
@@ -350,9 +370,10 @@ class TestRayServiceGetJobStatus:
 
         assert result["status"] == "SUCCEEDED"
 
+    @patch("core.services.ray_service.RayJobConfig.from_env")
     @patch("core.services.ray_service.JobSubmissionClient")
     def test_get_status_raises_on_client_error(
-        self, mock_client_cls: MagicMock, ray_service: RayService
+        self, mock_client_cls: MagicMock, mock_config: MagicMock, ray_service: RayService
     ) -> None:
         """Test that get_status raises UpstreamError on client errors.
 
@@ -366,6 +387,11 @@ class TestRayServiceGetJobStatus:
           - Client exceptions are wrapped in UpstreamError
           - Error message includes context
         """
+        # Mock config
+        mock_ray_config = MagicMock()
+        mock_ray_config.dashboard_address = "http://ray-head.test-namespace:8265"
+        mock_config.return_value = mock_ray_config
+
         # Mock client with error
         mock_client = MagicMock()
         mock_client.get_job_status.side_effect = Exception("Job not found")
@@ -373,6 +399,28 @@ class TestRayServiceGetJobStatus:
 
         with pytest.raises(UpstreamError, match="Failed to get job status"):
             ray_service.get_job_status("nonexistent-job", "test-namespace")
+
+    @patch("core.services.ray_service.RayJobConfig.from_env")
+    def test_get_status_raises_on_missing_dashboard_address(
+        self, mock_config: MagicMock, ray_service: RayService
+    ) -> None:
+        """Test that get_status raises UpstreamError when dashboard_address is missing.
+
+        **Why this test is important:**
+          - Configuration validation prevents runtime errors
+          - Validates that dashboard address is required
+          - Critical for error handling
+
+        **What it tests:**
+          - UpstreamError is raised when dashboard_address is None
+        """
+        # Mock config with missing dashboard_address
+        mock_ray_config = MagicMock()
+        mock_ray_config.dashboard_address = None
+        mock_config.return_value = mock_ray_config
+
+        with pytest.raises(UpstreamError, match="RAY_DASHBOARD_ADDRESS not configured"):
+            ray_service.get_job_status("raysubmit_test123", "test-namespace")
 
 
 # =============================================================================
@@ -383,8 +431,11 @@ class TestRayServiceGetJobStatus:
 class TestRayServiceGetJobLogs:
     """Test suite for RayService.get_job_logs method."""
 
+    @patch("core.services.ray_service.RayJobConfig.from_env")
     @patch("core.services.ray_service.JobSubmissionClient")
-    def test_get_logs_success(self, mock_client_cls: MagicMock, ray_service: RayService) -> None:
+    def test_get_logs_success(
+        self, mock_client_cls: MagicMock, mock_config: MagicMock, ray_service: RayService
+    ) -> None:
         """Test that get_job_logs returns log content.
 
         **Why this test is important:**
@@ -397,6 +448,11 @@ class TestRayServiceGetJobLogs:
           - Client get_job_logs is called
           - Log content is returned as string
         """
+        # Mock config
+        mock_ray_config = MagicMock()
+        mock_ray_config.dashboard_address = "http://ray-head.test-namespace:8265"
+        mock_config.return_value = mock_ray_config
+
         # Mock client
         mock_client = MagicMock()
         mock_client.get_job_logs.return_value = "Log line 1\nLog line 2\n"
@@ -409,8 +465,11 @@ class TestRayServiceGetJobLogs:
         mock_client_cls.assert_called_once_with("http://ray-head.test-namespace:8265")
         mock_client.get_job_logs.assert_called_once_with("raysubmit_test123")
 
+    @patch("core.services.ray_service.RayJobConfig.from_env")
     @patch("core.services.ray_service.JobSubmissionClient")
-    def test_get_logs_converts_to_string(self, mock_client_cls: MagicMock, ray_service: RayService) -> None:
+    def test_get_logs_converts_to_string(
+        self, mock_client_cls: MagicMock, mock_config: MagicMock, ray_service: RayService
+    ) -> None:
         """Test that get_job_logs converts result to string.
 
         **Why this test is important:**
@@ -423,6 +482,11 @@ class TestRayServiceGetJobLogs:
           - Non-string results are converted to string
           - str() is called on result
         """
+        # Mock config
+        mock_ray_config = MagicMock()
+        mock_ray_config.dashboard_address = "http://ray-head.test-namespace:8265"
+        mock_config.return_value = mock_ray_config
+
         # Mock client with non-string result
         mock_client = MagicMock()
         mock_client.get_job_logs.return_value = 12345
@@ -433,9 +497,10 @@ class TestRayServiceGetJobLogs:
         assert result == "12345"
         assert isinstance(result, str)
 
+    @patch("core.services.ray_service.RayJobConfig.from_env")
     @patch("core.services.ray_service.JobSubmissionClient")
     def test_get_logs_raises_on_client_error(
-        self, mock_client_cls: MagicMock, ray_service: RayService
+        self, mock_client_cls: MagicMock, mock_config: MagicMock, ray_service: RayService
     ) -> None:
         """Test that get_logs raises UpstreamError on client errors.
 
@@ -449,6 +514,11 @@ class TestRayServiceGetJobLogs:
           - Client exceptions are wrapped in UpstreamError
           - Error message includes context
         """
+        # Mock config
+        mock_ray_config = MagicMock()
+        mock_ray_config.dashboard_address = "http://ray-head.test-namespace:8265"
+        mock_config.return_value = mock_ray_config
+
         # Mock client with error
         mock_client = MagicMock()
         mock_client.get_job_logs.side_effect = Exception("Job not found")
@@ -456,6 +526,27 @@ class TestRayServiceGetJobLogs:
 
         with pytest.raises(UpstreamError, match="Failed to get job logs"):
             ray_service.get_job_logs("nonexistent-job", "test-namespace")
+
+    @patch("core.services.ray_service.RayJobConfig.from_env")
+    def test_get_logs_raises_on_missing_dashboard_address(
+        self, mock_config: MagicMock, ray_service: RayService
+    ) -> None:
+        """Test that get_logs raises UpstreamError when dashboard_address is missing.
+
+        **Why this test is important:**
+          - Configuration validation prevents runtime errors
+          - Validates that dashboard address is required
+
+        **What it tests:**
+          - UpstreamError is raised when dashboard_address is None
+        """
+        # Mock config with missing dashboard_address
+        mock_ray_config = MagicMock()
+        mock_ray_config.dashboard_address = None
+        mock_config.return_value = mock_ray_config
+
+        with pytest.raises(UpstreamError, match="RAY_DASHBOARD_ADDRESS not configured"):
+            ray_service.get_job_logs("raysubmit_test123", "test-namespace")
 
 
 # =============================================================================
@@ -466,8 +557,11 @@ class TestRayServiceGetJobLogs:
 class TestRayServiceStopJob:
     """Test suite for RayService.stop_job method."""
 
+    @patch("core.services.ray_service.RayJobConfig.from_env")
     @patch("core.services.ray_service.JobSubmissionClient")
-    def test_stop_job_success(self, mock_client_cls: MagicMock, ray_service: RayService) -> None:
+    def test_stop_job_success(
+        self, mock_client_cls: MagicMock, mock_config: MagicMock, ray_service: RayService
+    ) -> None:
         """Test that stop_job stops the job successfully.
 
         **Why this test is important:**
@@ -480,6 +574,11 @@ class TestRayServiceStopJob:
           - Client stop_job is called with correct job ID
           - Method completes without errors
         """
+        # Mock config
+        mock_ray_config = MagicMock()
+        mock_ray_config.dashboard_address = "http://ray-head.test-namespace:8265"
+        mock_config.return_value = mock_ray_config
+
         # Mock client
         mock_client = MagicMock()
         mock_client.stop_job.return_value = None
@@ -491,9 +590,10 @@ class TestRayServiceStopJob:
         mock_client_cls.assert_called_once_with("http://ray-head.test-namespace:8265")
         mock_client.stop_job.assert_called_once_with("raysubmit_test123")
 
+    @patch("core.services.ray_service.RayJobConfig.from_env")
     @patch("core.services.ray_service.JobSubmissionClient")
     def test_stop_job_raises_on_client_error(
-        self, mock_client_cls: MagicMock, ray_service: RayService
+        self, mock_client_cls: MagicMock, mock_config: MagicMock, ray_service: RayService
     ) -> None:
         """Test that stop_job raises UpstreamError on client errors.
 
@@ -507,6 +607,11 @@ class TestRayServiceStopJob:
           - Client exceptions are wrapped in UpstreamError
           - Error message includes context
         """
+        # Mock config
+        mock_ray_config = MagicMock()
+        mock_ray_config.dashboard_address = "http://ray-head.test-namespace:8265"
+        mock_config.return_value = mock_ray_config
+
         # Mock client with error
         mock_client = MagicMock()
         mock_client.stop_job.side_effect = Exception("Job not found")
@@ -515,6 +620,27 @@ class TestRayServiceStopJob:
         with pytest.raises(UpstreamError, match="Failed to stop job"):
             ray_service.stop_job("nonexistent-job", "test-namespace")
 
+    @patch("core.services.ray_service.RayJobConfig.from_env")
+    def test_stop_job_raises_on_missing_dashboard_address(
+        self, mock_config: MagicMock, ray_service: RayService
+    ) -> None:
+        """Test that stop_job raises UpstreamError when dashboard_address is missing.
+
+        **Why this test is important:**
+          - Configuration validation prevents runtime errors
+          - Validates that dashboard address is required
+
+        **What it tests:**
+          - UpstreamError is raised when dashboard_address is None
+        """
+        # Mock config with missing dashboard_address
+        mock_ray_config = MagicMock()
+        mock_ray_config.dashboard_address = None
+        mock_config.return_value = mock_ray_config
+
+        with pytest.raises(UpstreamError, match="RAY_DASHBOARD_ADDRESS not configured"):
+            ray_service.stop_job("raysubmit_test123", "test-namespace")
+
 
 # =============================================================================
 # Dashboard Address Tests
@@ -522,11 +648,11 @@ class TestRayServiceStopJob:
 
 
 class TestRayServiceDashboardAddress:
-    """Test suite for dashboard address construction."""
+    """Test suite for dashboard address configuration."""
 
     @patch("core.services.ray_service.RayJobConfig.from_env")
     @patch("core.services.ray_service.JobSubmissionClient")
-    def test_dashboard_address_uses_namespace(
+    def test_dashboard_address_uses_config(
         self,
         mock_client_cls: MagicMock,
         mock_config: MagicMock,
@@ -534,22 +660,21 @@ class TestRayServiceDashboardAddress:
         embedding_config: EmbeddingConfig,
         vector_db_config: VectorDBConfig,
     ) -> None:
-        """Test that dashboard address is constructed from namespace.
+        """Test that dashboard address is taken from RayJobConfig.
 
         **Why this test is important:**
-          - Dashboard address must point to correct service
-          - Namespace determines service DNS name
-          - Critical for multi-tenant deployments
-          - Validates address construction
+          - Dashboard address must be configurable for different environments
+          - Docker Compose uses simple hostnames (ray-head:8265)
+          - Kubernetes uses namespace DNS (ray-head.{namespace}:8265)
+          - Critical for environment-agnostic deployment
 
         **What it tests:**
-          - Dashboard address includes namespace
-          - Format is http://ray-head.{namespace}:8265
-          - Client is created with correct address
+          - Dashboard address comes from config, not hardcoded
+          - Client is created with address from config
         """
-        # Mock config
+        # Mock config with custom dashboard_address
         mock_ray_config = MagicMock()
-        mock_ray_config.ray_address = "http://ray-head.ml-system:8265"
+        mock_ray_config.dashboard_address = "http://custom-ray-head:8265"
         mock_config.return_value = mock_ray_config
 
         # Mock client
@@ -569,5 +694,51 @@ class TestRayServiceDashboardAddress:
             collection="test-collection",
         )
 
-        # Verify client was created with namespace-specific address
-        mock_client_cls.assert_called_once_with("http://ray-head.custom-namespace:8265")
+        # Verify client was created with address from config (not namespace-based)
+        mock_client_cls.assert_called_once_with("http://custom-ray-head:8265")
+
+    @patch("core.services.ray_service.RayJobConfig.from_env")
+    @patch("core.services.ray_service.JobSubmissionClient")
+    def test_dashboard_address_docker_compose_style(
+        self,
+        mock_client_cls: MagicMock,
+        mock_config: MagicMock,
+        ray_service: RayService,
+        embedding_config: EmbeddingConfig,
+        vector_db_config: VectorDBConfig,
+    ) -> None:
+        """Test that Docker Compose style addresses work correctly.
+
+        **Why this test is important:**
+          - Docker Compose uses simple service names without namespace
+          - Validates that http://ray-head:8265 works
+          - Critical for local development environment
+
+        **What it tests:**
+          - Simple hostname (no namespace) is used correctly
+          - Works with Docker Compose naming convention
+        """
+        # Mock config with Docker Compose style address
+        mock_ray_config = MagicMock()
+        mock_ray_config.dashboard_address = "http://ray-head:8265"
+        mock_config.return_value = mock_ray_config
+
+        # Mock client
+        mock_client = MagicMock()
+        mock_client.submit_job.return_value = "raysubmit_docker123"
+        mock_client_cls.return_value = mock_client
+
+        job_id = ray_service.submit_s3_to_qdrant(
+            namespace="ml-system",
+            s3_endpoint="http://minio:9000",
+            s3_access_key_id="minioadmin",
+            s3_secret_access_key="minioadmin",
+            s3_bucket="pipeline",
+            s3_prefix="inputs/",
+            embedding_config=embedding_config,
+            vector_db_config=vector_db_config,
+            collection="documents",
+        )
+
+        assert job_id == "raysubmit_docker123"
+        mock_client_cls.assert_called_once_with("http://ray-head:8265")
