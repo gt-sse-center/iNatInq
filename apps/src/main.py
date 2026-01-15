@@ -55,4 +55,3 @@ Configuration is loaded in `src/config.py` (see `Settings`), via env vars:
 from api.app import create_app
 
 app = create_app()
-

@@ -162,10 +162,8 @@ services:
   # ---------------------------------------------------------------------------
   # Ray Head - Distributed Computing (Head Node)
   # ---------------------------------------------------------------------------
-  # Note: Ray doesn't have native ARM images, using amd64 with Rosetta 2 on Apple Silicon
   ray-head:
-    image: rayproject/ray:2.40.0-py311
-    platform: linux/amd64
+    image: rayproject/ray:2.53.0-py311
     container_name: ray-head
     ports:
       - "8265:8265"   # Dashboard
@@ -193,8 +191,7 @@ services:
   # Ray Worker - Distributed Computing (Worker Node)
   # ---------------------------------------------------------------------------
   ray-worker:
-    image: rayproject/ray:2.40.0-py311
-    platform: linux/amd64
+    image: rayproject/ray:2.53.0-py311
     container_name: ray-worker
     command: >
       ray start
