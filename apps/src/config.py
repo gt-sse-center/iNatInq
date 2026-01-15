@@ -442,6 +442,7 @@ class VectorDBConfig(BaseModel):
     qdrant_api_key: str | None = None
     weaviate_url: str | None = None
     weaviate_api_key: str | None = None
+    weaviate_grpc_host: str | None = None
     pinecone_api_key: str | None = None
     pinecone_environment: str | None = None
     milvus_host: str | None = None
@@ -497,6 +498,7 @@ class VectorDBConfig(BaseModel):
                 collection=collection,
                 weaviate_url=os.getenv("WEAVIATE_URL", default_url),
                 weaviate_api_key=os.getenv("WEAVIATE_API_KEY"),
+                weaviate_grpc_host=os.getenv("WEAVIATE_GRPC_HOST"),
             )
 
         if provider_type == "pinecone":
@@ -566,6 +568,7 @@ class VectorDBConfig(BaseModel):
                 collection=collection,
                 weaviate_url=os.getenv("WEAVIATE_URL", default_url),
                 weaviate_api_key=os.getenv("WEAVIATE_API_KEY"),
+                weaviate_grpc_host=os.getenv("WEAVIATE_GRPC_HOST"),
             )
 
         if provider_type == "pinecone":

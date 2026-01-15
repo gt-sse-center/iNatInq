@@ -42,6 +42,7 @@ from config import VectorDBConfig
 from core.exceptions import UpstreamError
 from core.models import SearchResultItem, SearchResults
 from foundation.circuit_breaker import handle_circuit_breaker_error
+
 from .base import VectorDBClientBase
 from .interfaces.vector_db import VectorDBProvider
 
@@ -82,6 +83,9 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
     Attributes:
         url: Weaviate service URL (e.g., `http://weaviate.ml-system:8080`).
         api_key: Optional API key for authenticated Weaviate instances.
+        grpc_host: Optional gRPC host for Weaviate Cloud (e.g.,
+            `grpc-xxx.region.weaviate.cloud`). If not provided, defaults
+            to the HTTP host with port 50051.
 
     Note:
         This class uses WeaviateAsyncClient internally but provides a sync
@@ -91,6 +95,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
 
     url: str
     api_key: str | None = None
+    grpc_host: str | None = None
     _client: WeaviateAsyncClient = attrs.field(init=False, default=None)
     _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
 
@@ -117,14 +122,26 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
         http_secure = parsed.scheme == "https"
 
         # Weaviate v4 requires ConnectionParams with explicit HTTP and gRPC
-        # parameters Default gRPC port is 50051
+        # parameters. For Weaviate Cloud, gRPC uses a separate host on port 443.
+        # For local Docker, gRPC uses the same host on port 50051.
+        if self.grpc_host:
+            # Weaviate Cloud: separate gRPC host, secure on port 443
+            grpc_host = self.grpc_host
+            grpc_port = 443
+            grpc_secure = True
+        else:
+            # Local Docker: same host, port 50051, no TLS
+            grpc_host = http_host
+            grpc_port = 50051
+            grpc_secure = False
+
         connection_params = ConnectionParams.from_params(
             http_host=http_host,
             http_port=http_port,
             http_secure=http_secure,
-            grpc_host=http_host,
-            grpc_port=50051,
-            grpc_secure=False,
+            grpc_host=grpc_host,
+            grpc_port=grpc_port,
+            grpc_secure=grpc_secure,
         )
 
         _client_instance = WeaviateAsyncClient(
@@ -158,7 +175,11 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
         cls._validate_config(config, "weaviate", ["weaviate_url"])
         # Type narrowing: _validate_config ensures weaviate_url is not None
         assert config.weaviate_url is not None
-        return cls(url=config.weaviate_url, api_key=config.weaviate_api_key)
+        return cls(
+            url=config.weaviate_url,
+            api_key=config.weaviate_api_key,
+            grpc_host=config.weaviate_grpc_host,
+        )
 
     async def ensure_collection_async(self, *, collection: str, vector_size: int) -> None:
         """Create a Weaviate collection (class) if it does not already exist.

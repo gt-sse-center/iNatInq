@@ -81,17 +81,23 @@ make down
 | Qdrant Dashboard | <http://localhost:6333/dashboard> |
 | Ray Dashboard | <http://localhost:8265> |
 
-### Using Qdrant Cloud (Optional)
+### Using Cloud Vector Databases (Optional)
 
-To use [Qdrant Cloud](https://cloud.qdrant.io/) instead of local Docker:
+To use cloud-hosted vector databases instead of local Docker:
 
 ```bash
-# Option 1: Environment variables
+# Qdrant Cloud (https://cloud.qdrant.io/)
 export QDRANT_URL=https://your-cluster.region.cloud.qdrant.io
 export QDRANT_API_KEY=your-api-key
 make docker-up
 
-# Option 2: Local config file (gitignored)
+# Weaviate Cloud (https://console.weaviate.cloud/)
+export VECTOR_DB_PROVIDER=weaviate
+export WEAVIATE_URL=https://your-cluster.region.weaviate.cloud
+export WEAVIATE_API_KEY=your-api-key
+make docker-up
+
+# Or use a local config file (gitignored)
 cp apps/zarf/compose/dev/env.local.example apps/zarf/compose/dev/.env.local
 # Edit .env.local with your credentials
 ```

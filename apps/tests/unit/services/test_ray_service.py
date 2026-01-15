@@ -106,6 +106,14 @@ class TestRayServiceSubmitJob:
         assert env_vars["VECTOR_DB_COLLECTION"] == "test-collection"
         assert env_vars["EMBEDDING_PROVIDER_TYPE"] == "ollama"
 
+    @patch.dict(
+        "os.environ",
+        {
+            "QDRANT_URL": "http://qdrant.test:6333",
+            "WEAVIATE_URL": "http://weaviate.test:8080",
+        },
+        clear=False,
+    )
     @patch("core.services.ray_service.RayJobConfig.from_env")
     @patch("core.services.ray_service.JobSubmissionClient")
     def test_submit_includes_optional_config(
@@ -124,8 +132,7 @@ class TestRayServiceSubmitJob:
 
         **What it tests:**
           - Optional embedding config is included
-          - Optional vector DB config is included
-          - Vector size is converted to string
+          - Vector DB env vars from environment are passed
         """
         # Mock config with dashboard_address
         mock_ray_config = MagicMock()
@@ -167,7 +174,75 @@ class TestRayServiceSubmitJob:
         assert env_vars["EMBEDDING_VECTOR_SIZE"] == "768"
         assert env_vars["OLLAMA_BASE_URL"] == "http://ollama.test:11434"
         assert env_vars["OLLAMA_MODEL"] == "nomic-embed-text"
+        # Vector DB env vars come from environment (os.environ)
         assert env_vars["QDRANT_URL"] == "http://qdrant.test:6333"
+        assert env_vars["WEAVIATE_URL"] == "http://weaviate.test:8080"
+
+    @patch.dict(
+        "os.environ",
+        {
+            "QDRANT_URL": "http://qdrant.test:6333",
+            "QDRANT_API_KEY": "qdrant-key",
+            "WEAVIATE_URL": "https://my-cluster.weaviate.cloud",
+            "WEAVIATE_API_KEY": "weaviate-key",
+            "WEAVIATE_GRPC_HOST": "grpc-my-cluster.weaviate.cloud",
+        },
+        clear=False,
+    )
+    @patch("core.services.ray_service.JobSubmissionClient")
+    def test_submit_passes_both_vector_db_env_vars(
+        self,
+        mock_client_class: MagicMock,
+        ray_service: RayService,
+    ) -> None:
+        """Test that both Qdrant and Weaviate env vars are passed to Ray jobs.
+
+        **Why this test is important:**
+          - Ray jobs index BOTH databases simultaneously via create_both()
+          - All database credentials must be passed to Ray workers
+          - Critical for dual-write architecture
+
+        **What it tests:**
+          - QDRANT_URL, QDRANT_API_KEY are passed
+          - WEAVIATE_URL, WEAVIATE_API_KEY, WEAVIATE_GRPC_HOST are passed
+        """
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.submit_job.return_value = "job-123"
+
+        embedding_config = EmbeddingConfig(
+            provider_type="ollama",
+            ollama_url="http://ollama.test:11434",
+            ollama_model="nomic-embed-text",
+            vector_size=768,
+        )
+        vector_db_config = VectorDBConfig(
+            provider_type="qdrant",  # Provider type doesn't matter - both are indexed
+            qdrant_url="http://qdrant.test:6333",
+            collection="test_documents",
+            vector_size=768,
+        )
+
+        ray_service.submit_s3_to_qdrant(
+            namespace="test-namespace",
+            s3_endpoint="http://minio.test:9000",
+            s3_access_key_id="test-key",
+            s3_secret_access_key="test-secret",
+            s3_bucket="test-bucket",
+            s3_prefix="inputs/",
+            embedding_config=embedding_config,
+            vector_db_config=vector_db_config,
+            collection="test-collection",
+        )
+
+        call_kwargs = mock_client.submit_job.call_args[1]
+        env_vars = call_kwargs["runtime_env"]["env_vars"]
+        # Both Qdrant and Weaviate env vars should be passed
+        assert env_vars["QDRANT_URL"] == "http://qdrant.test:6333"
+        assert env_vars["QDRANT_API_KEY"] == "qdrant-key"
+        assert env_vars["WEAVIATE_URL"] == "https://my-cluster.weaviate.cloud"
+        assert env_vars["WEAVIATE_API_KEY"] == "weaviate-key"
+        assert env_vars["WEAVIATE_GRPC_HOST"] == "grpc-my-cluster.weaviate.cloud"
 
     @patch("core.services.ray_service.RayJobConfig.from_env")
     def test_submit_raises_on_missing_dashboard_address(
