@@ -307,6 +307,58 @@ class TestQdrantClientWrapperSearch:
             await qdrant_client.search_async(collection="test-collection", query_vector=[0.1, 0.2], limit=10)
 
     @pytest.mark.asyncio
+    async def test_search_handles_none_score(
+        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    ) -> None:
+        """Test that search handles None score gracefully.
+
+        **Why this test is important:**
+          - Qdrant can return None scores in some cases
+          - Ensures graceful handling without TypeError
+          - Critical for robustness
+
+        **What it tests:**
+          - None score is converted to 0.0
+          - No exception is raised
+        """
+        mock_point = MagicMock()
+        mock_point.id = "1"
+        mock_point.score = None  # Qdrant can return None
+        mock_point.payload = {"text": "hello"}
+
+        mock_response = MagicMock()
+        mock_response.points = [mock_point]
+        mock_async_client.query_points.return_value = mock_response
+
+        result = await qdrant_client.search_async(
+            collection="test-collection", query_vector=[0.1, 0.2, 0.3], limit=10
+        )
+
+        assert len(result.items) == 1
+        assert result.items[0].score == 0.0  # None converted to 0.0
+
+    @pytest.mark.asyncio
+    async def test_search_handles_circuit_breaker_exception(
+        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    ) -> None:
+        """Test that search handles CircuitBreakerError during call.
+
+        **Why this test is important:**
+          - Circuit breaker can throw during a call (not just pre-check)
+          - Ensures consistent UpstreamError for all circuit breaker scenarios
+          - Critical for fault tolerance
+
+        **What it tests:**
+          - CircuitBreakerError is caught and converted to UpstreamError
+        """
+        mock_async_client.query_points.side_effect = pybreaker.CircuitBreakerError(
+            pybreaker.CircuitBreaker(name="test")
+        )
+
+        with pytest.raises(UpstreamError, match="qdrant service is currently unavailable"):
+            await qdrant_client.search_async(collection="test-collection", query_vector=[0.1, 0.2], limit=10)
+
+    @pytest.mark.asyncio
     async def test_search_handles_circuit_breaker_open(
         self,
         qdrant_client: QdrantClientWrapper,
