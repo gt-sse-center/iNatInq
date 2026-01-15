@@ -155,8 +155,13 @@ def spark_service(mock_spark_client: MagicMock) -> SparkService:
     Returns:
         SparkService: Configured service with mocked client.
     """
-    service = SparkService(namespace="test-namespace")
-    service.client = mock_spark_client
+    from unittest.mock import patch
+
+    with patch(
+        "core.services.spark_service.SparkJobClient",
+        return_value=mock_spark_client,
+    ):
+        service = SparkService(namespace="test-namespace")
     return service
 
 
