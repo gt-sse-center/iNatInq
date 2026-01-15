@@ -349,10 +349,15 @@ class TestQdrantClientWrapperSearch:
           - Critical for fault tolerance
 
         **What it tests:**
-          - CircuitBreakerError is caught and converted to UpstreamError
+          - aiobreaker.CircuitBreakerError is caught and converted to UpstreamError
         """
-        mock_async_client.query_points.side_effect = pybreaker.CircuitBreakerError(
-            pybreaker.CircuitBreaker(name="test")
+        import datetime
+
+        import aiobreaker
+
+        # aiobreaker.CircuitBreakerError requires message and reopen_time
+        mock_async_client.query_points.side_effect = aiobreaker.CircuitBreakerError(
+            "Circuit is open", datetime.datetime.now(datetime.timezone.utc)
         )
 
         with pytest.raises(UpstreamError, match="qdrant service is currently unavailable"):
@@ -372,13 +377,16 @@ class TestQdrantClientWrapperSearch:
           - Validates circuit breaker integration
 
         **What it tests:**
-          - Open circuit breaker state is checked
+          - Open circuit breaker state (via aiobreaker) triggers fail-fast
           - handle_circuit_breaker_error is called
         """
-        # Replace the circuit breaker with a mock in OPEN state
-        mock_breaker = MagicMock(spec=pybreaker.CircuitBreaker)
-        mock_breaker.current_state = pybreaker.STATE_OPEN
-        object.__setattr__(qdrant_client, "_breaker", mock_breaker)
+        import aiobreaker.state as aio_state
+
+        # Create a mock async breaker in OPEN state
+        mock_breaker = MagicMock()
+        # aiobreaker uses .current_state for state checking (returns enum)
+        mock_breaker.current_state = aio_state.CircuitBreakerState.OPEN
+        object.__setattr__(qdrant_client, "_async_breaker", mock_breaker)
 
         with pytest.raises(UpstreamError, match="qdrant service is currently unavailable"):
             await qdrant_client.search_async(collection="test-collection", query_vector=[0.1, 0.2], limit=10)
@@ -487,13 +495,16 @@ class TestQdrantClientWrapperBatchUpsert:
           - Validates circuit breaker integration
 
         **What it tests:**
-          - Open circuit breaker state is checked
+          - Open circuit breaker state (via aiobreaker) triggers fail-fast
           - handle_circuit_breaker_error is called
         """
-        # Replace the circuit breaker with a mock in OPEN state
-        mock_breaker = MagicMock(spec=pybreaker.CircuitBreaker)
-        mock_breaker.current_state = pybreaker.STATE_OPEN
-        object.__setattr__(qdrant_client, "_breaker", mock_breaker)
+        import aiobreaker.state as aio_state
+
+        # Create a mock async breaker in OPEN state
+        mock_breaker = MagicMock()
+        # aiobreaker uses .current_state for state checking (returns enum)
+        mock_breaker.current_state = aio_state.CircuitBreakerState.OPEN
+        object.__setattr__(qdrant_client, "_async_breaker", mock_breaker)
 
         points = [PointStruct(id="1", vector=[0.1, 0.2], payload={"text": "hello"})]
 

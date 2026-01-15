@@ -26,6 +26,7 @@ The client wrapper:
 
 import asyncio
 
+import aiobreaker
 import attrs
 import pybreaker
 from qdrant_client import AsyncQdrantClient, QdrantClient
@@ -36,7 +37,7 @@ from config import VectorDBConfig
 from core.exceptions import UpstreamError
 from core.models import SearchResultItem, SearchResults
 from foundation.async_utils import close_async_resource
-from foundation.circuit_breaker import handle_circuit_breaker_error
+from foundation.circuit_breaker import create_async_circuit_breaker, with_circuit_breaker_async
 
 from .base import VectorDBClientBase
 from .interfaces.vector_db import VectorDBProvider
@@ -60,6 +61,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
     _client: AsyncQdrantClient = attrs.field(init=False, default=None)
     _sync_client: QdrantClient = attrs.field(init=False, default=None)
     _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
+    _async_breaker: aiobreaker.CircuitBreaker = attrs.field(init=False)
 
     def _circuit_breaker_config(self) -> tuple[str, int, int]:
         """Return circuit breaker configuration for Qdrant.
@@ -72,12 +74,20 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         return ("qdrant", 3, 60)
 
     def __attrs_post_init__(self) -> None:
-        """Initialize the Qdrant async and sync clients and circuit breaker."""
+        """Initialize the Qdrant async and sync clients and circuit breakers."""
         self._client = AsyncQdrantClient(url=self.url, api_key=self.api_key, timeout=300)
         self._sync_client = QdrantClient(url=self.url, api_key=self.api_key, timeout=300)
 
-        # Initialize circuit breaker from base class
+        # Initialize sync circuit breaker from base class (for sync methods)
         self._init_circuit_breaker()
+
+        # Initialize async circuit breaker using aiobreaker (for async methods)
+        name, fail_max, timeout = self._circuit_breaker_config()
+        object.__setattr__(
+            self,
+            "_async_breaker",
+            create_async_circuit_breaker(name, fail_max, timeout),
+        )
 
     @property
     def client(self) -> AsyncQdrantClient:
@@ -138,6 +148,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             vectors_config=qmodels.VectorParams(size=vector_size, distance=qmodels.Distance.COSINE),
         )
 
+    @with_circuit_breaker_async("qdrant")
     async def search_async(
         self, *, collection: str, query_vector: list[float], limit: int = 10
     ) -> SearchResults:
@@ -169,10 +180,6 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             # Access: results.items[0].point_id, results.items[0].score, etc.
             ```
         """
-        # Check circuit breaker state - if open, fail fast
-        if self._breaker.current_state == pybreaker.STATE_OPEN:
-            handle_circuit_breaker_error("qdrant")
-
         try:
             # Use query_points (new qdrant-client API, replaces deprecated .search())
             query_response = await self._client.query_points(
@@ -192,8 +199,9 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             ]
 
             return SearchResults(items=items, total=len(items))
-        except pybreaker.CircuitBreakerError:
-            handle_circuit_breaker_error("qdrant")
+        except aiobreaker.CircuitBreakerError:
+            # Let circuit breaker errors propagate to the decorator
+            raise
         except Exception as e:
             msg = f"Qdrant search failed: {e}"
             raise UpstreamError(msg) from e
@@ -272,6 +280,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             msg = f"Failed to enable indexing: {e}"
             raise UpstreamError(msg) from e
 
+    @with_circuit_breaker_async("qdrant")
     async def _do_batch_upsert(self, *, collection: str, points: list[PointStruct]) -> None:
         """Qdrant-specific batch upsert implementation.
 

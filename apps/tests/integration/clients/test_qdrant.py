@@ -61,7 +61,18 @@ class TestHappyPath:
         test_collection: str,
         vector_size: int,
     ):
-        """Ensure collection is created when it doesn't exist."""
+        """Test that ensure_collection creates a new collection when it doesn't exist.
+
+        **Why this test is important:**
+          - Collection creation is prerequisite for all vector operations
+          - Validates async ensure_collection method works correctly
+          - Critical for first-time setup and collection management
+
+        **What it tests:**
+          - ensure_collection_async creates a new collection
+          - Collection is accessible after creation
+          - Correct vector configuration is applied
+        """
         # Act
         asyncio.run(
             qdrant_client.ensure_collection_async(
@@ -81,7 +92,18 @@ class TestHappyPath:
         test_collection: str,
         vector_size: int,
     ):
-        """Ensure collection is idempotent - no error on existing collection."""
+        """Test that ensure_collection is idempotent on existing collection.
+
+        **Why this test is important:**
+          - Multiple services may call ensure_collection concurrently
+          - Idempotency prevents race condition errors
+          - Critical for distributed system reliability
+
+        **What it tests:**
+          - Calling ensure_collection twice doesn't raise an error
+          - Collection remains accessible after duplicate calls
+          - No side effects from repeated calls
+        """
         # Create collection first
         asyncio.run(
             qdrant_client.ensure_collection_async(
@@ -110,7 +132,18 @@ class TestHappyPath:
         sample_vector: list[float],
         vector_size: int,
     ):
-        """Batch upsert inserts points correctly."""
+        """Test that batch_upsert_sync inserts points correctly.
+
+        **Why this test is important:**
+          - Sync upsert is primary method for Spark job ingestion
+          - Validates points are stored with correct vectors and payloads
+          - Critical for data integrity in the vector database
+
+        **What it tests:**
+          - Multiple points can be inserted in a single batch
+          - Points are retrievable after insertion
+          - Payloads are stored correctly with vectors
+        """
         # Arrange - use UUIDs for point IDs (Qdrant requires UUID or int)
         point_id_1 = _make_uuid()
         point_id_2 = _make_uuid()
@@ -140,7 +173,18 @@ class TestHappyPath:
         sample_vector: list[float],
         vector_size: int,
     ):
-        """Async batch upsert inserts points correctly."""
+        """Test that batch_upsert_async inserts points correctly.
+
+        **Why this test is important:**
+          - Async upsert is used for Ray job ingestion
+          - Validates async code path works with circuit breaker
+          - Critical for non-blocking data ingestion
+
+        **What it tests:**
+          - Async method inserts points successfully
+          - Points are retrievable after async insertion
+          - Circuit breaker decorator doesn't interfere with success
+        """
         # Arrange
         point_id = _make_uuid()
         points = [
@@ -170,7 +214,18 @@ class TestHappyPath:
         sample_vector: list[float],
         vector_size: int,
     ):
-        """Search returns matching results."""
+        """Test that search_async returns matching results with correct scores.
+
+        **Why this test is important:**
+          - Search is the primary user-facing operation
+          - Validates vector similarity search works correctly
+          - Critical for semantic search functionality
+
+        **What it tests:**
+          - Search returns the expected number of results
+          - Point IDs and payloads are returned correctly
+          - Similarity scores are meaningful (near 1.0 for identical vectors)
+        """
         # Arrange - insert a point first
         point_id = _make_uuid()
         points = [
@@ -208,7 +263,18 @@ class TestHappyPath:
         test_collection: str,
         vector_size: int,
     ):
-        """Search returns empty results for empty collection."""
+        """Test that search_async returns empty results for empty collection.
+
+        **Why this test is important:**
+          - Empty results must be handled gracefully
+          - Validates no false positives are returned
+          - Critical for correct API contract
+
+        **What it tests:**
+          - Search on empty collection returns zero results
+          - No error is raised for empty collections
+          - Result structure is correct even when empty
+        """
         # Arrange - ensure collection exists but is empty
         asyncio.run(
             qdrant_client.ensure_collection_async(
@@ -240,7 +306,18 @@ class TestHappyPath:
         sample_vector: list[float],
         vector_size: int,
     ):
-        """Batch upsert updates existing points by ID."""
+        """Test that batch_upsert_sync updates existing points by ID.
+
+        **Why this test is important:**
+          - Upsert semantics (insert or update) must work correctly
+          - Validates idempotent ingestion for re-processing
+          - Critical for data consistency during re-ingestion
+
+        **What it tests:**
+          - Same point ID overwrites existing point
+          - Updated payload is reflected in subsequent queries
+          - No duplicate points are created
+        """
         # Arrange - insert initial point with same UUID
         point_id = _make_uuid()
         points_v1 = [
@@ -276,7 +353,18 @@ class TestHappyPath:
         test_collection: str,
         vector_size: int,
     ):
-        """Empty points list does not raise error."""
+        """Test that empty points list is handled as a no-op.
+
+        **Why this test is important:**
+          - Batch jobs may have empty partitions
+          - Empty batches must not cause errors
+          - Critical for robust batch processing
+
+        **What it tests:**
+          - Empty points list doesn't raise an exception
+          - No side effects occur for empty batches
+          - Collection state is unchanged
+        """
         # Act - should not raise
         qdrant_client.batch_upsert_sync(
             collection=test_collection,
@@ -313,7 +401,18 @@ class TestTransientFailures:
         sample_vector: list[float],
         vector_size: int,
     ):
-        """Search succeeds after a transient network error."""
+        """Test that search succeeds after transient network errors.
+
+        **Why this test is important:**
+          - Network issues are common in distributed systems
+          - Retry logic must recover from temporary failures
+          - Critical for production reliability
+
+        **What it tests:**
+          - Client can recover from transient errors
+          - Successful response after retry
+          - Data integrity is maintained through retries
+        """
         # Arrange - insert data with UUID
         point_id = _make_uuid()
         points = [
@@ -352,7 +451,18 @@ class TestNonRetriableErrors:
         qdrant_client: QdrantClientWrapper,
         sample_vector: list[float],
     ):
-        """Searching a non-existent collection raises UpstreamError."""
+        """Test that searching a non-existent collection raises UpstreamError.
+
+        **Why this test is important:**
+          - 404 errors should not be retried
+          - Clear error messages help debugging
+          - Critical for fast failure on configuration errors
+
+        **What it tests:**
+          - Non-existent collection raises UpstreamError
+          - Error message contains useful context
+          - No retries are attempted for 404 errors
+        """
         # Arrange
         nonexistent_collection = f"nonexistent-{uuid_module.uuid4().hex[:8]}"
 
@@ -382,42 +492,73 @@ class TestCircuitBreaker:
         self,
         qdrant_url: str,
     ):
-        """Circuit breaker starts in closed state."""
+        """Test that circuit breakers start in closed state.
+
+        **Why this test is important:**
+          - Circuit breakers must start in a healthy state
+          - Ensures clients can make requests immediately after creation
+          - Validates dual-breaker initialization (sync + async)
+          - Critical for production reliability
+
+        **What it tests:**
+          - Sync circuit breaker (_breaker) starts in CLOSED state
+          - Async circuit breaker (_async_breaker) starts in CLOSED state
+          - Both breakers are properly initialized during client creation
+        """
+        import aiobreaker.state as aio_state
+        import pybreaker
+
         # Arrange
         client = QdrantClientWrapper(url=qdrant_url)
 
         try:
-            # Assert
-            assert client._breaker.current_state == "closed"
+            # Assert - both breakers start closed
+            assert client._breaker.current_state == pybreaker.STATE_CLOSED
+            assert client._async_breaker.current_state == aio_state.CircuitBreakerState.CLOSED
         finally:
             client.close()
 
-    def test_circuit_breaker_opens_after_failures(
+    def test_async_circuit_breaker_opens_after_failures(
         self,
         qdrant_url: str,
         sample_vector: list[float],
     ):
-        """Circuit breaker opens after repeated failures.
+        """Test that async circuit breaker opens after threshold failures.
 
-        Note: The Qdrant client's search_async checks circuit breaker state
-        but doesn't call circuit breaker directly. The pybreaker tracks
-        failures via its call() wrapper. Since we're not using the wrapper
-        directly, we manually verify the breaker can be opened.
+        **Why this test is important:**
+          - Circuit breaker must protect downstream services from cascading failures
+          - Validates that aiobreaker tracks failures correctly
+          - Ensures threshold configuration (fail_max=3) is respected
+          - Critical for fault tolerance in async operations
+
+        **What it tests:**
+          - Repeated failures increment the async breaker's fail counter
+          - After fail_max failures, circuit transitions to OPEN state
+          - State change occurs automatically via @with_circuit_breaker_async decorator
         """
+        import aiobreaker.state as aio_state
+
         # Arrange - create client with fresh circuit breaker
         client = QdrantClientWrapper(url=qdrant_url)
+        nonexistent_collection = f"fail-{uuid_module.uuid4().hex[:8]}"
 
         try:
-            # Manually trigger failures on the circuit breaker
-            # This simulates what would happen with repeated call failures
-            for _ in range(5):
+            # Act - trigger failures by searching non-existent collection
+            # The async breaker has fail_max=3 (from Qdrant client config)
+            for _ in range(3):
                 try:
-                    client._breaker.call(lambda: (_ for _ in ()).throw(Exception("test")))
-                except Exception:
-                    pass
+                    asyncio.run(
+                        client.search_async(
+                            collection=nonexistent_collection,
+                            query_vector=sample_vector,
+                            limit=10,
+                        )
+                    )
+                except UpstreamError:
+                    pass  # Expected
 
-            # Assert - circuit should be open after threshold exceeded
-            assert client._breaker.current_state == "open"
+            # Assert - async circuit should be open after threshold exceeded
+            assert client._async_breaker.current_state == aio_state.CircuitBreakerState.OPEN
         finally:
             client.close()
 
@@ -426,23 +567,44 @@ class TestCircuitBreaker:
         qdrant_url: str,
         sample_vector: list[float],
     ):
-        """When circuit is open, requests fail fast without hitting Qdrant."""
-        # Arrange - create client and force circuit open
+        """Test that open circuit breaker causes immediate failure without network call.
+
+        **Why this test is important:**
+          - Open circuit must fail fast to prevent resource exhaustion
+          - Validates that requests don't hit Qdrant when circuit is open
+          - Ensures clear error message for debugging and monitoring
+          - Critical for preventing cascading failures
+
+        **What it tests:**
+          - Open circuit raises UpstreamError immediately
+          - Error message indicates service unavailability
+          - No network request is made when circuit is open
+          - Decorator checks state before calling the wrapped method
+        """
+        import aiobreaker.state as aio_state
+
+        # Arrange - create client and force async circuit open
         client = QdrantClientWrapper(url=qdrant_url)
         nonexistent_collection = f"fail-{uuid_module.uuid4().hex[:8]}"
 
         try:
-            # Manually force circuit breaker open
-            for _ in range(5):
+            # Force async circuit breaker open via repeated failures
+            for _ in range(3):
                 try:
-                    client._breaker.call(lambda: (_ for _ in ()).throw(Exception("test")))
-                except Exception:
+                    asyncio.run(
+                        client.search_async(
+                            collection=nonexistent_collection,
+                            query_vector=sample_vector,
+                            limit=10,
+                        )
+                    )
+                except UpstreamError:
                     pass
 
-            # Verify circuit is open
-            assert client._breaker.current_state == "open"
+            # Verify async circuit is open
+            assert client._async_breaker.current_state == aio_state.CircuitBreakerState.OPEN
 
-            # Act & Assert - next request should fail fast
+            # Act & Assert - next request should fail fast with circuit breaker message
             with pytest.raises(UpstreamError) as exc_info:
                 asyncio.run(
                     client.search_async(
@@ -452,7 +614,8 @@ class TestCircuitBreaker:
                     )
                 )
 
-            assert "circuit breaker" in str(exc_info.value).lower()
+            # The fail-fast path raises "service is currently unavailable"
+            assert "currently unavailable" in str(exc_info.value).lower()
         finally:
             client.close()
 
@@ -473,7 +636,18 @@ class TestIndexingControl:
         sample_vector: list[float],
         vector_size: int,
     ):
-        """Indexing can be disabled and re-enabled."""
+        """Test that indexing can be disabled and re-enabled for bulk operations.
+
+        **Why this test is important:**
+          - Disabling indexing speeds up bulk ingestion
+          - Re-enabling triggers index rebuild
+          - Critical for high-throughput batch processing
+
+        **What it tests:**
+          - disable_indexing completes without error
+          - enable_indexing completes without error
+          - Search works correctly after re-enabling indexing
+        """
         # Arrange - create collection with data (use UUID for point ID)
         point_id = _make_uuid()
         points = [
@@ -521,7 +695,18 @@ class TestResourceCleanup:
         self,
         qdrant_url: str,
     ):
-        """Client close releases all resources."""
+        """Test that client close releases all resources.
+
+        **Why this test is important:**
+          - Connection leaks cause resource exhaustion
+          - Proper cleanup prevents memory leaks
+          - Critical for long-running services
+
+        **What it tests:**
+          - close() sets client references to None
+          - Both async and sync clients are released
+          - No exceptions during cleanup
+        """
         # Arrange
         client = QdrantClientWrapper(url=qdrant_url)
 
@@ -536,7 +721,18 @@ class TestResourceCleanup:
         self,
         qdrant_url: str,
     ):
-        """Calling close multiple times is safe."""
+        """Test that calling close multiple times is safe.
+
+        **Why this test is important:**
+          - Cleanup code may be called multiple times
+          - Idempotent close prevents double-free errors
+          - Critical for robust error handling paths
+
+        **What it tests:**
+          - Multiple close() calls don't raise exceptions
+          - Client state remains consistent after multiple closes
+          - No side effects from repeated cleanup
+        """
         # Arrange
         client = QdrantClientWrapper(url=qdrant_url)
 
@@ -567,7 +763,18 @@ class TestObservability:
         vector_size: int,
         caplog,
     ):
-        """Upsert operations are logged."""
+        """Test that upsert operations are logged for observability.
+
+        **Why this test is important:**
+          - Operations must be logged for debugging
+          - Enables monitoring and alerting
+          - Critical for production troubleshooting
+
+        **What it tests:**
+          - Upsert operation produces log messages
+          - Logs contain relevant context (collection, operation)
+          - Log level is appropriate (INFO)
+        """
         # Arrange - use UUID for point ID
         point_id = _make_uuid()
         points = [
@@ -592,7 +799,18 @@ class TestObservability:
         sample_vector: list[float],
         caplog,
     ):
-        """Search failures are logged."""
+        """Test that search failures are logged for debugging.
+
+        **Why this test is important:**
+          - Errors must be logged for incident response
+          - Enables root cause analysis
+          - Critical for production debugging
+
+        **What it tests:**
+          - Search failure raises appropriate exception
+          - Error is properly propagated
+          - Exception contains useful context
+        """
         # Arrange
         nonexistent_collection = f"log-fail-{uuid_module.uuid4().hex[:8]}"
 
@@ -629,7 +847,18 @@ class TestFromConfig:
         sample_vector: list[float],
         vector_size: int,
     ):
-        """from_config creates a functional client."""
+        """Test that from_config creates a fully functional client.
+
+        **Why this test is important:**
+          - Factory method is primary way to create clients
+          - Validates VectorDBConfig integration
+          - Critical for application bootstrapping
+
+        **What it tests:**
+          - from_config creates a working QdrantClientWrapper
+          - Client can perform CRUD operations
+          - Configuration is correctly applied
+        """
         from config import VectorDBConfig
 
         # Arrange - VectorDBConfig requires 'collection' field
@@ -679,7 +908,17 @@ class TestFromConfig:
         self,
         qdrant_url: str,
     ):
-        """from_config passes API key correctly.
+        """Test that from_config passes API key correctly for cloud instances.
+
+        **Why this test is important:**
+          - Cloud Qdrant requires API key authentication
+          - Validates API key is passed through configuration
+          - Critical for cloud deployment security
+
+        **What it tests:**
+          - API key from config is set on client
+          - URL is correctly passed through
+          - Client is created without connection attempt
 
         Note: This test uses an HTTPS URL to avoid the 'insecure connection'
         warning from qdrant-client. We're only testing that the API key is
