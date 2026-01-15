@@ -40,10 +40,11 @@ from unittest.mock import MagicMock, patch
 
 import pybreaker
 import pytest
-from botocore.exceptions import ClientError, EndpointConnectionError
+from botocore.exceptions import ClientError, EndpointConnectionError, ReadTimeoutError
 
-from clients.s3 import S3ClientWrapper
+from clients.s3 import S3ClientWrapper, _is_retriable_error
 from core.exceptions import UpstreamError
+from foundation.circuit_breaker import create_circuit_breaker
 
 logger = logging.getLogger(__name__)
 
@@ -64,11 +65,15 @@ class TestHappyPath:
     ) -> None:
         """Test basic put and get operations work correctly.
 
-        Validates:
-        - Object can be uploaded
-        - Object can be retrieved
-        - Data integrity is maintained
-        - No retries are triggered on success
+        **Why this test is important:**
+          - Validates the fundamental S3 operations work end-to-end
+          - Ensures data integrity is maintained through upload/download cycle
+          - Establishes baseline correctness before testing failure scenarios
+
+        **What it tests:**
+          - Object can be uploaded via put_object
+          - Object can be retrieved via get_object
+          - Data integrity is maintained (bytes in == bytes out)
         """
         # Put object
         minio_client.put_object(bucket=test_bucket, key=unique_key, body=sample_data)
@@ -82,10 +87,15 @@ class TestHappyPath:
     def test_list_objects(self, minio_client: S3ClientWrapper, test_bucket: str, sample_data: bytes) -> None:
         """Test listing objects in a bucket.
 
-        Validates:
-        - Multiple objects can be listed
-        - Prefix filtering works
-        - Pagination is handled (for small sets)
+        **Why this test is important:**
+          - List operations are critical for batch processing and discovery
+          - Prefix filtering is essential for organizing objects by path
+          - Ensures the client correctly handles multi-object responses
+
+        **What it tests:**
+          - Multiple objects can be listed with list_objects
+          - Prefix filtering returns only matching keys
+          - All created objects are returned in the list
         """
         # Create multiple objects
         keys = [f"test-prefix/{i}.txt" for i in range(5)]
@@ -103,9 +113,14 @@ class TestHappyPath:
     ) -> None:
         """Test exists() returns True for existing objects.
 
-        Validates:
-        - Existence check works for existing objects
-        - No false negatives
+        **Why this test is important:**
+          - Existence checks are used to avoid duplicate processing
+          - Critical for idempotent operations and checkpointing
+          - False negatives would cause unnecessary reprocessing
+
+        **What it tests:**
+          - exists() returns True for an object that was just uploaded
+          - No false negatives occur for existing objects
         """
         minio_client.put_object(bucket=test_bucket, key=unique_key, body=sample_data)
 
@@ -116,9 +131,14 @@ class TestHappyPath:
     ) -> None:
         """Test exists() returns False for non-existent objects.
 
-        Validates:
-        - 404 errors are handled gracefully
-        - No false positives
+        **Why this test is important:**
+          - 404 errors must be handled gracefully, not raised as exceptions
+          - False positives would cause skipped processing of new objects
+          - Validates the exists() method correctly interprets S3 404 responses
+
+        **What it tests:**
+          - exists() returns False for a key that doesn't exist
+          - 404 ClientError is caught and converted to False
         """
         assert minio_client.exists(bucket=test_bucket, key="nonexistent-key") is False
 
@@ -127,9 +147,14 @@ class TestHappyPath:
     ) -> None:
         """Test object deletion.
 
-        Validates:
-        - Objects can be deleted
-        - Deleted objects are no longer accessible
+        **Why this test is important:**
+          - Deletion is required for cleanup and data lifecycle management
+          - Ensures deleted objects are actually removed from storage
+          - Validates delete_object integrates correctly with exists()
+
+        **What it tests:**
+          - delete_object removes an existing object
+          - exists() returns False after deletion
         """
         minio_client.put_object(bucket=test_bucket, key=unique_key, body=sample_data)
         assert minio_client.exists(bucket=test_bucket, key=unique_key) is True
@@ -144,9 +169,14 @@ class TestHappyPath:
     ) -> None:
         """Test async object retrieval.
 
-        Validates:
-        - Async wrapper works correctly
-        - Data integrity in async path
+        **Why this test is important:**
+          - Async operations are used in Ray jobs and concurrent processing
+          - Ensures the async wrapper correctly delegates to sync implementation
+          - Validates data integrity through the async code path
+
+        **What it tests:**
+          - get_object_async retrieves data correctly
+          - Data integrity is maintained in async operations
         """
         minio_client.put_object(bucket=test_bucket, key=unique_key, body=sample_data)
 
@@ -168,10 +198,15 @@ class TestRetrySuccess:
     ) -> None:
         """Test that connection errors trigger retries.
 
-        Validates:
-        - Connection errors are classified as retriable
-        - Retry eventually succeeds
-        - Correct number of attempts
+        **Why this test is important:**
+          - Connection errors are common in distributed systems
+          - Retry logic is essential for resilience against transient network issues
+          - Ensures the client doesn't fail on first transient error
+
+        **What it tests:**
+          - EndpointConnectionError triggers retry behavior
+          - Operation succeeds after transient failures resolve
+          - Correct number of retry attempts (3 in this case)
         """
         client = S3ClientWrapper(
             endpoint_url=minio_config["endpoint_url"],
@@ -211,9 +246,15 @@ class TestRetrySuccess:
     ) -> None:
         """Test that 500 errors trigger retries.
 
-        Validates:
-        - Server errors (5xx) are classified as retriable
-        - Exponential backoff is applied
+        **Why this test is important:**
+          - Server errors (5xx) indicate transient service issues
+          - These should be retried as the service may recover quickly
+          - Validates error classification for HTTP status codes
+
+        **What it tests:**
+          - HTTP 500 InternalError triggers retry behavior
+          - Operation succeeds when service recovers
+          - Error classification correctly identifies 5xx as retriable
         """
         client = S3ClientWrapper(
             endpoint_url=minio_config["endpoint_url"],
@@ -266,10 +307,15 @@ class TestRetryExhaustion:
     ) -> None:
         """Test that UpstreamError is raised when retries are exhausted.
 
-        Validates:
-        - Correct exception type (UpstreamError)
-        - Error message is meaningful
-        - No infinite retry loops
+        **Why this test is important:**
+          - Prevents infinite retry loops that would hang jobs
+          - Ensures proper error propagation for caller handling
+          - Validates the retry count limit is respected
+
+        **What it tests:**
+          - UpstreamError is raised after max_retries attempts
+          - Error message includes attempt count for debugging
+          - Exactly max_retries attempts are made (no more)
         """
         client = S3ClientWrapper(
             endpoint_url=minio_config["endpoint_url"],
@@ -308,13 +354,15 @@ class TestNonRetriableErrors:
     def test_access_denied_not_retried(self, minio_config: dict[str, str], test_bucket: str) -> None:
         """Test that AccessDenied (403) is not retried.
 
-        Validates:
-        - 4xx errors fail immediately
-        - No wasted retry attempts
-        - Clear error message
-        """
-        from clients.s3 import _is_retriable_error
+        **Why this test is important:**
+          - Authorization errors won't resolve with retries
+          - Retrying 403s wastes time and resources
+          - Fast failure allows callers to handle auth issues promptly
 
+        **What it tests:**
+          - AccessDenied (403) is classified as non-retriable
+          - _is_retriable_error returns False for 403 status
+        """
         # Test that AccessDenied is classified as non-retriable
         access_denied_error = ClientError(
             {
@@ -330,12 +378,15 @@ class TestNonRetriableErrors:
     def test_invalid_bucket_not_retried(self, minio_config: dict[str, str]) -> None:
         """Test that NoSuchBucket is not retried.
 
-        Validates:
-        - 404 errors for buckets fail immediately
-        - Clear error message
-        """
-        from clients.s3 import _is_retriable_error
+        **Why this test is important:**
+          - Missing buckets won't appear with retries
+          - 404 errors indicate configuration issues, not transient failures
+          - Fast failure enables quick diagnosis of bucket misconfiguration
 
+        **What it tests:**
+          - NoSuchBucket (404) is classified as non-retriable
+          - _is_retriable_error returns False for 404 status
+        """
         # Test that NoSuchBucket is classified as non-retriable
         no_such_bucket_error = ClientError(
             {
@@ -351,12 +402,16 @@ class TestNonRetriableErrors:
     def test_transient_error_is_retriable(self) -> None:
         """Test that transient server errors are classified as retriable.
 
-        Validates:
-        - 5xx errors are retriable
-        - Connection errors are retriable
-        """
-        from clients.s3 import _is_retriable_error
+        **Why this test is important:**
+          - Correct error classification is fundamental to retry logic
+          - Ensures transient errors trigger retries while permanent errors don't
+          - Validates the error classification function works correctly
 
+        **What it tests:**
+          - HTTP 500 InternalError is classified as retriable
+          - EndpointConnectionError is classified as retriable
+          - _is_retriable_error returns True for both cases
+        """
         # Internal server error should be retriable
         internal_error = ClientError(
             {
@@ -383,10 +438,15 @@ class TestCircuitBreakerOpens:
     def test_circuit_opens_after_threshold(self, minio_config: dict[str, str], test_bucket: str) -> None:
         """Test circuit breaker opens after failure threshold.
 
-        Validates:
-        - Circuit transitions from CLOSED to OPEN
-        - Fail-fast behavior once open
-        - No outbound calls while open
+        **Why this test is important:**
+          - Circuit breakers prevent cascading failures to downstream services
+          - Open circuit provides fail-fast behavior, reducing latency
+          - Protects the system when S3/MinIO is experiencing issues
+
+        **What it tests:**
+          - Circuit transitions from CLOSED to OPEN after 5 failures
+          - Subsequent calls fail fast without making network requests
+          - No additional boto3 calls are made when circuit is open
         """
         client = S3ClientWrapper(
             endpoint_url=minio_config["endpoint_url"],
@@ -440,9 +500,14 @@ class TestCircuitBreakerRecovery:
     ) -> None:
         """Test that successful operations keep circuit closed.
 
-        Validates:
-        - Circuit remains closed during normal operation
-        - Fail counter resets on success
+        **Why this test is important:**
+          - Successful operations should reset failure counters
+          - Circuit should remain closed during normal healthy operation
+          - Validates the circuit breaker doesn't open spuriously
+
+        **What it tests:**
+          - Circuit remains in CLOSED state after successful operations
+          - fail_counter is 0 after successful operations
         """
         # Put some data
         minio_client.put_object(bucket=test_bucket, key="recovery-test", body=sample_data)
@@ -458,11 +523,17 @@ class TestCircuitBreakerRecovery:
     def test_circuit_breaker_state_transitions(self) -> None:
         """Test circuit breaker state transition logic.
 
-        Validates:
-        - Pybreaker correctly transitions CLOSED -> OPEN -> HALF_OPEN -> CLOSED
-        """
-        from foundation.circuit_breaker import create_circuit_breaker
+        **Why this test is important:**
+          - State transitions are the core of circuit breaker behavior
+          - HALF_OPEN state enables graceful recovery testing
+          - Validates the pybreaker library works as expected
 
+        **What it tests:**
+          - Circuit starts in CLOSED state
+          - Transitions to OPEN after failure_threshold failures
+          - Transitions to HALF_OPEN after recovery_timeout
+          - Transitions back to CLOSED on successful call in HALF_OPEN
+        """
         breaker = create_circuit_breaker(
             name="test-recovery",
             failure_threshold=2,
@@ -483,8 +554,6 @@ class TestCircuitBreakerRecovery:
         assert breaker.current_state == pybreaker.STATE_OPEN
 
         # Wait for recovery timeout (0 seconds)
-        import time
-
         time.sleep(0.1)
 
         # After recovery timeout, next call attempt triggers HALF_OPEN
@@ -505,10 +574,15 @@ class TestTimeoutHandling:
     def test_slow_operation_triggers_timeout(self, minio_config: dict[str, str]) -> None:
         """Test that slow operations trigger timeouts.
 
-        Validates:
-        - Requests don't hang indefinitely
-        - Timeouts are treated as retriable
-        - Resources are cleaned up
+        **Why this test is important:**
+          - Timeouts prevent indefinite hangs on slow/stalled connections
+          - Critical for maintaining job throughput and responsiveness
+          - Ensures resources aren't held indefinitely
+
+        **What it tests:**
+          - ReadTimeoutError is raised for slow operations
+          - UpstreamError is raised after retries are exhausted
+          - Client doesn't hang waiting for response
         """
         client = S3ClientWrapper(
             endpoint_url=minio_config["endpoint_url"],
@@ -519,8 +593,6 @@ class TestTimeoutHandling:
             retry_min_wait=0.01,
             retry_max_wait=0.1,
         )
-
-        from botocore.exceptions import ReadTimeoutError
 
         def timeout_error(*args, **kwargs):
             raise ReadTimeoutError(endpoint_url="http://test")
@@ -541,9 +613,14 @@ class TestResourceCleanup:
     def test_client_close_releases_resources(self, minio_config: dict[str, str]) -> None:
         """Test that close() releases client resources.
 
-        Validates:
-        - Client can be closed
-        - No leaked connections
+        **Why this test is important:**
+          - Resource leaks cause memory issues in long-running jobs
+          - Proper cleanup is essential for Ray/Spark worker lifecycle
+          - Validates the close() method works correctly
+
+        **What it tests:**
+          - close() can be called on a client
+          - _client reference is set to None after close
         """
         client = S3ClientWrapper(
             endpoint_url=minio_config["endpoint_url"],
@@ -566,9 +643,15 @@ class TestResourceCleanup:
     ) -> None:
         """Test that concurrent async operations don't leak resources.
 
-        Validates:
-        - Multiple concurrent operations work
-        - Resources are properly managed
+        **Why this test is important:**
+          - Concurrent operations are common in parallel processing
+          - Resource leaks under concurrency can cause pool exhaustion
+          - Validates async operations work correctly with asyncio.gather
+
+        **What it tests:**
+          - Multiple concurrent get_object_async calls succeed
+          - All results are returned correctly
+          - No exceptions from resource contention
         """
         keys = [f"concurrent-{i}" for i in range(10)]
 
@@ -595,10 +678,14 @@ class TestObservability:
     def test_retry_attempts_are_logged(self, minio_config: dict[str, str], test_bucket: str, caplog) -> None:
         """Test that retry attempts are logged.
 
-        Validates:
-        - Retry attempts include attempt number
-        - Error details are logged
-        - Logs are structured and actionable
+        **Why this test is important:**
+          - Observability is critical for debugging production issues
+          - Retry logs help identify transient vs persistent failures
+          - Enables operators to understand system behavior under stress
+
+        **What it tests:**
+          - Retry attempts produce WARNING level log messages
+          - Log messages include "retrying" keyword for filtering
         """
         client = S3ClientWrapper(
             endpoint_url=minio_config["endpoint_url"],
@@ -630,10 +717,14 @@ class TestObservability:
     def test_final_failure_is_logged(self, minio_config: dict[str, str], test_bucket: str, caplog) -> None:
         """Test that final failures are logged with context.
 
-        Validates:
-        - Error includes operation name
-        - Attempt count is included
-        - Error type is logged
+        **Why this test is important:**
+          - Final failure logs are essential for post-mortem analysis
+          - Must include enough context to diagnose the issue
+          - Enables alerting and monitoring based on error patterns
+
+        **What it tests:**
+          - Final failure produces ERROR level log message
+          - Log message includes "failed" keyword for alerting
         """
         client = S3ClientWrapper(
             endpoint_url=minio_config["endpoint_url"],
