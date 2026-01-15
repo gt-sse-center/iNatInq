@@ -60,6 +60,10 @@ asyncio_mode = "auto"
 markers = [
     "integration: marks tests as integration tests (require Docker)",
 ]
+filterwarnings = [
+    "ignore:.*@wait_container_is_ready decorator is deprecated.*:DeprecationWarning",
+    "ignore:.*wait_for_logs function.*is deprecated.*:DeprecationWarning",
+]
 
 [tool.ruff]
 line-length = 110

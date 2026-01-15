@@ -44,6 +44,9 @@ import logging
 
 import pytest
 
+# Note: testcontainers deprecation warnings are filtered in pyproject.toml
+# via [tool.pytest.ini_options].filterwarnings
+
 # Configure logging for integration tests
 logging.basicConfig(
     level=logging.INFO,

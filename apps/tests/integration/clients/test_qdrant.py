@@ -679,14 +679,20 @@ class TestFromConfig:
         self,
         qdrant_url: str,
     ):
-        """from_config passes API key correctly."""
+        """from_config passes API key correctly.
+
+        Note: This test uses an HTTPS URL to avoid the 'insecure connection'
+        warning from qdrant-client. We're only testing that the API key is
+        passed through correctly, not that it authenticates.
+        """
         from config import VectorDBConfig
 
-        # Arrange - VectorDBConfig requires 'collection' field
+        # Arrange - Use HTTPS URL to avoid insecure connection warning
+        # The client won't actually connect in this test
         config = VectorDBConfig(
             provider_type="qdrant",
             collection="test-collection",
-            qdrant_url=qdrant_url,
+            qdrant_url="https://example-qdrant.cloud:6333",  # HTTPS to avoid warning
             qdrant_api_key="test-api-key",
         )
 
@@ -694,7 +700,8 @@ class TestFromConfig:
         client = QdrantClientWrapper.from_config(config)
 
         try:
-            # Assert - API key is set
+            # Assert - API key is set (don't actually connect)
             assert client.api_key == "test-api-key"
+            assert client.url == "https://example-qdrant.cloud:6333"
         finally:
             client.close()

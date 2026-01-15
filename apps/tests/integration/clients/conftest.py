@@ -251,7 +251,8 @@ def qdrant_container():
     """
     logger.info("Starting Qdrant container...")
 
-    container = QdrantContainer(image="qdrant/qdrant:v1.12.4")
+    # Use v1.16.x to match qdrant-client 1.16.x (minor version diff must be ≤1)
+    container = QdrantContainer(image="qdrant/qdrant:v1.16.0")
     container.start()
 
     # Wait for container to be healthy
