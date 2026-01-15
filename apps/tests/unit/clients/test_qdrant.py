@@ -253,7 +253,7 @@ class TestQdrantClientWrapperSearch:
           - Critical for basic functionality
 
         **What it tests:**
-          - search is called with correct parameters
+          - query_points is called with correct parameters
           - Results are converted to SearchResults
           - Items are correctly formatted
         """
@@ -267,7 +267,10 @@ class TestQdrantClientWrapperSearch:
         mock_point2.score = 0.85
         mock_point2.payload = {"text": "world"}
 
-        mock_async_client.search.return_value = [mock_point1, mock_point2]
+        # query_points returns a response object with .points attribute
+        mock_response = MagicMock()
+        mock_response.points = [mock_point1, mock_point2]
+        mock_async_client.query_points.return_value = mock_response
 
         result = await qdrant_client.search_async(
             collection="test-collection", query_vector=[0.1, 0.2, 0.3], limit=10
@@ -298,7 +301,7 @@ class TestQdrantClientWrapperSearch:
           - Exception is wrapped in UpstreamError
           - Error message includes context
         """
-        mock_async_client.search.side_effect = Exception("Search failed")
+        mock_async_client.query_points.side_effect = Exception("Search failed")
 
         with pytest.raises(UpstreamError, match="Qdrant search failed"):
             await qdrant_client.search_async(collection="test-collection", query_vector=[0.1, 0.2], limit=10)

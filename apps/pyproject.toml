@@ -49,7 +49,7 @@ dev = [
     "pytest-cov>=7.0.0",
     "pytest-mock>=3.15.1",
     "pytest-xdist>=3.5.0",
-    "testcontainers[minio]>=4.10.0",
+    "testcontainers[minio,qdrant]>=4.10.0",
 ]
 
 [tool.pytest.ini_options]

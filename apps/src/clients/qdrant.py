@@ -174,9 +174,10 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             handle_circuit_breaker_error("qdrant")
 
         try:
-            qdrant_results = await self._client.search(
+            # Use query_points (new qdrant-client API, replaces deprecated .search())
+            query_response = await self._client.query_points(
                 collection_name=collection,
-                query_vector=query_vector,
+                query=query_vector,
                 limit=limit,
                 with_payload=True,
             )
@@ -184,13 +185,15 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             items = [
                 SearchResultItem(
                     point_id=str(point.id),
-                    score=float(point.score),
+                    score=float(point.score) if point.score is not None else 0.0,
                     payload=point.payload or {},
                 )
-                for point in qdrant_results
+                for point in query_response.points
             ]
 
             return SearchResults(items=items, total=len(items))
+        except pybreaker.CircuitBreakerError:
+            handle_circuit_breaker_error("qdrant")
         except Exception as e:
             msg = f"Qdrant search failed: {e}"
             raise UpstreamError(msg) from e

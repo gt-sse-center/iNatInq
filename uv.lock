@@ -160,7 +160,7 @@ dev = [
     { name = "pytest-cov" },
     { name = "pytest-mock" },
     { name = "pytest-xdist" },
-    { name = "testcontainers", extra = ["minio"] },
+    { name = "testcontainers", extra = ["minio", "qdrant"] },
 ]
 
 [package.metadata]
@@ -189,7 +189,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "pytest-mock", specifier = ">=3.15.1" },
     { name = "pytest-xdist", specifier = ">=3.5.0" },
-    { name = "testcontainers", extras = ["minio"], specifier = ">=4.10.0" },
+    { name = "testcontainers", extras = ["minio", "qdrant"], specifier = ">=4.10.0" },
 ]
 
 [[package]]
@@ -3277,6 +3277,9 @@ wheels = [
 [package.optional-dependencies]
 minio = [
     { name = "minio" },
+]
+qdrant = [
+    { name = "qdrant-client" },
 ]
 
 [[package]]
