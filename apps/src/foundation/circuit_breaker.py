@@ -71,8 +71,10 @@ Both decorators:
 3. Convert CircuitBreakerError to UpstreamError for consistent error handling
 """
 
+import functools
 import logging
 from collections.abc import Callable
+from datetime import timedelta
 from typing import NoReturn
 
 import aiobreaker
@@ -317,7 +319,6 @@ def with_circuit_breaker(service_name: str):
     See Also:
         with_circuit_breaker_async: Async version for coroutine methods.
     """
-    import functools
 
     def decorator(func):
         @functools.wraps(func)
@@ -389,7 +390,6 @@ def with_circuit_breaker_async(service_name: str):
         with_circuit_breaker: Sync version for regular methods.
         create_async_circuit_breaker: Factory for async circuit breakers.
     """
-    import functools
 
     def decorator(func):
         @functools.wraps(func)
@@ -467,8 +467,6 @@ def create_async_circuit_breaker(
         - HALF_OPEN → CLOSED: After first successful call
         - HALF_OPEN → OPEN: If call fails during recovery
     """
-    from datetime import timedelta
-
     return aiobreaker.CircuitBreaker(
         fail_max=failure_threshold,
         timeout_duration=timedelta(seconds=recovery_timeout),

@@ -23,11 +23,15 @@ The underlying Qdrant clients and circuit breaker are mocked to isolate client l
 Run with: pytest tests/unit/clients/test_qdrant.py
 """
 
+import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiobreaker
+import aiobreaker.state as aio_state
 import pybreaker
 import pytest
 from qdrant_client.models import PointStruct
+
 from clients.qdrant import QdrantClientWrapper
 from config import VectorDBConfig
 from core.exceptions import UpstreamError
@@ -351,10 +355,6 @@ class TestQdrantClientWrapperSearch:
         **What it tests:**
           - aiobreaker.CircuitBreakerError is caught and converted to UpstreamError
         """
-        import datetime
-
-        import aiobreaker
-
         # aiobreaker.CircuitBreakerError requires message and reopen_time
         mock_async_client.query_points.side_effect = aiobreaker.CircuitBreakerError(
             "Circuit is open", datetime.datetime.now(datetime.timezone.utc)
@@ -380,8 +380,6 @@ class TestQdrantClientWrapperSearch:
           - Open circuit breaker state (via aiobreaker) triggers fail-fast
           - handle_circuit_breaker_error is called
         """
-        import aiobreaker.state as aio_state
-
         # Create a mock async breaker in OPEN state
         mock_breaker = MagicMock()
         # aiobreaker uses .current_state for state checking (returns enum)
@@ -498,8 +496,6 @@ class TestQdrantClientWrapperBatchUpsert:
           - Open circuit breaker state (via aiobreaker) triggers fail-fast
           - handle_circuit_breaker_error is called
         """
-        import aiobreaker.state as aio_state
-
         # Create a mock async breaker in OPEN state
         mock_breaker = MagicMock()
         # aiobreaker uses .current_state for state checking (returns enum)

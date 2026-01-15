@@ -34,6 +34,8 @@ pytest tests/integration/clients/test_qdrant.py::TestHappyPath -v
 import asyncio
 import uuid as uuid_module
 
+import aiobreaker.state as aio_state
+import pybreaker
 import pytest
 from qdrant_client.models import PointStruct
 
@@ -505,9 +507,6 @@ class TestCircuitBreaker:
           - Async circuit breaker (_async_breaker) starts in CLOSED state
           - Both breakers are properly initialized during client creation
         """
-        import aiobreaker.state as aio_state
-        import pybreaker
-
         # Arrange
         client = QdrantClientWrapper(url=qdrant_url)
 
@@ -536,8 +535,6 @@ class TestCircuitBreaker:
           - After fail_max failures, circuit transitions to OPEN state
           - State change occurs automatically via @with_circuit_breaker_async decorator
         """
-        import aiobreaker.state as aio_state
-
         # Arrange - create client with fresh circuit breaker
         client = QdrantClientWrapper(url=qdrant_url)
         nonexistent_collection = f"fail-{uuid_module.uuid4().hex[:8]}"
@@ -581,8 +578,6 @@ class TestCircuitBreaker:
           - No network request is made when circuit is open
           - Decorator checks state before calling the wrapped method
         """
-        import aiobreaker.state as aio_state
-
         # Arrange - create client and force async circuit open
         client = QdrantClientWrapper(url=qdrant_url)
         nonexistent_collection = f"fail-{uuid_module.uuid4().hex[:8]}"

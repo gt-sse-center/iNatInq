@@ -24,10 +24,12 @@ Run with: pytest tests/unit/foundation/test_circuit_breaker.py
 import logging
 from unittest.mock import MagicMock, patch
 
+import aiobreaker
+import aiobreaker.state as aio_state
 import pybreaker
 import pytest
 from foundation.exceptions import UpstreamError
-import aiobreaker
+
 from foundation.circuit_breaker import (
     CircuitBreakerListener,
     _get_breaker_or_raise,
@@ -497,7 +499,6 @@ class TestWithCircuitBreakerAsyncDecorator:
     @pytest.mark.asyncio
     async def test_async_decorator_tracks_failures(self) -> None:
         """Test that async decorator properly tracks failures and opens circuit."""
-        import aiobreaker.state as aio_state
 
         class TestClient:
             _async_breaker = create_async_circuit_breaker("test", failure_threshold=2)
@@ -526,8 +527,6 @@ class TestWithCircuitBreakerAsyncDecorator:
     @pytest.mark.asyncio
     async def test_async_decorator_fails_fast_when_open(self) -> None:
         """Test that async decorator fails fast when circuit is open."""
-        import aiobreaker.state as aio_state
-
         breaker = create_async_circuit_breaker("test", failure_threshold=1)
 
         class TestClient:
