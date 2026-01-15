@@ -123,10 +123,11 @@ class RayService:
         env_vars = {
             "K8S_NAMESPACE": namespace,
             "S3_PREFIX": s3_prefix,
-            "MINIO_ENDPOINT_URL": s3_endpoint,
-            "MINIO_ACCESS_KEY_ID": s3_access_key_id,
-            "MINIO_SECRET_ACCESS_KEY": s3_secret_access_key,
-            "MINIO_BUCKET": s3_bucket,
+            # Use S3_* env vars to match MinIOConfig.from_env()
+            "S3_ENDPOINT": s3_endpoint,
+            "S3_ACCESS_KEY_ID": s3_access_key_id,
+            "S3_SECRET_ACCESS_KEY": s3_secret_access_key,
+            "S3_BUCKET": s3_bucket,
             "VECTOR_DB_COLLECTION": collection,
             "EMBEDDING_PROVIDER_TYPE": embedding_config.provider_type,
         }
@@ -145,12 +146,26 @@ class RayService:
             # Create job submission client
             client = JobSubmissionClient(dashboard_address)
 
-            # Submit the job
+            # Submit the job with runtime environment
+            # Dependencies are installed on Ray workers; code is mounted at /app/src
             job_id = client.submit_job(
-                entrypoint="python -m pipeline.core.ingestion.ray.process_s3_to_qdrant",
+                entrypoint="python -m core.ingestion.ray.process_s3_to_qdrant",
                 runtime_env={
-                    "env_vars": env_vars,
-                    "working_dir": ".",
+                    "env_vars": {
+                        **env_vars,
+                        "PYTHONPATH": "/app/src",
+                    },
+                    "pip": [
+                        "boto3",
+                        "attrs",
+                        "pydantic",
+                        "pydantic-settings",
+                        "httpx",
+                        "qdrant-client",
+                        "weaviate-client",
+                        "tenacity",
+                        "pybreaker",
+                    ],
                 },
             )
 

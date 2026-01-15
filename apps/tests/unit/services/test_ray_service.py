@@ -93,16 +93,16 @@ class TestRayServiceSubmitJob:
         # Verify job was submitted with correct entrypoint
         mock_client.submit_job.assert_called_once()
         call_kwargs = mock_client.submit_job.call_args[1]
-        assert call_kwargs["entrypoint"] == "python -m pipeline.core.ingestion.ray.process_s3_to_qdrant"
+        assert call_kwargs["entrypoint"] == "python -m core.ingestion.ray.process_s3_to_qdrant"
 
         # Verify environment variables
         env_vars = call_kwargs["runtime_env"]["env_vars"]
         assert env_vars["K8S_NAMESPACE"] == "test-namespace"
         assert env_vars["S3_PREFIX"] == "inputs/"
-        assert env_vars["MINIO_ENDPOINT_URL"] == "http://minio.test:9000"
-        assert env_vars["MINIO_ACCESS_KEY_ID"] == "test-key"
-        assert env_vars["MINIO_SECRET_ACCESS_KEY"] == "test-secret"
-        assert env_vars["MINIO_BUCKET"] == "test-bucket"
+        assert env_vars["S3_ENDPOINT"] == "http://minio.test:9000"
+        assert env_vars["S3_ACCESS_KEY_ID"] == "test-key"
+        assert env_vars["S3_SECRET_ACCESS_KEY"] == "test-secret"
+        assert env_vars["S3_BUCKET"] == "test-bucket"
         assert env_vars["VECTOR_DB_COLLECTION"] == "test-collection"
         assert env_vars["EMBEDDING_PROVIDER_TYPE"] == "ollama"
 

@@ -6,7 +6,7 @@ Spark jobs via the Kubernetes Spark Operator.
 
 import logging
 import uuid
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 
 from clients.k8s_spark import SparkJobClient
 
@@ -76,7 +76,7 @@ class SparkService:
         """
         # Generate unique job name if not provided
         if not job_name:
-            timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")  # noqa: UP017
             unique_id = str(uuid.uuid4())[:8]
             job_name = f"s3-to-vector-db-{timestamp}-{unique_id}"
 
@@ -106,7 +106,7 @@ class SparkService:
                 "namespace": self.namespace,
                 "s3_prefix": s3_prefix,
                 "collection": collection,
-                "submitted_at": datetime.now(UTC).isoformat(),
+                "submitted_at": datetime.now(timezone.utc).isoformat(),  # noqa: UP017
             }
         except Exception as e:
             logger.exception(

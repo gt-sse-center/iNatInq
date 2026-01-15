@@ -1,53 +1,53 @@
 # =============================================================================
 # Pipeline Service Dockerfile (Development)
 # =============================================================================
-# Multi-stage build for the FastAPI pipeline service.
-# Optimized for local Docker Compose development environment.
+# Uses the pre-built base image with heavy dependencies (Ray, PySpark, etc.)
+# Only installs lightweight dependencies and copies application code.
 #
 # Build context: iNatInq/apps/
-# Usage: docker build -f zarf/docker/dev/Dockerfile.pipeline -t apps-pipeline:dev .
+# Base image: inatinq/pipeline-base:0.1.0
+#
+# Quick rebuild (after base image exists):
+#   docker compose -f zarf/compose/dev/docker-compose.yaml up -d --build pipeline
+#
+# Full rebuild (if base image doesn't exist):
+#   docker build -f zarf/docker/base/Dockerfile.pipeline-base -t inatinq/pipeline-base:0.1.0 .
+#   docker compose -f zarf/compose/dev/docker-compose.yaml up -d --build pipeline
 
-FROM python:3.11-slim AS base
-
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app/src \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+# Use existing ml/pipeline-base image which has Ray, PySpark, and heavy deps
+# Build your own with: make docker-build-base
+FROM ml/pipeline-base:0.1.0
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# -----------------------------------------------------------------------------
-# Dependencies stage
-# -----------------------------------------------------------------------------
-FROM base AS dependencies
-
-# Install uv for fast dependency installation
-RUN pip install --no-cache-dir uv
+# Set environment variables
+ENV PYTHONPATH=/app/src
 
 # Copy dependency files
 COPY pyproject.toml ./
 
-# Install dependencies using uv
-RUN uv pip install --system -r pyproject.toml
-
-# -----------------------------------------------------------------------------
-# Runtime stage
-# -----------------------------------------------------------------------------
-FROM dependencies AS runtime
+# Install remaining lightweight dependencies (Ray, PySpark, requests are in base image)
+RUN pip install --no-cache-dir \
+    fastapi \
+    uvicorn \
+    attrs \
+    pydantic \
+    pydantic-settings \
+    prometheus-fastapi-instrumentator \
+    pybreaker \
+    tenacity \
+    kubernetes \
+    httpx \
+    qdrant-client \
+    weaviate-client \
+    boto3
 
 # Copy application code
 COPY src/ /app/src/
 
-# Create non-root user for security
-RUN useradd --create-home --shell /bin/bash appuser \
-    && chown -R appuser:appuser /app
+# Create non-root user and switch to it
+RUN useradd --create-home --shell /bin/bash appuser 2>/dev/null || true
+RUN chown -R appuser:appuser /app 2>/dev/null || true
 USER appuser
 
 EXPOSE 8000
@@ -58,4 +58,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Run uvicorn
 CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-
