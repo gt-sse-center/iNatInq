@@ -1,107 +1,162 @@
-# Apps - Shared Infrastructure
+# iNatInq ML Pipeline
 
-This package contains shared infrastructure components and services for the iNatInq platform.
+A semantic search and document ingestion service built with FastAPI, Ray/Spark, and vector databases.
 
 ## Overview
 
-The `apps` package is organized into modular components that can be reused across different services:
+This service provides two core capabilities:
 
-### Current Components
+| Capability | Description |
+|------------|-------------|
+| **Query Engine** | Semantic search over documents using vector similarity |
+| **Ingestion Engine** | Distributed processing of S3 documents into vector databases |
 
-- **`foundation/`**: Core utilities for building resilient services
-  - Retry logic with exponential backoff (tenacity)
-  - Circuit breaker pattern (pybreaker)
-  - Rate limiting for API calls
-  - HTTP session management with retries
-  - Structured JSON logging utilities
-  - Custom exception hierarchy
-  - Async resource management utilities
+**Stack**: FastAPI · Ray · Spark · Ollama · Qdrant · Weaviate · MinIO
 
-- **`clients/`**: External service client wrappers
-  - S3/MinIO client for object storage
-  - Qdrant client for vector database operations
-  - Weaviate client for vector database operations
-  - Ollama client for embedding generation
-  - Provider abstraction layer (ABCs) for swappable implementations
-  - Registry pattern for provider discovery
-  - Circuit breaker integration for fault tolerance
+---
 
-- **`core/`**: Core domain models and exceptions
-  - Data models (SearchResult, SearchResults, VectorPoint, etc.)
-  - Exception hierarchy (UpstreamError, etc.)
-  - Shared types and interfaces
+## Query Engine
 
-- **`config.py`**: Centralized configuration management
-  - Pydantic-based settings
-  - Environment variable loading
-  - Type-safe configuration for all services
+The query engine handles semantic search requests by generating embeddings and performing vector similarity search.
 
-### Planned Components
+<img src="charts/query_flow.png" alt="Query Engine Flow" width="600"/>
 
-As we migrate from the `modern-web-application` repository, this package will expand to include:
+<details>
+<summary>Sequence Diagram</summary>
 
-- **`pipeline/`**: ML pipeline orchestration service (migrating from modern-web-application/apps/pipeline)
-  - FastAPI service coordinating S3 → Spark → Ollama → Qdrant workflow
-  - Embedding generation and vector database operations
-  - Semantic search over indexed documents
-  - Kubernetes-native batch job orchestration
+<img src="charts/query_sequence.png" alt="Query Engine Sequence" width="700"/>
 
-The pipeline service will integrate foundation utilities and client wrappers for resilient communication with external services.
+</details>
 
-## Setup
+**Endpoint**: `GET /search?q=your query&limit=10&provider=qdrant`
 
-This package is part of the iNatInq workspace. To install dependencies:
+**Flow**: HTTP Request → Ollama Embedding → Vector Search → Ranked Results
+
+---
+
+## Ingestion Engine
+
+The ingestion engine processes documents from S3 into vector databases using distributed computing (Ray or Spark).
+
+<img src="charts/ingestion_flow.png" alt="Ingestion Engine Flow" width="700"/>
+
+<details>
+<summary>Sequence Diagram</summary>
+
+<img src="charts/ingestion_sequence.png" alt="Ingestion Engine Sequence" width="700"/>
+
+</details>
+
+**Endpoints**:
+
+- `POST /ray/jobs` – Submit Ray job
+- `POST /spark/jobs` – Submit Spark job
+
+**Flow**: Job Submit → S3 List → Parallel Workers → Embed → Upsert to Qdrant + Weaviate
+
+---
+
+## Quick Start
 
 ```bash
-# From the root iNatInq directory
+# Start all services
+make up
+
+# View status
+make status
+
+# Open all dashboards
+make ui-all
+
+# Stop services
+make down
+```
+
+**Service Endpoints** (after `make up`):
+
+| Service | URL |
+|---------|-----|
+| Pipeline API | <http://localhost:8000/docs> |
+| MinIO Console | <http://localhost:9001> |
+| Qdrant Dashboard | <http://localhost:6333/dashboard> |
+| Ray Dashboard | <http://localhost:8265> |
+
+---
+
+## Developer Guide
+
+### Prerequisites
+
+- Docker & Docker Compose
+- Python 3.11+
+- [uv](https://github.com/astral-sh/uv) (recommended)
+
+### Setup
+
+```bash
+cd apps
+
+# Install dependencies
 uv sync
 
-# Or install dependencies manually
-cd apps
-pip install -e .
-pip install -e ".[dev]"
+# Run tests
+make test
+
+# Run with coverage
+make test-cov
+
+# Lint & format
+make lint
+make format
 ```
 
-## Running Tests
-
-Tests require dependencies to be installed. Once installed, run:
+### Running Locally (without Docker)
 
 ```bash
-# From the apps directory
-cd apps
-uv run pytest
+# Start dev server
+make dev
 
-# Or with specific test file
-uv run pytest tests/unit/foundation/test_http.py
-
-# Or from root iNatInq directory
-uv run pytest apps/tests/ -v
-
-# With coverage report
-uv run pytest --cov
+# Or directly
+uv run uvicorn api.app:app --reload --port 8000
 ```
 
-The packages (`foundation`, `clients`, `core`) are configured in `pyproject.toml` with `pythonpath = ["src"]`, so imports like `from foundation import ...`, `from clients import ...`, and `from core import ...` work correctly in tests.
+---
 
-## Structure
+## Codebase Structure
 
-```text
+```
 apps/
 ├── src/
-│   ├── foundation/          # Core utilities (retry, circuit breaker, logging, etc.)
-│   ├── clients/             # External service clients (S3, Qdrant, Ollama, etc.)
-│   ├── core/                # Domain models and exceptions
-│   └── config.py            # Configuration management
-├── tests/
-│   ├── unit/
-│   │   ├── foundation/      # Foundation unit tests
-│   │   └── clients/         # Client unit tests
-│   └── conftest.py          # Shared test fixtures
-└── pyproject.toml           # Package configuration
+│   ├── api/              # FastAPI routes and models
+│   ├── clients/          # External service clients (S3, Qdrant, Ollama, etc.)
+│   ├── core/             # Domain logic
+│   │   ├── ingestion/    # Ray & Spark processing pipelines
+│   │   └── services/     # Business logic (search, job orchestration)
+│   ├── foundation/       # Utilities (retry, circuit breaker, logging)
+│   └── config.py         # Pydantic settings
+├── tests/unit/           # Unit tests
+├── charts/               # Architecture diagrams
+└── zarf/                 # Docker & infrastructure
+    ├── compose/dev/      # Docker Compose config
+    └── docker/dev/       # Dockerfiles
 ```
 
-### Test Coverage
+### Module READMEs
 
-- **168 tests** covering foundation utilities, clients, and core models
-- **92.59% code coverage** (exceeds 70% requirement)
-- Tests use pytest with async support and comprehensive mocking
+| Module | Description |
+|--------|-------------|
+| [api/](src/api/README.md) | HTTP endpoints and middleware |
+| [clients/](src/clients/README.md) | Service client abstractions |
+| [core/](src/core/README.md) | Domain models and exceptions |
+| [core/services/](src/core/services/README.md) | Business logic layer |
+| [foundation/](src/foundation/README.md) | Cross-cutting utilities |
+| [charts/](charts/README.md) | Architecture diagrams |
+| [zarf/](zarf/README.md) | Infrastructure configs |
+
+---
+
+## Test Coverage
+
+- **458 tests** across foundation, clients, core, and API
+- **>90% code coverage**
+- Uses pytest with async support and comprehensive mocking
