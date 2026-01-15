@@ -47,13 +47,13 @@ class RateLimiterActor:
     async def acquire(self) -> bool:
         """Acquire permission to make a request.
 
-        This method delegates to the foundation RateLimiter's acquire method
-        and returns True when permission is granted (Ray interface convention).
+        This method delegates to the foundation RateLimiter's acquire_permission
+        method and returns True when permission is granted (Ray interface convention).
 
         Returns:
             True when permission is granted.
         """
-        await self._limiter.acquire()
+        await self._limiter.acquire_permission()
         return True
 
     def get_rate(self) -> float:
