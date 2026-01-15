@@ -14,9 +14,13 @@ help:
 	@echo "│ make down              Stop all services (alias for docker-down)            │"
 	@echo "│ make status            Show service status and health                       │"
 	@echo "│ make lazydocker        Launch LazyDocker UI                                 │"
+	@echo "├── Testing ──────────────────────────────────────────────────────────────────┤"
+	@echo "│ make test              Run unit tests                                       │"
+	@echo "│ make test-integration  Run integration tests (requires Docker)              │"
+	@echo "│ make test-all          Run all tests (unit + integration)                   │"
+	@echo "│ make test-cov          Run unit tests with coverage                         │"
+	@echo "│ make test-cov-all      Run all tests with coverage                          │"
 	@echo "├── Development ──────────────────────────────────────────────────────────────┤"
-	@echo "│ make test              Run all unit tests                                   │"
-	@echo "│ make test-cov          Run tests with coverage report                       │"
 	@echo "│ make lint              Run linters (ruff)                                   │"
 	@echo "│ make format            Format code (ruff)                                   │"
 	@echo "│ make typecheck         Run type checker (mypy)                              │"
@@ -93,10 +97,33 @@ test:
 	@echo "Running unit tests..."
 	uv run pytest tests/unit/ -v
 
+.PHONY: test-unit
+test-unit: test  ## Alias for 'test'
+
+.PHONY: test-integration
+test-integration:
+	@echo "Running integration tests (requires Docker)..."
+	uv run pytest tests/integration/ -v -m integration
+
+.PHONY: test-integration-parallel
+test-integration-parallel:
+	@echo "Running integration tests in parallel..."
+	uv run pytest tests/integration/ -v -m integration -n auto
+
+.PHONY: test-all
+test-all:
+	@echo "Running all tests (unit + integration)..."
+	uv run pytest tests/ -v
+
 .PHONY: test-cov
 test-cov:
-	@echo "Running tests with coverage..."
+	@echo "Running unit tests with coverage..."
 	uv run pytest tests/unit/ -v --cov=src --cov-report=html --cov-report=term
+
+.PHONY: test-cov-all
+test-cov-all:
+	@echo "Running all tests with coverage..."
+	uv run pytest tests/ -v --cov=src --cov-report=html --cov-report=term
 
 .PHONY: lint
 lint:

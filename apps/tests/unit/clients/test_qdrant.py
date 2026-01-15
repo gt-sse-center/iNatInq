@@ -69,8 +69,12 @@ class TestQdrantClientWrapperInit:
 
         client = QdrantClientWrapper(url="http://qdrant.example.com:6333")
 
-        mock_qdrant_client.assert_called_once_with(url="http://qdrant.example.com:6333", timeout=300)
-        mock_async_qdrant_client.assert_called_once_with(url="http://qdrant.example.com:6333", timeout=300)
+        mock_qdrant_client.assert_called_once_with(
+            url="http://qdrant.example.com:6333", api_key=None, timeout=300
+        )
+        mock_async_qdrant_client.assert_called_once_with(
+            url="http://qdrant.example.com:6333", api_key=None, timeout=300
+        )
         assert client.url == "http://qdrant.example.com:6333"
         assert client._client == mock_async_client
         assert client._sync_client == mock_sync_client

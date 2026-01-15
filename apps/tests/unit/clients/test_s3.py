@@ -65,13 +65,16 @@ class TestS3ClientWrapperInit:
             region_name="us-east-1",
         )
 
-        mock_boto3.assert_called_once_with(
-            "s3",
-            endpoint_url="http://minio.example.com:9000",
-            aws_access_key_id="test-key",
-            aws_secret_access_key="test-secret",
-            region_name="us-east-1",
-        )
+        # Verify boto3.client was called with expected params
+        mock_boto3.assert_called_once()
+        call_kwargs = mock_boto3.call_args.kwargs
+        assert call_kwargs["endpoint_url"] == "http://minio.example.com:9000"
+        assert call_kwargs["aws_access_key_id"] == "test-key"
+        assert call_kwargs["aws_secret_access_key"] == "test-secret"
+        assert call_kwargs["region_name"] == "us-east-1"
+        # Config is now also passed for timeout settings
+        assert "config" in call_kwargs
+
         assert client.endpoint_url == "http://minio.example.com:9000"
         assert client.access_key_id == "test-key"
         assert client.secret_access_key == "test-secret"
@@ -204,8 +207,13 @@ class TestS3ClientWrapperPutObject:
           - ClientError is wrapped in UpstreamError
           - Error message includes context
         """
+        # AccessDenied is a non-retriable 4xx error, should fail immediately
         mock_boto3_client.put_object.side_effect = ClientError(
-            {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}}, "PutObject"
+            {
+                "Error": {"Code": "AccessDenied", "Message": "Access Denied"},
+                "ResponseMetadata": {"HTTPStatusCode": 403},
+            },
+            "PutObject",
         )
 
         with pytest.raises(UpstreamError, match="S3 put_object failed"):
@@ -277,8 +285,12 @@ class TestS3ClientWrapperGetObject:
           - ClientError is wrapped in UpstreamError
           - Error message includes context
         """
+        # NoSuchKey is a non-retriable 404 error, should fail immediately
         mock_boto3_client.get_object.side_effect = ClientError(
-            {"Error": {"Code": "NoSuchKey", "Message": "The specified key does not exist"}},
+            {
+                "Error": {"Code": "NoSuchKey", "Message": "The specified key does not exist"},
+                "ResponseMetadata": {"HTTPStatusCode": 404},
+            },
             "GetObject",
         )
 
@@ -401,8 +413,13 @@ class TestS3ClientWrapperListObjects:
           - ClientError is wrapped in UpstreamError
           - Error message includes context
         """
+        # AccessDenied is a non-retriable 4xx error
         mock_boto3_client.get_paginator.side_effect = ClientError(
-            {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}}, "ListObjects"
+            {
+                "Error": {"Code": "AccessDenied", "Message": "Access Denied"},
+                "ResponseMetadata": {"HTTPStatusCode": 403},
+            },
+            "ListObjects",
         )
 
         with pytest.raises(UpstreamError, match="S3 list_objects failed"):
