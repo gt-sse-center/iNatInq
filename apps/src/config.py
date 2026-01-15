@@ -439,6 +439,7 @@ class VectorDBConfig(BaseModel):
     provider_type: Literal["qdrant", "weaviate", "pinecone", "milvus"]
     collection: str
     qdrant_url: str | None = None
+    qdrant_api_key: str | None = None
     weaviate_url: str | None = None
     weaviate_api_key: str | None = None
     pinecone_api_key: str | None = None
@@ -486,6 +487,7 @@ class VectorDBConfig(BaseModel):
                 provider_type="qdrant",
                 collection=collection,
                 qdrant_url=os.getenv("QDRANT_URL", default_url),
+                qdrant_api_key=os.getenv("QDRANT_API_KEY"),
             )
 
         if provider_type == "weaviate":
@@ -554,6 +556,7 @@ class VectorDBConfig(BaseModel):
                 provider_type="qdrant",
                 collection=collection,
                 qdrant_url=os.getenv("QDRANT_URL", default_url),
+                qdrant_api_key=os.getenv("QDRANT_API_KEY"),
             )
 
         if provider_type == "weaviate":
