@@ -311,3 +311,75 @@ class TestMinIOConfigResilience:
         assert config.retry_max_wait == 10.0
         assert config.circuit_breaker_threshold == 5
         assert config.circuit_breaker_timeout == 120
+
+
+# =============================================================================
+# VectorDBConfig Tests
+# =============================================================================
+
+
+class TestVectorDBConfigQdrantResilience:
+    """Test suite for VectorDBConfig Qdrant resilience settings."""
+
+    @patch.dict(
+        os.environ,
+        {
+            "VECTOR_DB_PROVIDER": "qdrant",
+            "QDRANT_URL": "http://qdrant:6333",
+            "QDRANT_TIMEOUT": "600",
+            "QDRANT_CIRCUIT_BREAKER_THRESHOLD": "10",
+            "QDRANT_CIRCUIT_BREAKER_TIMEOUT": "120",
+        },
+        clear=False,
+    )
+    @patch("config._is_in_cluster", return_value=False)
+    def test_qdrant_resilience_settings_from_env(self, mock_cluster: patch) -> None:
+        """Test that Qdrant resilience settings are parsed from environment.
+
+        **Why this test is important:**
+          - Resilience settings must be configurable per environment
+          - Production may need different timeouts than development
+          - Critical for operational flexibility
+
+        **What it tests:**
+          - qdrant_timeout is parsed from QDRANT_TIMEOUT
+          - qdrant_circuit_breaker_threshold is parsed correctly
+          - qdrant_circuit_breaker_timeout is parsed correctly
+        """
+        from config import VectorDBConfig
+
+        config = VectorDBConfig.from_env()
+
+        assert config.qdrant_timeout == 600
+        assert config.qdrant_circuit_breaker_threshold == 10
+        assert config.qdrant_circuit_breaker_timeout == 120
+
+    @patch.dict(
+        os.environ,
+        {
+            "VECTOR_DB_PROVIDER": "qdrant",
+            "QDRANT_URL": "http://qdrant:6333",
+        },
+        clear=False,
+    )
+    @patch("config._is_in_cluster", return_value=False)
+    def test_qdrant_resilience_default_values(self, mock_cluster: patch) -> None:
+        """Test that default Qdrant resilience values are applied.
+
+        **Why this test is important:**
+          - Sensible defaults reduce configuration burden
+          - Critical for easy onboarding
+          - Defaults should match common production patterns
+
+        **What it tests:**
+          - Default qdrant_timeout is 300 seconds
+          - Default qdrant_circuit_breaker_threshold is 3
+          - Default qdrant_circuit_breaker_timeout is 60 seconds
+        """
+        from config import VectorDBConfig
+
+        config = VectorDBConfig.from_env()
+
+        assert config.qdrant_timeout == 300
+        assert config.qdrant_circuit_breaker_threshold == 3
+        assert config.qdrant_circuit_breaker_timeout == 60

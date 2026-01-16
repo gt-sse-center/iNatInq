@@ -49,6 +49,10 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
 
     Attributes:
         url: Qdrant service URL (e.g., `http://qdrant.ml-system:6333`).
+        api_key: API key for authenticated instances. Default: None.
+        timeout_s: Request timeout in seconds. Default: 300.
+        circuit_breaker_threshold: Failures before circuit opens. Default: 3.
+        circuit_breaker_timeout: Circuit recovery timeout in seconds. Default: 60.
 
     Note:
         This class uses AsyncQdrantClient internally but provides a sync
@@ -58,6 +62,9 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
 
     url: str
     api_key: str | None = None
+    timeout_s: int = attrs.field(default=300)
+    circuit_breaker_threshold: int = attrs.field(default=3)
+    circuit_breaker_timeout: int = attrs.field(default=60)
     _client: AsyncQdrantClient = attrs.field(init=False, default=None)
     _sync_client: QdrantClient = attrs.field(init=False, default=None)
     _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
@@ -71,12 +78,12 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         Returns:
             Tuple of (name, failure_threshold, recovery_timeout).
         """
-        return ("qdrant", 3, 60)
+        return ("qdrant", self.circuit_breaker_threshold, self.circuit_breaker_timeout)
 
     def __attrs_post_init__(self) -> None:
         """Initialize the Qdrant async and sync clients and circuit breakers."""
-        self._client = AsyncQdrantClient(url=self.url, api_key=self.api_key, timeout=300)
-        self._sync_client = QdrantClient(url=self.url, api_key=self.api_key, timeout=300)
+        self._client = AsyncQdrantClient(url=self.url, api_key=self.api_key, timeout=self.timeout_s)
+        self._sync_client = QdrantClient(url=self.url, api_key=self.api_key, timeout=self.timeout_s)
 
         # Initialize sync circuit breaker from base class (for sync methods)
         self._init_circuit_breaker()
@@ -106,11 +113,26 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
 
         Raises:
             ValueError: If Qdrant config is missing or invalid.
+
+        Example:
+            ```python
+            from config import VectorDBConfig
+            from clients.qdrant import QdrantClientWrapper
+
+            config = VectorDBConfig.from_env()
+            client = QdrantClientWrapper.from_config(config)
+            ```
         """
         cls._validate_config(config, "qdrant", ["qdrant_url"])
         # Type narrowing: _validate_config ensures qdrant_url is not None
         assert config.qdrant_url is not None
-        return cls(url=config.qdrant_url, api_key=getattr(config, "qdrant_api_key", None))
+        return cls(
+            url=config.qdrant_url,
+            api_key=getattr(config, "qdrant_api_key", None),
+            timeout_s=getattr(config, "qdrant_timeout", 300),
+            circuit_breaker_threshold=getattr(config, "qdrant_circuit_breaker_threshold", 3),
+            circuit_breaker_timeout=getattr(config, "qdrant_circuit_breaker_timeout", 60),
+        )
 
     async def ensure_collection_async(
         self,
