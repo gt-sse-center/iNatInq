@@ -29,7 +29,11 @@ defaults):
 - `QDRANT_COLLECTION`: Default collection name for storing vectors
   (default: `documents`)
 - `QDRANT_API_KEY`: Optional API key for Qdrant Cloud authentication
-- `QDRANT_TIMEOUT`: Request timeout in seconds (default: `30`)
+- `QDRANT_TIMEOUT`: Request timeout in seconds (default: `300`)
+- `QDRANT_CIRCUIT_BREAKER_THRESHOLD`: Failures before circuit opens
+  (default: `3`)
+- `QDRANT_CIRCUIT_BREAKER_TIMEOUT`: Circuit recovery timeout in seconds
+  (default: `60`)
 - `QDRANT_PREFER_GRPC`: Whether to prefer gRPC over HTTP
   (default: `false`)
 
@@ -475,6 +479,12 @@ class VectorDBConfig(BaseModel):
         qdrant_url: Qdrant service URL. Required if
             provider_type="qdrant". Auto-detected based on environment
             if not set.
+        qdrant_api_key: Qdrant API key. Optional, for authenticated instances.
+        qdrant_timeout: Qdrant request timeout in seconds. Default: 300.
+        qdrant_circuit_breaker_threshold: Failures before circuit opens.
+            Default: 3.
+        qdrant_circuit_breaker_timeout: Circuit recovery timeout in seconds.
+            Default: 60.
         weaviate_url: Weaviate service URL. Required if
             provider_type="weaviate". Auto-detected based on environment
             if not set.
@@ -492,13 +502,24 @@ class VectorDBConfig(BaseModel):
 
     provider_type: Literal["qdrant", "weaviate", "pinecone", "milvus"]
     collection: str
+
+    # Qdrant settings
     qdrant_url: str | None = None
     qdrant_api_key: str | None = None
+    qdrant_timeout: int = 300
+    qdrant_circuit_breaker_threshold: int = 3
+    qdrant_circuit_breaker_timeout: int = 60
+
+    # Weaviate settings
     weaviate_url: str | None = None
     weaviate_api_key: str | None = None
     weaviate_grpc_host: str | None = None
+
+    # Pinecone settings
     pinecone_api_key: str | None = None
     pinecone_environment: str | None = None
+
+    # Milvus settings
     milvus_host: str | None = None
     milvus_port: int | None = None
 
@@ -543,6 +564,9 @@ class VectorDBConfig(BaseModel):
                 collection=collection,
                 qdrant_url=os.getenv("QDRANT_URL", default_url),
                 qdrant_api_key=os.getenv("QDRANT_API_KEY"),
+                qdrant_timeout=int(os.getenv("QDRANT_TIMEOUT", "300")),
+                qdrant_circuit_breaker_threshold=int(os.getenv("QDRANT_CIRCUIT_BREAKER_THRESHOLD", "3")),
+                qdrant_circuit_breaker_timeout=int(os.getenv("QDRANT_CIRCUIT_BREAKER_TIMEOUT", "60")),
             )
 
         if provider_type == "weaviate":
