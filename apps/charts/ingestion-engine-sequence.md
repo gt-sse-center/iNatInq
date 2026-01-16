@@ -81,7 +81,7 @@ sequenceDiagram
 ## Sequence Description
 
 | Phase | Steps | Description |
-|-------|-------|-------------|
+| ----- | ----- | ----------- |
 | **Submission** | 1-6 | Client submits job, service creates Ray/Spark job, returns immediately |
 | **Discovery** | 7-8 | Job lists S3 objects matching prefix |
 | **Distribution** | 9 | Keys partitioned across workers (Ray tasks or Spark executors) |

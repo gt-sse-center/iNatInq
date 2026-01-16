@@ -16,6 +16,7 @@ This allows the API to return immediately while Ray cluster manages job executio
 """
 
 import logging
+import os
 from typing import Any
 
 import attrs
@@ -139,10 +140,18 @@ class RayService:
             env_vars["OLLAMA_BASE_URL"] = embedding_config.ollama_url
         if embedding_config.ollama_model:
             env_vars["OLLAMA_MODEL"] = embedding_config.ollama_model
-        if vector_db_config.provider_type == "qdrant" and vector_db_config.qdrant_url:
-            env_vars["QDRANT_URL"] = vector_db_config.qdrant_url
-        if vector_db_config.provider_type == "qdrant" and getattr(vector_db_config, "qdrant_api_key", None):
-            env_vars["QDRANT_API_KEY"] = vector_db_config.qdrant_api_key
+        # Ray jobs index BOTH Qdrant and Weaviate simultaneously via create_both()
+        # Pass all vector DB env vars from the environment, not just the selected provider
+        if os.getenv("QDRANT_URL"):
+            env_vars["QDRANT_URL"] = os.getenv("QDRANT_URL")
+        if os.getenv("QDRANT_API_KEY"):
+            env_vars["QDRANT_API_KEY"] = os.getenv("QDRANT_API_KEY")
+        if os.getenv("WEAVIATE_URL"):
+            env_vars["WEAVIATE_URL"] = os.getenv("WEAVIATE_URL")
+        if os.getenv("WEAVIATE_API_KEY"):
+            env_vars["WEAVIATE_API_KEY"] = os.getenv("WEAVIATE_API_KEY")
+        if os.getenv("WEAVIATE_GRPC_HOST"):
+            env_vars["WEAVIATE_GRPC_HOST"] = os.getenv("WEAVIATE_GRPC_HOST")
 
         try:
             # Create job submission client

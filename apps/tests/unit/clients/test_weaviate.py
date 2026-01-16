@@ -87,6 +87,66 @@ class TestWeaviateClientWrapperInit:
         assert client.api_key == "test-key"
         mock_weaviate_async_client.assert_called_once()
 
+    @patch("clients.weaviate.ConnectionParams")
+    @patch("clients.weaviate.WeaviateAsyncClient")
+    def test_creates_client_with_grpc_host_for_cloud(
+        self, mock_weaviate_async_client: MagicMock, mock_conn_params: MagicMock
+    ) -> None:
+        """Test that client configures gRPC for Weaviate Cloud.
+
+        **Why this test is important:**
+          - Weaviate Cloud requires separate gRPC host
+          - gRPC must use port 443 and TLS for cloud
+          - Critical for cloud deployments
+
+        **What it tests:**
+          - gRPC host is set to provided value
+          - gRPC port is 443 for cloud
+          - gRPC secure is True for cloud
+        """
+        mock_weaviate_async_client.return_value = AsyncMock()
+
+        WeaviateClientWrapper(
+            url="https://my-cluster.weaviate.cloud",
+            api_key="cloud-key",
+            grpc_host="grpc-my-cluster.weaviate.cloud",
+        )
+
+        # Verify ConnectionParams was called with cloud gRPC settings
+        mock_conn_params.from_params.assert_called_once()
+        call_kwargs = mock_conn_params.from_params.call_args.kwargs
+        assert call_kwargs["grpc_host"] == "grpc-my-cluster.weaviate.cloud"
+        assert call_kwargs["grpc_port"] == 443
+        assert call_kwargs["grpc_secure"] is True
+
+    @patch("clients.weaviate.ConnectionParams")
+    @patch("clients.weaviate.WeaviateAsyncClient")
+    def test_creates_client_without_grpc_host_for_local(
+        self, mock_weaviate_async_client: MagicMock, mock_conn_params: MagicMock
+    ) -> None:
+        """Test that client uses default gRPC settings for local Docker.
+
+        **Why this test is important:**
+          - Local Docker uses same host for gRPC
+          - gRPC uses port 50051 without TLS locally
+          - Critical for local development
+
+        **What it tests:**
+          - gRPC host defaults to HTTP host
+          - gRPC port is 50051 for local
+          - gRPC secure is False for local
+        """
+        mock_weaviate_async_client.return_value = AsyncMock()
+
+        WeaviateClientWrapper(url="http://weaviate:8080")
+
+        # Verify ConnectionParams was called with local gRPC settings
+        mock_conn_params.from_params.assert_called_once()
+        call_kwargs = mock_conn_params.from_params.call_args.kwargs
+        assert call_kwargs["grpc_host"] == "weaviate"
+        assert call_kwargs["grpc_port"] == 50051
+        assert call_kwargs["grpc_secure"] is False
+
     @patch("clients.weaviate.WeaviateAsyncClient")
     def test_creates_circuit_breaker(self, mock_weaviate_async_client: MagicMock) -> None:
         """Test that circuit breaker is created during initialization.
@@ -138,6 +198,32 @@ class TestWeaviateClientWrapperInit:
 
         assert client.url == "http://weaviate.example.com:8080"
         assert client.api_key == "test-key"
+
+    def test_from_config_creates_client_with_grpc_host(self) -> None:
+        """Test that from_config passes gRPC host for cloud deployments.
+
+        **Why this test is important:**
+          - Weaviate Cloud requires separate gRPC host
+          - Factory method must pass gRPC host correctly
+          - Critical for cloud configuration
+
+        **What it tests:**
+          - grpc_host is passed from config to client
+        """
+        config = VectorDBConfig(
+            provider_type="weaviate",
+            collection="test-collection",
+            weaviate_url="https://my-cluster.weaviate.cloud",
+            weaviate_api_key="cloud-key",
+            weaviate_grpc_host="grpc-my-cluster.weaviate.cloud",
+        )
+
+        with patch("clients.weaviate.WeaviateAsyncClient"):
+            client = WeaviateClientWrapper.from_config(config)
+
+        assert client.url == "https://my-cluster.weaviate.cloud"
+        assert client.api_key == "cloud-key"
+        assert client.grpc_host == "grpc-my-cluster.weaviate.cloud"
 
     def test_from_config_validates_provider_type(self) -> None:
         """Test that from_config validates provider_type.

@@ -93,6 +93,7 @@ class VectorDBConfigFactory:
             collection=self._get_collection(),
             weaviate_url=self._env_str("WEAVIATE_URL", default_url),
             weaviate_api_key=self._env_str("WEAVIATE_API_KEY"),
+            weaviate_grpc_host=self._env_str("WEAVIATE_GRPC_HOST"),
         )
 
     def create_both(self) -> tuple[VectorDBConfig, VectorDBConfig]:

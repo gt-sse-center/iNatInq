@@ -47,14 +47,14 @@ Once running, services are available at:
 
 | Service | URL | Description |
 |---------|-----|-------------|
-| Pipeline API | http://localhost:8000 | FastAPI application |
-| Pipeline Docs | http://localhost:8000/docs | OpenAPI documentation |
-| MinIO Console | http://localhost:9001 | Object storage UI |
-| MinIO API | http://localhost:9000 | S3-compatible API |
-| Qdrant Dashboard | http://localhost:6333/dashboard | Vector DB UI |
-| Weaviate | http://localhost:8080 | Vector DB API |
-| Ollama | http://localhost:11434 | Embedding service |
-| Ray Dashboard | http://localhost:8265 | Ray cluster UI |
+| Pipeline API | <http://localhost:8000> | FastAPI application |
+| Pipeline Docs | <http://localhost:8000/docs> | OpenAPI documentation |
+| MinIO Console | <http://localhost:9001> | Object storage UI |
+| MinIO API | <http://localhost:9000> | S3-compatible API |
+| Qdrant Dashboard | <http://localhost:6333/dashboard> | Vector DB UI |
+| Weaviate | <http://localhost:8080> | Vector DB API |
+| Ollama | <http://localhost:11434> | Embedding service |
+| Ray Dashboard | <http://localhost:8265> | Ray cluster UI |
 
 ### Default Credentials
 
@@ -68,30 +68,30 @@ The Docker Compose stack emulates the Kubernetes `ml-system` namespace from `mod
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                        Docker Compose Network                            │
+│                        Docker Compose Network                           │
 ├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐          │
-│  │  MinIO   │    │  Qdrant  │    │ Weaviate │    │  Ollama  │          │
-│  │  :9000   │    │  :6333   │    │  :8080   │    │  :11434  │          │
-│  └────┬─────┘    └────┬─────┘    └────┬─────┘    └────┬─────┘          │
-│       │               │               │               │                  │
-│       └───────────────┼───────────────┼───────────────┘                  │
-│                       │               │                                  │
-│                       ▼               ▼                                  │
+│                                                                         │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐           │
+│  │  MinIO   │    │  Qdrant  │    │ Weaviate │    │  Ollama  │           │
+│  │  :9000   │    │  :6333   │    │  :8080   │    │  :11434  │           │
+│  └────┬─────┘    └────┬─────┘    └────┬─────┘    └────┬─────┘           │
+│       │               │               │               │                 │
+│       └───────────────┼───────────────┼───────────────┘                 │
+│                       │               │                                 │
+│                       ▼               ▼                                 │
 │                  ┌────────────────────────┐                             │
 │                  │       Pipeline         │                             │
 │                  │        :8000           │                             │
 │                  └───────────┬────────────┘                             │
-│                              │                                           │
+│                              │                                          │
 │       ┌──────────────────────┼──────────────────────┐                   │
 │       │                      │                      │                   │
 │       ▼                      ▼                      ▼                   │
-│  ┌──────────┐          ┌──────────┐          ┌──────────┐              │
-│  │ Ray Head │◄────────►│Ray Worker│          │Ray Worker│              │
-│  │  :8265   │          │          │          │          │              │
-│  └──────────┘          └──────────┘          └──────────┘              │
-│                                                                          │
+│  ┌──────────┐          ┌──────────┐          ┌──────────┐               │
+│  │ Ray Head │◄────────►│Ray Worker│          │Ray Worker│               │
+│  │  :8265   │          │          │          │          │               │
+│  └──────────┘          └──────────┘          └──────────┘               │
+│                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -155,22 +155,35 @@ VECTOR_DB_PROVIDER=qdrant
 VECTOR_DB_PROVIDER=weaviate
 ```
 
-### Using Qdrant Cloud
+### Using Cloud Vector Databases
 
-To use [Qdrant Cloud](https://cloud.qdrant.io/) instead of the local container:
+To use cloud-hosted vector databases instead of local containers:
+
+**Qdrant Cloud** ([cloud.qdrant.io](https://cloud.qdrant.io/)):
 
 ```bash
-# Option 1: Set environment variables
 export QDRANT_URL=https://your-cluster.region.cloud.qdrant.io
 export QDRANT_API_KEY=your-api-key
 docker compose -f zarf/compose/dev/docker-compose.yaml up -d
-
-# Option 2: Create a local config file (gitignored)
-cp zarf/compose/dev/env.local.example zarf/compose/dev/.env.local
-# Edit .env.local with your Qdrant Cloud credentials
 ```
 
-The local Qdrant container will still run but won't be used when cloud credentials are set.
+**Weaviate Cloud** ([console.weaviate.cloud](https://console.weaviate.cloud/)):
+
+```bash
+export VECTOR_DB_PROVIDER=weaviate
+export WEAVIATE_URL=https://your-cluster.region.weaviate.cloud
+export WEAVIATE_API_KEY=your-api-key
+docker compose -f zarf/compose/dev/docker-compose.yaml up -d
+```
+
+**Using a config file** (gitignored):
+
+```bash
+cp zarf/compose/dev/env.local.example zarf/compose/dev/.env.local
+# Edit .env.local with your cloud credentials
+```
+
+The local containers will still run but won't be used when cloud credentials are set.
 
 ## Comparison with Kubernetes
 
@@ -220,4 +233,3 @@ The `minio-init` service creates the bucket. Verify:
 ```bash
 docker compose -f zarf/compose/dev/docker-compose.yaml logs minio-init
 ```
-

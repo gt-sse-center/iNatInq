@@ -54,7 +54,7 @@ sequenceDiagram
 ## Sequence Description
 
 | Step | Component | Action |
-|------|-----------|--------|
+| ---- | --------- | ------ |
 | 1-2 | Client → API | Send search request with query and parameters |
 | 3-5 | API | Create providers, instantiate SearchService |
 | 6 | SearchService | Validate input (query non-empty, limit in range) |

@@ -133,6 +133,32 @@ class TestVectorDBConfigFactory:
 
         assert config.weaviate_url == "http://custom-weaviate:8080"
 
+    @patch.dict(
+        "os.environ",
+        {
+            "WEAVIATE_URL": "https://my-cluster.weaviate.cloud",
+            "WEAVIATE_API_KEY": "cloud-key",
+            "WEAVIATE_GRPC_HOST": "grpc-my-cluster.weaviate.cloud",
+        },
+        clear=False,
+    )
+    def test_uses_env_vars_for_weaviate_cloud(self) -> None:
+        """Test that factory uses Weaviate Cloud env vars.
+
+        **Why this test is important:**
+          - Weaviate Cloud requires URL, API key, and gRPC host
+          - Validates all cloud configuration is passed through
+
+        **What it tests:**
+          - Cloud URL, API key, and gRPC host from env vars
+        """
+        factory = VectorDBConfigFactory(namespace="ml-system")
+        config = factory.create_weaviate_config()
+
+        assert config.weaviate_url == "https://my-cluster.weaviate.cloud"
+        assert config.weaviate_api_key == "cloud-key"
+        assert config.weaviate_grpc_host == "grpc-my-cluster.weaviate.cloud"
+
     @patch.dict("os.environ", {"VECTOR_DB_COLLECTION": "my-docs"}, clear=False)
     def test_uses_env_var_for_collection(self) -> None:
         """Test that factory uses VECTOR_DB_COLLECTION env var.

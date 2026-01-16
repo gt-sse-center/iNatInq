@@ -19,7 +19,7 @@ This module provides:
 
 ## Structure
 
-```
+```text
 syntheticdata/
 ├── synthetic_data.py   # Main script (DocumentGenerator + MinIOUploader)
 ├── moby-dick.txt       # Source text (Moby Dick from Project Gutenberg)
