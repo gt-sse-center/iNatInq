@@ -105,6 +105,66 @@ class TestQdrantClientWrapperInit:
         assert client._breaker.fail_max == 3
         assert client._breaker.reset_timeout == 60
 
+    def test_creates_circuit_breaker_with_custom_config(self) -> None:
+        """Test that circuit breaker uses custom configuration.
+
+        **Why this test is important:**
+          - Custom circuit breaker settings are needed for different environments
+          - Production may need different thresholds than development
+          - Validates that configuration is properly applied
+
+        **What it tests:**
+          - Custom failure threshold is applied
+          - Custom recovery timeout is applied
+        """
+        client = QdrantClientWrapper(
+            url="http://qdrant.example.com:6333",
+            circuit_breaker_threshold=10,
+            circuit_breaker_timeout=120,
+        )
+
+        assert client._breaker.fail_max == 10
+        assert client._breaker.reset_timeout == 120
+
+    @patch("clients.qdrant.AsyncQdrantClient")
+    @patch("clients.qdrant.QdrantClient")
+    def test_creates_client_with_custom_timeout(
+        self,
+        mock_qdrant_client: MagicMock,
+        mock_async_qdrant_client: MagicMock,
+    ) -> None:
+        """Test that custom timeout is passed to Qdrant clients.
+
+        **Why this test is important:**
+          - Timeout configuration is critical for reliability
+          - Different environments may need different timeouts
+          - Validates that timeout setting propagates correctly
+
+        **What it tests:**
+          - AsyncQdrantClient receives custom timeout
+          - QdrantClient receives custom timeout
+        """
+        mock_async_client = AsyncMock()
+        mock_async_qdrant_client.return_value = mock_async_client
+        mock_sync_client = MagicMock()
+        mock_qdrant_client.return_value = mock_sync_client
+
+        QdrantClientWrapper(
+            url="http://qdrant.example.com:6333",
+            timeout_s=600,
+        )
+
+        mock_async_qdrant_client.assert_called_once_with(
+            url="http://qdrant.example.com:6333",
+            api_key=None,
+            timeout=600,
+        )
+        mock_qdrant_client.assert_called_once_with(
+            url="http://qdrant.example.com:6333",
+            api_key=None,
+            timeout=600,
+        )
+
     @patch("clients.qdrant.AsyncQdrantClient")
     @patch("clients.qdrant.QdrantClient")
     def test_creates_client_with_api_key(
@@ -211,6 +271,63 @@ class TestQdrantClientWrapperInit:
             timeout=300,
         )
         assert client.api_key == "config-api-key-67890"
+
+    @patch("clients.qdrant.AsyncQdrantClient")
+    @patch("clients.qdrant.QdrantClient")
+    def test_from_config_passes_resilience_settings(
+        self,
+        mock_qdrant_client: MagicMock,
+        mock_async_qdrant_client: MagicMock,
+    ) -> None:
+        """Test that from_config passes all resilience settings from config.
+
+        **Why this test is important:**
+          - Resilience settings must propagate from config to client
+          - Ensures timeout, circuit breaker threshold, and timeout are applied
+          - Critical for environment-specific configuration
+
+        **What it tests:**
+          - qdrant_timeout is passed as timeout_s
+          - qdrant_circuit_breaker_threshold is passed correctly
+          - qdrant_circuit_breaker_timeout is passed correctly
+          - Circuit breaker is configured with custom values
+        """
+        mock_async_client = AsyncMock()
+        mock_async_qdrant_client.return_value = mock_async_client
+        mock_sync_client = MagicMock()
+        mock_qdrant_client.return_value = mock_sync_client
+
+        config = VectorDBConfig(
+            provider_type="qdrant",
+            collection="test-collection",
+            qdrant_url="http://qdrant.example.com:6333",
+            qdrant_timeout=600,
+            qdrant_circuit_breaker_threshold=10,
+            qdrant_circuit_breaker_timeout=120,
+        )
+
+        client = QdrantClientWrapper.from_config(config)
+
+        # Verify timeout was passed to clients
+        mock_async_qdrant_client.assert_called_once_with(
+            url="http://qdrant.example.com:6333",
+            api_key=None,
+            timeout=600,
+        )
+        mock_qdrant_client.assert_called_once_with(
+            url="http://qdrant.example.com:6333",
+            api_key=None,
+            timeout=600,
+        )
+
+        # Verify client attributes
+        assert client.timeout_s == 600
+        assert client.circuit_breaker_threshold == 10
+        assert client.circuit_breaker_timeout == 120
+
+        # Verify circuit breaker was configured with custom values
+        assert client._breaker.fail_max == 10
+        assert client._breaker.reset_timeout == 120
 
     def test_from_config_validates_provider_type(self) -> None:
         """Test that from_config validates provider_type.
