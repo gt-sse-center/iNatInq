@@ -20,6 +20,15 @@ The Qdrant container provides vector database functionality:
 - Session-scoped for performance
 - Cleanup: Automatic via fixture teardown + Ryuk orphan cleanup
 
+## Ollama Container
+
+The Ollama container provides embedding generation functionality:
+- Ports: Random ephemeral host ports (testcontainers handles this)
+- Container port: 11434 (API)
+- Uses the all-minilm model (smallest model for faster tests)
+- Session-scoped for performance (model is pre-pulled on first use)
+- Cleanup: Automatic via fixture teardown + Ryuk orphan cleanup
+
 ## Usage
 
 ```python
@@ -37,6 +46,11 @@ def test_qdrant_operations(qdrant_client: QdrantClientWrapper, test_collection: 
         points=[PointStruct(id="1", vector=[0.1] * 768, payload={"text": "hello"})],
         vector_size=768,
     )
+
+# Ollama
+def test_ollama_operations(ollama_client: OllamaClient):
+    embedding = ollama_client.embed("hello world")
+    assert len(embedding) == 384  # all-minilm dimension
 ```
 """
 
@@ -46,9 +60,11 @@ import uuid
 
 import httpx
 import pytest
+from testcontainers.core.container import DockerContainer
 from testcontainers.minio import MinioContainer
 from testcontainers.qdrant import QdrantContainer
 
+from clients.ollama import OllamaClient
 from clients.qdrant import QdrantClientWrapper
 from clients.s3 import S3ClientWrapper
 
@@ -74,7 +90,7 @@ def minio_container():
     container = MinioContainer(
         image="minio/minio:RELEASE.2024-01-01T16-36-33Z",
         access_key="minioadmin",
-        secret_key="minioadmin",
+        secret_key="minioadmin",  # noqa: S106 - Test credentials
     )
 
     container.start()
@@ -366,7 +382,7 @@ def sample_vector() -> list[float]:
     import random
 
     random.seed(42)
-    return [random.random() for _ in range(768)]
+    return [random.random() for _ in range(768)]  # noqa: S311 - Non-cryptographic use
 
 
 @pytest.fixture
@@ -377,3 +393,159 @@ def vector_size() -> int:
         int: Vector dimension (768 for nomic-embed-text compatibility).
     """
     return 768
+
+
+# =============================================================================
+# Ollama Container Fixtures
+# =============================================================================
+
+
+@pytest.fixture(scope="session")
+def ollama_container():
+    """Start an Ollama container for the test session.
+
+    The container is started once and shared across all tests in the session.
+    Uses the all-minilm model which is small (~25MB) for faster tests.
+
+    Note:
+        The first request will pull the model, which can take 30-60 seconds.
+        Subsequent requests are fast.
+
+    Yields:
+        DockerContainer: Running Ollama container with connection info.
+    """
+    logger.info("Starting Ollama container...")
+
+    # Use generic DockerContainer since testcontainers doesn't have Ollama module
+    container = (
+        DockerContainer("ollama/ollama:latest").with_exposed_ports(11434).with_env("OLLAMA_HOST", "0.0.0.0")
+    )
+
+    container.start()
+
+    # Wait for Ollama API to be ready
+    _wait_for_ollama_health(container)
+
+    # Pull the embedding model (all-minilm is small and fast)
+    _pull_ollama_model(container, "all-minilm")
+
+    logger.info(
+        "Ollama container started",
+        extra={
+            "url": _get_ollama_url(container),
+            "container_id": container.get_wrapped_container().short_id,
+        },
+    )
+
+    yield container
+
+    logger.info("Stopping Ollama container...")
+    container.stop()
+
+
+def _get_ollama_url(container: DockerContainer) -> str:
+    """Get the Ollama HTTP URL from a container.
+
+    Args:
+        container: Running Ollama container.
+
+    Returns:
+        str: HTTP URL for Ollama API.
+    """
+    host = container.get_container_host_ip()
+    port = container.get_exposed_port(11434)
+    return f"http://{host}:{port}"
+
+
+def _wait_for_ollama_health(container: DockerContainer, timeout: int = 60) -> None:
+    """Wait for Ollama container to be ready.
+
+    Args:
+        container: Ollama container instance.
+        timeout: Maximum seconds to wait.
+
+    Raises:
+        TimeoutError: If Ollama doesn't become healthy within timeout.
+    """
+    url = _get_ollama_url(container)
+    health_url = f"{url}/api/tags"  # List models endpoint
+
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            response = httpx.get(health_url, timeout=2.0)
+            if response.status_code == 200:
+                return
+        except httpx.RequestError:
+            pass
+        time.sleep(0.5)
+
+    raise TimeoutError(f"Ollama container not healthy after {timeout}s")
+
+
+def _pull_ollama_model(container: DockerContainer, model: str, timeout: int = 120) -> None:
+    """Pull an embedding model in the Ollama container.
+
+    Args:
+        container: Running Ollama container.
+        model: Model name to pull (e.g., "all-minilm").
+        timeout: Maximum seconds to wait for pull.
+
+    Raises:
+        TimeoutError: If model doesn't pull within timeout.
+    """
+    url = _get_ollama_url(container)
+    pull_url = f"{url}/api/pull"
+
+    logger.info("Pulling Ollama model: %s", model)
+
+    # Start the pull
+    try:
+        response = httpx.post(
+            pull_url,
+            json={"name": model},
+            timeout=timeout,
+        )
+        if response.status_code != 200:
+            raise RuntimeError(f"Failed to pull model {model}: {response.text}")
+    except httpx.RequestError as e:
+        raise RuntimeError(f"Failed to pull model {model}: {e}") from e
+
+    logger.info("Ollama model pulled: %s", model)
+
+
+@pytest.fixture(scope="session")
+def ollama_url(ollama_container: DockerContainer) -> str:
+    """Get Ollama connection URL.
+
+    Returns:
+        str: Ollama HTTP API URL.
+    """
+    return _get_ollama_url(ollama_container)
+
+
+@pytest.fixture(scope="session")
+def ollama_client(ollama_url: str) -> OllamaClient:
+    """Create an OllamaClient connected to the test Ollama instance.
+
+    Session-scoped to share the client across tests for efficiency.
+    Uses the all-minilm model for fast embedding generation.
+
+    Returns:
+        OllamaClient: Client connected to test Ollama.
+    """
+    client = OllamaClient(
+        base_url=ollama_url,
+        model="all-minilm",
+        timeout_s=30,
+    )
+
+    logger.info(
+        "Created Ollama client for integration tests",
+        extra={"url": ollama_url, "model": "all-minilm"},
+    )
+
+    yield client
+
+    # Cleanup
+    client.close()

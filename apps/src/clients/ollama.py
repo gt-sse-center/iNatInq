@@ -29,6 +29,7 @@ The client class:
 
 import asyncio
 
+import aiobreaker
 import attrs
 import httpx
 import pybreaker
@@ -36,8 +37,13 @@ import requests
 
 from config import EmbeddingConfig
 from core.exceptions import UpstreamError
-from foundation.circuit_breaker import handle_circuit_breaker_error, with_circuit_breaker
+from foundation.circuit_breaker import (
+    create_async_circuit_breaker,
+    with_circuit_breaker,
+    with_circuit_breaker_async,
+)
 from foundation.http import create_retry_session
+
 from .interfaces.embedding import EmbeddingProvider
 from .mixins import CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin
 
@@ -72,6 +78,7 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
     timeout_s: int = attrs.field(default=60)
     _session: requests.Session | None = attrs.field(init=False, default=None)
     _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
+    _async_breaker: aiobreaker.CircuitBreaker = attrs.field(init=False)
 
     def _circuit_breaker_config(self) -> tuple[str, int, int]:
         """Return circuit breaker configuration for Ollama.
@@ -84,12 +91,16 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         return ("ollama", 5, 30)
 
     def __attrs_post_init__(self) -> None:
-        """Initialize the requests session and circuit breaker."""
+        """Initialize the requests session and circuit breakers."""
         if self._session is None:
             self._session = create_retry_session()
 
-        # Initialize circuit breaker from base class
+        # Initialize sync circuit breaker from base class
         self._init_circuit_breaker()
+
+        # Initialize async circuit breaker (aiobreaker)
+        name, fail_max, timeout = self._circuit_breaker_config()
+        object.__setattr__(self, "_async_breaker", create_async_circuit_breaker(name, fail_max, timeout))
 
     @property
     def session(self) -> requests.Session:
@@ -282,6 +293,7 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
             # Re-raise the error if fallback is not enabled
             raise
 
+    @with_circuit_breaker_async("ollama")
     async def embed_async(self, text: str) -> list[float]:
         """Generate an embedding vector for a single text string (async).
 
@@ -315,11 +327,6 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
             embeddings = await asyncio.gather(*tasks)
             ```
         """
-        # Check circuit breaker state - if open, fail fast
-        # Note: We can't use breaker.call() with async, so we check state and track manually
-        if self._breaker.current_state == pybreaker.STATE_OPEN:
-            handle_circuit_breaker_error("ollama")
-
         url = f"{self.base_url.rstrip('/')}/api/embeddings"
         try:
             async with httpx.AsyncClient(timeout=self.timeout_s) as client:
@@ -337,6 +344,7 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
             msg = f"Ollama request failed: {e}"
             raise UpstreamError(msg) from e
 
+    @with_circuit_breaker_async("ollama")
     async def embed_batch_async(
         self, texts: list[str], *, fallback_to_individual: bool = False
     ) -> list[list[float]]:
@@ -371,10 +379,6 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         if not texts:
             raise ValueError("texts list cannot be empty")
 
-        # Check circuit breaker state - if open, fail fast
-        if self._breaker.current_state == pybreaker.STATE_OPEN:
-            handle_circuit_breaker_error("ollama")
-
         url = f"{self.base_url.rstrip('/')}/api/embed"
 
         # Scale timeout based on batch size
@@ -405,9 +409,32 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
                     extra={"error": str(e), "texts_count": len(texts)},
                 )
                 # Fall back to individual async embedding calls
-                return await asyncio.gather(*[self.embed_async(text) for text in texts])
+                # Note: embed_async is already protected by circuit breaker
+                return await asyncio.gather(*[self._embed_async_impl(text) for text in texts])
             # Re-raise the error if fallback is not enabled
             raise
+
+    async def _embed_async_impl(self, text: str) -> list[float]:
+        """Internal async embed implementation without circuit breaker.
+
+        Used by embed_batch_async fallback to avoid double circuit breaker wrapping.
+        """
+        url = f"{self.base_url.rstrip('/')}/api/embeddings"
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_s) as client:
+                resp = await client.post(url, json={"model": self.model, "prompt": text})
+                resp.raise_for_status()
+                data = resp.json()
+                emb = data.get("embedding")
+                if not isinstance(emb, list) or not emb:
+                    raise UpstreamError("Ollama response missing embedding")
+                return [float(x) for x in emb]
+        except httpx.HTTPStatusError as e:
+            msg = f"Ollama error {e.response.status_code}: {e.response.text}"
+            raise UpstreamError(msg) from e
+        except httpx.RequestError as e:
+            msg = f"Ollama request failed: {e}"
+            raise UpstreamError(msg) from e
 
     def close(self) -> None:
         """Close the HTTP session and release resources.

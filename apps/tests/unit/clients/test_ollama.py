@@ -9,8 +9,8 @@ The tests cover:
   - Client Initialization: Default and custom configuration, from_config factory
   - Session Management: Session creation, set_session method, session property
   - Embedding Generation: Single and batch embeddings, success and error cases
-  - Circuit Breaker Integration: Circuit breaker usage, error handling
-  - Async Operations: Async embedding methods
+  - Circuit Breaker Integration: Circuit breaker usage, error handling (sync and async)
+  - Async Operations: Async embedding methods with async circuit breaker
   - Error Handling: UpstreamError on failures, circuit breaker errors
   - Vector Size: Model-based vector size determination
 
@@ -26,6 +26,7 @@ Run with: pytest tests/unit/clients/test_ollama.py
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiobreaker
 import pybreaker
 import pytest
 import requests
@@ -81,26 +82,33 @@ class TestOllamaClientInit:
         assert client.timeout_s == 120
 
     def test_creates_circuit_breaker(self) -> None:
-        """Test that circuit breaker is created during initialization.
+        """Test that both sync and async circuit breakers are created during initialization.
 
         **Why this test is important:**
           - Circuit breaker provides fault tolerance
           - Ensures circuit breaker is configured with correct parameters
           - Critical for production reliability
-          - Validates circuit breaker integration
+          - Validates both sync (pybreaker) and async (aiobreaker) circuit breaker integration
 
         **What it tests:**
-          - Circuit breaker is created with correct configuration
-          - Failure threshold and recovery timeout are set correctly
+          - Sync circuit breaker (pybreaker) is created with correct configuration
+          - Async circuit breaker (aiobreaker) is created with correct configuration
+          - Failure threshold and recovery timeout are set correctly for both
         """
         client = OllamaClient(base_url="http://ollama.example.com:11434", model="test-model")
 
-        # Verify circuit breaker was created
+        # Verify sync circuit breaker (pybreaker) was created
         assert client._breaker is not None
         assert isinstance(client._breaker, pybreaker.CircuitBreaker)
         assert client._breaker.name == "ollama"
         assert client._breaker.fail_max == 5
         assert client._breaker.reset_timeout == 30
+
+        # Verify async circuit breaker (aiobreaker) was created
+        assert client._async_breaker is not None
+        assert isinstance(client._async_breaker, aiobreaker.CircuitBreaker)
+        assert client._async_breaker.name == "ollama"
+        assert client._async_breaker.fail_max == 5
 
     def test_from_config_creates_client(self) -> None:
         """Test that from_config factory creates client correctly.
@@ -642,20 +650,28 @@ class TestOllamaClientEmbedAsync:
         with pytest.raises(UpstreamError, match="missing embedding"):
             await ollama_client.embed_async("hello world")
 
-    @patch("clients.ollama.handle_circuit_breaker_error")
+    @patch("foundation.circuit_breaker.handle_circuit_breaker_error")
     @pytest.mark.asyncio
     async def test_embed_async_handles_circuit_breaker_open(
         self, mock_handle_error: MagicMock, ollama_client: OllamaClient
     ) -> None:
-        """Test that embed_async handles circuit breaker open state."""
-        from unittest.mock import PropertyMock
+        """Test that embed_async handles circuit breaker open state.
 
+        **Why this test is important:**
+          - Async methods use aiobreaker for circuit breaking
+          - Circuit breaker open state should fail fast
+          - Critical for fault tolerance in async code paths
+
+        **What it tests:**
+          - Async circuit breaker open state triggers UpstreamError
+          - handle_circuit_breaker_error is called with correct service name
+        """
         mock_handle_error.side_effect = UpstreamError("service unavailable")
 
-        # Mock the circuit breaker's current_state property
-        mock_breaker = MagicMock(spec=pybreaker.CircuitBreaker)
-        type(mock_breaker).current_state = PropertyMock(return_value=pybreaker.STATE_OPEN)
-        object.__setattr__(ollama_client, "_breaker", mock_breaker)
+        # Mock the async circuit breaker's current_state property
+        mock_async_breaker = MagicMock(spec=aiobreaker.CircuitBreaker)
+        mock_async_breaker.current_state = aiobreaker.state.CircuitBreakerState.OPEN
+        object.__setattr__(ollama_client, "_async_breaker", mock_async_breaker)
 
         with pytest.raises(UpstreamError, match="service unavailable"):
             await ollama_client.embed_async("hello world")
@@ -707,7 +723,18 @@ class TestOllamaClientEmbedBatchAsync:
         mock_async_client_cls: MagicMock,
         ollama_client: OllamaClient,
     ) -> None:
-        """Test that embed_batch_async falls back to individual calls on failure."""
+        """Test that embed_batch_async falls back to individual calls on failure.
+
+        **Why this test is important:**
+          - Fallback ensures compatibility with older Ollama versions
+          - Graceful degradation improves reliability
+          - Uses internal _embed_async_impl to avoid double circuit breaker wrapping
+
+        **What it tests:**
+          - Batch API failure triggers fallback
+          - Individual _embed_async_impl calls are made
+          - Correct result is returned after fallback
+        """
         import httpx
 
         # Mock batch API failure
@@ -723,27 +750,37 @@ class TestOllamaClientEmbedBatchAsync:
         mock_client.__aexit__.return_value = None
         mock_async_client_cls.return_value = mock_client
 
-        # Mock individual embed_async calls
-        with patch.object(ollama_client, "embed_async", side_effect=[[0.1, 0.2], [0.3, 0.4]]) as mock_embed:
+        # Mock internal _embed_async_impl method (avoids double circuit breaker wrapping)
+        with patch.object(
+            ollama_client, "_embed_async_impl", side_effect=[[0.1, 0.2], [0.3, 0.4]]
+        ) as mock_embed_impl:
             result = await ollama_client.embed_batch_async(["hello", "world"], fallback_to_individual=True)
 
             assert result == [[0.1, 0.2], [0.3, 0.4]]
-            assert mock_embed.call_count == 2
+            assert mock_embed_impl.call_count == 2
 
-    @patch("clients.ollama.handle_circuit_breaker_error")
+    @patch("foundation.circuit_breaker.handle_circuit_breaker_error")
     @pytest.mark.asyncio
     async def test_embed_batch_async_handles_circuit_breaker_open(
         self, mock_handle_error: MagicMock, ollama_client: OllamaClient
     ) -> None:
-        """Test that embed_batch_async handles circuit breaker open state."""
-        from unittest.mock import PropertyMock
+        """Test that embed_batch_async handles circuit breaker open state.
 
+        **Why this test is important:**
+          - Async batch methods use aiobreaker for circuit breaking
+          - Circuit breaker open state should fail fast
+          - Critical for fault tolerance in async batch operations
+
+        **What it tests:**
+          - Async circuit breaker open state triggers UpstreamError
+          - handle_circuit_breaker_error is called with correct service name
+        """
         mock_handle_error.side_effect = UpstreamError("service unavailable")
 
-        # Mock the circuit breaker's current_state property
-        mock_breaker = MagicMock(spec=pybreaker.CircuitBreaker)
-        type(mock_breaker).current_state = PropertyMock(return_value=pybreaker.STATE_OPEN)
-        object.__setattr__(ollama_client, "_breaker", mock_breaker)
+        # Mock the async circuit breaker's current_state property
+        mock_async_breaker = MagicMock(spec=aiobreaker.CircuitBreaker)
+        mock_async_breaker.current_state = aiobreaker.state.CircuitBreakerState.OPEN
+        object.__setattr__(ollama_client, "_async_breaker", mock_async_breaker)
 
         with pytest.raises(UpstreamError, match="service unavailable"):
             await ollama_client.embed_batch_async(["hello", "world"])
