@@ -46,6 +46,14 @@ defaults):
 - `S3_USE_SSL`: Whether to use SSL/TLS (default: `false`)
 - `S3_PATH_STYLE`: Whether to use path-style addressing
   (default: `true`)
+- `S3_TIMEOUT`: Request timeout in seconds (default: `30`)
+- `S3_MAX_RETRIES`: Maximum retry attempts (default: `3`)
+- `S3_RETRY_MIN_WAIT`: Minimum retry backoff in seconds (default: `1.0`)
+- `S3_RETRY_MAX_WAIT`: Maximum retry backoff in seconds (default: `10.0`)
+- `S3_CIRCUIT_BREAKER_THRESHOLD`: Failures before circuit opens
+  (default: `5`)
+- `S3_CIRCUIT_BREAKER_TIMEOUT`: Circuit recovery timeout in seconds
+  (default: `120`)
 
 **Environment Detection**
 - `PIPELINE_ENV`: Explicit environment override (`cluster` or `local`).
@@ -362,8 +370,17 @@ class MinIOConfig(BaseModel):
             typically uses HTTP).
         path_style: Whether to use path-style addressing. Default: True
             (required for MinIO compatibility).
+        timeout: Request timeout in seconds. Default: 30.
+        max_retries: Maximum retry attempts for transient errors. Default: 3.
+        retry_min_wait: Minimum wait between retries in seconds. Default: 1.0.
+        retry_max_wait: Maximum wait between retries in seconds. Default: 10.0.
+        circuit_breaker_threshold: Failures before circuit breaker opens.
+            Default: 5.
+        circuit_breaker_timeout: Seconds before circuit breaker recovery.
+            Default: 120.
     """
 
+    # Connection settings
     endpoint_url: str
     access_key_id: str
     secret_access_key: str
@@ -371,6 +388,16 @@ class MinIOConfig(BaseModel):
     region: str = "us-east-1"
     use_ssl: bool = False
     path_style: bool = True
+
+    # Timeout and retry settings
+    timeout: int = 30
+    max_retries: int = 3
+    retry_min_wait: float = 1.0
+    retry_max_wait: float = 10.0
+
+    # Circuit breaker settings
+    circuit_breaker_threshold: int = 5
+    circuit_breaker_timeout: int = 120
 
     model_config = SettingsConfigDict(frozen=True)
 
@@ -396,6 +423,7 @@ class MinIOConfig(BaseModel):
         endpoint = os.getenv("S3_ENDPOINT", default_endpoint)
 
         return cls(
+            # Connection settings
             endpoint_url=endpoint,
             access_key_id=os.getenv("S3_ACCESS_KEY_ID", "minioadmin"),
             secret_access_key=os.getenv("S3_SECRET_ACCESS_KEY", "minioadmin"),
@@ -403,6 +431,14 @@ class MinIOConfig(BaseModel):
             region=os.getenv("S3_REGION", "us-east-1"),
             use_ssl=os.getenv("S3_USE_SSL", "false").lower() == "true",
             path_style=os.getenv("S3_PATH_STYLE", "true").lower() == "true",
+            # Timeout and retry settings
+            timeout=int(os.getenv("S3_TIMEOUT", "30")),
+            max_retries=int(os.getenv("S3_MAX_RETRIES", "3")),
+            retry_min_wait=float(os.getenv("S3_RETRY_MIN_WAIT", "1.0")),
+            retry_max_wait=float(os.getenv("S3_RETRY_MAX_WAIT", "10.0")),
+            # Circuit breaker settings
+            circuit_breaker_threshold=int(os.getenv("S3_CIRCUIT_BREAKER_THRESHOLD", "5")),
+            circuit_breaker_timeout=int(os.getenv("S3_CIRCUIT_BREAKER_TIMEOUT", "120")),
         )
 
 

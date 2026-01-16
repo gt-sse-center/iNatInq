@@ -107,6 +107,69 @@ class TestS3ClientWrapperInit:
         assert client._breaker.fail_max == 5
         assert client._breaker.reset_timeout == 120
 
+    def test_creates_circuit_breaker_with_custom_config(self) -> None:
+        """Test that circuit breaker uses custom configuration.
+
+        **Why this test is important:**
+          - Custom circuit breaker settings are needed for different environments
+          - Production may need different thresholds than development
+          - Validates that configuration is properly applied
+
+        **What it tests:**
+          - Custom failure threshold is applied
+          - Custom recovery timeout is applied
+        """
+        client = S3ClientWrapper(
+            endpoint_url="http://minio.example.com:9000",
+            access_key_id="test-key",
+            secret_access_key="test-secret",
+            circuit_breaker_threshold=10,
+            circuit_breaker_timeout=300,
+        )
+
+        assert client._breaker.fail_max == 10
+        assert client._breaker.reset_timeout == 300
+
+    def test_from_config_creates_client(self) -> None:
+        """Test that from_config creates a properly configured client.
+
+        **Why this test is important:**
+          - from_config is the primary way to create clients from configuration
+          - Ensures all config values are properly mapped to client attributes
+          - Validates integration with MinIOConfig
+
+        **What it tests:**
+          - All config values are passed to the client
+          - Resilience settings are correctly applied
+        """
+        # Create a mock config object with all required attributes
+        mock_config = MagicMock()
+        mock_config.endpoint_url = "http://minio.example.com:9000"
+        mock_config.access_key_id = "test-key"
+        mock_config.secret_access_key = "test-secret"
+        mock_config.region = "us-west-2"
+        mock_config.max_retries = 5
+        mock_config.retry_min_wait = 2.0
+        mock_config.retry_max_wait = 20.0
+        mock_config.timeout = 60
+        mock_config.circuit_breaker_threshold = 10
+        mock_config.circuit_breaker_timeout = 300
+
+        client = S3ClientWrapper.from_config(mock_config)
+
+        assert client.endpoint_url == "http://minio.example.com:9000"
+        assert client.access_key_id == "test-key"
+        assert client.secret_access_key == "test-secret"
+        assert client.region_name == "us-west-2"
+        assert client.max_retries == 5
+        assert client.retry_min_wait == 2.0
+        assert client.retry_max_wait == 20.0
+        assert client.timeout_s == 60
+        assert client.circuit_breaker_threshold == 10
+        assert client.circuit_breaker_timeout == 300
+        assert client._breaker.fail_max == 10
+        assert client._breaker.reset_timeout == 300
+
 
 # =============================================================================
 # Bucket Operations Tests

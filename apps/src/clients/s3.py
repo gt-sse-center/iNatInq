@@ -272,6 +272,8 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         retry_min_wait: Minimum wait between retries in seconds (default: 1.0).
         retry_max_wait: Maximum wait between retries in seconds (default: 10.0).
         timeout_s: Timeout for individual S3 operations in seconds (default: 30).
+        circuit_breaker_threshold: Failures before circuit breaker opens (default: 5).
+        circuit_breaker_timeout: Seconds before circuit breaker recovery (default: 120).
 
     Note:
         This class is not frozen because it maintains an internal boto3 client
@@ -286,6 +288,8 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
     retry_min_wait: float = attrs.field(default=1.0)
     retry_max_wait: float = attrs.field(default=10.0)
     timeout_s: int = attrs.field(default=30)
+    circuit_breaker_threshold: int = attrs.field(default=5)
+    circuit_breaker_timeout: int = attrs.field(default=120)
     _client: Any = attrs.field(init=False, default=None)
     _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
 
@@ -297,7 +301,7 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         Returns:
             Tuple of (name, failure_threshold, recovery_timeout).
         """
-        return ("s3", 5, 120)
+        return ("s3", self.circuit_breaker_threshold, self.circuit_breaker_timeout)
 
     def __attrs_post_init__(self) -> None:
         """Initialize the boto3 S3 client and circuit breaker after attrs construction."""
@@ -326,6 +330,38 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
     def client(self) -> Any:
         """Get the underlying boto3 S3 client instance."""
         return self._client
+
+    @classmethod
+    def from_config(cls, config: Any) -> "S3ClientWrapper":
+        """Create an S3ClientWrapper from a MinIOConfig.
+
+        Args:
+            config: MinIOConfig instance with S3 connection and resilience settings.
+
+        Returns:
+            Configured S3ClientWrapper instance.
+
+        Example:
+            ```python
+            from config import MinIOConfig
+            from clients.s3 import S3ClientWrapper
+
+            config = MinIOConfig.from_env()
+            client = S3ClientWrapper.from_config(config)
+            ```
+        """
+        return cls(
+            endpoint_url=config.endpoint_url,
+            access_key_id=config.access_key_id,
+            secret_access_key=config.secret_access_key,
+            region_name=config.region,
+            max_retries=config.max_retries,
+            retry_min_wait=config.retry_min_wait,
+            retry_max_wait=config.retry_max_wait,
+            timeout_s=config.timeout,
+            circuit_breaker_threshold=config.circuit_breaker_threshold,
+            circuit_breaker_timeout=config.circuit_breaker_timeout,
+        )
 
     def _with_retry(self, operation: str, func, *args, **kwargs):
         """Execute a function with retry logic.
