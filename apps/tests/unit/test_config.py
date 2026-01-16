@@ -8,6 +8,7 @@ environments.
 
 The tests cover:
   - RayJobConfig: dashboard_address auto-detection for K8s, Docker Compose, and local
+  - MinIOConfig: S3/MinIO configuration including resilience settings
   - Environment variable parsing
   - Default value handling
 
@@ -21,7 +22,7 @@ from unittest.mock import patch
 
 import pytest
 
-from config import RayJobConfig
+from config import MinIOConfig, RayJobConfig
 
 
 # =============================================================================
@@ -231,3 +232,82 @@ class TestRayJobConfigOtherSettings:
         assert config.embed_batch_max == 8
         assert config.batch_upsert_size == 200
         assert config.checkpoint_enabled is True
+
+
+# =============================================================================
+# MinIOConfig Tests
+# =============================================================================
+
+
+class TestMinIOConfigResilience:
+    """Test suite for MinIOConfig resilience settings."""
+
+    @patch.dict(
+        os.environ,
+        {
+            "S3_ENDPOINT": "http://minio:9000",
+            "S3_TIMEOUT": "60",
+            "S3_MAX_RETRIES": "5",
+            "S3_RETRY_MIN_WAIT": "2.0",
+            "S3_RETRY_MAX_WAIT": "20.0",
+            "S3_CIRCUIT_BREAKER_THRESHOLD": "10",
+            "S3_CIRCUIT_BREAKER_TIMEOUT": "300",
+        },
+        clear=False,
+    )
+    @patch("config._is_in_cluster", return_value=False)
+    def test_resilience_settings_from_env(self, mock_cluster: patch) -> None:
+        """Test that resilience settings are parsed from environment.
+
+        **Why this test is important:**
+          - Resilience settings must be configurable per environment
+          - Production may need different timeouts than development
+          - Critical for operational flexibility
+
+        **What it tests:**
+          - timeout is parsed from S3_TIMEOUT
+          - max_retries is parsed from S3_MAX_RETRIES
+          - retry_min_wait is parsed from S3_RETRY_MIN_WAIT
+          - retry_max_wait is parsed from S3_RETRY_MAX_WAIT
+          - circuit_breaker_threshold is parsed from S3_CIRCUIT_BREAKER_THRESHOLD
+          - circuit_breaker_timeout is parsed from S3_CIRCUIT_BREAKER_TIMEOUT
+        """
+        config = MinIOConfig.from_env()
+
+        assert config.timeout == 60
+        assert config.max_retries == 5
+        assert config.retry_min_wait == 2.0
+        assert config.retry_max_wait == 20.0
+        assert config.circuit_breaker_threshold == 10
+        assert config.circuit_breaker_timeout == 300
+
+    @patch.dict(
+        os.environ,
+        {"S3_ENDPOINT": "http://minio:9000"},
+        clear=False,
+    )
+    @patch("config._is_in_cluster", return_value=False)
+    def test_resilience_default_values(self, mock_cluster: patch) -> None:
+        """Test that default resilience values are applied.
+
+        **Why this test is important:**
+          - Sensible defaults reduce configuration burden
+          - Critical for easy onboarding
+          - Defaults should match common production patterns
+
+        **What it tests:**
+          - Default timeout is 30 seconds
+          - Default max_retries is 3
+          - Default retry_min_wait is 1.0 seconds
+          - Default retry_max_wait is 10.0 seconds
+          - Default circuit_breaker_threshold is 5
+          - Default circuit_breaker_timeout is 120 seconds
+        """
+        config = MinIOConfig.from_env()
+
+        assert config.timeout == 30
+        assert config.max_retries == 3
+        assert config.retry_min_wait == 1.0
+        assert config.retry_max_wait == 10.0
+        assert config.circuit_breaker_threshold == 5
+        assert config.circuit_breaker_timeout == 120
