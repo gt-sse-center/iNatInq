@@ -228,10 +228,15 @@ services:
       - "8000:8000"
     env_file:
       - ./pipeline.env
-    # Cloud overrides: set these env vars in shell to use cloud providers
+    # Cloud/External overrides: set these env vars in shell to use external providers
     environment:
+      # Ollama (embedding service)
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-nomic-embed-text}
+      # Qdrant (vector database)
       - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      # Weaviate (vector database)
       - WEAVIATE_URL=${WEAVIATE_URL:-http://weaviate:8080}
       - WEAVIATE_API_KEY=${WEAVIATE_API_KEY:-}
       - WEAVIATE_GRPC_HOST=${WEAVIATE_GRPC_HOST:-}
