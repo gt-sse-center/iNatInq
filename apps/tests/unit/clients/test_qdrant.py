@@ -69,8 +69,12 @@ class TestQdrantClientWrapperInit:
 
         client = QdrantClientWrapper(url="http://qdrant.example.com:6333")
 
-        mock_qdrant_client.assert_called_once_with(url="http://qdrant.example.com:6333", timeout=300)
-        mock_async_qdrant_client.assert_called_once_with(url="http://qdrant.example.com:6333", timeout=300)
+        mock_qdrant_client.assert_called_once_with(
+            url="http://qdrant.example.com:6333", api_key=None, timeout=300
+        )
+        mock_async_qdrant_client.assert_called_once_with(
+            url="http://qdrant.example.com:6333", api_key=None, timeout=300
+        )
         assert client.url == "http://qdrant.example.com:6333"
         assert client._client == mock_async_client
         assert client._sync_client == mock_sync_client
@@ -96,6 +100,47 @@ class TestQdrantClientWrapperInit:
         assert client._breaker.name == "qdrant"
         assert client._breaker.fail_max == 3
         assert client._breaker.reset_timeout == 60
+
+    @patch("clients.qdrant.AsyncQdrantClient")
+    @patch("clients.qdrant.QdrantClient")
+    def test_creates_client_with_api_key(
+        self,
+        mock_qdrant_client: MagicMock,
+        mock_async_qdrant_client: MagicMock,
+    ) -> None:
+        """Test that api_key is passed to Qdrant clients.
+
+        **Why this test is important:**
+          - API key is required for cloud Qdrant instances
+          - Ensures authentication credentials are passed correctly
+          - Critical for cloud deployment security
+
+        **What it tests:**
+          - AsyncQdrantClient is created with api_key
+          - QdrantClient is created with api_key
+          - Client stores the api_key attribute
+        """
+        mock_async_client = AsyncMock()
+        mock_qdrant_client.return_value = mock_async_client
+        mock_sync_client = MagicMock()
+        mock_async_qdrant_client.return_value = mock_sync_client
+
+        client = QdrantClientWrapper(
+            url="https://qdrant.cloud.example.com:6333",
+            api_key="test-api-key-12345",
+        )
+
+        mock_qdrant_client.assert_called_once_with(
+            url="https://qdrant.cloud.example.com:6333",
+            api_key="test-api-key-12345",
+            timeout=300,
+        )
+        mock_async_qdrant_client.assert_called_once_with(
+            url="https://qdrant.cloud.example.com:6333",
+            api_key="test-api-key-12345",
+            timeout=300,
+        )
+        assert client.api_key == "test-api-key-12345"
 
     def test_from_config_creates_client(self) -> None:
         """Test that from_config factory creates client correctly.
@@ -123,6 +168,45 @@ class TestQdrantClientWrapperInit:
             client = QdrantClientWrapper.from_config(config)
 
         assert client.url == "http://qdrant.example.com:6333"
+
+    @patch("clients.qdrant.AsyncQdrantClient")
+    @patch("clients.qdrant.QdrantClient")
+    def test_from_config_passes_api_key(
+        self,
+        mock_qdrant_client: MagicMock,
+        mock_async_qdrant_client: MagicMock,
+    ) -> None:
+        """Test that from_config passes api_key from configuration.
+
+        **Why this test is important:**
+          - API key from config must be passed to client
+          - Validates configuration integration for cloud deployments
+          - Critical for secure cloud Qdrant access
+
+        **What it tests:**
+          - qdrant_api_key from VectorDBConfig is passed to client
+          - Client is created with correct api_key attribute
+        """
+        config = VectorDBConfig(
+            provider_type="qdrant",
+            collection="test-collection",
+            qdrant_url="https://qdrant.cloud.example.com:6333",
+            qdrant_api_key="config-api-key-67890",
+        )
+
+        client = QdrantClientWrapper.from_config(config)
+
+        mock_qdrant_client.assert_called_once_with(
+            url="https://qdrant.cloud.example.com:6333",
+            api_key="config-api-key-67890",
+            timeout=300,
+        )
+        mock_async_qdrant_client.assert_called_once_with(
+            url="https://qdrant.cloud.example.com:6333",
+            api_key="config-api-key-67890",
+            timeout=300,
+        )
+        assert client.api_key == "config-api-key-67890"
 
     def test_from_config_validates_provider_type(self) -> None:
         """Test that from_config validates provider_type.

@@ -9,8 +9,12 @@ zarf/
 ├── compose/           # Docker Compose configurations
 │   └── dev/          # Development environment
 │       ├── docker-compose.yaml
-│       └── pipeline.env
+│       ├── pipeline.env          # Default config (committed)
+│       ├── env.local.example     # Template for cloud credentials
+│       └── .env.local            # Local overrides (gitignored)
 ├── docker/           # Dockerfiles
+│   ├── base/         # Base images (heavy dependencies)
+│   │   └── Dockerfile.pipeline-base
 │   └── dev/          # Development Dockerfiles
 │       └── Dockerfile.pipeline
 ├── scripts/          # Infrastructure scripts
@@ -150,6 +154,23 @@ VECTOR_DB_PROVIDER=qdrant
 # Or use Weaviate
 VECTOR_DB_PROVIDER=weaviate
 ```
+
+### Using Qdrant Cloud
+
+To use [Qdrant Cloud](https://cloud.qdrant.io/) instead of the local container:
+
+```bash
+# Option 1: Set environment variables
+export QDRANT_URL=https://your-cluster.region.cloud.qdrant.io
+export QDRANT_API_KEY=your-api-key
+docker compose -f zarf/compose/dev/docker-compose.yaml up -d
+
+# Option 2: Create a local config file (gitignored)
+cp zarf/compose/dev/env.local.example zarf/compose/dev/.env.local
+# Edit .env.local with your Qdrant Cloud credentials
+```
+
+The local Qdrant container will still run but won't be used when cloud credentials are set.
 
 ## Comparison with Kubernetes
 

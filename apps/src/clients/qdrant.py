@@ -28,14 +28,15 @@ import asyncio
 
 import attrs
 import pybreaker
+from qdrant_client import AsyncQdrantClient, QdrantClient
+from qdrant_client.http import models as qmodels
+from qdrant_client.models import PointStruct  # Qdrant's native point type
+
 from config import VectorDBConfig
 from core.exceptions import UpstreamError
 from core.models import SearchResultItem, SearchResults
 from foundation.async_utils import close_async_resource
 from foundation.circuit_breaker import handle_circuit_breaker_error
-from qdrant_client import AsyncQdrantClient, QdrantClient
-from qdrant_client.http import models as qmodels
-from qdrant_client.models import PointStruct  # Qdrant's native point type
 
 from .base import VectorDBClientBase
 from .interfaces.vector_db import VectorDBProvider
@@ -55,6 +56,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
     """
 
     url: str
+    api_key: str | None = None
     _client: AsyncQdrantClient = attrs.field(init=False, default=None)
     _sync_client: QdrantClient = attrs.field(init=False, default=None)
     _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
@@ -71,8 +73,8 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
 
     def __attrs_post_init__(self) -> None:
         """Initialize the Qdrant async and sync clients and circuit breaker."""
-        self._client = AsyncQdrantClient(url=self.url, timeout=300)
-        self._sync_client = QdrantClient(url=self.url, timeout=300)
+        self._client = AsyncQdrantClient(url=self.url, api_key=self.api_key, timeout=300)
+        self._sync_client = QdrantClient(url=self.url, api_key=self.api_key, timeout=300)
 
         # Initialize circuit breaker from base class
         self._init_circuit_breaker()
@@ -98,7 +100,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         cls._validate_config(config, "qdrant", ["qdrant_url"])
         # Type narrowing: _validate_config ensures qdrant_url is not None
         assert config.qdrant_url is not None
-        return cls(url=config.qdrant_url)
+        return cls(url=config.qdrant_url, api_key=getattr(config, "qdrant_api_key", None))
 
     async def ensure_collection_async(
         self,

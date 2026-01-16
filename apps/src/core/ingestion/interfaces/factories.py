@@ -76,6 +76,7 @@ class VectorDBConfigFactory:
             provider_type="qdrant",
             collection=self._get_collection(),
             qdrant_url=self._env_str("QDRANT_URL", default_url),
+            qdrant_api_key=self._env_str("QDRANT_API_KEY"),
         )
 
     def create_weaviate_config(self) -> VectorDBConfig:

@@ -81,6 +81,21 @@ make down
 | Qdrant Dashboard | <http://localhost:6333/dashboard> |
 | Ray Dashboard | <http://localhost:8265> |
 
+### Using Qdrant Cloud (Optional)
+
+To use [Qdrant Cloud](https://cloud.qdrant.io/) instead of local Docker:
+
+```bash
+# Option 1: Environment variables
+export QDRANT_URL=https://your-cluster.region.cloud.qdrant.io
+export QDRANT_API_KEY=your-api-key
+make docker-up
+
+# Option 2: Local config file (gitignored)
+cp apps/zarf/compose/dev/env.local.example apps/zarf/compose/dev/.env.local
+# Edit .env.local with your credentials
+```
+
 ---
 
 ## Developer Guide

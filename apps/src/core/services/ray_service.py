@@ -141,6 +141,8 @@ class RayService:
             env_vars["OLLAMA_MODEL"] = embedding_config.ollama_model
         if vector_db_config.provider_type == "qdrant" and vector_db_config.qdrant_url:
             env_vars["QDRANT_URL"] = vector_db_config.qdrant_url
+        if vector_db_config.provider_type == "qdrant" and getattr(vector_db_config, "qdrant_api_key", None):
+            env_vars["QDRANT_API_KEY"] = vector_db_config.qdrant_api_key
 
         try:
             # Create job submission client
