@@ -237,6 +237,44 @@ class TestOllamaClientInit:
         with pytest.raises(ValueError, match="requires: ollama_url, ollama_model"):
             OllamaClient.from_config(config)
 
+    def test_from_config_passes_resilience_settings(self) -> None:
+        """Test that from_config passes all resilience settings from config.
+
+        **Why this test is important:**
+          - Resilience settings must propagate from config to client
+          - Ensures timeout, circuit breaker, and batch settings are applied
+          - Critical for environment-specific configuration
+
+        **What it tests:**
+          - ollama_timeout is passed as timeout_s
+          - ollama_circuit_breaker_threshold is passed correctly
+          - ollama_circuit_breaker_timeout is passed correctly
+          - ollama_batch_timeout_multiplier is passed correctly
+          - ollama_max_batch_size is passed correctly
+        """
+        config = EmbeddingConfig(
+            provider_type="ollama",
+            ollama_url="http://ollama.example.com:11434",
+            ollama_model="test-model",
+            ollama_timeout=120,
+            ollama_circuit_breaker_threshold=10,
+            ollama_circuit_breaker_timeout=60,
+            ollama_batch_timeout_multiplier=2.0,
+            ollama_max_batch_size=8,
+        )
+
+        client = OllamaClient.from_config(config)
+
+        assert client.timeout_s == 120
+        assert client.circuit_breaker_failure_threshold == 10
+        assert client.circuit_breaker_recovery_timeout_s == 60
+        assert client.batch_timeout_multiplier == 2.0
+        assert client.max_batch_size == 8
+
+        # Verify circuit breaker was configured with custom values
+        assert client._breaker.fail_max == 10
+        assert client._breaker.reset_timeout == 60
+
 
 # =============================================================================
 # Session Management Tests
