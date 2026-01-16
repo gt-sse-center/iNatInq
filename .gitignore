@@ -25,3 +25,4 @@ data/
 **/.results
 
 *.npy
+.env.local

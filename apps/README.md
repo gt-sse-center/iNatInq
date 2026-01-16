@@ -120,6 +120,40 @@ make dev
 uv run uvicorn api.app:app --reload --port 8000
 ```
 
+### End-to-End Testing
+
+Seed MinIO with synthetic data and run a complete ingestion + search test:
+
+```bash
+# 1. Start all services
+make docker-up
+
+# 2. Generate & upload test documents (100 by default)
+make syntheticdata-setup COUNT=100
+
+# 3. Submit a Ray ingestion job
+curl -X POST http://localhost:8000/ray/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"s3_prefix": "inputs/", "collection": "documents"}'
+
+# 4. Check job status (use job_id from step 3)
+curl http://localhost:8000/ray/jobs/<job_id>
+
+# 5. Search the indexed documents
+curl "http://localhost:8000/search?q=whale&limit=5"
+```
+
+**One-liner** (generate + upload + ingest + search):
+
+```bash
+make syntheticdata-setup COUNT=100 && \
+  curl -s -X POST http://localhost:8000/ray/jobs \
+    -H "Content-Type: application/json" \
+    -d '{"s3_prefix": "inputs/", "collection": "documents"}' | jq .
+```
+
+See [syntheticdata/README.md](syntheticdata/README.md) for more options.
+
 ---
 
 ## Codebase Structure
@@ -135,6 +169,7 @@ apps/
 │   ├── foundation/       # Utilities (retry, circuit breaker, logging)
 │   └── config.py         # Pydantic settings
 ├── tests/unit/           # Unit tests
+├── syntheticdata/        # Test data generation & S3 upload tools
 ├── charts/               # Architecture diagrams
 └── zarf/                 # Docker & infrastructure
     ├── compose/dev/      # Docker Compose config
@@ -150,6 +185,7 @@ apps/
 | [core/](src/core/README.md) | Domain models and exceptions |
 | [core/services/](src/core/services/README.md) | Business logic layer |
 | [foundation/](src/foundation/README.md) | Cross-cutting utilities |
+| [syntheticdata/](syntheticdata/README.md) | Test data generation & upload |
 | [charts/](charts/README.md) | Architecture diagrams |
 | [zarf/](zarf/README.md) | Infrastructure configs |
 

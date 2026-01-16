@@ -53,6 +53,11 @@ help:
 	@echo "│ make ui-weaviate       Open Weaviate GraphQL Console                        │"
 	@echo "├── Docker Scaling ───────────────────────────────────────────────────────────┤"
 	@echo "│ make ray-scale N=3     Scale Ray workers to N replicas                      │"
+	@echo "├── Synthetic Data ───────────────────────────────────────────────────────────┤"
+	@echo "│ make syntheticdata-generate  Generate test documents from Moby Dick         │"
+	@echo "│ make syntheticdata-upload    Upload documents to MinIO                       │"
+	@echo "│ make syntheticdata-setup     Generate and upload in one step                 │"
+	@echo "│ make syntheticdata-clean     Remove generated documents                      │"
 	@echo "└─────────────────────────────────────────────────────────────────────────────┘"
 
 # =============================================================================
@@ -322,4 +327,37 @@ ui-ray:
 ui-weaviate:
 	@echo "Opening Weaviate GraphQL Console..."
 	@$(OPEN_CMD) http://localhost:8080/v1/graphql
+
+# =============================================================================
+# Synthetic Data Generation
+# =============================================================================
+
+# Default values for synthetic data generation
+COUNT ?= 1000
+CHUNK_SIZE ?= 500
+MINIO_ENDPOINT ?= http://localhost:9000
+
+.PHONY: syntheticdata-generate
+syntheticdata-generate:
+	@uv run python syntheticdata/synthetic_data.py generate \
+		--count $(COUNT) \
+		--chunk-size $(CHUNK_SIZE)
+
+.PHONY: syntheticdata-upload
+syntheticdata-upload:
+	@uv run python syntheticdata/synthetic_data.py upload \
+		--endpoint $(MINIO_ENDPOINT)
+
+.PHONY: syntheticdata-setup
+syntheticdata-setup:
+	@uv run python syntheticdata/synthetic_data.py setup \
+		--count $(COUNT) \
+		--chunk-size $(CHUNK_SIZE) \
+		--endpoint $(MINIO_ENDPOINT)
+
+.PHONY: syntheticdata-clean
+syntheticdata-clean:
+	@echo "Removing generated synthetic documents..."
+	@rm -rf syntheticdata/inputs
+	@echo "✅ Cleaned syntheticdata/inputs/"
 
