@@ -81,11 +81,25 @@ class RayProcessingConfig(ProcessingConfig):
 
     Attributes:
         rate_limit_rps: Requests per second for rate limiting.
-        max_concurrency: Maximum concurrent embedding requests.
+        max_concurrency: Maximum concurrent embedding requests (semaphore limit).
+        circuit_breaker_threshold: Failures before circuit breaker opens.
+        circuit_breaker_timeout: Seconds before circuit breaker recovery.
+        embedding_timeout: Timeout for embedding requests in seconds.
+        upsert_timeout: Timeout for vector DB upserts in seconds.
+        retry_max_attempts: Max retry attempts for transient failures.
+        retry_min_wait: Minimum wait between retries in seconds.
+        retry_max_wait: Maximum wait between retries in seconds.
     """
 
     rate_limit_rps: int = 5
     max_concurrency: int = 10
+    circuit_breaker_threshold: int = 5
+    circuit_breaker_timeout: int = 30
+    embedding_timeout: int = 120
+    upsert_timeout: int = 60
+    retry_max_attempts: int = 3
+    retry_min_wait: float = 1.0
+    retry_max_wait: float = 10.0
 
 
 # =============================================================================
@@ -277,7 +291,7 @@ def process_s3_object_ray(
     return (s3_key, False, "No result returned")
 
 
-@ray.remote(num_cpus=1, max_retries=3)
+@ray.remote
 def process_s3_batch_ray(
     s3_keys: list[str],
     s3_endpoint: str,
@@ -289,6 +303,15 @@ def process_s3_batch_ray(
     embed_batch_size: int = 8,
     qdrant_batch_size: int = 200,
     rate_limiter: Any | None = None,
+    # Configurable task parameters
+    pipeline_concurrency: int = 10,
+    circuit_breaker_threshold: int = 5,
+    circuit_breaker_timeout: int = 30,
+    embedding_timeout: int = 120,
+    upsert_timeout: int = 60,
+    retry_max_attempts: int = 3,
+    retry_min_wait: float = 1.0,
+    retry_max_wait: float = 10.0,
 ) -> list[tuple[str, bool, str]]:
     """Process a batch of S3 objects using Ray remote execution.
 
@@ -306,6 +329,14 @@ def process_s3_batch_ray(
         embed_batch_size: Batch size for embeddings.
         qdrant_batch_size: Batch size for Qdrant upserts.
         rate_limiter: Optional Ray actor for distributed rate limiting.
+        pipeline_concurrency: Max concurrent async operations within task.
+        circuit_breaker_threshold: Failures before circuit breaker opens.
+        circuit_breaker_timeout: Seconds before circuit breaker recovery.
+        embedding_timeout: Timeout for embedding requests in seconds.
+        upsert_timeout: Timeout for vector DB upserts in seconds.
+        retry_max_attempts: Max retry attempts for transient failures.
+        retry_min_wait: Minimum wait between retries in seconds.
+        retry_max_wait: Maximum wait between retries in seconds.
 
     Returns:
         List of tuples (s3_key, success, error_message).
@@ -326,6 +357,14 @@ def process_s3_batch_ray(
         embed_batch_size=embed_batch_size,
         upsert_batch_size=qdrant_batch_size,
         namespace=namespace,
+        max_concurrency=pipeline_concurrency,
+        circuit_breaker_threshold=circuit_breaker_threshold,
+        circuit_breaker_timeout=circuit_breaker_timeout,
+        embedding_timeout=embedding_timeout,
+        upsert_timeout=upsert_timeout,
+        retry_max_attempts=retry_max_attempts,
+        retry_min_wait=retry_min_wait,
+        retry_max_wait=retry_max_wait,
     )
 
     # Create rate limiter wrapper if actor provided

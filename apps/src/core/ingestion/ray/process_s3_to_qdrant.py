@@ -111,10 +111,8 @@ def main() -> None:
             job_logger.info("No new objects to process")
             return
 
-        # Determine batch size based on configuration
-        # For single-process mode (num_workers=0), use smaller batches
-        # For distributed mode, use larger batches
-        s3_batch_size = 100 if ray_cfg.num_workers > 0 else 50
+        # Use configured batch sizes
+        s3_batch_size = ray_cfg.s3_batch_size
         embed_batch_size = ray_cfg.embed_batch_max
         qdrant_batch_size = ray_cfg.batch_upsert_size
 
@@ -136,9 +134,15 @@ def main() -> None:
         # Split keys into batches for batch processing
         key_batches = [keys[i : i + s3_batch_size] for i in range(0, len(keys), s3_batch_size)]
 
+        # Configure task with dynamic options
+        task_fn = process_s3_batch_ray.options(
+            num_cpus=ray_cfg.task_num_cpus,
+            max_retries=ray_cfg.task_max_retries,
+        )
+
         # Submit batch processing tasks
         futures = [
-            process_s3_batch_ray.remote(
+            task_fn.remote(
                 s3_keys=batch,
                 s3_endpoint=minio_cfg.endpoint_url,
                 s3_access_key=minio_cfg.access_key_id,
@@ -149,6 +153,15 @@ def main() -> None:
                 embed_batch_size=embed_batch_size,
                 qdrant_batch_size=qdrant_batch_size,
                 rate_limiter=rate_limiter,
+                # Pass configurable resilience parameters
+                pipeline_concurrency=ray_cfg.pipeline_concurrency,
+                circuit_breaker_threshold=ray_cfg.circuit_breaker_threshold,
+                circuit_breaker_timeout=ray_cfg.circuit_breaker_timeout,
+                embedding_timeout=ray_cfg.embedding_timeout,
+                upsert_timeout=ray_cfg.upsert_timeout,
+                retry_max_attempts=ray_cfg.retry_max_attempts,
+                retry_min_wait=ray_cfg.retry_min_wait,
+                retry_max_wait=ray_cfg.retry_max_wait,
             )
             for batch in key_batches
         ]
@@ -157,9 +170,17 @@ def main() -> None:
         results: list[tuple[str, bool, str]] = []
         total_keys = len(keys)
         completed_keys = 0
+        wait_batch = ray_cfg.wait_batch_size
+        wait_timeout = ray_cfg.wait_timeout
+        log_interval = ray_cfg.progress_log_interval
+
         while futures:
             # Get results in batches
-            ready, not_ready = ray.wait(futures, num_returns=min(10, len(futures)), timeout=1.0)
+            ready, not_ready = ray.wait(
+                futures,
+                num_returns=min(wait_batch, len(futures)),
+                timeout=wait_timeout,
+            )
             futures = not_ready
             batch_results = ray.get(ready)
 
@@ -168,8 +189,8 @@ def main() -> None:
                 results.extend(batch_result)
                 completed_keys += len(batch_result)
 
-            # Log progress every 1000 keys or at completion
-            if completed_keys % 1000 == 0 or completed_keys == total_keys:
+            # Log progress at configured interval or at completion
+            if completed_keys % log_interval == 0 or completed_keys == total_keys:
                 job_logger.info(
                     "Processing progress",
                     extra={
