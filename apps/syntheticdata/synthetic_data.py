@@ -7,13 +7,13 @@ This module provides tools to:
 
 Usage:
     # Generate documents
-    python3 synthetic_data.py generate --count 1000 --chunk-size 500
+    uv run python synthetic_data.py generate --count 1000 --chunk-size 500
 
     # Upload to MinIO
-    python3 synthetic_data.py upload --endpoint http://localhost:9000
+    uv run python synthetic_data.py upload --endpoint http://localhost:9000
 
     # Generate and upload in one step
-    python3 synthetic_data.py setup --count 1000
+    uv run python synthetic_data.py setup --count 1000
 """
 
 from __future__ import annotations
@@ -36,13 +36,13 @@ try:
     from botocore.config import Config
     from botocore.exceptions import ClientError
 except ImportError:
-    print("❌ boto3 not installed. Install with: pip install boto3", file=sys.stderr)
+    print("❌ boto3 not installed. Install with: uv add boto3", file=sys.stderr)
     sys.exit(1)
 
 try:
     from tqdm import tqdm  # type: ignore[import-untyped]
 except ImportError:
-    print("❌ tqdm not installed. Install with: pip install tqdm", file=sys.stderr)
+    print("❌ tqdm not installed. Install with: uv add tqdm", file=sys.stderr)
     sys.exit(1)
 
 # Import retry logic from foundation
@@ -66,6 +66,12 @@ class DocumentGenerator:
 
     Splits source text into chunks and saves them as individual files.
     Useful for creating test data for ML pipelines.
+
+    Note:
+        This implementation is tailored for Project Gutenberg texts (e.g., Moby Dick)
+        and includes logic to strip Gutenberg-specific headers/footers. This is
+        intended for demo purposes; production use will likely require different
+        data sources (e.g., iNaturalist images).
 
     Attributes:
         source_file: Path to source text file (e.g., Moby Dick).
@@ -110,6 +116,10 @@ class DocumentGenerator:
 
         Returns:
             List of text chunks.
+
+        Note:
+            TODO: Consider using nltk.sent_tokenize() for more robust sentence
+            boundary detection. Skipped for now since we're moving to image data.
         """
         chunks = []
         current_pos = 0

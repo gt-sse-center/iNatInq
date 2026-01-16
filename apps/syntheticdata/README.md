@@ -58,7 +58,7 @@ The `synthetic_data.py` script provides three commands:
 ### Generate Documents
 
 ```bash
-python3 syntheticdata/synthetic_data.py generate --count 1000 --chunk-size 500
+uv run python syntheticdata/synthetic_data.py generate --count 1000 --chunk-size 500
 ```
 
 Options:
@@ -71,7 +71,7 @@ Options:
 ### Upload to MinIO
 
 ```bash
-python3 syntheticdata/synthetic_data.py upload --endpoint http://localhost:9000
+uv run python syntheticdata/synthetic_data.py upload --endpoint http://localhost:9000
 ```
 
 Options:
@@ -84,7 +84,7 @@ Options:
 ### All-in-One Setup
 
 ```bash
-python3 syntheticdata/synthetic_data.py setup --count 1000 --endpoint http://localhost:9000
+uv run python syntheticdata/synthetic_data.py setup --count 1000 --endpoint http://localhost:9000
 ```
 
 ## Classes
