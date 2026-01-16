@@ -174,13 +174,30 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
 
         Raises:
             ValueError: If Ollama config is missing or invalid.
+
+        Example:
+            ```python
+            from config import EmbeddingConfig
+            from clients.ollama import OllamaClient
+
+            config = EmbeddingConfig.from_env()
+            client = OllamaClient.from_config(config)
+            ```
         """
         cls._validate_config(config, "ollama", ["ollama_url", "ollama_model"])
 
         # Type narrowing: _validate_config ensures these are not None
         assert config.ollama_url is not None
         assert config.ollama_model is not None
-        client = cls(base_url=config.ollama_url, model=config.ollama_model)
+        client = cls(
+            base_url=config.ollama_url,
+            model=config.ollama_model,
+            timeout_s=getattr(config, "ollama_timeout", 60),
+            circuit_breaker_failure_threshold=getattr(config, "ollama_circuit_breaker_threshold", 5),
+            circuit_breaker_recovery_timeout_s=getattr(config, "ollama_circuit_breaker_timeout", 30),
+            batch_timeout_multiplier=getattr(config, "ollama_batch_timeout_multiplier", 1.0),
+            max_batch_size=getattr(config, "ollama_max_batch_size", 12),
+        )
         if session:
             client.set_session(session)
         return client
