@@ -175,6 +175,34 @@ make syntheticdata-setup COUNT=100 && \
 
 See [syntheticdata/README.md](syntheticdata/README.md) for more options.
 
+### Viewing Ray Worker Logs
+
+Ray jobs have two types of logs:
+
+| Log Type | Contains | Access Method |
+|----------|----------|---------------|
+| **Driver Logs** | Job orchestration, progress updates | Job Logs API, Dashboard |
+| **Worker Logs** | Task execution, circuit breaker events, errors | Worker log files |
+
+**Accessing worker logs by deployment:**
+
+| Deployment | Command |
+|------------|---------|
+| **Ray Dashboard** | Jobs → Select job → Logs tab → Worker logs |
+| **Local** | `cat /tmp/ray/session_latest/logs/worker-*.out` |
+| **Docker** | `docker exec ray-head bash -c 'cat /tmp/ray/session_latest/logs/worker-*.out'` |
+| **Kubernetes** | `kubectl logs <ray-worker-pod>` or Ray Dashboard |
+
+**Filtering for errors:**
+
+```bash
+# Docker: Find circuit breaker and upstream errors
+docker exec ray-head bash -c 'cat /tmp/ray/session_latest/logs/worker-*.out | grep -iE "(CIRCUIT_BREAKER|UPSTREAM_ERROR)"'
+
+# Local: Same pattern
+cat /tmp/ray/session_latest/logs/worker-*.out | grep -iE "(CIRCUIT_BREAKER|UPSTREAM_ERROR)"
+```
+
 ---
 
 ## Codebase Structure

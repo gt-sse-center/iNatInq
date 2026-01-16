@@ -9,6 +9,7 @@ with Spark implementation.
 import asyncio
 import logging
 import os
+import sys
 from typing import Any
 
 import attrs
@@ -28,7 +29,43 @@ from core.ingestion.interfaces import (
 )
 from foundation.rate_limiter import RateLimiter
 
-logger = logging.getLogger("pipeline.ray")
+
+def get_ray_logger(name: str = "ray.task") -> logging.Logger:
+    """Get a logger configured for Ray workers.
+
+    Uses Ray's recommended logging pattern that works across all deployments:
+    - Local development
+    - Docker Compose
+    - Kubernetes
+    - Ray clusters (Anyscale, etc.)
+
+    Ray automatically captures logs from workers and makes them accessible
+    via the dashboard and log files. Using the 'ray.*' logger namespace
+    ensures proper integration with Ray's logging infrastructure.
+
+    Args:
+        name: Logger name. Defaults to "ray.task".
+
+    Returns:
+        Configured logger instance.
+    """
+    ray_logger = logging.getLogger(name)
+    if not ray_logger.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
+        ray_logger.addHandler(handler)
+        ray_logger.setLevel(logging.INFO)
+        ray_logger.propagate = False  # Avoid duplicate logs
+    return ray_logger
+
+
+# Main logger for Ray tasks
+logger = get_ray_logger("ray.pipeline")
 
 
 # =============================================================================
@@ -240,7 +277,7 @@ def process_s3_object_ray(
     return (s3_key, False, "No result returned")
 
 
-@ray.remote
+@ray.remote(num_cpus=1, max_retries=3)
 def process_s3_batch_ray(
     s3_keys: list[str],
     s3_endpoint: str,
@@ -273,6 +310,10 @@ def process_s3_batch_ray(
     Returns:
         List of tuples (s3_key, success, error_message).
     """
+    # Use Ray's logger for proper integration across all deployments
+    task_logger = get_ray_logger("ray.task")
+    task_logger.info("Processing batch of %d keys", len(s3_keys))
+
     namespace = os.getenv("K8S_NAMESPACE", "ml-system")
 
     config = RayProcessingConfig(
@@ -295,6 +336,22 @@ def process_s3_batch_ray(
 
     pipeline = RayProcessingPipeline(config, local_rate_limiter)
     results = pipeline.process_keys_sync(s3_keys)
+
+    # Log results with structured info for observability
+    successes = sum(1 for r in results if r.success)
+    failures = len(results) - successes
+    task_logger.info(
+        "Batch complete: %d succeeded, %d failed",
+        successes,
+        failures,
+    )
+
+    # Log circuit breaker / upstream errors explicitly for visibility
+    for r in results:
+        if not r.success and "circuit breaker" in r.error.lower():
+            task_logger.warning("CIRCUIT_BREAKER_OPEN: %s - %s", r.s3_key, r.error)
+        elif not r.success and "upstream" in r.error.lower():
+            task_logger.warning("UPSTREAM_ERROR: %s - %s", r.s3_key, r.error)
 
     return [r.to_tuple() for r in results]
 
