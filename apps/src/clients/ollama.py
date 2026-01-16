@@ -56,26 +56,61 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         base_url: Base URL for the Ollama service (e.g., `http://ollama.ml-system:11434`).
         model: Ollama model name to use for embedding generation (e.g., `nomic-embed-text`).
         timeout_s: Request timeout in seconds (default: 60).
-        session: Optional requests.Session for connection pooling and retry logic.
-            If not provided, a new session with retry logic will be created.
+        batch_timeout_multiplier: Multiplier for batch timeout calculation. The batch
+            timeout is `timeout_s * batch_timeout_multiplier * len(texts)`. Default: 1.0.
+        circuit_breaker_failure_threshold: Number of consecutive failures before circuit
+            opens. Lower values fail faster (good for critical path). Default: 5.
+        circuit_breaker_recovery_timeout_s: Seconds to wait before attempting recovery
+            after circuit opens. Default: 30.
+        max_batch_size: Maximum texts per batch request. Ollama quality may degrade
+            above 16. Set to None for unlimited. Default: 12.
+        vector_size_override: Override auto-detected vector size. Use for custom models
+            not in the known model map. Default: None (auto-detect).
 
     Example:
         ```python
+        # Basic usage
         client = OllamaClient(
             base_url="http://ollama.ml-system:11434",
             model="nomic-embed-text"
         )
         vector = client.embed("hello world")
         # Returns: [0.1, 0.2, 0.3, ...]  # 768 floats
+
+        # With custom configuration
+        client = OllamaClient(
+            base_url="http://ollama.ml-system:11434",
+            model="custom-embed-model",
+            timeout_s=120,
+            max_batch_size=8,
+            vector_size_override=1024,
+            circuit_breaker_failure_threshold=3,  # Fail faster
+        )
         ```
 
     Note:
         This class is not frozen to allow session reuse and connection pooling.
     """
 
+    # Required parameters
     base_url: str
     model: str
+
+    # Timeout configuration
     timeout_s: int = attrs.field(default=60)
+    batch_timeout_multiplier: float = attrs.field(default=1.0)
+
+    # Circuit breaker configuration
+    circuit_breaker_failure_threshold: int = attrs.field(default=5)
+    circuit_breaker_recovery_timeout_s: int = attrs.field(default=30)
+
+    # Batch configuration
+    max_batch_size: int | None = attrs.field(default=12)
+
+    # Vector size configuration
+    vector_size_override: int | None = attrs.field(default=None)
+
+    # Private attributes
     _session: requests.Session | None = attrs.field(init=False, default=None)
     _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
     _async_breaker: aiobreaker.CircuitBreaker = attrs.field(init=False)
@@ -83,12 +118,16 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
     def _circuit_breaker_config(self) -> tuple[str, int, int]:
         """Return circuit breaker configuration for Ollama.
 
-        Ollama is on critical path (blocks user requests), so fail fast.
+        Uses instance configuration for failure threshold and recovery timeout.
 
         Returns:
             Tuple of (name, failure_threshold, recovery_timeout).
         """
-        return ("ollama", 5, 30)
+        return (
+            "ollama",
+            self.circuit_breaker_failure_threshold,
+            self.circuit_breaker_recovery_timeout_s,
+        )
 
     def __attrs_post_init__(self) -> None:
         """Initialize the requests session and circuit breakers."""
@@ -146,28 +185,58 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
             client.set_session(session)
         return client
 
+    @staticmethod
+    def _get_model_vector_sizes() -> dict[str, int]:
+        """Return known model vector sizes for auto-detection.
+
+        Note:
+            Some models like qwen3-embedding come in multiple sizes with
+            different dimensions. Use vector_size_override for variants
+            not listed here.
+        """
+        return {
+            # Nomic models
+            "nomic-embed-text": 768,
+            "nomic-embed-text-v1.5": 768,
+            # MiniLM models
+            "all-minilm": 384,
+            "all-minilm:l6-v2": 384,
+            "all-minilm:l12-v2": 384,
+            # MixedBread models
+            "mxbai-embed-large": 1024,
+            # Snowflake models
+            "snowflake-arctic-embed": 1024,
+            "snowflake-arctic-embed:s": 384,
+            "snowflake-arctic-embed:m": 768,
+            "snowflake-arctic-embed:l": 1024,
+            # Google EmbeddingGemma
+            "embeddinggemma": 768,
+            "embeddinggemma:2b": 768,
+            # Qwen3 Embedding models (default to largest common size)
+            "qwen3-embedding": 1024,
+            "qwen3-embedding:0.6b": 1024,
+            "qwen3-embedding:4b": 1024,
+            "qwen3-embedding:8b": 1024,
+        }
+
     @property
     def vector_size(self) -> int:
         """Return the dimension of vectors produced by this provider.
 
         Returns:
-            Vector dimension. Defaults to 768 for nomic-embed-text, but can
-            be overridden for other models.
+            Vector dimension. Uses vector_size_override if set, otherwise
+            looks up the model in known model sizes, defaulting to 768.
 
         Note:
             The vector size is determined by the model. Common values:
             - nomic-embed-text: 768
             - all-minilm: 384
-            - Custom models may vary
+            - mxbai-embed-large: 1024
+            - Custom models: use vector_size_override
         """
-        # Default to 768 for nomic-embed-text (most common)
-        # This could be made configurable or detected from first embedding
-        model_vector_sizes: dict[str, int] = {
-            "nomic-embed-text": 768,
-            "all-minilm": 384,
-            "nomic-embed-text-v1.5": 768,
-        }
-        return model_vector_sizes.get(self.model, 768)
+        if self.vector_size_override is not None:
+            return self.vector_size_override
+        return self._get_model_vector_sizes().get(self.model, 768)
 
     @with_circuit_breaker("ollama")
     def embed(self, text: str) -> list[float]:
@@ -248,11 +317,16 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         if not texts:
             raise ValueError("texts list cannot be empty")
 
+        # Enforce max batch size if configured
+        if self.max_batch_size is not None and len(texts) > self.max_batch_size:
+            msg = f"Batch size {len(texts)} exceeds max_batch_size {self.max_batch_size}"
+            raise ValueError(msg)
+
         # Try batch API first (Ollama 0.3.4+)
         url = f"{self.base_url.rstrip('/')}/api/embed"  # Note: /api/embed not /api/embeddings
 
-        # Scale timeout based on batch size
-        batch_timeout = self.timeout_s * max(1, len(texts))
+        # Scale timeout based on batch size and multiplier
+        batch_timeout = self.timeout_s * self.batch_timeout_multiplier * max(1, len(texts))
 
         try:
             resp = self.session.post(
@@ -379,10 +453,15 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         if not texts:
             raise ValueError("texts list cannot be empty")
 
+        # Enforce max batch size if configured
+        if self.max_batch_size is not None and len(texts) > self.max_batch_size:
+            msg = f"Batch size {len(texts)} exceeds max_batch_size {self.max_batch_size}"
+            raise ValueError(msg)
+
         url = f"{self.base_url.rstrip('/')}/api/embed"
 
-        # Scale timeout based on batch size
-        batch_timeout = self.timeout_s * max(1, len(texts))
+        # Scale timeout based on batch size and multiplier
+        batch_timeout = self.timeout_s * self.batch_timeout_multiplier * max(1, len(texts))
 
         try:
             async with httpx.AsyncClient(timeout=batch_timeout) as client:

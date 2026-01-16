@@ -110,6 +110,72 @@ class TestOllamaClientInit:
         assert client._async_breaker.name == "ollama"
         assert client._async_breaker.fail_max == 5
 
+    def test_creates_client_with_custom_circuit_breaker_config(self) -> None:
+        """Test that client accepts custom circuit breaker configuration.
+
+        **Why this test is important:**
+          - Different deployments need different failure tolerance
+          - Critical path vs background jobs may need different thresholds
+          - Validates configurable resilience parameters
+
+        **What it tests:**
+          - Custom failure threshold is applied to both breakers
+          - Custom recovery timeout is applied to both breakers
+        """
+        client = OllamaClient(
+            base_url="http://ollama.example.com:11434",
+            model="test-model",
+            circuit_breaker_failure_threshold=3,
+            circuit_breaker_recovery_timeout_s=60,
+        )
+
+        assert client._breaker.fail_max == 3
+        assert client._breaker.reset_timeout == 60
+        assert client._async_breaker.fail_max == 3
+
+    def test_creates_client_with_batch_config(self) -> None:
+        """Test that client accepts batch configuration.
+
+        **Why this test is important:**
+          - Batch size limits prevent quality degradation
+          - Timeout multiplier allows tuning for different models
+          - Critical for production performance tuning
+
+        **What it tests:**
+          - max_batch_size is stored correctly
+          - batch_timeout_multiplier is stored correctly
+        """
+        client = OllamaClient(
+            base_url="http://ollama.example.com:11434",
+            model="test-model",
+            max_batch_size=8,
+            batch_timeout_multiplier=2.0,
+        )
+
+        assert client.max_batch_size == 8
+        assert client.batch_timeout_multiplier == 2.0
+
+    def test_creates_client_with_vector_size_override(self) -> None:
+        """Test that client accepts vector size override.
+
+        **Why this test is important:**
+          - Custom/fine-tuned models may have non-standard dimensions
+          - Override allows using models not in the known model map
+          - Critical for extensibility
+
+        **What it tests:**
+          - vector_size_override is stored correctly
+          - vector_size property returns override value
+        """
+        client = OllamaClient(
+            base_url="http://ollama.example.com:11434",
+            model="custom-model",
+            vector_size_override=1024,
+        )
+
+        assert client.vector_size_override == 1024
+        assert client.vector_size == 1024
+
     def test_from_config_creates_client(self) -> None:
         """Test that from_config factory creates client correctly.
 
@@ -403,6 +469,60 @@ class TestOllamaClientEmbedBatch:
         """
         with pytest.raises(ValueError, match="texts list cannot be empty"):
             ollama_client.embed_batch([])
+
+    def test_embed_batch_raises_value_error_on_exceeding_max_batch_size(self) -> None:
+        """Test that embed_batch raises ValueError when exceeding max_batch_size.
+
+        **Why this test is important:**
+          - Batch size limits prevent quality degradation
+          - Large batches can cause OOM or slow responses
+          - Critical for production reliability
+
+        **What it tests:**
+          - Batch exceeding max_batch_size raises ValueError
+          - Error message includes both actual and max size
+        """
+        client = OllamaClient(
+            base_url="http://ollama.example.com:11434",
+            model="test-model",
+            max_batch_size=5,
+        )
+
+        texts = ["text"] * 10  # 10 texts exceeds max of 5
+        with pytest.raises(ValueError, match="exceeds max_batch_size"):
+            client.embed_batch(texts)
+
+    def test_embed_batch_allows_unlimited_when_max_batch_size_none(
+        self, ollama_client: OllamaClient, mock_session: MagicMock
+    ) -> None:
+        """Test that embed_batch allows any size when max_batch_size is None.
+
+        **Why this test is important:**
+          - Some use cases need unlimited batch sizes
+          - None value should disable the limit
+          - Critical for flexibility
+
+        **What it tests:**
+          - Large batch is accepted when max_batch_size=None
+          - No ValueError is raised
+        """
+        # Create client with no batch limit
+        client = OllamaClient(
+            base_url="http://ollama.example.com:11434",
+            model="test-model",
+            max_batch_size=None,
+        )
+        client.set_session(mock_session)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"embeddings": [[0.1]] * 20}
+        mock_session.post.return_value = mock_response
+
+        texts = ["text"] * 20  # Large batch
+        result = client.embed_batch(texts)
+
+        assert len(result) == 20
 
     def test_embed_batch_scales_timeout_by_batch_size(
         self, ollama_client: OllamaClient, mock_session: MagicMock
