@@ -754,6 +754,9 @@ class RayJobConfig(BaseModel):
         ray_address: Ray cluster address. If set, connects to external
             cluster. Auto-detected in K8s if K8S_NAMESPACE is set.
             Default: None.
+        dashboard_address: Ray dashboard HTTP address for job submission.
+            Used by JobSubmissionClient. Auto-detected based on environment
+            if not explicitly set.
         runtime_env: Runtime environment configuration (packages, env
             vars). Default: empty dict.
         ollama_max_concurrency: Maximum concurrent Ollama requests per
@@ -779,6 +782,7 @@ class RayJobConfig(BaseModel):
     head_memory: int = 1_000_000_000  # 1GB
     ray_namespace: str = "ml-pipeline"
     ray_address: str | None = None
+    dashboard_address: str | None = None
     runtime_env: dict[str, Any] = Field(default_factory=dict)
     ollama_max_concurrency: int = 10
     ollama_requests_per_second: int = 5
@@ -795,24 +799,41 @@ class RayJobConfig(BaseModel):
         """Create RayJobConfig from environment variables.
 
         Args:
-            namespace: Kubernetes namespace (unused).
+            namespace: Kubernetes namespace for constructing default addresses.
 
         Returns:
             Configured RayJobConfig instance.
+
+        Environment Variables:
+            RAY_ADDRESS: Ray client address (e.g., ray://ray-head:20001).
+            RAY_DASHBOARD_ADDRESS: Ray dashboard HTTP address for job submission
+                (e.g., http://ray-head:8265). If not set, auto-detected from
+                K8S_NAMESPACE or defaults to http://localhost:8265.
+            K8S_NAMESPACE: Used for auto-detecting addresses when in Kubernetes.
         """
         # Get Ray address from env, default to external cluster in K8s
         ray_address = os.environ.get("RAY_ADDRESS")
-        if ray_address is None:
-            k8s_namespace = os.environ.get("K8S_NAMESPACE")
-            if not k8s_namespace:
-                raise ValueError(
-                    "RAY_ADDRESS is required. Set RAY_ADDRESS environment "
-                    "variable or K8S_NAMESPACE to connect to external Ray "
-                    "cluster. Local Ray execution is not supported."
-                )
-            # Auto-detect: if in K8s and RAY_ADDRESS not set, use
-            # external cluster
+        k8s_namespace = os.environ.get("K8S_NAMESPACE")
+
+        if ray_address is None and k8s_namespace:
+            # Auto-detect: if in K8s and RAY_ADDRESS not set, use external cluster
             ray_address = f"ray://ray-head.{k8s_namespace}.svc.cluster.local:10001"
+
+        # Get dashboard address - this is what JobSubmissionClient needs
+        dashboard_address = os.environ.get("RAY_DASHBOARD_ADDRESS")
+        if dashboard_address is None:
+            if k8s_namespace:
+                # In Kubernetes, use service DNS
+                dashboard_address = f"http://ray-head.{k8s_namespace}:8265"
+            elif _is_in_cluster():
+                # Fallback for in-cluster without K8S_NAMESPACE
+                dashboard_address = "http://ray-head:8265"
+            # Local development (Docker Compose uses service name)
+            # Check if PIPELINE_ENV suggests we're in Docker Compose
+            elif os.environ.get("PIPELINE_ENV") == "local":
+                dashboard_address = "http://ray-head:8265"
+            else:
+                dashboard_address = "http://localhost:8265"
 
         return cls(
             num_workers=int(os.getenv("RAY_NUM_WORKERS", "0")),
@@ -822,6 +843,7 @@ class RayJobConfig(BaseModel):
             head_memory=int(os.getenv("RAY_HEAD_MEMORY", "200000000")),
             ray_namespace=os.getenv("RAY_NAMESPACE", "ml-pipeline"),
             ray_address=ray_address,
+            dashboard_address=dashboard_address,
             runtime_env={},  # Can be extended to load from env
             ollama_max_concurrency=int(os.getenv("RAY_OLLAMA_MAX_CONCURRENCY", "10")),
             ollama_requests_per_second=int(os.getenv("RAY_OLLAMA_RPS", "5")),

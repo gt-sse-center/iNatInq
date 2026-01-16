@@ -27,7 +27,8 @@ help:
 	@echo "│ make docker-restart    Restart all services                                 │"
 	@echo "│ make docker-logs       Tail logs for all services                           │"
 	@echo "│ make docker-ps         Show running containers                              │"
-	@echo "│ make docker-build      Build pipeline image                                 │"
+	@echo "│ make docker-build-base Build base image (heavy deps, run once)              │"
+	@echo "│ make docker-build      Build pipeline image (fast after base)               │"
 	@echo "│ make docker-rebuild    Rebuild and restart pipeline                         │"
 	@echo "│ make docker-clean      Stop services and remove volumes                     │"
 	@echo "│ make docker-health     Check health of all services                         │"
@@ -145,14 +146,29 @@ docker-logs:
 docker-ps:
 	$(DOCKER_COMPOSE) ps
 
+.PHONY: docker-build-base
+docker-build-base:
+	@echo "Building pipeline base image (heavy dependencies)..."
+	@echo "This may take 5-10 minutes on first build..."
+	docker build -f zarf/docker/base/Dockerfile.pipeline-base -t inatinq/pipeline-base:0.1.0 .
+	@echo "✅ Base image built: inatinq/pipeline-base:0.1.0"
+
 .PHONY: docker-build
 docker-build:
 	@echo "Building pipeline image..."
+	@docker image inspect inatinq/pipeline-base:0.1.0 >/dev/null 2>&1 || { \
+		echo "⚠️  Base image not found. Building it first..."; \
+		$(MAKE) docker-build-base; \
+	}
 	$(DOCKER_COMPOSE) build pipeline
 
 .PHONY: docker-rebuild
 docker-rebuild:
 	@echo "Rebuilding and restarting pipeline..."
+	@docker image inspect inatinq/pipeline-base:0.1.0 >/dev/null 2>&1 || { \
+		echo "⚠️  Base image not found. Building it first..."; \
+		$(MAKE) docker-build-base; \
+	}
 	$(DOCKER_COMPOSE) up -d --build pipeline
 
 .PHONY: docker-clean

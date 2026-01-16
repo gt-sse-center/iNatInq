@@ -33,7 +33,7 @@ FastAPI automatically generates OpenAPI/Swagger documentation at:
 - `/openapi.json`: OpenAPI schema JSON
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Annotated
 
 from api import models
@@ -465,7 +465,7 @@ async def submit_ray_job(req: models.RayJobRequest) -> models.RayJobResponse:
             namespace=namespace,
             s3_prefix=req.s3_prefix,
             collection=req.collection,
-            submitted_at=datetime.now(UTC).isoformat(),
+            submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
         )
     except Exception as e:
         raise PipelineError(f"Failed to submit Ray job: {e!s}") from e

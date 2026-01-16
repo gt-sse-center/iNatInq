@@ -163,7 +163,7 @@ services:
   # Ray Head - Distributed Computing (Head Node)
   # ---------------------------------------------------------------------------
   ray-head:
-    image: rayproject/ray:2.53.0-py311
+    image: rayproject/ray:2.53.0-py310
     container_name: ray-head
     ports:
       - "8265:8265"   # Dashboard
@@ -178,6 +178,10 @@ services:
     shm_size: "2gb"
     environment:
       RAY_DISABLE_DOCKER_CPU_WARNING: "1"
+      PYTHONPATH: /app/src
+    volumes:
+      # Mount pipeline source code so Ray jobs can access it
+      - ../../../src:/app/src:ro
     healthcheck:
       test: ["CMD", "ray", "status"]
       interval: 30s
@@ -191,7 +195,7 @@ services:
   # Ray Worker - Distributed Computing (Worker Node)
   # ---------------------------------------------------------------------------
   ray-worker:
-    image: rayproject/ray:2.53.0-py311
+    image: rayproject/ray:2.53.0-py310
     container_name: ray-worker
     command: >
       ray start
@@ -203,6 +207,10 @@ services:
         condition: service_healthy
     environment:
       RAY_DISABLE_DOCKER_CPU_WARNING: "1"
+      PYTHONPATH: /app/src
+    volumes:
+      # Mount pipeline source code so Ray jobs can access it
+      - ../../../src:/app/src:ro
     deploy:
       replicas: 1
     networks:

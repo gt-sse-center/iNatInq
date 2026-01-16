@@ -1,0 +1,42 @@
+# =============================================================================
+# Pipeline Base Image - Heavy Dependencies
+# =============================================================================
+# This base image includes Python 3.11, Ray, and other heavy dependencies
+# that change infrequently. Using a pre-built base image speeds up builds
+# by only rebuilding application code changes.
+#
+# Build: docker build -f zarf/docker/base/Dockerfile.pipeline-base -t inatinq/pipeline-base:0.1.0 .
+# Usage: FROM inatinq/pipeline-base:0.1.0
+
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+# Install uv for fast dependency management
+RUN pip install --no-cache-dir uv
+
+# Install heavy Python dependencies that rarely change
+# These are cached in the base image to speed up builds
+RUN --mount=type=cache,target=/root/.cache/pip \
+    uv pip install --system \
+    "ray[default]>=2.40.0" \
+    "pyspark>=3.5.0" \
+    "qdrant-client>=1.15.1" \
+    "weaviate-client>=4.9.3" \
+    "boto3>=1.35.0" \
+    "requests>=2.31"
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash appuser
+
