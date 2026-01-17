@@ -81,11 +81,16 @@ make down
 | Qdrant Dashboard | <http://localhost:6333/dashboard> |
 | Ray Dashboard | <http://localhost:8265> |
 
-### Using Cloud Vector Databases (Optional)
+### Using External Services (Optional)
 
-To use cloud-hosted vector databases instead of local Docker:
+To use external/cloud-hosted services instead of local Docker containers:
 
 ```bash
+# External Ollama (embedding service)
+export OLLAMA_BASE_URL=http://your-ollama-host:11434
+export OLLAMA_MODEL=nomic-embed-text  # or your preferred model
+make docker-up
+
 # Qdrant Cloud (https://cloud.qdrant.io/)
 export QDRANT_URL=https://your-cluster.region.cloud.qdrant.io
 export QDRANT_API_KEY=your-api-key
