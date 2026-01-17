@@ -86,6 +86,11 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
         grpc_host: Optional gRPC host for Weaviate Cloud (e.g.,
             `grpc-xxx.region.weaviate.cloud`). If not provided, defaults
             to the HTTP host with port 50051.
+        timeout_s: Request timeout in seconds. Default: 300.
+        circuit_breaker_threshold: Number of failures before circuit opens.
+            Default: 3.
+        circuit_breaker_timeout: Seconds before circuit breaker recovery.
+            Default: 60.
 
     Note:
         This class uses WeaviateAsyncClient internally but provides a sync
@@ -96,6 +101,9 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
     url: str
     api_key: str | None = None
     grpc_host: str | None = None
+    timeout_s: int = attrs.field(default=300)
+    circuit_breaker_threshold: int = attrs.field(default=3)
+    circuit_breaker_timeout: int = attrs.field(default=60)
     _client: WeaviateAsyncClient = attrs.field(init=False, default=None)
     _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
 
@@ -107,7 +115,11 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
         Returns:
             Tuple of (name, failure_threshold, recovery_timeout).
         """
-        return ("weaviate", 3, 60)
+        return (
+            "weaviate",
+            self.circuit_breaker_threshold,
+            self.circuit_breaker_timeout,
+        )
 
     def __attrs_post_init__(self) -> None:
         """Initialize the Weaviate async client and circuit breaker after attrs construction."""
@@ -179,6 +191,9 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             url=config.weaviate_url,
             api_key=config.weaviate_api_key,
             grpc_host=config.weaviate_grpc_host,
+            timeout_s=config.weaviate_timeout,
+            circuit_breaker_threshold=config.weaviate_circuit_breaker_threshold,
+            circuit_breaker_timeout=config.weaviate_circuit_breaker_timeout,
         )
 
     async def ensure_collection_async(self, *, collection: str, vector_size: int) -> None:

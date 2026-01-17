@@ -42,6 +42,7 @@ help:
 	@echo "│ make logs-qdrant       Tail qdrant logs                                     │"
 	@echo "│ make logs-ray          Tail ray-head logs                                   │"
 	@echo "│ make logs-minio        Tail minio logs                                      │"
+	@echo "│ make logs-weaviate     Tail weaviate logs                                  │"
 	@echo "├── Docker Shell Access ──────────────────────────────────────────────────────┤"
 	@echo "│ make shell-pipeline    Shell into pipeline container                        │"
 	@echo "│ make shell-ollama      Shell into ollama container                          │"
@@ -54,7 +55,7 @@ help:
 	@echo "│ make ui-minio          Open MinIO Console                                   │"
 	@echo "│ make ui-qdrant         Open Qdrant Dashboard                                │"
 	@echo "│ make ui-ray            Open Ray Dashboard                                   │"
-	@echo "│ make ui-weaviate       Open Weaviate GraphQL Console                        │"
+	@echo "│ make ui-weaviate       Open Weaviate Console                                 │"
 	@echo "├── Docker Scaling ───────────────────────────────────────────────────────────┤"
 	@echo "│ make ray-scale N=3     Scale Ray workers to N replicas                      │"
 	@echo "├── Synthetic Data ───────────────────────────────────────────────────────────┤"
@@ -158,12 +159,13 @@ docker-up:
 	@echo "✅ Services started!"
 	@echo ""
 	@echo "📝 Service endpoints:"
-	@echo "   Pipeline API:    http://localhost:8000"
-	@echo "   Pipeline Docs:   http://localhost:8000/docs"
-	@echo "   MinIO Console:   http://localhost:9001"
+	@echo "   Pipeline API:     http://localhost:8000"
+	@echo "   Pipeline Docs:    http://localhost:8000/docs"
+	@echo "   MinIO Console:    http://localhost:9001"
 	@echo "   Qdrant Dashboard: http://localhost:6333/dashboard"
-	@echo "   Ray Dashboard:   http://localhost:8265"
-	@echo "   Ollama:          http://localhost:11434"
+	@echo "   Weaviate Console: http://localhost:8081"
+	@echo "   Ray Dashboard:    http://localhost:8265"
+	@echo "   Ollama:           http://localhost:11434"
 
 .PHONY: docker-down
 docker-down:
@@ -237,8 +239,8 @@ docker-health:
 	@echo "   Pipeline Docs:    http://localhost:8000/docs"
 	@echo "   MinIO Console:    http://localhost:9001 (minioadmin/minioadmin)"
 	@echo "   Qdrant Dashboard: http://localhost:6333/dashboard"
+	@echo "   Weaviate Console: http://localhost:8081"
 	@echo "   Ray Dashboard:    http://localhost:8265"
-	@echo "   Weaviate:         http://localhost:8080"
 	@echo "   Ollama:           http://localhost:11434"
 
 # =============================================================================
@@ -264,6 +266,10 @@ logs-ray:
 .PHONY: logs-minio
 logs-minio:
 	$(DOCKER_COMPOSE) logs -f minio
+
+.PHONY: logs-weaviate
+logs-weaviate:
+	$(DOCKER_COMPOSE) logs -f weaviate
 
 # =============================================================================
 # Docker Scaling
@@ -326,7 +332,7 @@ else
 endif
 
 .PHONY: ui-all
-ui-all: ui-pipeline ui-minio ui-qdrant ui-ray
+ui-all: ui-pipeline ui-minio ui-qdrant ui-ray ui-weaviate
 	@echo "✅ All UIs opened in browser"
 
 .PHONY: ui-pipeline
@@ -352,8 +358,8 @@ ui-ray:
 
 .PHONY: ui-weaviate
 ui-weaviate:
-	@echo "Opening Weaviate GraphQL Console..."
-	@$(OPEN_CMD) http://localhost:8080/v1/graphql
+	@echo "Opening Weaviate Console..."
+	@$(OPEN_CMD) http://localhost:8081
 
 # =============================================================================
 # Synthetic Data Generation

@@ -4,13 +4,14 @@
 # Emulates the Kubernetes ml-system namespace for local development.
 #
 # Services:
-#   - minio:      S3-compatible object storage (MinIO)
-#   - qdrant:     Vector database (primary)
-#   - weaviate:   Vector database (alternative)
-#   - ollama:     Embedding service (local LLM)
-#   - ray-head:   Ray cluster head node
-#   - ray-worker: Ray cluster worker node(s)
-#   - pipeline:   FastAPI pipeline service
+#   - minio:            S3-compatible object storage (MinIO)
+#   - qdrant:           Vector database (primary)
+#   - weaviate:         Vector database (alternative)
+#   - weaviate-console: Weaviate Web UI
+#   - ollama:           Embedding service (local LLM)
+#   - ray-head:         Ray cluster head node
+#   - ray-worker:       Ray cluster worker node(s)
+#   - pipeline:         FastAPI pipeline service
 #
 # Usage:
 #   docker compose -f zarf/compose/dev/docker-compose.yaml up -d
@@ -24,6 +25,7 @@
 #   - 6333: Qdrant HTTP API
 #   - 6334: Qdrant gRPC API
 #   - 8080: Weaviate HTTP API
+#   - 8081: Weaviate Console
 #   - 11434: Ollama API
 #   - 8265: Ray Dashboard
 #   - 10001: Ray Client
@@ -118,6 +120,19 @@ services:
       timeout: 10s
       retries: 5
       start_period: 10s
+    networks:
+      - ml-network
+
+  # Weaviate Console - Web UI for Weaviate
+  weaviate-console:
+    image: semitechnologies/weaviate-console:latest
+    container_name: weaviate-console
+    ports:
+      - "8081:80"
+    environment:
+      WEAVIATE_API_URL: http://weaviate:8080
+    depends_on:
+      - weaviate
     networks:
       - ml-network
 

@@ -524,6 +524,11 @@ class VectorDBConfig(BaseModel):
             if not set.
         weaviate_api_key: Weaviate API key. Optional, for authenticated
             instances.
+        weaviate_timeout: Weaviate request timeout in seconds. Default: 300.
+        weaviate_circuit_breaker_threshold: Failures before circuit opens.
+            Default: 3.
+        weaviate_circuit_breaker_timeout: Circuit recovery timeout in seconds.
+            Default: 60.
         pinecone_api_key: Pinecone API key. Required if
             provider_type="pinecone".
         pinecone_environment: Pinecone environment/region.
@@ -548,6 +553,9 @@ class VectorDBConfig(BaseModel):
     weaviate_url: str | None = None
     weaviate_api_key: str | None = None
     weaviate_grpc_host: str | None = None
+    weaviate_timeout: int = 300
+    weaviate_circuit_breaker_threshold: int = 3
+    weaviate_circuit_breaker_timeout: int = 60
 
     # Pinecone settings
     pinecone_api_key: str | None = None
@@ -611,6 +619,9 @@ class VectorDBConfig(BaseModel):
                 weaviate_url=os.getenv("WEAVIATE_URL", default_url),
                 weaviate_api_key=os.getenv("WEAVIATE_API_KEY"),
                 weaviate_grpc_host=os.getenv("WEAVIATE_GRPC_HOST"),
+                weaviate_timeout=int(os.getenv("WEAVIATE_TIMEOUT", "300")),
+                weaviate_circuit_breaker_threshold=int(os.getenv("WEAVIATE_CIRCUIT_BREAKER_THRESHOLD", "3")),
+                weaviate_circuit_breaker_timeout=int(os.getenv("WEAVIATE_CIRCUIT_BREAKER_TIMEOUT", "60")),
             )
 
         if provider_type == "pinecone":
@@ -681,6 +692,9 @@ class VectorDBConfig(BaseModel):
                 weaviate_url=os.getenv("WEAVIATE_URL", default_url),
                 weaviate_api_key=os.getenv("WEAVIATE_API_KEY"),
                 weaviate_grpc_host=os.getenv("WEAVIATE_GRPC_HOST"),
+                weaviate_timeout=int(os.getenv("WEAVIATE_TIMEOUT", "300")),
+                weaviate_circuit_breaker_threshold=int(os.getenv("WEAVIATE_CIRCUIT_BREAKER_THRESHOLD", "3")),
+                weaviate_circuit_breaker_timeout=int(os.getenv("WEAVIATE_CIRCUIT_BREAKER_TIMEOUT", "60")),
             )
 
         if provider_type == "pinecone":
