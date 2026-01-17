@@ -116,10 +116,15 @@ def main() -> None:
         embed_batch_size = ray_cfg.embed_batch_max
         qdrant_batch_size = ray_cfg.batch_upsert_size
 
+        total_keys = len(keys)
+        num_batches = len(range(0, total_keys, s3_batch_size))
         job_logger.info(
-            "Starting batch processing",
+            "Starting batch processing: %d documents in %d batches",
+            total_keys,
+            num_batches,
             extra={
-                "total_keys": len(keys),
+                "total_keys": total_keys,
+                "num_batches": num_batches,
                 "num_workers": ray_cfg.num_workers,
                 "s3_batch_size": s3_batch_size,
                 "embed_batch_size": embed_batch_size,
@@ -170,9 +175,12 @@ def main() -> None:
         results: list[tuple[str, bool, str]] = []
         total_keys = len(keys)
         completed_keys = 0
+        last_logged_count = 0
+        last_log_time = time.time()
         wait_batch = ray_cfg.wait_batch_size
         wait_timeout = ray_cfg.wait_timeout
         log_interval = ray_cfg.progress_log_interval
+        time_log_interval = 10.0  # Log every 10 seconds even if no progress
 
         while futures:
             # Get results in batches
@@ -189,16 +197,39 @@ def main() -> None:
                 results.extend(batch_result)
                 completed_keys += len(batch_result)
 
-            # Log progress at configured interval or at completion
-            if completed_keys % log_interval == 0 or completed_keys == total_keys:
+            # Log progress based on count or time
+            now = time.time()
+            progress_since_last_log = completed_keys - last_logged_count
+            time_since_last_log = now - last_log_time
+            should_log = (
+                progress_since_last_log >= log_interval
+                or completed_keys == total_keys
+                or time_since_last_log >= time_log_interval
+            )
+            if should_log:
+                pct = round(100 * completed_keys / total_keys, 1)
+                elapsed = round(now - start, 1)
+                rate = round(completed_keys / elapsed, 1) if elapsed > 0 else 0
+                pending = len(futures)
                 job_logger.info(
-                    "Processing progress",
+                    "Progress: %d/%d (%.1f%%) - %.1fs, %.1f docs/s, %d pending",
+                    completed_keys,
+                    total_keys,
+                    pct,
+                    elapsed,
+                    rate,
+                    pending,
                     extra={
                         "completed": completed_keys,
                         "total": total_keys,
-                        "percent": round(100 * completed_keys / total_keys, 1),
+                        "percent": pct,
+                        "elapsed_seconds": elapsed,
+                        "docs_per_second": rate,
+                        "pending_tasks": pending,
                     },
                 )
+                last_logged_count = completed_keys
+                last_log_time = now
 
         # Calculate statistics
         success = sum(1 for _, ok, _ in results if ok)
@@ -210,19 +241,24 @@ def main() -> None:
             checkpoint_manager.save(checkpoint_path, processed)
 
         elapsed = round(time.time() - start, 2)
+        rate = round(len(results) / elapsed, 2) if elapsed > 0 else 0
         job_logger.info(
-            "Ray job complete",
+            "Ray job complete: %d successful, %d failed in %.2fs (%.2f docs/s)",
+            success,
+            failed,
+            elapsed,
+            rate,
             extra={
                 "successful": success,
                 "failed": failed,
                 "total": len(results),
                 "elapsed_seconds": elapsed,
-                "rate_per_sec": round(len(results) / elapsed, 2) if elapsed > 0 else 0,
+                "rate_per_sec": rate,
             },
         )
 
     except Exception as e:
-        job_logger.error("Unexpected error in Ray job", extra={"error": str(e)}, exc_info=True)
+        job_logger.error("Unexpected error in Ray job: %s", e, extra={"error": str(e)}, exc_info=True)
         raise
     finally:
         shutdown_ray_cluster()

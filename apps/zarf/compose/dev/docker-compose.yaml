@@ -1,5 +1,6 @@
 # =============================================================================
-# ML Pipeline Development Stack - Docker Compose
+# ML Pipeline Development Stack — Optimized for E2E + Ray + Ollama
+# Target host resources: ~10 CPUs / ~14.6 GiB RAM (Docker Desktop)
 # =============================================================================
 # Emulates the Kubernetes ml-system namespace for local development.
 #
@@ -34,7 +35,7 @@ name: inatinq-ml-stack
 
 services:
   # ---------------------------------------------------------------------------
-  # MinIO - S3-compatible Object Storage
+  # MinIO — S3-compatible Object Storage
   # ---------------------------------------------------------------------------
   minio:
     image: minio/minio:latest
@@ -48,15 +49,21 @@ services:
       MINIO_ROOT_PASSWORD: minioadmin
     volumes:
       - minio-data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512m
+        reservations:
+          cpus: "0.25"
+          memory: 256m
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
       timeout: 20s
       retries: 3
-    networks:
-      - ml-network
+    networks: [ml-network]
 
-  # MinIO initialization - creates the pipeline bucket
   minio-init:
     image: minio/mc:latest
     container_name: minio-init
@@ -65,17 +72,14 @@ services:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 minioadmin minioadmin;
-      mc mb local/pipeline --ignore-existing;
-      mc anonymous set public local/pipeline;
-      echo 'MinIO bucket pipeline created successfully';
-      exit 0;
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb local/pipeline --ignore-existing &&
+      mc anonymous set public local/pipeline
       "
-    networks:
-      - ml-network
+    networks: [ml-network]
 
   # ---------------------------------------------------------------------------
-  # Qdrant - Vector Database (Primary)
+  # Qdrant — Primary Vector DB
   # ---------------------------------------------------------------------------
   qdrant:
     image: qdrant/qdrant:v1.12.4
@@ -87,18 +91,23 @@ services:
       - qdrant-data:/qdrant/storage
     environment:
       QDRANT__SERVICE__GRPC_PORT: 6334
-    # Qdrant image doesn't have curl/wget, using simple process check
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+        reservations:
+          cpus: "0.5"
+          memory: 512m
     healthcheck:
       test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/localhost/6333' || exit 1"]
       interval: 10s
       timeout: 10s
       retries: 5
-      start_period: 10s
-    networks:
-      - ml-network
+    networks: [ml-network]
 
   # ---------------------------------------------------------------------------
-  # Weaviate - Vector Database (Alternative)
+  # Weaviate — Secondary Vector DB
   # ---------------------------------------------------------------------------
   weaviate:
     image: semitechnologies/weaviate:1.27.0
@@ -108,20 +117,25 @@ services:
     environment:
       QUERY_DEFAULTS_LIMIT: 25
       AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
-      PERSISTENCE_DATA_PATH: /var/lib/weaviate
       DEFAULT_VECTORIZER_MODULE: none
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
       CLUSTER_HOSTNAME: node1
     volumes:
       - weaviate-data:/var/lib/weaviate
-    # Weaviate image may not have curl, using wget
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+        reservations:
+          cpus: "0.5"
+          memory: 512m
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/v1/.well-known/ready || exit 1"]
       interval: 10s
       timeout: 10s
       retries: 5
-      start_period: 10s
-    networks:
-      - ml-network
+    networks: [ml-network]
 
   # Weaviate Console - Web UI for Weaviate
   weaviate-console:
@@ -137,7 +151,7 @@ services:
       - ml-network
 
   # ---------------------------------------------------------------------------
-  # Ollama - Embedding Service (Local LLM)
+  # Ollama — Embedding Model Service
   # ---------------------------------------------------------------------------
   ollama:
     image: ollama/ollama:latest
@@ -146,16 +160,21 @@ services:
       - "11434:11434"
     volumes:
       - ollama-models:/root/.ollama
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4g
+        reservations:
+          cpus: "1.0"
+          memory: 2g
     healthcheck:
       test: ["CMD-SHELL", "ollama list || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 30s
-    networks:
-      - ml-network
+    networks: [ml-network]
 
-  # Ollama model initialization - pulls the embedding model
   ollama-init:
     image: ollama/ollama:latest
     container_name: ollama-init
@@ -163,58 +182,62 @@ services:
       ollama:
         condition: service_healthy
     entrypoint: >
-      /bin/sh -c "
-      echo 'Pulling nomic-embed-text model...';
-      ollama pull nomic-embed-text;
-      echo 'Model pulled successfully';
-      exit 0;
-      "
+      /bin/sh -c "ollama pull nomic-embed-text"
     environment:
       OLLAMA_HOST: http://ollama:11434
-    networks:
-      - ml-network
+    networks: [ml-network]
 
   # ---------------------------------------------------------------------------
-  # Ray Head - Distributed Computing (Head Node)
+  # Ray Head — Control Plane
   # ---------------------------------------------------------------------------
   ray-head:
-    image: rayproject/ray:2.53.0-py310
+    image: rayproject/ray:2.53.0-py311
     container_name: ray-head
     ports:
-      - "8265:8265"   # Dashboard
-      - "20001:20001" # Client port (outside Ray worker port range 10002-19999)
-      - "6379:6379"   # Redis/GCS
+      - "8265:8265"
+      - "20001:20001"
+      - "6379:6379"
     command: >
       ray start --head
       --dashboard-host=0.0.0.0
+      --num-cpus=0
+      --object-store-memory=134217728
       --port=6379
       --ray-client-server-port=20001
       --block
-    shm_size: "2gb"
+    shm_size: "1gb"
     environment:
       RAY_DISABLE_DOCKER_CPU_WARNING: "1"
+      RAY_memory_usage_threshold: "0.98"
       PYTHONPATH: /app/src
     volumes:
-      # Mount pipeline source code so Ray jobs can access it
       - ../../../src:/app/src:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 5g
+        reservations:
+          cpus: "1.0"
+          memory: 3g
     healthcheck:
       test: ["CMD", "ray", "status"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
-    networks:
-      - ml-network
+    networks: [ml-network]
 
   # ---------------------------------------------------------------------------
-  # Ray Worker - Distributed Computing (Worker Node)
+  # Ray Worker — Data Plane
   # ---------------------------------------------------------------------------
   ray-worker:
-    image: rayproject/ray:2.53.0-py310
+    image: rayproject/ray:2.53.0-py311
     container_name: ray-worker
     command: >
       ray start
       --address=ray-head:6379
+      --num-cpus=4
+      --object-store-memory=1073741824
       --block
     shm_size: "2gb"
     depends_on:
@@ -222,17 +245,22 @@ services:
         condition: service_healthy
     environment:
       RAY_DISABLE_DOCKER_CPU_WARNING: "1"
+      RAY_memory_usage_threshold: "0.98"
       PYTHONPATH: /app/src
     volumes:
-      # Mount pipeline source code so Ray jobs can access it
       - ../../../src:/app/src:ro
     deploy:
-      replicas: 1
-    networks:
-      - ml-network
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 7g
+        reservations:
+          cpus: "2.0"
+          memory: 4g
+    networks: [ml-network]
 
   # ---------------------------------------------------------------------------
-  # Pipeline - FastAPI Service
+  # Pipeline — FastAPI Orchestrator
   # ---------------------------------------------------------------------------
   pipeline:
     build:
@@ -256,48 +284,35 @@ services:
       - WEAVIATE_API_KEY=${WEAVIATE_API_KEY:-}
       - WEAVIATE_GRPC_HOST=${WEAVIATE_GRPC_HOST:-}
     depends_on:
-      minio:
-        condition: service_healthy
-      qdrant:
-        condition: service_healthy
-      weaviate:
-        condition: service_healthy
-      ollama:
-        condition: service_healthy
-      ray-head:
-        condition: service_healthy
+      minio: { condition: service_healthy }
+      qdrant: { condition: service_healthy }
+      weaviate: { condition: service_healthy }
+      ollama: { condition: service_healthy }
+      ray-head: { condition: service_healthy }
     volumes:
       - pipeline-data:/data
-      # Mount source for development hot-reload (optional)
-      # - ../../../src:/app/src:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512m
+        reservations:
+          cpus: "0.25"
+          memory: 256m
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 10s
-    networks:
-      - ml-network
+    networks: [ml-network]
 
-# =============================================================================
-# Volumes
-# =============================================================================
 volumes:
   minio-data:
-    driver: local
   qdrant-data:
-    driver: local
   weaviate-data:
-    driver: local
   ollama-models:
-    driver: local
   pipeline-data:
-    driver: local
 
-# =============================================================================
-# Networks
-# =============================================================================
 networks:
   ml-network:
     driver: bridge
-
