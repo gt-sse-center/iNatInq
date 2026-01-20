@@ -18,9 +18,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import sys
+import time
 from pathlib import Path
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 
 def _add_repo_src_to_path() -> None:
@@ -52,7 +56,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--collection",
         default=None,
-        help="Collection name (defaults to smoke_<random>).",
+        help="Collection name (defaults to smoke_<random>; auto-cleaned if omitted).",
     )
     # Input text to embed; useful for quick variation or debugging.
     parser.add_argument(
@@ -110,23 +114,129 @@ def _print_provider_env() -> None:
     """Print provider-related env vars, masking secrets."""
     import os
 
-    print("External provider config from environment:")
-    print(f"  OLLAMA_BASE_URL={os.getenv('OLLAMA_BASE_URL', '')}")
-    print(f"  OLLAMA_MODEL={os.getenv('OLLAMA_MODEL', '')}")
-    print(f"  VECTOR_DB_PROVIDER={os.getenv('VECTOR_DB_PROVIDER', '')}")
-    print(f"  QDRANT_URL={os.getenv('QDRANT_URL', '')}")
-    print(f"  QDRANT_API_KEY={_mask_secret(os.getenv('QDRANT_API_KEY'))}")
-    print(f"  WEAVIATE_URL={os.getenv('WEAVIATE_URL', '')}")
-    print(f"  WEAVIATE_GRPC_HOST={os.getenv('WEAVIATE_GRPC_HOST', '')}")
-    print(f"  WEAVIATE_API_KEY={_mask_secret(os.getenv('WEAVIATE_API_KEY'))}")
+    logger.info("External provider config from environment:")
+    logger.info("  OLLAMA_BASE_URL=%s", os.getenv("OLLAMA_BASE_URL", ""))
+    logger.info("  OLLAMA_MODEL=%s", os.getenv("OLLAMA_MODEL", ""))
+    logger.info("  VECTOR_DB_PROVIDER=%s", os.getenv("VECTOR_DB_PROVIDER", ""))
+    logger.info("  QDRANT_URL=%s", os.getenv("QDRANT_URL", ""))
+    logger.info("  QDRANT_API_KEY=%s", _mask_secret(os.getenv("QDRANT_API_KEY")))
+    logger.info("  WEAVIATE_URL=%s", os.getenv("WEAVIATE_URL", ""))
+    logger.info("  WEAVIATE_GRPC_HOST=%s", os.getenv("WEAVIATE_GRPC_HOST", ""))
+    logger.info("  WEAVIATE_API_KEY=%s", _mask_secret(os.getenv("WEAVIATE_API_KEY")))
+
+
+def _configure_logging() -> None:
+    """Configure logging for the smoke test script."""
+    logging.basicConfig(level=logging.INFO, format="[smoke-providers] %(message)s")
 
 
 def _debug(msg: str) -> None:
     """Lightweight debug logger for step-by-step output."""
-    print(f"[smoke] {msg}")
+    logger.info("%s", msg)
 
 
-async def _run_smoke_test(provider_type: str, collection: str, text: str) -> int:
+def _weaviate_collection_candidates(collection: str) -> tuple[str, ...]:
+    """Return candidate class names to delete in Weaviate."""
+    if not collection:
+        return (collection,)
+    normalized = collection[0].upper() + collection[1:]
+    if normalized == collection:
+        return (collection,)
+    return (collection, normalized)
+
+
+def _delete_weaviate_collection_rest(url: str | None, api_key: str | None, collection: str) -> None:
+    """Delete a Weaviate collection via REST, avoiding gRPC init checks."""
+    if not url:
+        raise RuntimeError("Weaviate URL unavailable for REST cleanup")
+    import requests
+
+    headers: dict[str, str] = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    base_url = url.rstrip("/")
+    last_status = None
+    for attempt in range(1, 4):
+        for name in _weaviate_collection_candidates(collection):
+            resp = requests.delete(
+                f"{base_url}/v1/schema/{name}",
+                headers=headers,
+                timeout=10,
+            )
+            last_status = resp.status_code
+            if resp.status_code in (200, 204, 404):
+                return
+        if attempt < 3:
+            time.sleep(0.5)
+    raise RuntimeError(f"Weaviate REST delete failed with status={last_status}")
+
+
+async def _cleanup_collection(provider_type: str, vector_db: object, collection: str) -> None:
+    """Best-effort cleanup for smoke test collections."""
+    try:
+        if provider_type == "qdrant":
+            qdrant_client = vector_db.client
+            if qdrant_client is None:
+                _debug("Cleanup skipped: Qdrant client unavailable")
+                return
+            _debug(f"Cleaning up collection={collection}")
+            await qdrant_client.delete_collection(collection_name=collection)
+            _debug("Cleanup completed")
+            return
+        if provider_type == "weaviate":
+            import os
+
+            _debug(f"Cleaning up collection={collection} via REST")
+            _delete_weaviate_collection_rest(
+                vector_db.url or os.getenv("WEAVIATE_URL"),
+                vector_db.api_key or os.getenv("WEAVIATE_API_KEY"),
+                collection,
+            )
+            _debug("Cleanup completed via REST")
+            return
+        _debug(f"Cleanup skipped: unsupported provider_type={provider_type}")
+    except Exception as exc:
+        _debug(f"Cleanup failed for collection={collection}: {exc}")
+
+
+async def _wait_for_collection(
+    provider_type: str,
+    vector_db: object,
+    collection: str,
+    timeout_s: float = 30.0,
+    interval_s: float = 0.5,
+) -> None:
+    """Wait until the collection is visible to the provider."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if provider_type == "qdrant":
+            qdrant_client = vector_db.client
+            if qdrant_client is None:
+                break
+            collections = await qdrant_client.get_collections()
+            existing = {c.name for c in collections.collections}
+            if collection in existing:
+                return
+        elif provider_type == "weaviate":
+            weaviate_client = vector_db.client
+            if weaviate_client is None:
+                break
+            async with weaviate_client:
+                if await weaviate_client.collections.exists(collection):
+                    return
+        else:
+            break
+        await asyncio.sleep(interval_s)
+    raise RuntimeError(f"Collection not ready after {timeout_s:.1f}s: {collection}")
+
+
+async def _run_smoke_test(
+    provider_type: str,
+    collection: str,
+    text: str,
+    cleanup: bool,
+) -> int:
     """Execute the smoke test steps in an async flow."""
     from clients.interfaces.embedding import create_embedding_provider
     from clients.interfaces.vector_db import create_vector_db_provider
@@ -168,43 +278,61 @@ async def _run_smoke_test(provider_type: str, collection: str, text: str) -> int
         _debug(f"Weaviate URL: {vector_cfg.weaviate_url}")
         _debug(f"Weaviate gRPC host: {vector_cfg.weaviate_grpc_host or ''}")
     # Instantiate the vector DB provider.
-    vector_db = create_vector_db_provider(vector_cfg)
+    if provider_type == "weaviate":
+        from clients.weaviate import WeaviateClientWrapper
+
+        if vector_cfg.weaviate_url is None:
+            raise RuntimeError("Weaviate URL is not configured.")
+        _debug("Weaviate skip_init_checks enabled")
+        vector_db = WeaviateClientWrapper(
+            url=vector_cfg.weaviate_url,
+            api_key=vector_cfg.weaviate_api_key,
+            grpc_host=vector_cfg.weaviate_grpc_host,
+            skip_init_checks=True,
+        )
+    else:
+        vector_db = create_vector_db_provider(vector_cfg)
     # Build provider-specific points for upsert.
     points = _build_points(provider_type, text, vector)
 
-    # Upsert the test point (ensures the collection exists as needed).
-    _debug(f"Upserting 1 point into collection={collection}")
-    await vector_db.batch_upsert_async(
-        collection=collection,
-        points=points,
-        vector_size=vector_size,
-    )
-    _debug("Upsert completed")
-    # Search with the same vector to confirm the DB returns results.
-    _debug(f"Searching collection={collection} with limit=1")
-    results = await vector_db.search_async(
-        collection=collection,
-        query_vector=vector,
-        limit=1,
-    )
-    _debug(f"Search completed with total={results.total}")
+    try:
+        # Upsert the test point (ensures the collection exists as needed).
+        _debug(f"Upserting 1 point into collection={collection}")
+        await vector_db.batch_upsert_async(
+            collection=collection,
+            points=points,
+            vector_size=vector_size,
+        )
+        _debug("Upsert completed")
+        _debug(f"Waiting for collection={collection} to be ready")
+        await _wait_for_collection(provider_type, vector_db, collection)
+        _debug("Collection is ready")
+        # Search with the same vector to confirm the DB returns results.
+        _debug(f"Searching collection={collection} with limit=1")
+        results = await vector_db.search_async(
+            collection=collection,
+            query_vector=vector,
+            limit=1,
+        )
+        _debug(f"Search completed with total={results.total}")
 
-    # Print a compact summary for humans and CI logs.
-    print(
-        "provider:",
-        provider_type,
-        "collection:",
-        collection,
-        "vector_size:",
-        vector_size,
-        "results:",
-        results.total,
-    )
-    return 0
+        # Print a compact summary for humans and CI logs.
+        logger.info(
+            "provider: %s collection: %s vector_size: %s results: %s",
+            provider_type,
+            collection,
+            vector_size,
+            results.total,
+        )
+        return 0
+    finally:
+        if cleanup:
+            await _cleanup_collection(provider_type, vector_db, collection)
 
 
 def main() -> int:
     """Entry point for CLI execution."""
+    _configure_logging()
     # Ensure repo modules can be imported without installation.
     _add_repo_src_to_path()
     # Read CLI arguments.
@@ -216,6 +344,7 @@ def main() -> int:
     provider_type = args.provider
     # Create a unique collection if none is provided.
     collection = args.collection or f"smoke_{uuid4().hex[:8]}"
+    cleanup = args.collection is None
     # Text to embed and store.
     text = args.text
 
@@ -226,7 +355,7 @@ def main() -> int:
         provider_type = get_settings().vector_db.provider_type
 
     # Run the async smoke test and return its exit code.
-    return asyncio.run(_run_smoke_test(provider_type, collection, text))
+    return asyncio.run(_run_smoke_test(provider_type, collection, text, cleanup))
 
 
 if __name__ == "__main__":
