@@ -159,6 +159,10 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
         _client_instance = WeaviateAsyncClient(
             connection_params=connection_params,
             auth_client_secret=auth_config,
+            # Skip gRPC health checks to avoid connectivity issues from Docker
+            # to external Weaviate Cloud. The health check can fail due to
+            # firewall rules or network latency from containerized environments.
+            skip_init_checks=True,
         )
 
         self._client = _client_instance
