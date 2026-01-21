@@ -19,20 +19,25 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
+import requests
+
 logger = logging.getLogger(__name__)
+_IMPORTS = None
 
 
-def _add_repo_src_to_path() -> None:
-    """Ensure repo src/ is importable when running from the workspace root.
+def _init_repo_imports() -> None:
+    """Ensure repo modules are importable and load them once."""
+    global _IMPORTS
+    if _IMPORTS is not None:
+        return
 
-    This script lives under zarf/scripts/, so we add the repo's src/ directory
-    to sys.path to import application modules without requiring installation.
-    """
     # Resolve the repo root by walking up from this file:
     # zarf/scripts/smoke_providers.py -> repo root (parents[2]).
     repo_root = Path(__file__).resolve().parents[2]
@@ -41,6 +46,22 @@ def _add_repo_src_to_path() -> None:
     # Only insert if missing to avoid duplicating paths.
     if str(src_path) not in sys.path:
         sys.path.insert(0, str(src_path))
+
+    from clients.interfaces.embedding import create_embedding_provider
+    from clients.interfaces.vector_db import create_vector_db_provider
+    from clients.weaviate import WeaviateClientWrapper, WeaviateDataObject
+    from config import VectorDBConfig, get_settings
+    from core.models import VectorPoint
+
+    _IMPORTS = SimpleNamespace(
+        create_embedding_provider=create_embedding_provider,
+        create_vector_db_provider=create_vector_db_provider,
+        VectorDBConfig=VectorDBConfig,
+        get_settings=get_settings,
+        WeaviateClientWrapper=WeaviateClientWrapper,
+        WeaviateDataObject=WeaviateDataObject,
+        VectorPoint=VectorPoint,
+    )
 
 
 def _parse_args() -> argparse.Namespace:
@@ -74,10 +95,11 @@ def _build_points(provider_type: str, text: str, vector: list[float]):
     """
     # Weaviate expects objects with explicit UUIDs and property dictionaries.
     if provider_type == "weaviate":
-        from clients.weaviate import WeaviateDataObject
+        _init_repo_imports()
+        assert _IMPORTS is not None
 
         return [
-            WeaviateDataObject(
+            _IMPORTS.WeaviateDataObject(
                 # UUID is required by Weaviate; we generate a fresh one for test data.
                 uuid=str(uuid4()),
                 # Store the raw text in properties for easy inspection later.
@@ -87,10 +109,11 @@ def _build_points(provider_type: str, text: str, vector: list[float]):
             )
         ]
 
-    from core.models import VectorPoint
+    _init_repo_imports()
+    assert _IMPORTS is not None
 
     return [
-        VectorPoint(
+        _IMPORTS.VectorPoint(
             # Qdrant allows string IDs; we generate a unique one for test data.
             id=str(uuid4()),
             # Vector payload uses the embedding directly.
@@ -112,8 +135,6 @@ def _mask_secret(value: str | None) -> str:
 
 def _print_provider_env() -> None:
     """Print provider-related env vars, masking secrets."""
-    import os
-
     logger.info("External provider config from environment:")
     logger.info("  OLLAMA_BASE_URL=%s", os.getenv("OLLAMA_BASE_URL", ""))
     logger.info("  OLLAMA_MODEL=%s", os.getenv("OLLAMA_MODEL", ""))
@@ -130,11 +151,6 @@ def _configure_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="[smoke-providers] %(message)s")
 
 
-def _debug(msg: str) -> None:
-    """Lightweight debug logger for step-by-step output."""
-    logger.info("%s", msg)
-
-
 def _weaviate_collection_candidates(collection: str) -> tuple[str, ...]:
     """Return candidate class names to delete in Weaviate."""
     if not collection:
@@ -149,7 +165,6 @@ def _delete_weaviate_collection_rest(url: str | None, api_key: str | None, colle
     """Delete a Weaviate collection via REST, avoiding gRPC init checks."""
     if not url:
         raise RuntimeError("Weaviate URL unavailable for REST cleanup")
-    import requests
 
     headers: dict[str, str] = {}
     if api_key:
@@ -178,26 +193,24 @@ async def _cleanup_collection(provider_type: str, vector_db: object, collection:
         if provider_type == "qdrant":
             qdrant_client = vector_db.client
             if qdrant_client is None:
-                _debug("Cleanup skipped: Qdrant client unavailable")
+                logger.info("Cleanup skipped: Qdrant client unavailable")
                 return
-            _debug(f"Cleaning up collection={collection}")
+            logger.info("Cleaning up collection=%s", collection)
             await qdrant_client.delete_collection(collection_name=collection)
-            _debug("Cleanup completed")
+            logger.info("Cleanup completed")
             return
         if provider_type == "weaviate":
-            import os
-
-            _debug(f"Cleaning up collection={collection} via REST")
+            logger.info("Cleaning up collection=%s via REST", collection)
             _delete_weaviate_collection_rest(
                 vector_db.url or os.getenv("WEAVIATE_URL"),
                 vector_db.api_key or os.getenv("WEAVIATE_API_KEY"),
                 collection,
             )
-            _debug("Cleanup completed via REST")
+            logger.info("Cleanup completed via REST")
             return
-        _debug(f"Cleanup skipped: unsupported provider_type={provider_type}")
+        logger.info("Cleanup skipped: unsupported provider_type=%s", provider_type)
     except Exception as exc:
-        _debug(f"Cleanup failed for collection={collection}: {exc}")
+        logger.info("Cleanup failed for collection=%s: %s", collection, exc)
 
 
 async def _wait_for_collection(
@@ -238,24 +251,29 @@ async def _run_smoke_test(
     cleanup: bool,
 ) -> int:
     """Execute the smoke test steps in an async flow."""
-    from clients.interfaces.embedding import create_embedding_provider
-    from clients.interfaces.vector_db import create_vector_db_provider
-    from config import VectorDBConfig, get_settings
+    _init_repo_imports()
+    assert _IMPORTS is not None
 
     # Load settings from environment (e.g., .env.local or compose env).
-    settings = get_settings()
+    settings = _IMPORTS.get_settings()
     _print_provider_env()
-    _debug(f"Using embedding provider: {settings.embedding.provider_type}")
+    logger.info("Using embedding provider: %s", settings.embedding.provider_type)
     # Build the embedding provider using configured settings.
-    embedder = create_embedding_provider(settings.embedding)
+    embedder = _IMPORTS.create_embedding_provider(settings.embedding)
 
     # Generate the embedding vector for the supplied text.
-    _debug("Requesting embedding from provider")
-    vector = embedder.embed(text)
+    logger.info("Requesting embedding from provider")
+    try:
+        vector = embedder.embed(text)
+    except Exception as exc:
+        provider_name = settings.embedding.provider_type
+        raise RuntimeError(
+            f"Embedding request failed for provider={provider_name}"
+        ) from exc
     vector_size = len(vector)
     if not vector_size:
         raise RuntimeError("Embedding provider returned an empty vector.")
-    _debug(f"Embedding returned with vector_size={vector_size}")
+    logger.info("Embedding returned with vector_size=%s", vector_size)
 
     # Restrict to providers supported by the compose/dev setup.
     if provider_type not in ("qdrant", "weaviate"):
@@ -266,55 +284,53 @@ async def _run_smoke_test(
     if provider_type == settings.vector_db.provider_type:
         vector_cfg = settings.vector_db
     else:
-        vector_cfg = VectorDBConfig.from_env_for_provider(
+        vector_cfg = _IMPORTS.VectorDBConfig.from_env_for_provider(
             provider_type=provider_type,
             namespace=settings.k8s_namespace,
         )
 
-    _debug(f"Using vector DB provider: {provider_type}")
+    logger.info("Using vector DB provider: %s", provider_type)
     if provider_type == "qdrant":
-        _debug(f"Qdrant URL: {vector_cfg.qdrant_url}")
+        logger.info("Qdrant URL: %s", vector_cfg.qdrant_url)
     if provider_type == "weaviate":
-        _debug(f"Weaviate URL: {vector_cfg.weaviate_url}")
-        _debug(f"Weaviate gRPC host: {vector_cfg.weaviate_grpc_host or ''}")
+        logger.info("Weaviate URL: %s", vector_cfg.weaviate_url)
+        logger.info("Weaviate gRPC host: %s", vector_cfg.weaviate_grpc_host or "")
     # Instantiate the vector DB provider.
     if provider_type == "weaviate":
-        from clients.weaviate import WeaviateClientWrapper
-
         if vector_cfg.weaviate_url is None:
             raise RuntimeError("Weaviate URL is not configured.")
-        _debug("Weaviate skip_init_checks enabled")
-        vector_db = WeaviateClientWrapper(
+        logger.info("Weaviate skip_init_checks enabled")
+        vector_db = _IMPORTS.WeaviateClientWrapper(
             url=vector_cfg.weaviate_url,
             api_key=vector_cfg.weaviate_api_key,
             grpc_host=vector_cfg.weaviate_grpc_host,
             skip_init_checks=True,
         )
     else:
-        vector_db = create_vector_db_provider(vector_cfg)
+        vector_db = _IMPORTS.create_vector_db_provider(vector_cfg)
     # Build provider-specific points for upsert.
     points = _build_points(provider_type, text, vector)
 
     try:
         # Upsert the test point (ensures the collection exists as needed).
-        _debug(f"Upserting 1 point into collection={collection}")
+        logger.info("Upserting 1 point into collection=%s", collection)
         await vector_db.batch_upsert_async(
             collection=collection,
             points=points,
             vector_size=vector_size,
         )
-        _debug("Upsert completed")
-        _debug(f"Waiting for collection={collection} to be ready")
+        logger.info("Upsert completed")
+        logger.info("Waiting for collection=%s to be ready", collection)
         await _wait_for_collection(provider_type, vector_db, collection)
-        _debug("Collection is ready")
+        logger.info("Collection is ready")
         # Search with the same vector to confirm the DB returns results.
-        _debug(f"Searching collection={collection} with limit=1")
+        logger.info("Searching collection=%s with limit=1", collection)
         results = await vector_db.search_async(
             collection=collection,
             query_vector=vector,
             limit=1,
         )
-        _debug(f"Search completed with total={results.total}")
+        logger.info("Search completed with total=%s", results.total)
 
         # Print a compact summary for humans and CI logs.
         logger.info(
@@ -333,8 +349,7 @@ async def _run_smoke_test(
 def main() -> int:
     """Entry point for CLI execution."""
     _configure_logging()
-    # Ensure repo modules can be imported without installation.
-    _add_repo_src_to_path()
+    _init_repo_imports()
     # Read CLI arguments.
     args = _parse_args()
 
@@ -349,10 +364,10 @@ def main() -> int:
     text = args.text
 
     if provider_type is None:
-        from config import get_settings
+        assert _IMPORTS is not None
 
         # Default to the configured provider when no override is given.
-        provider_type = get_settings().vector_db.provider_type
+        provider_type = _IMPORTS.get_settings().vector_db.provider_type
 
     # Run the async smoke test and return its exit code.
     return asyncio.run(_run_smoke_test(provider_type, collection, text, cleanup))
