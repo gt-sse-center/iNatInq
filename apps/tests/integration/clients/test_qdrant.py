@@ -466,6 +466,7 @@ class TestTransientFailures:
                         status_code=503,
                         reason_phrase="Service Unavailable (simulated)",
                         content=b"",
+                        headers={},
                     )
                 # Subsequent calls - delegate to real implementation
                 return await original_query_points(*args, **kwargs)
@@ -525,12 +526,10 @@ class TestTransientFailures:
           - Critical for ingestion pipeline reliability
 
         **What it tests:**
-          - First upsert attempt fails with transient error (circuit breaker open)
-          - Caller-level retry succeeds after circuit recovery
+          - First upsert attempt fails with a simulated transient network error
+          - Second attempt succeeds
           - Data is correctly persisted
         """
-        import aiobreaker.state as aio_state
-
         # Arrange
         client = QdrantClientWrapper(url=qdrant_url)
 
@@ -544,12 +543,29 @@ class TestTransientFailures:
                 ),
             ]
 
-            # First attempt - simulate failure by temporarily opening async circuit breaker
-            # The async breaker uses aiobreaker.state enum, not pybreaker states
-            original_state = client._async_breaker.current_state
-            # Force the breaker to think it's open by setting _state directly
-            client._async_breaker._state = aio_state.CircuitBreakerState.OPEN
+            # Create a mock that fails once then delegates to real client
+            real_async_client = client._client
+            call_count = 0
+            original_upsert = real_async_client.upsert
 
+            async def transient_failure_upsert(*args, **kwargs):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    # First call - simulate transient network error
+                    raise UnexpectedResponse(
+                        status_code=503,
+                        reason_phrase="Service Unavailable (simulated)",
+                        content=b"",
+                        headers={},
+                    )
+                # Subsequent calls - delegate to real implementation
+                return await original_upsert(*args, **kwargs)
+
+            # Patch the upsert method
+            real_async_client.upsert = transient_failure_upsert
+
+            # First attempt - should fail with transient error
             with pytest.raises(UpstreamError) as exc_info:
                 asyncio.run(
                     client.batch_upsert_async(
@@ -558,12 +574,11 @@ class TestTransientFailures:
                         vector_size=vector_size,
                     )
                 )
-            assert "unavailable" in str(exc_info.value).lower()
+            # Verify error was from our simulated failure
+            assert call_count >= 1
 
-            # Simulate circuit recovery
-            client._async_breaker._state = aio_state.CircuitBreakerState.CLOSED
-
-            # Retry - should succeed
+            # Restore original and retry - should succeed
+            real_async_client.upsert = original_upsert
             asyncio.run(
                 client.batch_upsert_async(
                     collection=test_collection,

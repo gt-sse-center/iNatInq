@@ -406,3 +406,148 @@ syntheticdata-clean:
 	@echo "Removing generated synthetic documents..."
 	@rm -rf syntheticdata/inputs
 	@echo "✅ Cleaned syntheticdata/inputs/"
+
+# =============================================================================
+# Ray Job Operations
+# =============================================================================
+
+S3_PREFIX ?= inputs/
+COLLECTION ?= documents
+
+.PHONY: ray-job-submit
+ray-job-submit:
+	@echo "Submitting Ray job to process S3 prefix: $(S3_PREFIX)"
+	@curl -sf -X POST "http://localhost:8000/ray/jobs" \
+		-H "Content-Type: application/json" \
+		-d '{"s3_prefix": "$(S3_PREFIX)", "collection": "$(COLLECTION)"}' | python3 -c "import sys, json; d=json.load(sys.stdin); print('Job ID:', d.get('job_id', 'N/A'))"
+
+.PHONY: ray-job-status
+ray-job-status:
+	@echo "Fetching Ray job status..."
+	@curl -sf "http://localhost:8265/api/jobs/" 2>/dev/null | python3 -c "import sys, json; jobs=json.load(sys.stdin); \
+		[print(f\"{j.get('job_id', 'N/A')[:20]}: {j.get('status', 'unknown')}\") for j in jobs[:5]]" 2>/dev/null || echo "No jobs found or Ray unavailable"
+
+.PHONY: ray-job-logs
+ray-job-logs:
+	@JOB_ID=$$(curl -sf "http://localhost:8265/api/jobs/" 2>/dev/null | python3 -c "import sys, json; jobs=json.load(sys.stdin); print(jobs[0]['job_id'] if jobs else '')" 2>/dev/null); \
+	if [ -n "$$JOB_ID" ]; then \
+		echo "Latest job logs ($$JOB_ID):"; \
+		curl -sf "http://localhost:8265/api/jobs/$$JOB_ID/logs" 2>/dev/null | python3 -c "import sys, json; print(json.load(sys.stdin).get('logs', '')[-3000:])" 2>/dev/null; \
+	else \
+		echo "No jobs found"; \
+	fi
+
+# =============================================================================
+# Document Counts
+# =============================================================================
+
+.PHONY: count-qdrant
+count-qdrant:
+	@echo "Counting documents in Qdrant collection '$(COLLECTION)'..."
+	@curl -sf "http://localhost:6333/collections/$(COLLECTION)" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); print('Qdrant documents:', d.get('result', {}).get('points_count', 0))" 2>/dev/null || echo "Qdrant: Collection not found or service unavailable"
+
+.PHONY: count-weaviate
+count-weaviate:
+	@echo "Counting documents in Weaviate collection '$(COLLECTION)'..."
+	@COLLECTION_CAP=$$(python3 -c "print('$(COLLECTION)'.capitalize())"); \
+	curl -sf -X POST "http://localhost:8080/v1/graphql" \
+		-H "Content-Type: application/json" \
+		-d "{\"query\":\"{Aggregate{$$COLLECTION_CAP{meta{count}}}}\"}" 2>/dev/null | \
+		python3 -c "import sys, json; d=json.load(sys.stdin); \
+		count=d.get('data',{}).get('Aggregate',{}).get('$$COLLECTION_CAP',[{}])[0].get('meta',{}).get('count',0); \
+		print('Weaviate documents:', count)" 2>/dev/null || echo "Weaviate: Collection not found or service unavailable"
+
+.PHONY: count-all
+count-all: count-qdrant count-weaviate
+
+# =============================================================================
+# Search Operations
+# =============================================================================
+
+QUERY ?= What is the story about?
+
+.PHONY: search-qdrant
+search-qdrant:
+	@echo "Searching Qdrant for: '$(QUERY)'"
+	@ENCODED_QUERY=$$(python3 -c 'import urllib.parse; print(urllib.parse.quote_plus("$(QUERY)"))'); \
+	curl -sf "http://localhost:8000/search?query=$$ENCODED_QUERY&provider=qdrant&limit=3" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); \
+		print('Results:', len(d.get('results', []))); \
+		[print(f\"  - {r.get('payload', {}).get('text', '')[:100]}...\") for r in d.get('results', [])[:3]]" 2>/dev/null || echo "Search failed or service unavailable"
+
+.PHONY: search-weaviate
+search-weaviate:
+	@echo "Searching Weaviate for: '$(QUERY)'"
+	@ENCODED_QUERY=$$(python3 -c 'import urllib.parse; print(urllib.parse.quote_plus("$(QUERY)"))'); \
+	curl -sf "http://localhost:8000/search?query=$$ENCODED_QUERY&provider=weaviate&limit=3" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); \
+		print('Results:', len(d.get('results', []))); \
+		[print(f\"  - {r.get('payload', {}).get('text', '')[:100]}...\") for r in d.get('results', [])[:3]]" 2>/dev/null || echo "Search failed or service unavailable"
+
+.PHONY: search-compare
+search-compare:
+	@echo "Comparing search results across both providers..."
+	@echo ""
+	@$(MAKE) search-qdrant QUERY="$(QUERY)"
+	@echo ""
+	@$(MAKE) search-weaviate QUERY="$(QUERY)"
+
+# =============================================================================
+# S3/MinIO Operations
+# =============================================================================
+
+.PHONY: s3-count
+s3-count:
+	@echo "Counting objects in MinIO bucket..."
+	@curl -sf "http://localhost:8000/api/v1/s3/objects?prefix=$(S3_PREFIX)&limit=10000" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); print('S3 objects:', d.get('count', len(d.get('keys', []))))" 2>/dev/null || echo "S3 count failed or service unavailable"
+
+.PHONY: s3-clear
+s3-clear:
+	@echo "Clearing S3 bucket..."
+	@curl -sf -X DELETE "http://localhost:8000/api/v1/s3/objects?prefix=$(S3_PREFIX)" 2>/dev/null && echo "✅ S3 cleared" || echo "S3 clear failed"
+
+# =============================================================================
+# Vector DB Operations
+# =============================================================================
+
+.PHONY: qdrant-clear
+qdrant-clear:
+	@echo "Deleting Qdrant collection '$(COLLECTION)'..."
+	@curl -sf -X DELETE "http://localhost:6333/collections/$(COLLECTION)" 2>/dev/null && echo "✅ Qdrant collection deleted" || echo "Qdrant delete failed or collection doesn't exist"
+
+.PHONY: weaviate-clear
+weaviate-clear:
+	@echo "Deleting Weaviate collection '$(COLLECTION)'..."
+	@curl -sf -X DELETE "http://localhost:8080/v1/schema/$(COLLECTION)" 2>/dev/null && echo "✅ Weaviate collection deleted" || echo "Weaviate delete failed or collection doesn't exist"
+
+.PHONY: vectordb-clear
+vectordb-clear: qdrant-clear weaviate-clear
+	@echo "✅ Both vector DBs cleared"
+
+# =============================================================================
+# End-to-End Pipeline
+# =============================================================================
+
+.PHONY: e2e-test
+e2e-test:
+	@echo "╔══════════════════════════════════════════════════════════════════════════╗"
+	@echo "║                         End-to-End Pipeline Test                         ║"
+	@echo "╚══════════════════════════════════════════════════════════════════════════╝"
+	@echo ""
+	@echo "Step 1: Clear vector DBs..."
+	@$(MAKE) vectordb-clear COLLECTION=$(COLLECTION)
+	@echo ""
+	@echo "Step 2: Seed S3 with $(COUNT) documents..."
+	@$(MAKE) syntheticdata-setup COUNT=$(COUNT)
+	@echo ""
+	@echo "Step 3: Submit Ray job..."
+	@$(MAKE) ray-job-submit S3_PREFIX=$(S3_PREFIX) COLLECTION=$(COLLECTION)
+	@echo ""
+	@echo "Waiting 30 seconds for job to complete..."
+	@sleep 30
+	@echo ""
+	@echo "Step 4: Check document counts..."
+	@$(MAKE) count-all COLLECTION=$(COLLECTION)
+	@echo ""
+	@echo "Step 5: Test search..."
+	@$(MAKE) search-compare QUERY="$(QUERY)"
+	@echo ""
+	@echo "✅ End-to-end test complete!"

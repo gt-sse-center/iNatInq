@@ -36,6 +36,7 @@ from core.ingestion.interfaces import (
     ProcessingConfig,
     ProcessingResult,
     S3ContentFetcher,
+    UpsertResult,
     VectorDBConfigFactory,
     VectorDBUpserter,
     VectorPointFactory,
@@ -553,7 +554,8 @@ class TestVectorDBUpserter:
 
         result = await upserter.upsert_batch_async(batch, "documents", 768)
 
-        assert result is True
+        assert isinstance(result, UpsertResult)
+        assert result.all_success
         mock_qdrant.batch_upsert_async.assert_called_once()
         mock_weaviate.batch_upsert_async.assert_called_once()
 
@@ -584,7 +586,10 @@ class TestVectorDBUpserter:
 
         result = await upserter.upsert_batch_async(batch, "documents", 768)
 
-        assert result is True  # Qdrant succeeded
+        assert isinstance(result, UpsertResult)
+        assert result.any_success  # Qdrant succeeded
+        assert result.qdrant_success
+        assert not result.weaviate_success
 
 
 # =============================================================================

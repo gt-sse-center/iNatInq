@@ -515,10 +515,12 @@ class TestWeaviateClientWrapperSearch:
           - Open circuit breaker state is checked
           - handle_circuit_breaker_error is called
         """
-        # Replace the circuit breaker with a mock in OPEN state
-        mock_breaker = MagicMock(spec=pybreaker.CircuitBreaker)
-        mock_breaker.current_state = pybreaker.STATE_OPEN
-        object.__setattr__(weaviate_client, "_breaker", mock_breaker)
+        import aiobreaker.state as aio_state
+
+        # Replace the async circuit breaker with a mock in OPEN state
+        mock_async_breaker = MagicMock()
+        mock_async_breaker.current_state = aio_state.CircuitBreakerState.OPEN
+        object.__setattr__(weaviate_client, "_async_breaker", mock_async_breaker)
 
         with pytest.raises(UpstreamError, match="weaviate service is currently unavailable"):
             await weaviate_client.search_async(
@@ -636,10 +638,13 @@ class TestWeaviateClientWrapperBatchUpsert:
           - Open circuit breaker state is checked
           - handle_circuit_breaker_error is called
         """
-        # Replace the circuit breaker with a mock in OPEN state
-        mock_breaker = MagicMock(spec=pybreaker.CircuitBreaker)
-        mock_breaker.current_state = pybreaker.STATE_OPEN
-        object.__setattr__(weaviate_client, "_breaker", mock_breaker)
+        import aiobreaker.state as aio_state
+
+        # Replace the async circuit breaker with a mock in OPEN state
+        # The base class checks _async_breaker, not _breaker
+        mock_async_breaker = MagicMock()
+        mock_async_breaker.current_state = aio_state.CircuitBreakerState.OPEN
+        object.__setattr__(weaviate_client, "_async_breaker", mock_async_breaker)
 
         points = [WeaviateDataObject(uuid="uuid-1", properties={"text": "hello"}, vector=[0.1, 0.2])]
 

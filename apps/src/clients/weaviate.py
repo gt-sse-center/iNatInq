@@ -30,6 +30,7 @@ The client wrapper:
 from typing import Any
 from urllib.parse import urlparse
 
+import aiobreaker
 import attrs
 import pybreaker
 from weaviate import WeaviateAsyncClient
@@ -41,7 +42,7 @@ from weaviate.connect import ConnectionParams
 from config import VectorDBConfig
 from core.exceptions import UpstreamError
 from core.models import SearchResultItem, SearchResults
-from foundation.circuit_breaker import handle_circuit_breaker_error
+from foundation.circuit_breaker import create_async_circuit_breaker, handle_circuit_breaker_error
 
 from .base import VectorDBClientBase
 from .interfaces.vector_db import VectorDBProvider
@@ -103,12 +104,14 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
     url: str
     api_key: str | None = None
     grpc_host: str | None = None
+    grpc_port: int | None = None  # Custom gRPC port for testcontainers
     timeout_s: int = attrs.field(default=300)
     circuit_breaker_threshold: int = attrs.field(default=3)
     circuit_breaker_timeout: int = attrs.field(default=60)
     skip_init_checks: bool = True  # Default True to avoid Docker-to-cloud gRPC issues
     _client: WeaviateAsyncClient = attrs.field(init=False, default=None)
     _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
+    _async_breaker: aiobreaker.CircuitBreaker = attrs.field(init=False)
 
     def _circuit_breaker_config(self) -> tuple[str, int, int]:
         """Return circuit breaker configuration for Weaviate.
@@ -142,12 +145,12 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
         if self.grpc_host:
             # Weaviate Cloud: separate gRPC host, secure on port 443
             grpc_host = self.grpc_host
-            grpc_port = 443
+            grpc_port = self.grpc_port or 443
             grpc_secure = True
         else:
-            # Local Docker: same host, port 50051, no TLS
+            # Local Docker: same host, port 50051 (or custom port for testcontainers)
             grpc_host = http_host
-            grpc_port = 50051
+            grpc_port = self.grpc_port or 50051
             grpc_secure = False
 
         connection_params = ConnectionParams.from_params(
@@ -172,6 +175,14 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
 
         # Initialize circuit breaker from base class
         self._init_circuit_breaker()
+
+        # Initialize async circuit breaker using aiobreaker
+        name, fail_max, timeout = self._circuit_breaker_config()
+        object.__setattr__(
+            self,
+            "_async_breaker",
+            create_async_circuit_breaker(name, fail_max, timeout),
+        )
 
     @property
     def client(self) -> WeaviateAsyncClient:
@@ -198,6 +209,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             url=config.weaviate_url,
             api_key=config.weaviate_api_key,
             grpc_host=config.weaviate_grpc_host,
+            grpc_port=config.weaviate_grpc_port,
             timeout_s=config.weaviate_timeout,
             circuit_breaker_threshold=config.weaviate_circuit_breaker_threshold,
             circuit_breaker_timeout=config.weaviate_circuit_breaker_timeout,
@@ -282,11 +294,14 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             # Access: results.items[0].point_id, results.items[0].score, etc.
             ```
         """
-        # Check circuit breaker state - if open, fail fast
-        if self._breaker.current_state == pybreaker.STATE_OPEN:
+        # Check async circuit breaker state - if open, fail fast
+        import aiobreaker.state as aio_state
+
+        if self._async_breaker.current_state == aio_state.CircuitBreakerState.OPEN:
             handle_circuit_breaker_error("weaviate")
 
-        try:
+        async def _do_search() -> SearchResults:
+            """Inner search function to be wrapped by circuit breaker."""
             # Weaviate v4 client is the async context manager
             async with self._client:
                 collection_obj = self._client.collections.get(collection)
@@ -328,6 +343,12 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
                     )
 
                 return SearchResults(items=items, total=len(items))
+
+        try:
+            # Wrap with async circuit breaker to track failures
+            return await self._async_breaker.call_async(_do_search)
+        except aiobreaker.CircuitBreakerError:
+            handle_circuit_breaker_error("weaviate")
         except Exception as e:
             msg = f"Weaviate search failed: {e}"
             raise UpstreamError(msg) from e

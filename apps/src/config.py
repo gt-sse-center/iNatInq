@@ -538,6 +538,7 @@ class VectorDBConfig(BaseModel):
     weaviate_url: str | None = None
     weaviate_api_key: str | None = None
     weaviate_grpc_host: str | None = None
+    weaviate_grpc_port: int | None = None  # Custom gRPC port for testcontainers
     weaviate_timeout: int = 300
     weaviate_circuit_breaker_threshold: int = 3
     weaviate_circuit_breaker_timeout: int = 60
