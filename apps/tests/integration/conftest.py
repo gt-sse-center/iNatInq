@@ -41,9 +41,6 @@ To change Ryuk image:
 """
 
 import logging
-import os
-from pathlib import Path
-
 import pytest
 
 # Note: testcontainers deprecation warnings are filtered in pyproject.toml
@@ -59,34 +56,6 @@ logging.basicConfig(
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("botocore").setLevel(logging.WARNING)
 logging.getLogger("docker").setLevel(logging.WARNING)
-
-ENV_LOCAL_PATH = Path(__file__).resolve().parents[2] / "zarf/compose/dev/.env.local"
-
-
-def _load_env_file(path: Path) -> None:
-    """Load environment variables from a local .env file if present."""
-    if not path.exists():
-        logging.info("No local env file found at %s", path)
-        return
-
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        if stripped.startswith("export "):
-            stripped = stripped[len("export ") :].strip()
-        if "=" not in stripped:
-            continue
-        key, value = stripped.split("=", 1)
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        os.environ.setdefault(key, value)
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _load_local_env() -> None:
-    _load_env_file(ENV_LOCAL_PATH)
-
 
 @pytest.fixture(scope="session")
 def integration_test_session():
