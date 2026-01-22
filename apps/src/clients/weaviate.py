@@ -86,6 +86,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
         grpc_host: Optional gRPC host for Weaviate Cloud (e.g.,
             `grpc-xxx.region.weaviate.cloud`). If not provided, defaults
             to the HTTP host with port 50051.
+        skip_init_checks: Whether to skip startup gRPC health checks.
 
     Note:
         This class uses WeaviateAsyncClient internally but provides a sync
@@ -96,6 +97,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
     url: str
     api_key: str | None = None
     grpc_host: str | None = None
+    skip_init_checks: bool = False
     _client: WeaviateAsyncClient = attrs.field(init=False, default=None)
     _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
 
@@ -147,6 +149,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
         _client_instance = WeaviateAsyncClient(
             connection_params=connection_params,
             auth_client_secret=auth_config,
+            skip_init_checks=self.skip_init_checks,
         )
 
         self._client = _client_instance
