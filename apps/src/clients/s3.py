@@ -20,7 +20,10 @@ client.put_object(bucket="pipeline", key="data.txt", body=b"hello")
 
 ## Resilience Features
 
-The client implements multi-layer resilience:
+The client implements multi-layer resilience. We intentionally disable boto3's
+built-in retry mechanism and implement our own via `tenacity` to provide consistent
+behavior across all clients (S3, Qdrant, Weaviate, Ollama) and integrate with our
+circuit breaker pattern.
 
 1. **Retry with Exponential Backoff**: Transient errors (5xx, timeouts, connection
    errors) trigger automatic retries with exponential backoff.
@@ -28,10 +31,13 @@ The client implements multi-layer resilience:
 2. **Circuit Breaker**: After repeated failures, the circuit opens to fail fast
    and prevent cascade failures.
 
-3. **Fail-Fast for Non-Retriable Errors**: Client errors (4xx) like 403 Forbidden
+3. **Fail-Fast for Non-Retriable Errors**: Since we disabled boto3's retry mechanism,
+   we implement our own error classification. Client errors (4xx) like 403 Forbidden
    or 404 Not Found are NOT retried.
 
 ## Error Classification
+
+Since boto3 retries are disabled, we classify errors ourselves:
 
 **Retriable Errors** (trigger retry + circuit breaker):
 - Connection errors (EndpointConnectionError, ConnectionClosedError)
@@ -61,6 +67,7 @@ from typing import Any, cast
 import attrs
 import boto3  # type: ignore[import-untyped]
 import pybreaker
+from botocore.config import Config  # type: ignore[import-untyped]
 from botocore.exceptions import (  # type: ignore[import-untyped]
     BotoCoreError,
     ClientError,
@@ -305,13 +312,17 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
     def __attrs_post_init__(self) -> None:
         """Initialize the boto3 S3 client and circuit breaker after attrs construction."""
-        from botocore.config import Config  # type: ignore[import-untyped]
-
-        # Configure boto3 with timeouts and connection settings
+        # Configure boto3 with timeouts and connection settings.
+        # NOTE: We intentionally disable boto3's built-in retry mechanism (max_attempts=0)
+        # and implement our own via tenacity. This provides:
+        # 1. Consistent retry behavior across all clients (S3, Qdrant, Weaviate, Ollama)
+        # 2. Integration with our circuit breaker pattern
+        # 3. Custom logging on each retry attempt
+        # 4. Fine-grained control over which errors trigger retries
         config = Config(
             connect_timeout=self.timeout_s,
             read_timeout=self.timeout_s,
-            retries={"max_attempts": 0},  # We handle retries ourselves
+            retries={"max_attempts": 0},
         )
 
         self._client = boto3.client(

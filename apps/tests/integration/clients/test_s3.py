@@ -34,6 +34,7 @@ pytest tests/integration/clients/test_s3.py -v --log-cli-level=INFO
 """
 
 import asyncio
+import contextlib
 import logging
 import time
 from unittest.mock import MagicMock, patch
@@ -330,14 +331,16 @@ class TestRetryExhaustion:
 
         call_count = 0
 
-        def always_fail(*args, **kwargs):
+        def always_fail(*_args, **_kwargs):
             nonlocal call_count
             call_count += 1
             raise EndpointConnectionError(endpoint_url="http://test")
 
-        with patch.object(client._client, "get_object", side_effect=always_fail):
-            with pytest.raises(UpstreamError, match="failed after 2 attempts"):
-                client.get_object(bucket=test_bucket, key="exhaustion-test")
+        with (
+            patch.object(client._client, "get_object", side_effect=always_fail),
+            pytest.raises(UpstreamError, match="failed after 2 attempts"),
+        ):
+            client.get_object(bucket=test_bucket, key="exhaustion-test")
 
         # Should have tried max_retries times
         assert call_count == 2
@@ -462,7 +465,7 @@ class TestCircuitBreakerOpens:
         # Circuit breaker threshold is 5 failures
         failure_count = 0
 
-        def always_fail(*args, **kwargs):
+        def always_fail(*_args, **_kwargs):
             nonlocal failure_count
             failure_count += 1
             raise EndpointConnectionError(endpoint_url="http://test")
@@ -470,10 +473,8 @@ class TestCircuitBreakerOpens:
         with patch.object(client._client, "get_object", side_effect=always_fail):
             # Trigger failures up to threshold
             for i in range(5):
-                try:
+                with contextlib.suppress(UpstreamError):
                     client.get_object(bucket=test_bucket, key=f"cb-test-{i}")
-                except UpstreamError:
-                    pass
 
         # Circuit should now be OPEN
         assert client._breaker.current_state == pybreaker.STATE_OPEN
@@ -545,10 +546,8 @@ class TestCircuitBreakerRecovery:
 
         # Fail twice to open circuit
         for _ in range(2):
-            try:
+            with contextlib.suppress(Exception):
                 breaker.call(lambda: (_ for _ in ()).throw(Exception("test")))
-            except Exception:
-                pass
 
         # Now open
         assert breaker.current_state == pybreaker.STATE_OPEN
@@ -594,12 +593,14 @@ class TestTimeoutHandling:
             retry_max_wait=0.1,
         )
 
-        def timeout_error(*args, **kwargs):
+        def timeout_error(*_args, **_kwargs):
             raise ReadTimeoutError(endpoint_url="http://test")
 
-        with patch.object(client._client, "get_object", side_effect=timeout_error):
-            with pytest.raises(UpstreamError, match="failed"):
-                client.get_object(bucket="test", key="timeout-test")
+        with (
+            patch.object(client._client, "get_object", side_effect=timeout_error),
+            pytest.raises(UpstreamError, match="failed"),
+        ):
+            client.get_object(bucket="test", key="timeout-test")
 
 
 # =============================================================================
@@ -700,16 +701,18 @@ class TestObservability:
 
         call_count = 0
 
-        def fail_once(*args, **kwargs):
+        def fail_once(*_args, **_kwargs):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
                 raise EndpointConnectionError(endpoint_url="http://test")
             return MagicMock(Body=MagicMock(read=lambda: b"data"))
 
-        with caplog.at_level(logging.WARNING, logger="clients.s3"):
-            with patch.object(client._client, "get_object", side_effect=fail_once):
-                client.get_object(bucket=test_bucket, key="log-test")
+        with (
+            caplog.at_level(logging.WARNING, logger="clients.s3"),
+            patch.object(client._client, "get_object", side_effect=fail_once),
+        ):
+            client.get_object(bucket=test_bucket, key="log-test")
 
         # Check retry was logged
         assert any("retrying" in record.message.lower() for record in caplog.records)
@@ -737,13 +740,15 @@ class TestObservability:
 
         client.ensure_bucket(test_bucket)
 
-        def always_fail(*args, **kwargs):
+        def always_fail(*_args, **_kwargs):
             raise EndpointConnectionError(endpoint_url="http://test")
 
-        with caplog.at_level(logging.ERROR, logger="clients.s3"):
-            with patch.object(client._client, "get_object", side_effect=always_fail):
-                with pytest.raises(UpstreamError):
-                    client.get_object(bucket=test_bucket, key="log-fail-test")
+        with (
+            caplog.at_level(logging.ERROR, logger="clients.s3"),
+            patch.object(client._client, "get_object", side_effect=always_fail),
+            pytest.raises(UpstreamError),
+        ):
+            client.get_object(bucket=test_bucket, key="log-fail-test")
 
         # Check failure was logged
         assert any("failed" in record.message.lower() for record in caplog.records)
