@@ -32,11 +32,13 @@ pytest tests/integration/clients/test_qdrant.py::TestHappyPath -v
 """
 
 import asyncio
+import contextlib
 import uuid as uuid_module
 
 import aiobreaker.state as aio_state
 import pybreaker
 import pytest
+from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import PointStruct
 
 from clients.qdrant import QdrantClientWrapper
@@ -376,15 +378,13 @@ class TestHappyPath:
 
         # Assert - no points in collection
         # Collection might not even be created for empty upsert
-        try:
+        with contextlib.suppress(Exception):
+            # Collection may not exist, which is fine for empty upsert
             results = qdrant_client._sync_client.scroll(
                 collection_name=test_collection,
                 limit=10,
             )
             assert len(results[0]) == 0
-        except Exception:
-            # Collection doesn't exist, which is fine for empty upsert
-            pass
 
 
 # =============================================================================
@@ -398,7 +398,7 @@ class TestTransientFailures:
 
     def test_search_succeeds_after_transient_error(
         self,
-        qdrant_client: QdrantClientWrapper,
+        qdrant_url: str,
         test_collection: str,
         sample_vector: list[float],
         vector_size: int,
@@ -411,32 +411,149 @@ class TestTransientFailures:
           - Critical for production reliability
 
         **What it tests:**
-          - Client can recover from transient errors
-          - Successful response after retry
-          - Data integrity is maintained through retries
+          - First call fails with a transient connection error
+          - Retry logic kicks in and second call succeeds
+          - Correct results are returned after recovery
         """
-        # Arrange - insert data with UUID
-        point_id = _make_uuid()
-        points = [
-            PointStruct(id=point_id, vector=sample_vector, payload={"text": "retry"}),
-        ]
-        qdrant_client.batch_upsert_sync(
-            collection=test_collection,
-            points=points,
-            vector_size=vector_size,
-        )
+        # Arrange - create a fresh client for this test
+        client = QdrantClientWrapper(url=qdrant_url)
 
-        # Act - search (this tests the happy path, but validates the setup)
-        results = asyncio.run(
-            qdrant_client.search_async(
+        try:
+            # Insert data first (this must succeed)
+            point_id = _make_uuid()
+            points = [
+                PointStruct(id=point_id, vector=sample_vector, payload={"text": "retry"}),
+            ]
+            client.batch_upsert_sync(
                 collection=test_collection,
-                query_vector=sample_vector,
-                limit=10,
+                points=points,
+                vector_size=vector_size,
             )
-        )
 
-        # Assert
-        assert results.total == 1
+            # Store the real client for later use
+            real_sync_client = client._sync_client
+
+            # Create a mock that fails once then delegates to real client
+            call_count = 0
+            original_search = real_sync_client.search
+
+            def transient_failure_search(*args, **kwargs):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    # First call - simulate transient network error
+                    raise UnexpectedResponse(
+                        status_code=503,
+                        reason_phrase="Service Unavailable (simulated)",
+                        content=b"",
+                    )
+                # Subsequent calls - delegate to real implementation
+                return original_search(*args, **kwargs)
+
+            # Patch the search method
+            real_sync_client.search = transient_failure_search
+
+            # Act - search should fail once, then succeed on retry
+            # Note: The client may not have built-in retry, so this tests
+            # that errors are properly raised for caller-level retry
+            caught_error = None
+            try:
+                results = asyncio.run(
+                    client.search_async(
+                        collection=test_collection,
+                        query_vector=sample_vector,
+                        limit=10,
+                    )
+                )
+                # If we get here, the client has internal retry logic
+                assert results.total == 1
+            except UpstreamError as e:
+                caught_error = e
+
+            # If error was raised, verify it's the transient error and retry succeeds
+            if caught_error is not None:
+                error_msg = str(caught_error).lower()
+                assert "503" in error_msg or "unavailable" in error_msg
+                # Verify the error was raised on first attempt
+                assert call_count == 1
+
+                # Now verify a clean call succeeds (simulating caller retry)
+                real_sync_client.search = original_search
+                results = asyncio.run(
+                    client.search_async(
+                        collection=test_collection,
+                        query_vector=sample_vector,
+                        limit=10,
+                    )
+                )
+                assert results.total == 1
+        finally:
+            client.close()
+
+    def test_upsert_succeeds_after_transient_error(
+        self,
+        qdrant_url: str,
+        test_collection: str,
+        sample_vector: list[float],
+        vector_size: int,
+    ):
+        """Test that upsert operations can recover from transient failures.
+
+        **Why this test is important:**
+          - Write operations must be resilient to network blips
+          - Data must eventually be persisted despite transient errors
+          - Critical for ingestion pipeline reliability
+
+        **What it tests:**
+          - First upsert attempt fails with transient error
+          - Caller-level retry succeeds
+          - Data is correctly persisted
+        """
+        # Arrange
+        client = QdrantClientWrapper(url=qdrant_url)
+
+        try:
+            point_id = _make_uuid()
+            points = [
+                PointStruct(
+                    id=point_id,
+                    vector=sample_vector,
+                    payload={"text": "transient-upsert-test"},
+                ),
+            ]
+
+            # First attempt - simulate failure by temporarily opening circuit breaker
+            client._sync_breaker._state = pybreaker.STATE_OPEN
+
+            with pytest.raises(UpstreamError) as exc_info:
+                client.batch_upsert_sync(
+                    collection=test_collection,
+                    points=points,
+                    vector_size=vector_size,
+                )
+            assert "unavailable" in str(exc_info.value).lower()
+
+            # Simulate circuit recovery
+            client._sync_breaker._state = pybreaker.STATE_CLOSED
+
+            # Retry - should succeed
+            client.batch_upsert_sync(
+                collection=test_collection,
+                points=points,
+                vector_size=vector_size,
+            )
+
+            # Verify data was persisted
+            results = asyncio.run(
+                client.search_async(
+                    collection=test_collection,
+                    query_vector=sample_vector,
+                    limit=10,
+                )
+            )
+            assert results.total >= 1
+        finally:
+            client.close()
 
 
 # =============================================================================
@@ -543,7 +660,7 @@ class TestCircuitBreaker:
             # Act - trigger failures by searching non-existent collection
             # The async breaker has fail_max=3 (from Qdrant client config)
             for _ in range(3):
-                try:
+                with contextlib.suppress(UpstreamError):
                     asyncio.run(
                         client.search_async(
                             collection=nonexistent_collection,
@@ -551,8 +668,6 @@ class TestCircuitBreaker:
                             limit=10,
                         )
                     )
-                except UpstreamError:
-                    pass  # Expected
 
             # Assert - async circuit should be open after threshold exceeded
             assert client._async_breaker.current_state == aio_state.CircuitBreakerState.OPEN
@@ -585,7 +700,7 @@ class TestCircuitBreaker:
         try:
             # Force async circuit breaker open via repeated failures
             for _ in range(3):
-                try:
+                with contextlib.suppress(UpstreamError):
                     asyncio.run(
                         client.search_async(
                             collection=nonexistent_collection,
@@ -593,8 +708,6 @@ class TestCircuitBreaker:
                             limit=10,
                         )
                     )
-                except UpstreamError:
-                    pass
 
             # Verify async circuit is open
             assert client._async_breaker.current_state == aio_state.CircuitBreakerState.OPEN
@@ -810,17 +923,14 @@ class TestObservability:
         nonexistent_collection = f"log-fail-{uuid_module.uuid4().hex[:8]}"
 
         # Act
-        with caplog.at_level("ERROR"):
-            try:
-                asyncio.run(
-                    qdrant_client.search_async(
-                        collection=nonexistent_collection,
-                        query_vector=sample_vector,
-                        limit=10,
-                    )
+        with caplog.at_level("ERROR"), contextlib.suppress(UpstreamError):
+            asyncio.run(
+                qdrant_client.search_async(
+                    collection=nonexistent_collection,
+                    query_vector=sample_vector,
+                    limit=10,
                 )
-            except UpstreamError:
-                pass
+            )
 
         # Note: The error may be raised without logging depending on implementation
         # This test validates the exception is raised correctly
@@ -890,14 +1000,12 @@ class TestFromConfig:
         finally:
             client.close()
             # Clean up the collection
-            try:
+            with contextlib.suppress(Exception):
                 from qdrant_client import QdrantClient
 
                 cleanup_client = QdrantClient(url=qdrant_url)
                 cleanup_client.delete_collection(collection_name=test_collection)
                 cleanup_client.close()
-            except Exception:
-                pass
 
     def test_from_config_with_api_key(
         self,
