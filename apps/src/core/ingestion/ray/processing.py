@@ -9,6 +9,7 @@ with Spark implementation.
 import asyncio
 import logging
 import os
+import sys
 from typing import Any
 
 import attrs
@@ -28,7 +29,43 @@ from core.ingestion.interfaces import (
 )
 from foundation.rate_limiter import RateLimiter
 
-logger = logging.getLogger("pipeline.ray")
+
+def get_ray_logger(name: str = "ray.task") -> logging.Logger:
+    """Get a logger configured for Ray workers.
+
+    Uses Ray's recommended logging pattern that works across all deployments:
+    - Local development
+    - Docker Compose
+    - Kubernetes
+    - Ray clusters (Anyscale, etc.)
+
+    Ray automatically captures logs from workers and makes them accessible
+    via the dashboard and log files. Using the 'ray.*' logger namespace
+    ensures proper integration with Ray's logging infrastructure.
+
+    Args:
+        name: Logger name. Defaults to "ray.task".
+
+    Returns:
+        Configured logger instance.
+    """
+    ray_logger = logging.getLogger(name)
+    if not ray_logger.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
+        ray_logger.addHandler(handler)
+        ray_logger.setLevel(logging.INFO)
+        ray_logger.propagate = False  # Avoid duplicate logs
+    return ray_logger
+
+
+# Main logger for Ray tasks
+logger = get_ray_logger("ray.pipeline")
 
 
 # =============================================================================
@@ -44,11 +81,25 @@ class RayProcessingConfig(ProcessingConfig):
 
     Attributes:
         rate_limit_rps: Requests per second for rate limiting.
-        max_concurrency: Maximum concurrent embedding requests.
+        max_concurrency: Maximum concurrent embedding requests (semaphore limit).
+        circuit_breaker_threshold: Failures before circuit breaker opens.
+        circuit_breaker_timeout: Seconds before circuit breaker recovery.
+        embedding_timeout: Timeout for embedding requests in seconds.
+        upsert_timeout: Timeout for vector DB upserts in seconds.
+        retry_max_attempts: Max retry attempts for transient failures.
+        retry_min_wait: Minimum wait between retries in seconds.
+        retry_max_wait: Maximum wait between retries in seconds.
     """
 
     rate_limit_rps: int = 5
     max_concurrency: int = 10
+    circuit_breaker_threshold: int = 5
+    circuit_breaker_timeout: int = 30
+    embedding_timeout: int = 120
+    upsert_timeout: int = 60
+    retry_max_attempts: int = 3
+    retry_min_wait: float = 1.0
+    retry_max_wait: float = 10.0
 
 
 # =============================================================================
@@ -252,6 +303,15 @@ def process_s3_batch_ray(
     embed_batch_size: int = 8,
     qdrant_batch_size: int = 200,
     rate_limiter: Any | None = None,
+    # Configurable task parameters
+    pipeline_concurrency: int = 10,
+    circuit_breaker_threshold: int = 5,
+    circuit_breaker_timeout: int = 30,
+    embedding_timeout: int = 120,
+    upsert_timeout: int = 60,
+    retry_max_attempts: int = 3,
+    retry_min_wait: float = 1.0,
+    retry_max_wait: float = 10.0,
 ) -> list[tuple[str, bool, str]]:
     """Process a batch of S3 objects using Ray remote execution.
 
@@ -269,10 +329,22 @@ def process_s3_batch_ray(
         embed_batch_size: Batch size for embeddings.
         qdrant_batch_size: Batch size for Qdrant upserts.
         rate_limiter: Optional Ray actor for distributed rate limiting.
+        pipeline_concurrency: Max concurrent async operations within task.
+        circuit_breaker_threshold: Failures before circuit breaker opens.
+        circuit_breaker_timeout: Seconds before circuit breaker recovery.
+        embedding_timeout: Timeout for embedding requests in seconds.
+        upsert_timeout: Timeout for vector DB upserts in seconds.
+        retry_max_attempts: Max retry attempts for transient failures.
+        retry_min_wait: Minimum wait between retries in seconds.
+        retry_max_wait: Maximum wait between retries in seconds.
 
     Returns:
         List of tuples (s3_key, success, error_message).
     """
+    # Use Ray's logger for proper integration across all deployments
+    task_logger = get_ray_logger("ray.task")
+    task_logger.info("Processing batch of %d keys", len(s3_keys))
+
     namespace = os.getenv("K8S_NAMESPACE", "ml-system")
 
     config = RayProcessingConfig(
@@ -285,6 +357,14 @@ def process_s3_batch_ray(
         embed_batch_size=embed_batch_size,
         upsert_batch_size=qdrant_batch_size,
         namespace=namespace,
+        max_concurrency=pipeline_concurrency,
+        circuit_breaker_threshold=circuit_breaker_threshold,
+        circuit_breaker_timeout=circuit_breaker_timeout,
+        embedding_timeout=embedding_timeout,
+        upsert_timeout=upsert_timeout,
+        retry_max_attempts=retry_max_attempts,
+        retry_min_wait=retry_min_wait,
+        retry_max_wait=retry_max_wait,
     )
 
     # Create rate limiter wrapper if actor provided
@@ -295,6 +375,22 @@ def process_s3_batch_ray(
 
     pipeline = RayProcessingPipeline(config, local_rate_limiter)
     results = pipeline.process_keys_sync(s3_keys)
+
+    # Log results with structured info for observability
+    successes = sum(1 for r in results if r.success)
+    failures = len(results) - successes
+    task_logger.info(
+        "Batch complete: %d succeeded, %d failed",
+        successes,
+        failures,
+    )
+
+    # Log circuit breaker / upstream errors explicitly for visibility
+    for r in results:
+        if not r.success and "circuit breaker" in r.error.lower():
+            task_logger.warning("CIRCUIT_BREAKER_OPEN: %s - %s", r.s3_key, r.error)
+        elif not r.success and "upstream" in r.error.lower():
+            task_logger.warning("UPSTREAM_ERROR: %s - %s", r.s3_key, r.error)
 
     return [r.to_tuple() for r in results]
 

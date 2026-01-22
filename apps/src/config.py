@@ -127,9 +127,27 @@ defaults):
   (default: `8`)
 - `RAY_BATCH_UPSERT_SIZE`: Batch size for vector DB upserts
   (default: `200`)
+- `RAY_S3_BATCH_SIZE`: Number of S3 keys per Ray task (default: `50`)
 - `RAY_CHECKPOINT_DIR`: Checkpoint directory
   (default: `/tmp/ray-checkpoints` or S3 URI)
 - `RAY_CHECKPOINT_ENABLED`: Enable checkpointing (default: `true`)
+- `RAY_TASK_NUM_CPUS`: CPUs requested per Ray task (default: `1`)
+- `RAY_TASK_MAX_RETRIES`: Max retries for failed tasks (default: `3`)
+- `RAY_PIPELINE_CONCURRENCY`: Max concurrent async ops in task
+  (default: `10`)
+- `RAY_WAIT_TIMEOUT`: ray.wait() timeout in seconds (default: `1.0`)
+- `RAY_WAIT_BATCH_SIZE`: Results per ray.wait() call (default: `10`)
+- `RAY_PROGRESS_LOG_INTERVAL`: Log progress every N keys
+  (default: `1000`)
+- `RAY_CIRCUIT_BREAKER_THRESHOLD`: Failures to open breaker
+  (default: `5`)
+- `RAY_CIRCUIT_BREAKER_TIMEOUT`: Recovery timeout in seconds
+  (default: `30`)
+- `RAY_EMBEDDING_TIMEOUT`: Embedding request timeout (default: `120`)
+- `RAY_UPSERT_TIMEOUT`: Vector DB upsert timeout (default: `60`)
+- `RAY_RETRY_MAX_ATTEMPTS`: Max retry attempts (default: `3`)
+- `RAY_RETRY_MIN_WAIT`: Min retry wait in seconds (default: `1.0`)
+- `RAY_RETRY_MAX_WAIT`: Max retry wait in seconds (default: `10.0`)
 
 **Embedding Provider Configuration**
 - `EMBEDDING_PROVIDER`: Provider type - `ollama`, `openai`,
@@ -802,8 +820,37 @@ class RayJobConfig(BaseModel):
             URI). Default: "/tmp/ray-checkpoints".
         checkpoint_enabled: Whether to enable checkpointing for job
             recovery. Default: True.
+        s3_batch_size: Number of S3 keys per Ray task. Larger batches reduce
+            overhead but increase memory per task. Default: 50.
+        task_num_cpus: CPUs requested per Ray task. Affects scheduling.
+            Default: 1.
+        task_max_retries: Maximum retries for failed Ray tasks.
+            Default: 3.
+        pipeline_concurrency: Max concurrent async operations (embed/upsert)
+            within a task. Default: 10.
+        wait_timeout: Timeout in seconds for ray.wait() progress checks.
+            Default: 1.0.
+        wait_batch_size: Number of results to fetch per ray.wait() call.
+            Default: 10.
+        progress_log_interval: Log progress every N completed keys.
+            Default: 1000.
+        circuit_breaker_threshold: Failures before circuit breaker opens.
+            Default: 5.
+        circuit_breaker_timeout: Seconds before circuit breaker recovery.
+            Default: 30.
+        embedding_timeout: Timeout in seconds for embedding requests.
+            Default: 120.
+        upsert_timeout: Timeout in seconds for vector DB upserts.
+            Default: 60.
+        retry_max_attempts: Max retry attempts for transient failures.
+            Default: 3.
+        retry_min_wait: Minimum wait between retries in seconds.
+            Default: 1.0.
+        retry_max_wait: Maximum wait between retries in seconds.
+            Default: 10.0.
     """
 
+    # Cluster configuration
     num_workers: int = 4
     worker_cpus: float = 1.0
     worker_memory: int = 2_000_000_000  # 2GB
@@ -813,13 +860,43 @@ class RayJobConfig(BaseModel):
     ray_address: str | None = None
     dashboard_address: str | None = None
     runtime_env: dict[str, Any] = Field(default_factory=dict)
+
+    # Rate limiting and concurrency
     ollama_max_concurrency: int = 10
     ollama_requests_per_second: int = 5
+
+    # Batch sizes
     embed_batch_min: int = 1
     embed_batch_max: int = 8
     batch_upsert_size: int = 200
+    s3_batch_size: int = 50
+
+    # Checkpointing
     checkpoint_dir: str = "/tmp/ray-checkpoints"
     checkpoint_enabled: bool = True
+
+    # Task configuration
+    task_num_cpus: int = 1
+    task_max_retries: int = 3
+    pipeline_concurrency: int = 10
+
+    # Progress monitoring
+    wait_timeout: float = 1.0
+    wait_batch_size: int = 10
+    progress_log_interval: int = 1000
+
+    # Circuit breaker
+    circuit_breaker_threshold: int = 5
+    circuit_breaker_timeout: int = 30
+
+    # Timeouts
+    embedding_timeout: int = 120
+    upsert_timeout: int = 60
+
+    # Retry configuration
+    retry_max_attempts: int = 3
+    retry_min_wait: float = 1.0
+    retry_max_wait: float = 10.0
 
     model_config = SettingsConfigDict(frozen=True)
 
@@ -865,6 +942,7 @@ class RayJobConfig(BaseModel):
                 dashboard_address = "http://localhost:8265"
 
         return cls(
+            # Cluster configuration
             num_workers=int(os.getenv("RAY_NUM_WORKERS", "0")),
             worker_cpus=float(os.getenv("RAY_WORKER_CPUS", "1.0")),
             worker_memory=int(os.getenv("RAY_WORKER_MEMORY", "500000000")),
@@ -874,13 +952,35 @@ class RayJobConfig(BaseModel):
             ray_address=ray_address,
             dashboard_address=dashboard_address,
             runtime_env={},  # Can be extended to load from env
+            # Rate limiting and concurrency
             ollama_max_concurrency=int(os.getenv("RAY_OLLAMA_MAX_CONCURRENCY", "10")),
             ollama_requests_per_second=int(os.getenv("RAY_OLLAMA_RPS", "5")),
+            # Batch sizes
             embed_batch_min=int(os.getenv("RAY_EMBED_BATCH_MIN", "1")),
             embed_batch_max=int(os.getenv("RAY_EMBED_BATCH_MAX", "8")),
             batch_upsert_size=int(os.getenv("RAY_BATCH_UPSERT_SIZE", "200")),
+            s3_batch_size=int(os.getenv("RAY_S3_BATCH_SIZE", "50")),
+            # Checkpointing
             checkpoint_dir=os.getenv("RAY_CHECKPOINT_DIR", "/tmp/ray-checkpoints"),
             checkpoint_enabled=os.getenv("RAY_CHECKPOINT_ENABLED", "true").lower() == "true",
+            # Task configuration
+            task_num_cpus=int(os.getenv("RAY_TASK_NUM_CPUS", "1")),
+            task_max_retries=int(os.getenv("RAY_TASK_MAX_RETRIES", "3")),
+            pipeline_concurrency=int(os.getenv("RAY_PIPELINE_CONCURRENCY", "10")),
+            # Progress monitoring
+            wait_timeout=float(os.getenv("RAY_WAIT_TIMEOUT", "1.0")),
+            wait_batch_size=int(os.getenv("RAY_WAIT_BATCH_SIZE", "10")),
+            progress_log_interval=int(os.getenv("RAY_PROGRESS_LOG_INTERVAL", "1000")),
+            # Circuit breaker
+            circuit_breaker_threshold=int(os.getenv("RAY_CIRCUIT_BREAKER_THRESHOLD", "5")),
+            circuit_breaker_timeout=int(os.getenv("RAY_CIRCUIT_BREAKER_TIMEOUT", "30")),
+            # Timeouts
+            embedding_timeout=int(os.getenv("RAY_EMBEDDING_TIMEOUT", "120")),
+            upsert_timeout=int(os.getenv("RAY_UPSERT_TIMEOUT", "60")),
+            # Retry configuration
+            retry_max_attempts=int(os.getenv("RAY_RETRY_MAX_ATTEMPTS", "3")),
+            retry_min_wait=float(os.getenv("RAY_RETRY_MIN_WAIT", "1.0")),
+            retry_max_wait=float(os.getenv("RAY_RETRY_MAX_WAIT", "10.0")),
         )
 
 

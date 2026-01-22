@@ -176,6 +176,7 @@ class RayService:
                         "weaviate-client",
                         "tenacity",
                         "pybreaker",
+                        "aiobreaker",
                     ],
                 },
             )
