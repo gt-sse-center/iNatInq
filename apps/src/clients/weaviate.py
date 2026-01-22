@@ -91,6 +91,8 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             Default: 3.
         circuit_breaker_timeout: Seconds before circuit breaker recovery.
             Default: 60.
+        skip_init_checks: Whether to skip startup gRPC health checks.
+            Default: True (avoids Docker-to-cloud connectivity issues).
 
     Note:
         This class uses WeaviateAsyncClient internally but provides a sync
@@ -104,6 +106,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
     timeout_s: int = attrs.field(default=300)
     circuit_breaker_threshold: int = attrs.field(default=3)
     circuit_breaker_timeout: int = attrs.field(default=60)
+    skip_init_checks: bool = True  # Default True to avoid Docker-to-cloud gRPC issues
     _client: WeaviateAsyncClient = attrs.field(init=False, default=None)
     _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
 
@@ -162,7 +165,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             # Skip gRPC health checks to avoid connectivity issues from Docker
             # to external Weaviate Cloud. The health check can fail due to
             # firewall rules or network latency from containerized environments.
-            skip_init_checks=True,
+            skip_init_checks=self.skip_init_checks,
         )
 
         self._client = _client_instance

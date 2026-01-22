@@ -120,55 +120,63 @@ Qdrant vector database client wrapper.
 
 **Implements:** `VectorDBProvider` ABC
 
+**Note:** This client is async-only. All operations use AsyncQdrantClient internally.
+
 **Methods:**
 
-- `ensure_collection(collection: str, vector_size: int)`: Creates a collection
-  if it doesn't exist (dev convenience)
-- `search(collection: str, query_vector: List[float], limit: int = 10) -> SearchResults`:
+- `ensure_collection_async(collection: str, vector_size: int)`: Creates a
+  collection if it doesn't exist (dev convenience)
+- `search_async(collection: str, query_vector: List[float], limit: int = 10) -> SearchResults`:
   Searches for similar vectors in a collection
-- `batch_upsert(collection: str, points: list[PointStruct], vector_size: int)`:
+- `batch_upsert_async(collection: str, points: list[PointStruct], vector_size: int)`:
   Batch upserts points into a collection (for high-throughput scenarios)
 - `from_config(config: VectorDBConfig) -> VectorDBProvider`: Class method to
   create instance from config
-- `client`: Property that returns the underlying QdrantClient
+- `client`: Property that returns the underlying AsyncQdrantClient
+- `close()`: Closes the async client and releases resources
 
 **Usage:**
 
 ```python
+import asyncio
 from clients.qdrant import QdrantClientWrapper
 from qdrant_client.models import PointStruct
 
 qdrant_client = QdrantClientWrapper(url="http://qdrant.ml-system:6333")
-qdrant_client.ensure_collection(collection="documents", vector_size=768)
+asyncio.run(qdrant_client.ensure_collection_async(collection="documents", vector_size=768))
 
 # Search for similar vectors
-results = qdrant_client.search(
+results = asyncio.run(qdrant_client.search_async(
     collection="documents",
     query_vector=[0.1, 0.2, ...],  # 768-dimensional vector
     limit=10
-)
+))
 # Returns: SearchResults with items (point_id, score, payload)
 
-# Batch upsert for Spark jobs
+# Batch upsert for Ray jobs
 points = [
     PointStruct(id="1", vector=[0.1, 0.2, ...], payload={"text": "hello"}),
     PointStruct(id="2", vector=[0.3, 0.4, ...], payload={"text": "world"}),
 ]
-qdrant_client.batch_upsert(
+asyncio.run(qdrant_client.batch_upsert_async(
     collection="documents",
     points=points,
     vector_size=768
-)
+))
+
+# Cleanup
+qdrant_client.close()
 ```
 
 **Or via factory:**
 
 ```python
+import asyncio
 from clients.interfaces.vector_db import create_vector_db_provider, VectorDBConfig
 
 config = VectorDBConfig.from_env()
 provider = create_vector_db_provider(config)  # Returns QdrantClientWrapper
-results = provider.search(collection="documents", query_vector=[...], limit=10)
+results = asyncio.run(provider.search_async(collection="documents", query_vector=[...], limit=10))
 ```
 
 ### `ollama.py`
@@ -296,20 +304,21 @@ Defines the interface for embedding generation:
 
 ### `VectorDBProvider` ABC
 
-Defines the interface for vector database operations:
+Defines the interface for vector database operations (all async):
 
-- `ensure_collection(collection: str, vector_size: int) -> None`: Ensure
+- `ensure_collection_async(collection: str, vector_size: int) -> None`: Ensure
   collection exists
-- `search(collection: str, query_vector: List[float], limit: int = 10) -> SearchResults`:
+- `search_async(collection: str, query_vector: List[float], limit: int = 10) -> SearchResults`:
   Search for similar vectors
-- `batch_upsert(collection: str, points: list, vector_size: int) -> None`: Batch
+- `batch_upsert_async(collection: str, points: list, vector_size: int) -> None`: Batch
   upsert points
 - `from_config(config: VectorDBConfig) -> VectorDBProvider`: Factory method
+- `close() -> None`: Close client and release resources
 
 **Implementations:**
 
-- `QdrantClientWrapper`: Qdrant vector database
-- `WeaviateClient`: Weaviate vector database (future)
+- `QdrantClientWrapper`: Qdrant vector database (async-only)
+- `WeaviateClientWrapper`: Weaviate vector database (async-only)
 
 ### Factory Functions
 
@@ -364,15 +373,16 @@ The method automatically:
 
 ## Connection Pooling
 
-Clients support connection pooling for better performance, especially in Spark
+Clients support connection pooling for better performance, especially in Ray
 jobs:
 
 - **OllamaClient**: Supports custom `requests.Session` via `set_session()`
   method
 - **S3ClientWrapper**: Reuses boto3 client internally (connection pooling
   handled by boto3)
-- **QdrantClientWrapper**: Reuses QdrantClient internally (connection pooling
+- **QdrantClientWrapper**: Reuses AsyncQdrantClient internally (connection pooling
   handled by qdrant-client)
+- **WeaviateClientWrapper**: Reuses WeaviateAsyncClient internally
 - **KubernetesClient**: Lazy initialization of Batch API client
 
 **Example with shared session:**

@@ -70,6 +70,7 @@ help:
 # =============================================================================
 COMPOSE_FILE := zarf/compose/dev/docker-compose.yaml
 DOCKER_COMPOSE := docker compose -f $(COMPOSE_FILE)
+SMOKE_ENV_FILE ?= zarf/compose/dev/.env.local
 
 # =============================================================================
 # Quick Start Aliases
@@ -225,7 +226,8 @@ docker-health:
 	@echo ""
 	@$(DOCKER_COMPOSE) ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 	@echo ""
-	@echo "┌── Endpoint Health Checks ───────────────────────────────────────────────────┐"
+	@ENV_FILE=$(SMOKE_ENV_FILE) bash zarf/scripts/providers_health.sh
+	@echo "┌── Local Compose Health Checks ───────────────────────────────────────────────┐"
 	@printf "│ Pipeline API:    "; curl -sf http://localhost:8000/healthz >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
 	@printf "│ Qdrant:          "; curl -sf http://localhost:6333/readyz >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
 	@printf "│ Weaviate:        "; curl -sf http://localhost:8080/v1/.well-known/ready >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
@@ -234,7 +236,7 @@ docker-health:
 	@printf "│ Ray Dashboard:   "; curl -sf http://localhost:8265 >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
 	@echo "└──────────────────────────────────────────────────────────────────────────────┘"
 	@echo ""
-	@echo "📝 Service Endpoints:"
+	@echo "📝 Local Compose Endpoints:"
 	@echo "   Pipeline API:     http://localhost:8000"
 	@echo "   Pipeline Docs:    http://localhost:8000/docs"
 	@echo "   MinIO Console:    http://localhost:9001 (minioadmin/minioadmin)"
@@ -242,6 +244,17 @@ docker-health:
 	@echo "   Weaviate Console: http://localhost:8081"
 	@echo "   Ray Dashboard:    http://localhost:8265"
 	@echo "   Ollama:           http://localhost:11434"
+
+.PHONY: smoke-providers
+smoke-providers:
+	@ENV_FILE=$(SMOKE_ENV_FILE) bash zarf/scripts/smoke_providers.sh
+
+.PHONY: smoke-test
+smoke-test: providers-health smoke-providers
+
+.PHONY: providers-health
+providers-health:
+	@ENV_FILE=$(SMOKE_ENV_FILE) bash zarf/scripts/providers_health.sh
 
 # =============================================================================
 # Docker Service Logs
@@ -393,4 +406,3 @@ syntheticdata-clean:
 	@echo "Removing generated synthetic documents..."
 	@rm -rf syntheticdata/inputs
 	@echo "✅ Cleaned syntheticdata/inputs/"
-

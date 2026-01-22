@@ -7,11 +7,12 @@ functionality through composition with mixins.
 from abc import ABC, abstractmethod
 from typing import Any
 
+import aiobreaker.state as aio_state
 import attrs
-import pybreaker
 
 from core.exceptions import UpstreamError
 from foundation.circuit_breaker import handle_circuit_breaker_error
+
 from .mixins import CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin
 
 
@@ -57,8 +58,8 @@ class VectorDBClientBase(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin
         if not points:
             return
 
-        # Check circuit breaker state - if open, fail fast
-        if self._breaker.current_state == pybreaker.STATE_OPEN:
+        # Check async circuit breaker state - if open, fail fast
+        if self._async_breaker.current_state == aio_state.CircuitBreakerState.OPEN:  # type: ignore[attr-defined]
             service_name, _, _ = self._circuit_breaker_config()
             handle_circuit_breaker_error(service_name)
 

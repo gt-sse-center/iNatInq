@@ -86,8 +86,8 @@ class TestHappyPath:
         )
 
         # Assert - collection should exist
-        collections = qdrant_client._sync_client.get_collections().collections
-        collection_names = {c.name for c in collections}
+        collections_response = asyncio.run(qdrant_client._client.get_collections())
+        collection_names = {c.name for c in collections_response.collections}
         assert test_collection in collection_names
 
     def test_ensure_collection_is_idempotent(
@@ -125,21 +125,21 @@ class TestHappyPath:
         )
 
         # Assert - collection still exists
-        collections = qdrant_client._sync_client.get_collections().collections
-        collection_names = {c.name for c in collections}
+        collections_response = asyncio.run(qdrant_client._client.get_collections())
+        collection_names = {c.name for c in collections_response.collections}
         assert test_collection in collection_names
 
-    def test_batch_upsert_sync_inserts_points(
+    def test_batch_upsert_async_inserts_multiple_points(
         self,
         qdrant_client: QdrantClientWrapper,
         test_collection: str,
         sample_vector: list[float],
         vector_size: int,
     ):
-        """Test that batch_upsert_sync inserts points correctly.
+        """Test that batch_upsert_async inserts multiple points correctly.
 
         **Why this test is important:**
-          - Sync upsert is primary method for Spark job ingestion
+          - Async upsert is primary method for Ray job ingestion
           - Validates points are stored with correct vectors and payloads
           - Critical for data integrity in the vector database
 
@@ -157,16 +157,20 @@ class TestHappyPath:
         ]
 
         # Act
-        qdrant_client.batch_upsert_sync(
-            collection=test_collection,
-            points=points,
-            vector_size=vector_size,
+        asyncio.run(
+            qdrant_client.batch_upsert_async(
+                collection=test_collection,
+                points=points,
+                vector_size=vector_size,
+            )
         )
 
         # Assert - points should be searchable
-        results = qdrant_client._sync_client.scroll(
-            collection_name=test_collection,
-            limit=10,
+        results = asyncio.run(
+            qdrant_client._client.scroll(
+                collection_name=test_collection,
+                limit=10,
+            )
         )
         assert len(results[0]) == 2
 
@@ -205,9 +209,11 @@ class TestHappyPath:
         )
 
         # Assert
-        results = qdrant_client._sync_client.scroll(
-            collection_name=test_collection,
-            limit=10,
+        results = asyncio.run(
+            qdrant_client._client.scroll(
+                collection_name=test_collection,
+                limit=10,
+            )
         )
         assert len(results[0]) == 1
 
@@ -239,10 +245,12 @@ class TestHappyPath:
                 payload={"text": "searchable", "category": "test"},
             ),
         ]
-        qdrant_client.batch_upsert_sync(
-            collection=test_collection,
-            points=points,
-            vector_size=vector_size,
+        asyncio.run(
+            qdrant_client.batch_upsert_async(
+                collection=test_collection,
+                points=points,
+                vector_size=vector_size,
+            )
         )
 
         # Act
@@ -303,14 +311,14 @@ class TestHappyPath:
         assert results.total == 0
         assert len(results.items) == 0
 
-    def test_batch_upsert_sync_updates_existing_points(
+    def test_batch_upsert_async_updates_existing_points(
         self,
         qdrant_client: QdrantClientWrapper,
         test_collection: str,
         sample_vector: list[float],
         vector_size: int,
     ):
-        """Test that batch_upsert_sync updates existing points by ID.
+        """Test that batch_upsert_async updates existing points by ID.
 
         **Why this test is important:**
           - Upsert semantics (insert or update) must work correctly
@@ -327,26 +335,32 @@ class TestHappyPath:
         points_v1 = [
             PointStruct(id=point_id, vector=sample_vector, payload={"version": 1}),
         ]
-        qdrant_client.batch_upsert_sync(
-            collection=test_collection,
-            points=points_v1,
-            vector_size=vector_size,
+        asyncio.run(
+            qdrant_client.batch_upsert_async(
+                collection=test_collection,
+                points=points_v1,
+                vector_size=vector_size,
+            )
         )
 
         # Act - upsert with same ID, different payload
         points_v2 = [
             PointStruct(id=point_id, vector=sample_vector, payload={"version": 2}),
         ]
-        qdrant_client.batch_upsert_sync(
-            collection=test_collection,
-            points=points_v2,
-            vector_size=vector_size,
+        asyncio.run(
+            qdrant_client.batch_upsert_async(
+                collection=test_collection,
+                points=points_v2,
+                vector_size=vector_size,
+            )
         )
 
         # Assert - should have updated payload
-        results = qdrant_client._sync_client.scroll(
-            collection_name=test_collection,
-            limit=10,
+        results = asyncio.run(
+            qdrant_client._client.scroll(
+                collection_name=test_collection,
+                limit=10,
+            )
         )
         assert len(results[0]) == 1
         assert results[0][0].payload["version"] == 2
@@ -370,19 +384,23 @@ class TestHappyPath:
           - Collection state is unchanged
         """
         # Act - should not raise
-        qdrant_client.batch_upsert_sync(
-            collection=test_collection,
-            points=[],
-            vector_size=vector_size,
+        asyncio.run(
+            qdrant_client.batch_upsert_async(
+                collection=test_collection,
+                points=[],
+                vector_size=vector_size,
+            )
         )
 
         # Assert - no points in collection
         # Collection might not even be created for empty upsert
         with contextlib.suppress(Exception):
             # Collection may not exist, which is fine for empty upsert
-            results = qdrant_client._sync_client.scroll(
-                collection_name=test_collection,
-                limit=10,
+            results = asyncio.run(
+                qdrant_client._client.scroll(
+                    collection_name=test_collection,
+                    limit=10,
+                )
             )
             assert len(results[0]) == 0
 
@@ -424,20 +442,22 @@ class TestTransientFailures:
             points = [
                 PointStruct(id=point_id, vector=sample_vector, payload={"text": "retry"}),
             ]
-            client.batch_upsert_sync(
-                collection=test_collection,
-                points=points,
-                vector_size=vector_size,
+            asyncio.run(
+                client.batch_upsert_async(
+                    collection=test_collection,
+                    points=points,
+                    vector_size=vector_size,
+                )
             )
 
-            # Store the real client for later use
-            real_sync_client = client._sync_client
+            # Store the real async client for later use
+            real_async_client = client._client
 
             # Create a mock that fails once then delegates to real client
             call_count = 0
-            original_search = real_sync_client.search
+            original_query_points = real_async_client.query_points
 
-            def transient_failure_search(*args, **kwargs):
+            async def transient_failure_query_points(*args, **kwargs):
                 nonlocal call_count
                 call_count += 1
                 if call_count == 1:
@@ -448,10 +468,10 @@ class TestTransientFailures:
                         content=b"",
                     )
                 # Subsequent calls - delegate to real implementation
-                return original_search(*args, **kwargs)
+                return await original_query_points(*args, **kwargs)
 
-            # Patch the search method
-            real_sync_client.search = transient_failure_search
+            # Patch the query_points method
+            real_async_client.query_points = transient_failure_query_points
 
             # Act - search should fail once, then succeed on retry
             # Note: The client may not have built-in retry, so this tests
@@ -478,7 +498,7 @@ class TestTransientFailures:
                 assert call_count == 1
 
                 # Now verify a clean call succeeds (simulating caller retry)
-                real_sync_client.search = original_search
+                real_async_client.query_points = original_query_points
                 results = asyncio.run(
                     client.search_async(
                         collection=test_collection,
@@ -505,10 +525,12 @@ class TestTransientFailures:
           - Critical for ingestion pipeline reliability
 
         **What it tests:**
-          - First upsert attempt fails with transient error
-          - Caller-level retry succeeds
+          - First upsert attempt fails with transient error (circuit breaker open)
+          - Caller-level retry succeeds after circuit recovery
           - Data is correctly persisted
         """
+        import aiobreaker.state as aio_state
+
         # Arrange
         client = QdrantClientWrapper(url=qdrant_url)
 
@@ -522,25 +544,32 @@ class TestTransientFailures:
                 ),
             ]
 
-            # First attempt - simulate failure by temporarily opening circuit breaker
-            client._sync_breaker._state = pybreaker.STATE_OPEN
+            # First attempt - simulate failure by temporarily opening async circuit breaker
+            # The async breaker uses aiobreaker.state enum, not pybreaker states
+            original_state = client._async_breaker.current_state
+            # Force the breaker to think it's open by setting _state directly
+            client._async_breaker._state = aio_state.CircuitBreakerState.OPEN
 
             with pytest.raises(UpstreamError) as exc_info:
-                client.batch_upsert_sync(
-                    collection=test_collection,
-                    points=points,
-                    vector_size=vector_size,
+                asyncio.run(
+                    client.batch_upsert_async(
+                        collection=test_collection,
+                        points=points,
+                        vector_size=vector_size,
+                    )
                 )
             assert "unavailable" in str(exc_info.value).lower()
 
             # Simulate circuit recovery
-            client._sync_breaker._state = pybreaker.STATE_CLOSED
+            client._async_breaker._state = aio_state.CircuitBreakerState.CLOSED
 
             # Retry - should succeed
-            client.batch_upsert_sync(
-                collection=test_collection,
-                points=points,
-                vector_size=vector_size,
+            asyncio.run(
+                client.batch_upsert_async(
+                    collection=test_collection,
+                    points=points,
+                    vector_size=vector_size,
+                )
             )
 
             # Verify data was persisted
@@ -761,10 +790,12 @@ class TestIndexingControl:
         points = [
             PointStruct(id=point_id, vector=sample_vector, payload={"text": "index"}),
         ]
-        qdrant_client.batch_upsert_sync(
-            collection=test_collection,
-            points=points,
-            vector_size=vector_size,
+        asyncio.run(
+            qdrant_client.batch_upsert_async(
+                collection=test_collection,
+                points=points,
+                vector_size=vector_size,
+            )
         )
 
         # Act - disable indexing
@@ -821,9 +852,8 @@ class TestResourceCleanup:
         # Act
         client.close()
 
-        # Assert - clients should be None
+        # Assert - client should be None
         assert client._client is None
-        assert client._sync_client is None
 
     def test_close_is_idempotent(
         self,
@@ -851,7 +881,6 @@ class TestResourceCleanup:
 
         # Assert
         assert client._client is None
-        assert client._sync_client is None
 
 
 # =============================================================================
@@ -891,10 +920,12 @@ class TestObservability:
 
         # Act
         with caplog.at_level("INFO"):
-            qdrant_client.batch_upsert_sync(
-                collection=test_collection,
-                points=points,
-                vector_size=vector_size,
+            asyncio.run(
+                qdrant_client.batch_upsert_async(
+                    collection=test_collection,
+                    points=points,
+                    vector_size=vector_size,
+                )
             )
 
         # Assert - check logs contain relevant info
@@ -982,10 +1013,12 @@ class TestFromConfig:
             points = [
                 PointStruct(id=point_id, vector=sample_vector, payload={"text": "config"}),
             ]
-            client.batch_upsert_sync(
-                collection=test_collection,
-                points=points,
-                vector_size=vector_size,
+            asyncio.run(
+                client.batch_upsert_async(
+                    collection=test_collection,
+                    points=points,
+                    vector_size=vector_size,
+                )
             )
 
             # Assert - data was inserted
@@ -1001,11 +1034,11 @@ class TestFromConfig:
             client.close()
             # Clean up the collection
             with contextlib.suppress(Exception):
-                from qdrant_client import QdrantClient
+                from qdrant_client import AsyncQdrantClient
 
-                cleanup_client = QdrantClient(url=qdrant_url)
-                cleanup_client.delete_collection(collection_name=test_collection)
-                cleanup_client.close()
+                cleanup_client = AsyncQdrantClient(url=qdrant_url)
+                asyncio.run(cleanup_client.delete_collection(collection_name=test_collection))
+                asyncio.run(cleanup_client.close())
 
     def test_from_config_with_api_key(
         self,
