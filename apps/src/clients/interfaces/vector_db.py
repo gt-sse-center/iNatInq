@@ -101,7 +101,7 @@ class VectorDBProvider(ABC):
 
         This method ensures the collection exists before upserting and performs
         batch upserts for better performance. It's designed for high-throughput
-        scenarios like Spark job processing.
+        scenarios like Ray job processing.
 
         Args:
             collection: Collection name to upsert into.

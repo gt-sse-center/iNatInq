@@ -30,9 +30,9 @@ def test_s3_operations(minio_client: S3ClientWrapper, test_bucket: str):
     assert data == b"hello"
 
 # Qdrant
-def test_qdrant_operations(qdrant_client: QdrantClientWrapper, test_collection: str):
+async def test_qdrant_operations(qdrant_client: QdrantClientWrapper, test_collection: str):
     from qdrant_client.models import PointStruct
-    qdrant_client.batch_upsert_sync(
+    await qdrant_client.batch_upsert_async(
         collection=test_collection,
         points=[PointStruct(id="1", vector=[0.1] * 768, payload={"text": "hello"})],
         vector_size=768,
@@ -339,15 +339,17 @@ def test_collection(qdrant_client: QdrantClientWrapper) -> str:
     Yields:
         str: Unique collection name.
     """
+    import asyncio
+
     collection_name = f"test-{uuid.uuid4().hex[:12]}"
 
     logger.debug("Created test collection", extra={"collection": collection_name})
 
     yield collection_name
 
-    # Cleanup: Delete collection
+    # Cleanup: Delete collection using async client
     try:
-        qdrant_client._sync_client.delete_collection(collection_name=collection_name)
+        asyncio.run(qdrant_client._client.delete_collection(collection_name=collection_name))
         logger.debug("Deleted test collection", extra={"collection": collection_name})
     except Exception as e:
         logger.warning(
