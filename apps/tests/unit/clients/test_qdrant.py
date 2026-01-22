@@ -8,7 +8,7 @@ via the Qdrant client.
 The tests cover:
   - Client Initialization: Default configuration, from_config factory
   - Collection Management: ensure_collection, collection existence checking
-  - Vector Operations: search, batch_upsert, batch_upsert_sync
+  - Vector Operations: search, batch_upsert_async
   - Indexing Operations: disable_indexing, enable_indexing
   - Circuit Breaker Integration: Circuit breaker usage, error handling
   - Error Handling: UpstreamError on failures, circuit breaker errors
@@ -23,11 +23,15 @@ The underlying Qdrant clients and circuit breaker are mocked to isolate client l
 Run with: pytest tests/unit/clients/test_qdrant.py
 """
 
+import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiobreaker
+import aiobreaker.state as aio_state
 import pybreaker
 import pytest
 from qdrant_client.models import PointStruct
+
 from clients.qdrant import QdrantClientWrapper
 from config import VectorDBConfig
 from core.exceptions import UpstreamError
@@ -42,42 +46,33 @@ class TestQdrantClientWrapperInit:
     """Test suite for QdrantClientWrapper initialization."""
 
     @patch("clients.qdrant.AsyncQdrantClient")
-    @patch("clients.qdrant.QdrantClient")
     def test_creates_client_with_config(
         self,
         mock_async_qdrant_client: MagicMock,
-        mock_qdrant_client: MagicMock,
     ) -> None:
         """Test that client is created with configuration.
 
         **Why this test is important:**
           - Client initialization is the foundation for all operations
           - Ensures configuration is applied correctly
-          - Validates that Qdrant clients are created with correct parameters
+          - Validates that Qdrant client is created with correct parameters
           - Critical for basic functionality
 
         **What it tests:**
           - AsyncQdrantClient is created with correct URL and timeout
-          - QdrantClient is created with correct URL and timeout
           - Client attributes are set correctly
           - Circuit breaker is created
         """
         mock_async_client = AsyncMock()
-        mock_qdrant_client.return_value = mock_async_client
-        mock_sync_client = MagicMock()
-        mock_async_qdrant_client.return_value = mock_sync_client
+        mock_async_qdrant_client.return_value = mock_async_client
 
         client = QdrantClientWrapper(url="http://qdrant.example.com:6333")
 
-        mock_qdrant_client.assert_called_once_with(
-            url="http://qdrant.example.com:6333", api_key=None, timeout=300
-        )
         mock_async_qdrant_client.assert_called_once_with(
             url="http://qdrant.example.com:6333", api_key=None, timeout=300
         )
         assert client.url == "http://qdrant.example.com:6333"
         assert client._client == mock_async_client
-        assert client._sync_client == mock_sync_client
 
     def test_creates_circuit_breaker(self) -> None:
         """Test that circuit breaker is created during initialization.
@@ -101,14 +96,62 @@ class TestQdrantClientWrapperInit:
         assert client._breaker.fail_max == 3
         assert client._breaker.reset_timeout == 60
 
+    def test_creates_circuit_breaker_with_custom_config(self) -> None:
+        """Test that circuit breaker uses custom configuration.
+
+        **Why this test is important:**
+          - Custom circuit breaker settings are needed for different environments
+          - Production may need different thresholds than development
+          - Validates that configuration is properly applied
+
+        **What it tests:**
+          - Custom failure threshold is applied
+          - Custom recovery timeout is applied
+        """
+        client = QdrantClientWrapper(
+            url="http://qdrant.example.com:6333",
+            circuit_breaker_threshold=10,
+            circuit_breaker_timeout=120,
+        )
+
+        assert client._breaker.fail_max == 10
+        assert client._breaker.reset_timeout == 120
+
     @patch("clients.qdrant.AsyncQdrantClient")
-    @patch("clients.qdrant.QdrantClient")
-    def test_creates_client_with_api_key(
+    def test_creates_client_with_custom_timeout(
         self,
-        mock_qdrant_client: MagicMock,
         mock_async_qdrant_client: MagicMock,
     ) -> None:
-        """Test that api_key is passed to Qdrant clients.
+        """Test that custom timeout is passed to Qdrant client.
+
+        **Why this test is important:**
+          - Timeout configuration is critical for reliability
+          - Different environments may need different timeouts
+          - Validates that timeout setting propagates correctly
+
+        **What it tests:**
+          - AsyncQdrantClient receives custom timeout
+        """
+        mock_async_client = AsyncMock()
+        mock_async_qdrant_client.return_value = mock_async_client
+
+        QdrantClientWrapper(
+            url="http://qdrant.example.com:6333",
+            timeout_s=600,
+        )
+
+        mock_async_qdrant_client.assert_called_once_with(
+            url="http://qdrant.example.com:6333",
+            api_key=None,
+            timeout=600,
+        )
+
+    @patch("clients.qdrant.AsyncQdrantClient")
+    def test_creates_client_with_api_key(
+        self,
+        mock_async_qdrant_client: MagicMock,
+    ) -> None:
+        """Test that api_key is passed to Qdrant client.
 
         **Why this test is important:**
           - API key is required for cloud Qdrant instances
@@ -117,24 +160,16 @@ class TestQdrantClientWrapperInit:
 
         **What it tests:**
           - AsyncQdrantClient is created with api_key
-          - QdrantClient is created with api_key
           - Client stores the api_key attribute
         """
         mock_async_client = AsyncMock()
-        mock_qdrant_client.return_value = mock_async_client
-        mock_sync_client = MagicMock()
-        mock_async_qdrant_client.return_value = mock_sync_client
+        mock_async_qdrant_client.return_value = mock_async_client
 
         client = QdrantClientWrapper(
             url="https://qdrant.cloud.example.com:6333",
             api_key="test-api-key-12345",
         )
 
-        mock_qdrant_client.assert_called_once_with(
-            url="https://qdrant.cloud.example.com:6333",
-            api_key="test-api-key-12345",
-            timeout=300,
-        )
         mock_async_qdrant_client.assert_called_once_with(
             url="https://qdrant.cloud.example.com:6333",
             api_key="test-api-key-12345",
@@ -161,19 +196,14 @@ class TestQdrantClientWrapperInit:
             qdrant_url="http://qdrant.example.com:6333",
         )
 
-        with (
-            patch("clients.qdrant.AsyncQdrantClient"),
-            patch("clients.qdrant.QdrantClient"),
-        ):
+        with patch("clients.qdrant.AsyncQdrantClient"):
             client = QdrantClientWrapper.from_config(config)
 
         assert client.url == "http://qdrant.example.com:6333"
 
     @patch("clients.qdrant.AsyncQdrantClient")
-    @patch("clients.qdrant.QdrantClient")
     def test_from_config_passes_api_key(
         self,
-        mock_qdrant_client: MagicMock,
         mock_async_qdrant_client: MagicMock,
     ) -> None:
         """Test that from_config passes api_key from configuration.
@@ -196,17 +226,60 @@ class TestQdrantClientWrapperInit:
 
         client = QdrantClientWrapper.from_config(config)
 
-        mock_qdrant_client.assert_called_once_with(
-            url="https://qdrant.cloud.example.com:6333",
-            api_key="config-api-key-67890",
-            timeout=300,
-        )
         mock_async_qdrant_client.assert_called_once_with(
             url="https://qdrant.cloud.example.com:6333",
             api_key="config-api-key-67890",
             timeout=300,
         )
         assert client.api_key == "config-api-key-67890"
+
+    @patch("clients.qdrant.AsyncQdrantClient")
+    def test_from_config_passes_resilience_settings(
+        self,
+        mock_async_qdrant_client: MagicMock,
+    ) -> None:
+        """Test that from_config passes all resilience settings from config.
+
+        **Why this test is important:**
+          - Resilience settings must propagate from config to client
+          - Ensures timeout, circuit breaker threshold, and timeout are applied
+          - Critical for environment-specific configuration
+
+        **What it tests:**
+          - qdrant_timeout is passed as timeout_s
+          - qdrant_circuit_breaker_threshold is passed correctly
+          - qdrant_circuit_breaker_timeout is passed correctly
+          - Circuit breaker is configured with custom values
+        """
+        mock_async_client = AsyncMock()
+        mock_async_qdrant_client.return_value = mock_async_client
+
+        config = VectorDBConfig(
+            provider_type="qdrant",
+            collection="test-collection",
+            qdrant_url="http://qdrant.example.com:6333",
+            qdrant_timeout=600,
+            qdrant_circuit_breaker_threshold=10,
+            qdrant_circuit_breaker_timeout=120,
+        )
+
+        client = QdrantClientWrapper.from_config(config)
+
+        # Verify timeout was passed to client
+        mock_async_qdrant_client.assert_called_once_with(
+            url="http://qdrant.example.com:6333",
+            api_key=None,
+            timeout=600,
+        )
+
+        # Verify client attributes
+        assert client.timeout_s == 600
+        assert client.circuit_breaker_threshold == 10
+        assert client.circuit_breaker_timeout == 120
+
+        # Verify circuit breaker was configured with custom values
+        assert client._breaker.fail_max == 10
+        assert client._breaker.reset_timeout == 120
 
     def test_from_config_validates_provider_type(self) -> None:
         """Test that from_config validates provider_type.
@@ -333,7 +406,7 @@ class TestQdrantClientWrapperSearch:
           - Critical for basic functionality
 
         **What it tests:**
-          - search is called with correct parameters
+          - query_points is called with correct parameters
           - Results are converted to SearchResults
           - Items are correctly formatted
         """
@@ -347,7 +420,10 @@ class TestQdrantClientWrapperSearch:
         mock_point2.score = 0.85
         mock_point2.payload = {"text": "world"}
 
-        mock_async_client.search.return_value = [mock_point1, mock_point2]
+        # query_points returns a response object with .points attribute
+        mock_response = MagicMock()
+        mock_response.points = [mock_point1, mock_point2]
+        mock_async_client.query_points.return_value = mock_response
 
         result = await qdrant_client.search_async(
             collection="test-collection", query_vector=[0.1, 0.2, 0.3], limit=10
@@ -378,9 +454,62 @@ class TestQdrantClientWrapperSearch:
           - Exception is wrapped in UpstreamError
           - Error message includes context
         """
-        mock_async_client.search.side_effect = Exception("Search failed")
+        mock_async_client.query_points.side_effect = Exception("Search failed")
 
         with pytest.raises(UpstreamError, match="Qdrant search failed"):
+            await qdrant_client.search_async(collection="test-collection", query_vector=[0.1, 0.2], limit=10)
+
+    @pytest.mark.asyncio
+    async def test_search_handles_none_score(
+        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    ) -> None:
+        """Test that search handles None score gracefully.
+
+        **Why this test is important:**
+          - Qdrant can return None scores in some cases
+          - Ensures graceful handling without TypeError
+          - Critical for robustness
+
+        **What it tests:**
+          - None score is converted to 0.0
+          - No exception is raised
+        """
+        mock_point = MagicMock()
+        mock_point.id = "1"
+        mock_point.score = None  # Qdrant can return None
+        mock_point.payload = {"text": "hello"}
+
+        mock_response = MagicMock()
+        mock_response.points = [mock_point]
+        mock_async_client.query_points.return_value = mock_response
+
+        result = await qdrant_client.search_async(
+            collection="test-collection", query_vector=[0.1, 0.2, 0.3], limit=10
+        )
+
+        assert len(result.items) == 1
+        assert result.items[0].score == 0.0  # None converted to 0.0
+
+    @pytest.mark.asyncio
+    async def test_search_handles_circuit_breaker_exception(
+        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    ) -> None:
+        """Test that search handles CircuitBreakerError during call.
+
+        **Why this test is important:**
+          - Circuit breaker can throw during a call (not just pre-check)
+          - Ensures consistent UpstreamError for all circuit breaker scenarios
+          - Critical for fault tolerance
+
+        **What it tests:**
+          - aiobreaker.CircuitBreakerError is caught and converted to UpstreamError
+        """
+        # aiobreaker.CircuitBreakerError requires message and reopen_time
+        mock_async_client.query_points.side_effect = aiobreaker.CircuitBreakerError(
+            "Circuit is open", datetime.datetime.now(datetime.timezone.utc)
+        )
+
+        with pytest.raises(UpstreamError, match="qdrant service is currently unavailable"):
             await qdrant_client.search_async(collection="test-collection", query_vector=[0.1, 0.2], limit=10)
 
     @pytest.mark.asyncio
@@ -397,13 +526,14 @@ class TestQdrantClientWrapperSearch:
           - Validates circuit breaker integration
 
         **What it tests:**
-          - Open circuit breaker state is checked
+          - Open circuit breaker state (via aiobreaker) triggers fail-fast
           - handle_circuit_breaker_error is called
         """
-        # Replace the circuit breaker with a mock in OPEN state
-        mock_breaker = MagicMock(spec=pybreaker.CircuitBreaker)
-        mock_breaker.current_state = pybreaker.STATE_OPEN
-        object.__setattr__(qdrant_client, "_breaker", mock_breaker)
+        # Create a mock async breaker in OPEN state
+        mock_breaker = MagicMock()
+        # aiobreaker uses .current_state for state checking (returns enum)
+        mock_breaker.current_state = aio_state.CircuitBreakerState.OPEN
+        object.__setattr__(qdrant_client, "_async_breaker", mock_breaker)
 
         with pytest.raises(UpstreamError, match="qdrant service is currently unavailable"):
             await qdrant_client.search_async(collection="test-collection", query_vector=[0.1, 0.2], limit=10)
@@ -512,13 +642,14 @@ class TestQdrantClientWrapperBatchUpsert:
           - Validates circuit breaker integration
 
         **What it tests:**
-          - Open circuit breaker state is checked
+          - Open circuit breaker state (via aiobreaker) triggers fail-fast
           - handle_circuit_breaker_error is called
         """
-        # Replace the circuit breaker with a mock in OPEN state
-        mock_breaker = MagicMock(spec=pybreaker.CircuitBreaker)
-        mock_breaker.current_state = pybreaker.STATE_OPEN
-        object.__setattr__(qdrant_client, "_breaker", mock_breaker)
+        # Create a mock async breaker in OPEN state
+        mock_breaker = MagicMock()
+        # aiobreaker uses .current_state for state checking (returns enum)
+        mock_breaker.current_state = aio_state.CircuitBreakerState.OPEN
+        object.__setattr__(qdrant_client, "_async_breaker", mock_breaker)
 
         points = [PointStruct(id="1", vector=[0.1, 0.2], payload={"text": "hello"})]
 
@@ -526,86 +657,6 @@ class TestQdrantClientWrapperBatchUpsert:
             await qdrant_client.batch_upsert_async(
                 collection="test-collection", points=points, vector_size=768
             )
-
-
-class TestQdrantClientWrapperBatchUpsertSync:
-    """Test suite for QdrantClientWrapper.batch_upsert_sync method."""
-
-    def test_batch_upsert_sync_success(
-        self, qdrant_client: QdrantClientWrapper, mock_sync_client: MagicMock
-    ) -> None:
-        """Test that batch_upsert_sync succeeds on valid input.
-
-        **Why this test is important:**
-          - Sync batch upsert is essential for synchronous code paths
-          - Validates successful API interaction
-          - Ensures collection is created if needed
-          - Critical for Spark jobs and synchronous operations
-
-        **What it tests:**
-          - Collection existence is checked and created if needed
-          - upsert is called with correct parameters
-          - Empty points list is handled
-        """
-        mock_collections_response = MagicMock()
-        mock_collections_response.collections = []
-        mock_sync_client.get_collections.return_value = mock_collections_response
-        mock_sync_client.upsert.return_value = None
-
-        points = [
-            PointStruct(id="1", vector=[0.1, 0.2], payload={"text": "hello"}),
-            PointStruct(id="2", vector=[0.3, 0.4], payload={"text": "world"}),
-        ]
-
-        qdrant_client.batch_upsert_sync(collection="test-collection", points=points, vector_size=768)
-
-        mock_sync_client.upsert.assert_called_once()
-        call_kwargs = mock_sync_client.upsert.call_args[1]
-        assert call_kwargs["collection_name"] == "test-collection"
-        assert call_kwargs["points"] == points
-
-    def test_batch_upsert_sync_skips_empty_list(
-        self, qdrant_client: QdrantClientWrapper, mock_sync_client: MagicMock
-    ) -> None:
-        """Test that batch_upsert_sync skips empty points list.
-
-        **Why this test is important:**
-          - Empty lists should be handled gracefully
-          - Prevents unnecessary API calls
-          - Critical for efficiency
-          - Validates edge case handling
-
-        **What it tests:**
-          - Empty points list returns without API calls
-        """
-        qdrant_client.batch_upsert_sync(collection="test-collection", points=[], vector_size=768)
-
-        mock_sync_client.upsert.assert_not_called()
-
-    def test_batch_upsert_sync_raises_upstream_error_on_failure(
-        self, qdrant_client: QdrantClientWrapper, mock_sync_client: MagicMock
-    ) -> None:
-        """Test that batch_upsert_sync raises UpstreamError on failure.
-
-        **Why this test is important:**
-          - Error handling ensures consistent error types
-          - UpstreamError maps to HTTP 502 in API layer
-          - Critical for error propagation and debugging
-          - Validates error wrapping
-
-        **What it tests:**
-          - Exception is wrapped in UpstreamError
-          - Error message includes context
-        """
-        mock_collections_response = MagicMock()
-        mock_collections_response.collections = []
-        mock_sync_client.get_collections.return_value = mock_collections_response
-        mock_sync_client.upsert.side_effect = Exception("Upsert failed")
-
-        points = [PointStruct(id="1", vector=[0.1, 0.2], payload={"text": "hello"})]
-
-        with pytest.raises(UpstreamError, match="Qdrant batch upsert failed"):
-            qdrant_client.batch_upsert_sync(collection="test-collection", points=points, vector_size=768)
 
 
 # =============================================================================
@@ -736,7 +787,6 @@ class TestQdrantClientWrapperAdditional:
     def test_close_with_running_loop(
         self,
         qdrant_client: QdrantClientWrapper,
-        mock_sync_client: MagicMock,
     ) -> None:
         """Test that close handles running event loop."""
         with patch("asyncio.get_event_loop") as mock_get_loop:
@@ -748,12 +798,10 @@ class TestQdrantClientWrapperAdditional:
             qdrant_client.close()
 
             mock_loop.create_task.assert_called_once()
-            mock_sync_client.close.assert_called_once()
 
     def test_close_without_running_loop(
         self,
         qdrant_client: QdrantClientWrapper,
-        mock_sync_client: MagicMock,
     ) -> None:
         """Test that close handles non-running event loop."""
         with patch("asyncio.get_event_loop") as mock_get_loop:
@@ -765,12 +813,10 @@ class TestQdrantClientWrapperAdditional:
             qdrant_client.close()
 
             mock_loop.run_until_complete.assert_called_once()
-            mock_sync_client.close.assert_called_once()
 
     def test_close_without_event_loop(
         self,
         qdrant_client: QdrantClientWrapper,
-        mock_sync_client: MagicMock,
     ) -> None:
         """Test that close handles missing event loop."""
         with patch("asyncio.get_event_loop") as mock_get_loop:
@@ -779,15 +825,13 @@ class TestQdrantClientWrapperAdditional:
                 qdrant_client.close()
 
                 mock_run.assert_called_once()
-                mock_sync_client.close.assert_called_once()
 
-    def test_close_with_none_clients(self) -> None:
-        """Test that close handles None clients gracefully."""
+    def test_close_with_none_client(self) -> None:
+        """Test that close handles None client gracefully."""
         with patch("clients.qdrant.AsyncQdrantClient") as mock_client_cls:
             mock_client_cls.return_value = None
             client = QdrantClientWrapper(url="http://qdrant.example.com:6333")
             object.__setattr__(client, "_client", None)
-            object.__setattr__(client, "_sync_client", None)
 
             # Should not raise
             client.close()

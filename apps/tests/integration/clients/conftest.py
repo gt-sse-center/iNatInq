@@ -12,13 +12,31 @@ The MinIO container provides S3-compatible object storage:
 - Session-scoped for performance
 - Cleanup: Automatic via fixture teardown + Ryuk orphan cleanup
 
+## Qdrant Container
+
+The Qdrant container provides vector database functionality:
+- Ports: Random ephemeral host ports (testcontainers handles this)
+- Container ports: 6333 (HTTP API), 6334 (gRPC)
+- Session-scoped for performance
+- Cleanup: Automatic via fixture teardown + Ryuk orphan cleanup
+
 ## Usage
 
 ```python
+# S3/MinIO
 def test_s3_operations(minio_client: S3ClientWrapper, test_bucket: str):
     minio_client.put_object(bucket=test_bucket, key="test.txt", body=b"hello")
     data = minio_client.get_object(bucket=test_bucket, key="test.txt")
     assert data == b"hello"
+
+# Qdrant
+async def test_qdrant_operations(qdrant_client: QdrantClientWrapper, test_collection: str):
+    from qdrant_client.models import PointStruct
+    await qdrant_client.batch_upsert_async(
+        collection=test_collection,
+        points=[PointStruct(id="1", vector=[0.1] * 768, payload={"text": "hello"})],
+        vector_size=768,
+    )
 ```
 """
 
@@ -26,9 +44,12 @@ import logging
 import time
 import uuid
 
+import httpx
 import pytest
 from testcontainers.minio import MinioContainer
+from testcontainers.qdrant import QdrantContainer
 
+from clients.qdrant import QdrantClientWrapper
 from clients.s3 import S3ClientWrapper
 
 logger = logging.getLogger(__name__)
@@ -199,3 +220,162 @@ def sample_data() -> bytes:
         bytes: Sample binary data.
     """
     return b"Integration test sample data - " + uuid.uuid4().bytes
+
+
+# =============================================================================
+# Qdrant Container Fixtures
+# =============================================================================
+
+
+def _get_qdrant_url(container: QdrantContainer) -> str:
+    """Get the Qdrant HTTP URL from a container.
+
+    Args:
+        container: Running Qdrant container.
+
+    Returns:
+        str: HTTP URL for Qdrant REST API.
+    """
+    return f"http://{container.rest_host_address}"
+
+
+@pytest.fixture(scope="session")
+def qdrant_container():
+    """Start a Qdrant container for the test session.
+
+    The container is started once and shared across all tests in the session.
+    This significantly reduces test overhead compared to per-test containers.
+
+    Yields:
+        QdrantContainer: Running Qdrant container with connection info.
+    """
+    logger.info("Starting Qdrant container...")
+
+    # Use v1.16.x to match qdrant-client 1.16.x (minor version diff must be ≤1)
+    container = QdrantContainer(image="qdrant/qdrant:v1.16.0")
+    container.start()
+
+    # Wait for container to be healthy
+    _wait_for_qdrant_health(container)
+
+    logger.info(
+        "Qdrant container started",
+        extra={
+            "url": _get_qdrant_url(container),
+            "container_id": container.get_wrapped_container().short_id,
+        },
+    )
+
+    yield container
+
+    logger.info("Stopping Qdrant container...")
+    container.stop()
+
+
+def _wait_for_qdrant_health(container: QdrantContainer, timeout: int = 60) -> None:
+    """Wait for Qdrant container to be ready.
+
+    Args:
+        container: Qdrant container instance.
+        timeout: Maximum seconds to wait.
+
+    Raises:
+        TimeoutError: If Qdrant doesn't become healthy within timeout.
+    """
+    health_url = f"{_get_qdrant_url(container)}/healthz"
+
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            response = httpx.get(health_url, timeout=2.0)
+            if response.status_code == 200:
+                return
+        except httpx.RequestError:
+            pass
+        time.sleep(0.5)
+
+    raise TimeoutError(f"Qdrant container not healthy after {timeout}s")
+
+
+@pytest.fixture(scope="session")
+def qdrant_url(qdrant_container: QdrantContainer) -> str:
+    """Get Qdrant connection URL.
+
+    Returns:
+        str: Qdrant HTTP API URL.
+    """
+    return _get_qdrant_url(qdrant_container)
+
+
+@pytest.fixture(scope="session")
+def qdrant_client(qdrant_url: str) -> QdrantClientWrapper:
+    """Create a QdrantClientWrapper connected to the test Qdrant instance.
+
+    Session-scoped to share the client across tests for efficiency.
+    Tests should use unique collection names to avoid collisions.
+
+    Returns:
+        QdrantClientWrapper: Client connected to test Qdrant.
+    """
+    client = QdrantClientWrapper(url=qdrant_url)
+
+    logger.info(
+        "Created Qdrant client for integration tests",
+        extra={"url": qdrant_url},
+    )
+
+    yield client
+
+    # Cleanup
+    client.close()
+
+
+@pytest.fixture
+def test_collection(qdrant_client: QdrantClientWrapper) -> str:
+    """Create a unique test collection that's cleaned up after the test.
+
+    Each test gets a fresh collection to ensure isolation.
+
+    Yields:
+        str: Unique collection name.
+    """
+    import asyncio
+
+    collection_name = f"test-{uuid.uuid4().hex[:12]}"
+
+    logger.debug("Created test collection", extra={"collection": collection_name})
+
+    yield collection_name
+
+    # Cleanup: Delete collection using async client
+    try:
+        asyncio.run(qdrant_client._client.delete_collection(collection_name=collection_name))
+        logger.debug("Deleted test collection", extra={"collection": collection_name})
+    except Exception as e:
+        logger.warning(
+            "Collection cleanup failed",
+            extra={"collection": collection_name, "error": str(e)},
+        )
+
+
+@pytest.fixture
+def sample_vector() -> list[float]:
+    """Provide a sample embedding vector for tests.
+
+    Returns:
+        list[float]: 768-dimensional sample vector.
+    """
+    import random
+
+    random.seed(42)
+    return [random.random() for _ in range(768)]
+
+
+@pytest.fixture
+def vector_size() -> int:
+    """Standard vector dimension for tests.
+
+    Returns:
+        int: Vector dimension (768 for nomic-embed-text compatibility).
+    """
+    return 768

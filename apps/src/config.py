@@ -29,7 +29,11 @@ defaults):
 - `QDRANT_COLLECTION`: Default collection name for storing vectors
   (default: `documents`)
 - `QDRANT_API_KEY`: Optional API key for Qdrant Cloud authentication
-- `QDRANT_TIMEOUT`: Request timeout in seconds (default: `30`)
+- `QDRANT_TIMEOUT`: Request timeout in seconds (default: `300`)
+- `QDRANT_CIRCUIT_BREAKER_THRESHOLD`: Failures before circuit opens
+  (default: `3`)
+- `QDRANT_CIRCUIT_BREAKER_TIMEOUT`: Circuit recovery timeout in seconds
+  (default: `60`)
 - `QDRANT_PREFER_GRPC`: Whether to prefer gRPC over HTTP
   (default: `false`)
 
@@ -140,8 +144,8 @@ defaults):
 - `SAGEMAKER_REGION`: AWS region for SageMaker (default: `us-east-1`)
 
 **Vector Database Provider Configuration**
-- `VECTOR_DB_PROVIDER`: Provider type - `qdrant`, `weaviate`,
-  `pinecone`, or `milvus` (default: `qdrant`)
+- `VECTOR_DB_PROVIDER`: Provider type - `qdrant` or `weaviate`
+  (default: `qdrant`)
 - `VECTOR_DB_COLLECTION`: Collection name (default: `documents`)
 - `QDRANT_URL`: Qdrant service URL (backward compatible,
   auto-detected if not set)
@@ -149,11 +153,6 @@ defaults):
   `VECTOR_DB_PROVIDER=weaviate`)
 - `WEAVIATE_API_KEY`: Weaviate API key (optional, for authenticated
   instances)
-- `PINECONE_API_KEY`: Pinecone API key (required if
-  `VECTOR_DB_PROVIDER=pinecone`)
-- `PINECONE_ENVIRONMENT`: Pinecone environment (default: `us-east-1`)
-- `MILVUS_HOST`: Milvus host (required if `VECTOR_DB_PROVIDER=milvus`)
-- `MILVUS_PORT`: Milvus port (default: `19530`)
 
 **Kubernetes**
 - `K8S_NAMESPACE`: Kubernetes namespace for ML components
@@ -445,44 +444,43 @@ class MinIOConfig(BaseModel):
 class VectorDBConfig(BaseModel):
     """Configuration for vector database provider.
 
-    This configuration class supports multiple vector database providers
-    and can be extended to add new providers without breaking existing
-    code.
+    This configuration class supports Qdrant and Weaviate vector databases.
 
     Attributes:
         provider_type: Type of vector database provider. Must be one of:
-            "qdrant", "weaviate", "pinecone", or "milvus".
+            "qdrant" or "weaviate".
         collection: Default collection name to use for storing and
             querying vectors.
         qdrant_url: Qdrant service URL. Required if
             provider_type="qdrant". Auto-detected based on environment
             if not set.
+        qdrant_api_key: Qdrant API key. Optional, for authenticated instances.
+        qdrant_timeout: Qdrant request timeout in seconds. Default: 300.
+        qdrant_circuit_breaker_threshold: Failures before circuit opens.
+            Default: 3.
+        qdrant_circuit_breaker_timeout: Circuit recovery timeout in seconds.
+            Default: 60.
         weaviate_url: Weaviate service URL. Required if
             provider_type="weaviate". Auto-detected based on environment
             if not set.
         weaviate_api_key: Weaviate API key. Optional, for authenticated
             instances.
-        pinecone_api_key: Pinecone API key. Required if
-            provider_type="pinecone".
-        pinecone_environment: Pinecone environment/region.
-            Default: "us-east-1".
-        milvus_host: Milvus host address. Required if
-            provider_type="milvus". Auto-detected based on environment
-            if not set.
-        milvus_port: Milvus port number. Default: 19530.
     """
 
-    provider_type: Literal["qdrant", "weaviate", "pinecone", "milvus"]
+    provider_type: Literal["qdrant", "weaviate"]
     collection: str
+
+    # Qdrant settings
     qdrant_url: str | None = None
     qdrant_api_key: str | None = None
+    qdrant_timeout: int = 300
+    qdrant_circuit_breaker_threshold: int = 3
+    qdrant_circuit_breaker_timeout: int = 60
+
+    # Weaviate settings
     weaviate_url: str | None = None
     weaviate_api_key: str | None = None
     weaviate_grpc_host: str | None = None
-    pinecone_api_key: str | None = None
-    pinecone_environment: str | None = None
-    milvus_host: str | None = None
-    milvus_port: int | None = None
 
     model_config = SettingsConfigDict(frozen=True)
 
@@ -507,7 +505,7 @@ class VectorDBConfig(BaseModel):
         provider_type = os.getenv("VECTOR_DB_PROVIDER", "qdrant").lower()
 
         # Validate provider type
-        valid_providers = ("qdrant", "weaviate", "pinecone", "milvus")
+        valid_providers = ("qdrant", "weaviate")
         if provider_type not in valid_providers:
             msg = f"Invalid VECTOR_DB_PROVIDER: {provider_type}. Must be one of: {valid_providers}"
             raise ValueError(msg)
@@ -525,42 +523,20 @@ class VectorDBConfig(BaseModel):
                 collection=collection,
                 qdrant_url=os.getenv("QDRANT_URL", default_url),
                 qdrant_api_key=os.getenv("QDRANT_API_KEY"),
+                qdrant_timeout=int(os.getenv("QDRANT_TIMEOUT", "300")),
+                qdrant_circuit_breaker_threshold=int(os.getenv("QDRANT_CIRCUIT_BREAKER_THRESHOLD", "3")),
+                qdrant_circuit_breaker_timeout=int(os.getenv("QDRANT_CIRCUIT_BREAKER_TIMEOUT", "60")),
             )
 
-        if provider_type == "weaviate":
-            default_url = f"http://weaviate.{namespace}:8080" if in_cluster else "http://localhost:8080"
-            return cls(
-                provider_type="weaviate",
-                collection=collection,
-                weaviate_url=os.getenv("WEAVIATE_URL", default_url),
-                weaviate_api_key=os.getenv("WEAVIATE_API_KEY"),
-                weaviate_grpc_host=os.getenv("WEAVIATE_GRPC_HOST"),
-            )
-
-        if provider_type == "pinecone":
-            api_key = os.getenv("PINECONE_API_KEY")
-            if not api_key:
-                raise ValueError("PINECONE_API_KEY is required for Pinecone provider")
-            return cls(
-                provider_type="pinecone",
-                collection=collection,
-                pinecone_api_key=api_key,
-                pinecone_environment=os.getenv("PINECONE_ENVIRONMENT", "us-east-1"),
-            )
-
-        if provider_type == "milvus":
-            default_host = f"milvus.{namespace}" if in_cluster else "localhost"
-            return cls(
-                provider_type="milvus",
-                collection=collection,
-                milvus_host=os.getenv("MILVUS_HOST", default_host),
-                milvus_port=int(os.getenv("MILVUS_PORT", "19530")),
-            )
-
-        # This should be unreachable due to validation above, but needed
-        # for type checking
-        msg = f"Unsupported provider type: {provider_type}"
-        raise ValueError(msg)
+        # Weaviate is the only other valid option
+        default_url = f"http://weaviate.{namespace}:8080" if in_cluster else "http://localhost:8080"
+        return cls(
+            provider_type="weaviate",
+            collection=collection,
+            weaviate_url=os.getenv("WEAVIATE_URL", default_url),
+            weaviate_api_key=os.getenv("WEAVIATE_API_KEY"),
+            weaviate_grpc_host=os.getenv("WEAVIATE_GRPC_HOST"),
+        )
 
     @classmethod
     def from_env_for_provider(cls, provider_type: str, namespace: str = "ml-system") -> "VectorDBConfig":
@@ -571,7 +547,7 @@ class VectorDBConfig(BaseModel):
         need to target a specific provider regardless of the default configuration.
 
         Args:
-            provider_type: Provider type ("qdrant", "weaviate", "pinecone", "milvus").
+            provider_type: Provider type ("qdrant" or "weaviate").
             namespace: Kubernetes namespace for service discovery.
 
         Returns:
@@ -580,7 +556,7 @@ class VectorDBConfig(BaseModel):
         Raises:
             ValueError: If provider type is invalid or required config is missing.
         """
-        valid_providers = ("qdrant", "weaviate", "pinecone", "milvus")
+        valid_providers = ("qdrant", "weaviate")
         if provider_type not in valid_providers:
             msg = f"Invalid provider type: {provider_type}. Must be one of: {valid_providers}"
             raise ValueError(msg)
@@ -597,38 +573,15 @@ class VectorDBConfig(BaseModel):
                 qdrant_api_key=os.getenv("QDRANT_API_KEY"),
             )
 
-        if provider_type == "weaviate":
-            default_url = f"http://weaviate.{namespace}:8080" if in_cluster else "http://localhost:8080"
-            return cls(
-                provider_type="weaviate",
-                collection=collection,
-                weaviate_url=os.getenv("WEAVIATE_URL", default_url),
-                weaviate_api_key=os.getenv("WEAVIATE_API_KEY"),
-                weaviate_grpc_host=os.getenv("WEAVIATE_GRPC_HOST"),
-            )
-
-        if provider_type == "pinecone":
-            api_key = os.getenv("PINECONE_API_KEY")
-            if not api_key:
-                raise ValueError("PINECONE_API_KEY is required for Pinecone provider")
-            return cls(
-                provider_type="pinecone",
-                collection=collection,
-                pinecone_api_key=api_key,
-                pinecone_environment=os.getenv("PINECONE_ENVIRONMENT", "us-east-1"),
-            )
-
-        if provider_type == "milvus":
-            default_host = f"milvus.{namespace}" if in_cluster else "localhost"
-            return cls(
-                provider_type="milvus",
-                collection=collection,
-                milvus_host=os.getenv("MILVUS_HOST", default_host),
-                milvus_port=int(os.getenv("MILVUS_PORT", "19530")),
-            )
-
-        msg = f"Unsupported provider type: {provider_type}"
-        raise ValueError(msg)
+        # Weaviate is the only other valid option
+        default_url = f"http://weaviate.{namespace}:8080" if in_cluster else "http://localhost:8080"
+        return cls(
+            provider_type="weaviate",
+            collection=collection,
+            weaviate_url=os.getenv("WEAVIATE_URL", default_url),
+            weaviate_api_key=os.getenv("WEAVIATE_API_KEY"),
+            weaviate_grpc_host=os.getenv("WEAVIATE_GRPC_HOST"),
+        )
 
 
 class SparkJobConfig(BaseModel):
@@ -908,8 +861,7 @@ class Settings(BaseModel):
             Supports multiple providers: ollama, openai, huggingface,
             sagemaker.
         vector_db: Vector database provider configuration
-            (provider-agnostic). Supports multiple providers: qdrant,
-            weaviate, pinecone, milvus.
+            (provider-agnostic). Supports providers: qdrant, weaviate.
         minio: MinIO/S3 configuration for object storage. Contains
             endpoint URL, credentials, bucket name, and connection
             settings.
