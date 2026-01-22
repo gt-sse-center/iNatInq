@@ -61,7 +61,114 @@ compose/
 | Qdrant HTTP | 6333 | REST API |
 | Qdrant gRPC | 6334 | gRPC API |
 | Weaviate | 8080 | REST API |
+| Weaviate Console | 8081 | GraphQL Playground |
 | Ollama | 11434 | LLM API |
 | Ray Dashboard | 8265 | Web UI |
 | Ray Client | 10001 | Client connection |
+
+## Web UIs
+
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| Pipeline Docs | http://localhost:8000/docs | - |
+| MinIO Console | http://localhost:9001 | minioadmin / minioadmin |
+| Qdrant Dashboard | http://localhost:6333/dashboard | - |
+| Weaviate Console | http://localhost:8081 | - |
+| Ray Dashboard | http://localhost:8265 | - |
+
+## Weaviate GraphQL Queries
+
+Access the Weaviate Console at http://localhost:8081 and use these queries:
+
+### Count Objects
+
+```graphql
+{
+  Aggregate {
+    Documents {
+      meta {
+        count
+      }
+    }
+  }
+}
+```
+
+### Get Objects with Properties
+
+```graphql
+{
+  Get {
+    Documents(limit: 10) {
+      text
+      s3_key
+      s3_bucket
+      _additional {
+        id
+        vector
+      }
+    }
+  }
+}
+```
+
+### Search by Vector Similarity
+
+```graphql
+{
+  Get {
+    Documents(
+      nearVector: {
+        vector: [0.1, 0.2, ...]  # Your query vector
+      }
+      limit: 5
+    ) {
+      text
+      s3_key
+      _additional {
+        distance
+      }
+    }
+  }
+}
+```
+
+### Filter by Property
+
+```graphql
+{
+  Get {
+    Documents(
+      where: {
+        path: ["s3_key"]
+        operator: Like
+        valueText: "*moby*"
+      }
+    ) {
+      text
+      s3_key
+    }
+  }
+}
+```
+
+### Combined: Filter + Limit
+
+```graphql
+{
+  Get {
+    Documents(
+      where: {
+        path: ["s3_bucket"]
+        operator: Equal
+        valueText: "pipeline"
+      }
+      limit: 5
+    ) {
+      text
+      s3_key
+      s3_bucket
+    }
+  }
+}
 

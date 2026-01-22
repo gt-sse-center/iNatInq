@@ -34,7 +34,7 @@ _IMPORTS = None
 
 def _init_repo_imports() -> None:
     """Ensure repo modules are importable and load them once."""
-    global _IMPORTS
+    global _IMPORTS  # noqa: PLW0603
     if _IMPORTS is not None:
         return
 
@@ -248,6 +248,7 @@ async def _run_smoke_test(
     provider_type: str,
     collection: str,
     text: str,
+    *,
     cleanup: bool,
 ) -> int:
     """Execute the smoke test steps in an async flow."""
@@ -267,9 +268,7 @@ async def _run_smoke_test(
         vector = embedder.embed(text)
     except Exception as exc:
         provider_name = settings.embedding.provider_type
-        raise RuntimeError(
-            f"Embedding request failed for provider={provider_name}"
-        ) from exc
+        raise RuntimeError(f"Embedding request failed for provider={provider_name}") from exc
     vector_size = len(vector)
     if not vector_size:
         raise RuntimeError("Embedding provider returned an empty vector.")
@@ -370,7 +369,7 @@ def main() -> int:
         provider_type = _IMPORTS.get_settings().vector_db.provider_type
 
     # Run the async smoke test and return its exit code.
-    return asyncio.run(_run_smoke_test(provider_type, collection, text, cleanup))
+    return asyncio.run(_run_smoke_test(provider_type, collection, text, cleanup=cleanup))
 
 
 if __name__ == "__main__":

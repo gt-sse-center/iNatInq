@@ -99,6 +99,54 @@ class BatchEmbeddingResult:
         return len(self.qdrant_points) == 0
 
 
+@attrs.define(frozen=True, slots=True)
+class UpsertResult:
+    """Result of upserting to vector databases.
+
+    Tracks success/failure for each database independently to ensure
+    accurate reporting and enable targeted retries.
+
+    Attributes:
+        qdrant_success: True if Qdrant upsert succeeded.
+        weaviate_success: True if Weaviate upsert succeeded.
+        qdrant_error: Error message if Qdrant failed, empty string otherwise.
+        weaviate_error: Error message if Weaviate failed, empty string otherwise.
+        batch_size: Number of points in the batch.
+
+    Example:
+        >>> result = UpsertResult(qdrant_success=True, weaviate_success=False,
+        ...                       weaviate_error="Timeout", batch_size=50)
+        >>> result.any_success  # True
+        >>> result.all_success  # False
+    """
+
+    qdrant_success: bool
+    weaviate_success: bool
+    qdrant_error: str = ""
+    weaviate_error: str = ""
+    batch_size: int = 0
+
+    @property
+    def any_success(self) -> bool:
+        """Return True if at least one database succeeded."""
+        return self.qdrant_success or self.weaviate_success
+
+    @property
+    def all_success(self) -> bool:
+        """Return True if both databases succeeded."""
+        return self.qdrant_success and self.weaviate_success
+
+    @classmethod
+    def both_success(cls, batch_size: int) -> "UpsertResult":
+        """Create result for successful upsert to both databases."""
+        return cls(qdrant_success=True, weaviate_success=True, batch_size=batch_size)
+
+    @classmethod
+    def empty(cls) -> "UpsertResult":
+        """Create result for empty batch (no-op, counts as success)."""
+        return cls(qdrant_success=True, weaviate_success=True, batch_size=0)
+
+
 # =============================================================================
 # Configuration Types
 # =============================================================================

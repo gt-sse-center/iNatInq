@@ -82,10 +82,7 @@ class TestProviderRegistration:
             qdrant_url="http://qdrant.example.com:6333",
         )
 
-        with (
-            patch("clients.qdrant.AsyncQdrantClient"),
-            patch("clients.qdrant.QdrantClient"),
-        ):
+        with patch("clients.qdrant.AsyncQdrantClient"):
             provider = create_vector_db_provider(config)
 
         assert isinstance(provider, QdrantClientWrapper)
@@ -149,7 +146,6 @@ class TestProviderRegistration:
 
         with (
             patch("clients.qdrant.AsyncQdrantClient"),
-            patch("clients.qdrant.QdrantClient"),
             patch("clients.weaviate.WeaviateAsyncClient"),
         ):
             qdrant_provider = create_vector_db_provider(qdrant_config)

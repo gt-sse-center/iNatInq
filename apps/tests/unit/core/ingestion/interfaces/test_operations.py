@@ -35,6 +35,7 @@ from core.ingestion.interfaces.operations import (
 from core.ingestion.interfaces.types import (
     BatchEmbeddingResult,
     ContentResult,
+    UpsertResult,
 )
 from core.models import VectorPoint
 
@@ -422,7 +423,8 @@ class TestVectorDBUpserter:
 
         result = await upserter.upsert_batch_async(batch, "documents", 768)
 
-        assert result is True
+        assert isinstance(result, UpsertResult)
+        assert result.all_success
         mock_qdrant.batch_upsert_async.assert_awaited_once()
         mock_weaviate.batch_upsert_async.assert_awaited_once()
 
@@ -445,7 +447,8 @@ class TestVectorDBUpserter:
 
         result = await upserter.upsert_batch_async(batch, "documents", 768)
 
-        assert result is True
+        assert isinstance(result, UpsertResult)
+        assert result.all_success  # Empty batch is considered successful
         mock_qdrant.batch_upsert_async.assert_not_called()
 
     @pytest.mark.asyncio
@@ -475,7 +478,10 @@ class TestVectorDBUpserter:
 
         result = await upserter.upsert_batch_async(batch, "documents", 768)
 
-        assert result is True  # Qdrant succeeded
+        assert isinstance(result, UpsertResult)
+        assert result.any_success  # Qdrant succeeded
+        assert result.qdrant_success
+        assert not result.weaviate_success
 
     @pytest.mark.asyncio
     async def test_upsert_batch_async_both_fail(self) -> None:
@@ -504,7 +510,10 @@ class TestVectorDBUpserter:
 
         result = await upserter.upsert_batch_async(batch, "documents", 768)
 
-        assert result is False
+        assert isinstance(result, UpsertResult)
+        assert not result.any_success
+        assert not result.qdrant_success
+        assert not result.weaviate_success
 
 
 # =============================================================================
@@ -563,7 +572,9 @@ class TestBatchProcessor:
         mock_factory.create_batch.return_value = mock_batch
 
         mock_upserter = MagicMock()
-        mock_upserter.upsert_batch_async = AsyncMock(return_value=True)
+        mock_upserter.upsert_batch_async = AsyncMock(
+            return_value=UpsertResult(qdrant_success=True, weaviate_success=True, batch_size=1)
+        )
 
         processor = BatchProcessor(
             embedding_generator=mock_generator,
@@ -660,7 +671,9 @@ class TestBatchProcessor:
         )
 
         mock_upserter = MagicMock()
-        mock_upserter.upsert_batch_async = AsyncMock(return_value=False)
+        mock_upserter.upsert_batch_async = AsyncMock(
+            return_value=UpsertResult(qdrant_success=False, weaviate_success=False, batch_size=1)
+        )
 
         processor = BatchProcessor(
             embedding_generator=mock_generator,
@@ -728,7 +741,9 @@ class TestBatchProcessor:
         )
 
         mock_upserter = MagicMock()
-        mock_upserter.upsert_batch_async = AsyncMock(return_value=True)
+        mock_upserter.upsert_batch_async = AsyncMock(
+            return_value=UpsertResult(qdrant_success=True, weaviate_success=True, batch_size=1)
+        )
 
         processor = BatchProcessor(
             embedding_generator=mock_generator,

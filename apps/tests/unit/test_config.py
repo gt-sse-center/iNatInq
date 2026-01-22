@@ -385,6 +385,73 @@ class TestVectorDBConfigQdrantResilience:
         assert config.qdrant_circuit_breaker_timeout == 60
 
 
+class TestVectorDBConfigWeaviateResilience:
+    """Test suite for VectorDBConfig Weaviate resilience settings."""
+
+    @patch.dict(
+        os.environ,
+        {
+            "VECTOR_DB_PROVIDER": "weaviate",
+            "WEAVIATE_URL": "http://weaviate:8080",
+            "WEAVIATE_TIMEOUT": "600",
+            "WEAVIATE_CIRCUIT_BREAKER_THRESHOLD": "10",
+            "WEAVIATE_CIRCUIT_BREAKER_TIMEOUT": "120",
+        },
+        clear=False,
+    )
+    @patch("config._is_in_cluster", return_value=False)
+    def test_weaviate_resilience_settings_from_env(self, mock_cluster: patch) -> None:
+        """Test that Weaviate resilience settings are parsed from environment.
+
+        **Why this test is important:**
+          - Resilience settings must be configurable per environment
+          - Production may need different timeouts than development
+          - Critical for operational flexibility
+
+        **What it tests:**
+          - weaviate_timeout is parsed from WEAVIATE_TIMEOUT
+          - weaviate_circuit_breaker_threshold is parsed correctly
+          - weaviate_circuit_breaker_timeout is parsed correctly
+        """
+        from config import VectorDBConfig
+
+        config = VectorDBConfig.from_env()
+
+        assert config.weaviate_timeout == 600
+        assert config.weaviate_circuit_breaker_threshold == 10
+        assert config.weaviate_circuit_breaker_timeout == 120
+
+    @patch.dict(
+        os.environ,
+        {
+            "VECTOR_DB_PROVIDER": "weaviate",
+            "WEAVIATE_URL": "http://weaviate:8080",
+        },
+        clear=False,
+    )
+    @patch("config._is_in_cluster", return_value=False)
+    def test_weaviate_resilience_default_values(self, mock_cluster: patch) -> None:
+        """Test that default Weaviate resilience values are applied.
+
+        **Why this test is important:**
+          - Sensible defaults reduce configuration burden
+          - Critical for easy onboarding
+          - Defaults should match common production patterns
+
+        **What it tests:**
+          - Default weaviate_timeout is 300 seconds
+          - Default weaviate_circuit_breaker_threshold is 3
+          - Default weaviate_circuit_breaker_timeout is 60 seconds
+        """
+        from config import VectorDBConfig
+
+        config = VectorDBConfig.from_env()
+
+        assert config.weaviate_timeout == 300
+        assert config.weaviate_circuit_breaker_threshold == 3
+        assert config.weaviate_circuit_breaker_timeout == 60
+
+
 # =============================================================================
 # EmbeddingConfig Tests
 # =============================================================================

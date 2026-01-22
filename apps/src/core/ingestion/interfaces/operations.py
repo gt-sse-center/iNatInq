@@ -17,7 +17,7 @@ from clients.s3 import S3ClientWrapper
 from core.exceptions import UpstreamError
 from foundation.rate_limiter import RateLimiter
 
-from .types import BatchEmbeddingResult, ContentResult, ProcessingResult
+from .types import BatchEmbeddingResult, ContentResult, ProcessingResult, UpsertResult
 
 if TYPE_CHECKING:
     from .factories import VectorPointFactory
@@ -240,7 +240,7 @@ class VectorDBUpserter:
         embedding_result: BatchEmbeddingResult,
         collection: str,
         vector_size: int,
-    ) -> bool:
+    ) -> UpsertResult:
         """Upsert vectors to both Qdrant and Weaviate in parallel.
 
         Args:
@@ -249,10 +249,12 @@ class VectorDBUpserter:
             vector_size: Vector dimension.
 
         Returns:
-            True if at least one database succeeded, False if both failed.
+            UpsertResult with per-database success/failure status.
         """
         if embedding_result.is_empty():
-            return True
+            return UpsertResult.empty()
+
+        batch_size = len(embedding_result)
 
         # Convert VectorPoint to Qdrant PointStruct
         qdrant_point_structs = [point.to_qdrant() for point in embedding_result.qdrant_points]
@@ -272,25 +274,47 @@ class VectorDBUpserter:
             return_exceptions=True,
         )
 
-        # Check for exceptions from either database
-        any_success = False
-        for i, result in enumerate(upsert_results):
-            if isinstance(result, Exception):
-                db_name = "Qdrant" if i == 0 else "Weaviate"
-                logger.error(
-                    "%s batch upsert failed",
-                    db_name,
-                    extra={
-                        "error": str(result),
-                        "error_type": type(result).__name__,
-                        "batch_size": len(embedding_result),
-                    },
-                    exc_info=result,
-                )
-            else:
-                any_success = True
+        # Track per-database success/failure
+        qdrant_success = True
+        weaviate_success = True
+        qdrant_error = ""
+        weaviate_error = ""
 
-        return any_success
+        # Check Qdrant result
+        if isinstance(upsert_results[0], Exception):
+            qdrant_success = False
+            qdrant_error = f"{type(upsert_results[0]).__name__}: {upsert_results[0]}"
+            logger.error(
+                "Qdrant batch upsert failed",
+                extra={
+                    "error": str(upsert_results[0]),
+                    "error_type": type(upsert_results[0]).__name__,
+                    "batch_size": batch_size,
+                },
+                exc_info=upsert_results[0],
+            )
+
+        # Check Weaviate result
+        if isinstance(upsert_results[1], Exception):
+            weaviate_success = False
+            weaviate_error = f"{type(upsert_results[1]).__name__}: {upsert_results[1]}"
+            logger.error(
+                "Weaviate batch upsert failed",
+                extra={
+                    "error": str(upsert_results[1]),
+                    "error_type": type(upsert_results[1]).__name__,
+                    "batch_size": batch_size,
+                },
+                exc_info=upsert_results[1],
+            )
+
+        return UpsertResult(
+            qdrant_success=qdrant_success,
+            weaviate_success=weaviate_success,
+            qdrant_error=qdrant_error,
+            weaviate_error=weaviate_error,
+            batch_size=batch_size,
+        )
 
 
 class BatchProcessor:
@@ -369,10 +393,27 @@ class BatchProcessor:
         vector_size = len(vectors[0]) if vectors else self.embedding_generator.vector_size
 
         # Upsert to databases
-        success = await self.upserter.upsert_batch_async(embedding_result, self.collection, vector_size)
+        upsert_result = await self.upserter.upsert_batch_async(embedding_result, self.collection, vector_size)
 
-        if success:
-            # Success - grow batch size cautiously
+        # Log per-DB status for observability
+        if not upsert_result.all_success:
+            failed_dbs = []
+            if not upsert_result.qdrant_success:
+                failed_dbs.append(f"Qdrant: {upsert_result.qdrant_error}")
+            if not upsert_result.weaviate_success:
+                failed_dbs.append(f"Weaviate: {upsert_result.weaviate_error}")
+            logger.warning(
+                "Partial upsert failure: %s",
+                "; ".join(failed_dbs),
+                extra={
+                    "batch_size": upsert_result.batch_size,
+                    "qdrant_success": upsert_result.qdrant_success,
+                    "weaviate_success": upsert_result.weaviate_success,
+                },
+            )
+
+        if upsert_result.any_success:
+            # At least one DB succeeded - grow batch size cautiously
             new_size = min(current_batch_size + 1, max_batch_size)
             return [ProcessingResult.success_result(c.s3_key) for c in batch], new_size
         # Both DBs failed - shrink batch size

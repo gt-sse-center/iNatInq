@@ -172,6 +172,57 @@ class TestWeaviateClientWrapperInit:
         assert client._breaker.fail_max == 3
         assert client._breaker.reset_timeout == 60
 
+    @patch("clients.weaviate.WeaviateAsyncClient")
+    def test_creates_circuit_breaker_with_custom_config(self, mock_weaviate_async_client: MagicMock) -> None:
+        """Test that circuit breaker respects custom configuration.
+
+        **Why this test is important:**
+          - Production environments may need different thresholds
+          - Validates configurable resilience parameters
+          - Critical for operational flexibility
+
+        **What it tests:**
+          - Custom circuit_breaker_threshold is applied
+          - Custom circuit_breaker_timeout is applied
+        """
+        mock_weaviate_async_client.return_value = AsyncMock()
+
+        client = WeaviateClientWrapper(
+            url="http://weaviate.example.com:8080",
+            circuit_breaker_threshold=10,
+            circuit_breaker_timeout=120,
+        )
+
+        # Verify custom circuit breaker settings
+        assert client._breaker.fail_max == 10
+        assert client._breaker.reset_timeout == 120
+
+    @patch("clients.weaviate.WeaviateAsyncClient")
+    def test_custom_timeout_attribute(self, mock_weaviate_async_client: MagicMock) -> None:
+        """Test that custom timeout is stored as an attribute.
+
+        **Why this test is important:**
+          - Timeout is needed for request configuration
+          - Validates timeout is accessible for use in operations
+          - Critical for configurable request timeouts
+
+        **What it tests:**
+          - Default timeout_s is 300
+          - Custom timeout_s value is stored correctly
+        """
+        mock_weaviate_async_client.return_value = AsyncMock()
+
+        # Default timeout
+        client_default = WeaviateClientWrapper(url="http://weaviate.example.com:8080")
+        assert client_default.timeout_s == 300
+
+        # Custom timeout
+        client_custom = WeaviateClientWrapper(
+            url="http://weaviate.example.com:8080",
+            timeout_s=600,
+        )
+        assert client_custom.timeout_s == 600
+
     def test_from_config_creates_client(self) -> None:
         """Test that from_config factory creates client correctly.
 
@@ -224,6 +275,37 @@ class TestWeaviateClientWrapperInit:
         assert client.url == "https://my-cluster.weaviate.cloud"
         assert client.api_key == "cloud-key"
         assert client.grpc_host == "grpc-my-cluster.weaviate.cloud"
+
+    def test_from_config_passes_resilience_settings(self) -> None:
+        """Test that from_config passes resilience settings from VectorDBConfig.
+
+        **Why this test is important:**
+          - Resilience settings must flow from config to client
+          - Critical for environment-specific tuning
+          - Validates VectorDBConfig integration
+
+        **What it tests:**
+          - timeout_s is passed from config.weaviate_timeout
+          - circuit_breaker_threshold is passed from config
+          - circuit_breaker_timeout is passed from config
+        """
+        config = VectorDBConfig(
+            provider_type="weaviate",
+            collection="test-collection",
+            weaviate_url="http://weaviate.example.com:8080",
+            weaviate_timeout=600,
+            weaviate_circuit_breaker_threshold=10,
+            weaviate_circuit_breaker_timeout=120,
+        )
+
+        with patch("clients.weaviate.WeaviateAsyncClient"):
+            client = WeaviateClientWrapper.from_config(config)
+
+        assert client.timeout_s == 600
+        assert client.circuit_breaker_threshold == 10
+        assert client.circuit_breaker_timeout == 120
+        assert client._breaker.fail_max == 10
+        assert client._breaker.reset_timeout == 120
 
     def test_from_config_validates_provider_type(self) -> None:
         """Test that from_config validates provider_type.
@@ -433,10 +515,12 @@ class TestWeaviateClientWrapperSearch:
           - Open circuit breaker state is checked
           - handle_circuit_breaker_error is called
         """
-        # Replace the circuit breaker with a mock in OPEN state
-        mock_breaker = MagicMock(spec=pybreaker.CircuitBreaker)
-        mock_breaker.current_state = pybreaker.STATE_OPEN
-        object.__setattr__(weaviate_client, "_breaker", mock_breaker)
+        import aiobreaker.state as aio_state
+
+        # Replace the async circuit breaker with a mock in OPEN state
+        mock_async_breaker = MagicMock()
+        mock_async_breaker.current_state = aio_state.CircuitBreakerState.OPEN
+        object.__setattr__(weaviate_client, "_async_breaker", mock_async_breaker)
 
         with pytest.raises(UpstreamError, match="weaviate service is currently unavailable"):
             await weaviate_client.search_async(
@@ -554,10 +638,13 @@ class TestWeaviateClientWrapperBatchUpsert:
           - Open circuit breaker state is checked
           - handle_circuit_breaker_error is called
         """
-        # Replace the circuit breaker with a mock in OPEN state
-        mock_breaker = MagicMock(spec=pybreaker.CircuitBreaker)
-        mock_breaker.current_state = pybreaker.STATE_OPEN
-        object.__setattr__(weaviate_client, "_breaker", mock_breaker)
+        import aiobreaker.state as aio_state
+
+        # Replace the async circuit breaker with a mock in OPEN state
+        # The base class checks _async_breaker, not _breaker
+        mock_async_breaker = MagicMock()
+        mock_async_breaker.current_state = aio_state.CircuitBreakerState.OPEN
+        object.__setattr__(weaviate_client, "_async_breaker", mock_async_breaker)
 
         points = [WeaviateDataObject(uuid="uuid-1", properties={"text": "hello"}, vector=[0.1, 0.2])]
 

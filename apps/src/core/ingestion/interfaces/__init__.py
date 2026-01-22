@@ -42,6 +42,7 @@ from .types import (
     ProcessingConfig,
     ProcessingResult,
     RateLimitConfig,
+    UpsertResult,
 )
 
 __all__ = [
@@ -57,6 +58,7 @@ __all__ = [
     "ProcessingResult",
     "RateLimitConfig",
     "S3ContentFetcher",
+    "UpsertResult",
     "VectorDBConfigFactory",
     "VectorDBUpserter",
     "VectorPointFactory",
