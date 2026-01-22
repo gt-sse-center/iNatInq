@@ -29,7 +29,7 @@ import asyncio
 import aiobreaker
 import attrs
 import pybreaker
-from qdrant_client import AsyncQdrantClient, QdrantClient
+from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as qmodels
 from qdrant_client.models import PointStruct  # Qdrant's native point type
 
@@ -47,17 +47,14 @@ from .interfaces.vector_db import VectorDBProvider
 class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
     """Wrapper for Qdrant async client with convenience methods.
 
+    This client is async-only. All operations use AsyncQdrantClient internally.
+
     Attributes:
         url: Qdrant service URL (e.g., `http://qdrant.ml-system:6333`).
         api_key: API key for authenticated instances. Default: None.
         timeout_s: Request timeout in seconds. Default: 300.
         circuit_breaker_threshold: Failures before circuit opens. Default: 3.
         circuit_breaker_timeout: Circuit recovery timeout in seconds. Default: 60.
-
-    Note:
-        This class uses AsyncQdrantClient internally but provides a sync
-        interface to match the VectorDBProvider ABC. Async operations are
-        wrapped with asyncio.run().
     """
 
     url: str
@@ -66,7 +63,6 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
     circuit_breaker_threshold: int = attrs.field(default=3)
     circuit_breaker_timeout: int = attrs.field(default=60)
     _client: AsyncQdrantClient = attrs.field(init=False, default=None)
-    _sync_client: QdrantClient = attrs.field(init=False, default=None)
     _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
     _async_breaker: aiobreaker.CircuitBreaker = attrs.field(init=False)
 
@@ -81,14 +77,13 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         return ("qdrant", self.circuit_breaker_threshold, self.circuit_breaker_timeout)
 
     def __attrs_post_init__(self) -> None:
-        """Initialize the Qdrant async and sync clients and circuit breakers."""
+        """Initialize the Qdrant async client and circuit breaker."""
         self._client = AsyncQdrantClient(url=self.url, api_key=self.api_key, timeout=self.timeout_s)
-        self._sync_client = QdrantClient(url=self.url, api_key=self.api_key, timeout=self.timeout_s)
 
-        # Initialize sync circuit breaker from base class (for sync methods)
+        # Initialize circuit breaker from base class
         self._init_circuit_breaker()
 
-        # Initialize async circuit breaker using aiobreaker (for async methods)
+        # Initialize async circuit breaker using aiobreaker
         name, fail_max, timeout = self._circuit_breaker_config()
         object.__setattr__(
             self,
@@ -364,103 +359,9 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             self, collection=collection, points=points, vector_size=vector_size
         )
 
-    def batch_upsert_sync(
-        self,
-        *,
-        collection: str,
-        points: list[PointStruct],
-        vector_size: int,
-    ) -> None:
-        """Batch upsert points into a Qdrant collection (synchronous version).
-
-        This method ensures the collection exists before upserting and performs
-        batch upserts for better performance. It's designed for high-throughput
-        scenarios like Spark job processing where async is not desired.
-
-        Args:
-            collection: Collection name to upsert into.
-            points: List of points to upsert. Must not be empty.
-            vector_size: Vector dimension (e.g., 768 for nomic-embed-text).
-                Used to ensure collection exists with correct dimensions.
-
-        Raises:
-            UpstreamError: If Qdrant operations fail.
-
-        Example:
-            ```python
-            points = [
-                PointStruct(
-                    id="1", vector=[0.1, 0.2, ...], payload={"text": "hello"},
-                ),
-                PointStruct(
-                    id="2", vector=[0.3, 0.4, ...], payload={"text": "world"},
-                ),
-            ]
-            client.batch_upsert_sync(
-                collection="documents",
-                points=points,
-                vector_size=768
-            )
-            ```
-
-        Note:
-            The collection is automatically created if it doesn't exist.
-            Empty point lists are ignored (no-op).
-        """
-        if not points:
-            return
-
-        # Ensure collection exists before upserting (sync version)
-        try:
-            collections = self._sync_client.get_collections().collections
-            collection_names = {c.name for c in collections}
-            if collection not in collection_names:
-                self._sync_client.create_collection(
-                    collection_name=collection,
-                    vectors_config=qmodels.VectorParams(size=vector_size, distance=qmodels.Distance.COSINE),
-                )
-                self._logger.info(  # type: ignore[attr-defined]
-                    "Created Qdrant collection",
-                    extra={
-                        "collection": collection,
-                        "vector_size": vector_size,
-                    },
-                )
-        except Exception as e:
-            msg = f"Failed to ensure collection exists: {e}"
-            raise UpstreamError(msg) from e
-
-        # Batch upsert for better performance (sync version)
-        try:
-            self._logger.info(  # type: ignore[attr-defined]
-                "Calling Qdrant sync upsert",
-                extra={"collection": collection, "points_count": len(points)},
-            )
-            self._sync_client.upsert(collection_name=collection, points=points)
-            self._logger.info(  # type: ignore[attr-defined]
-                "Qdrant sync upsert completed",
-                extra={"collection": collection, "points_count": len(points)},
-            )
-        except Exception as e:
-            self._logger.exception(  # type: ignore[attr-defined]
-                "Qdrant sync upsert failed",
-                extra={
-                    "collection": collection,
-                    "points_count": len(points),
-                    "error": str(e),
-                },
-            )
-            msg = f"Qdrant batch upsert failed: {e}"
-            raise UpstreamError(msg) from e
-
     def close(self) -> None:
-        """Close the Qdrant clients and release resources.
+        """Close the Qdrant async client and release resources.
 
-        This method closes both the async and sync Qdrant clients to properly
-        release HTTP connections and prevent resource leaks. The clients are
-        closed independently - if one fails, the other will still be closed.
-
-        **Event Loop Handling for Async Client:**
         The async client close operation uses the `close_async_resource`
         utility which handles three scenarios automatically:
 
@@ -478,14 +379,12 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
 
         **Error Handling:**
         This method never raises exceptions. All errors are caught, logged with
-        full context, and suppressed to ensure both clients are closed even if
-        one fails. This is important for cleanup operations where partial
-        cleanup is better than no cleanup.
+        full context, and suppressed to ensure cleanup completes.
 
         Note:
             This method is idempotent - calling it multiple times is safe.
             After the first call, subsequent calls are no-ops since the client
-            references are set to None.
+            reference is set to None.
 
         Example:
             ```python
@@ -497,22 +396,9 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
                 client.close()  # Always closes, even if errors occur
             ```
         """
-        # Close async client using utility
         if self._client is not None:
             client_to_close = self._client
             self._client = None
             asyncio.run(
                 close_async_resource(client_to_close, "qdrant_async_client"),
             )
-
-        # Close sync client
-        if self._sync_client is not None:
-            try:
-                self._sync_client.close()
-            except Exception as e:
-                self._logger.exception(  # type: ignore[attr-defined]
-                    "Qdrant sync client close failed",
-                    extra={"error": str(e)},
-                )
-            finally:
-                self._sync_client = None
