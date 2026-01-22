@@ -13,6 +13,7 @@ dependencies = [
     "aiobreaker>=1.2.0",
     "attrs>=25.4.0",
     "boto3>=1.35.0",
+    "databricks-sdk>=0.30.0",
     "fastapi>=0.115.0",
     "kubernetes>=31.0.0",
     "prometheus-fastapi-instrumentator>=7.0.0",
@@ -146,4 +147,3 @@ packages = ["src/foundation"]
 
 [tool.uv.build-backend]
 module-name = "foundation"
-
