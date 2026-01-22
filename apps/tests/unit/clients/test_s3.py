@@ -65,13 +65,16 @@ class TestS3ClientWrapperInit:
             region_name="us-east-1",
         )
 
-        mock_boto3.assert_called_once_with(
-            "s3",
-            endpoint_url="http://minio.example.com:9000",
-            aws_access_key_id="test-key",
-            aws_secret_access_key="test-secret",
-            region_name="us-east-1",
-        )
+        # Verify boto3.client was called with expected params
+        mock_boto3.assert_called_once()
+        call_kwargs = mock_boto3.call_args.kwargs
+        assert call_kwargs["endpoint_url"] == "http://minio.example.com:9000"
+        assert call_kwargs["aws_access_key_id"] == "test-key"
+        assert call_kwargs["aws_secret_access_key"] == "test-secret"
+        assert call_kwargs["region_name"] == "us-east-1"
+        # Config is now also passed for timeout settings
+        assert "config" in call_kwargs
+
         assert client.endpoint_url == "http://minio.example.com:9000"
         assert client.access_key_id == "test-key"
         assert client.secret_access_key == "test-secret"
@@ -103,6 +106,69 @@ class TestS3ClientWrapperInit:
         assert client._breaker.name == "s3"
         assert client._breaker.fail_max == 5
         assert client._breaker.reset_timeout == 120
+
+    def test_creates_circuit_breaker_with_custom_config(self) -> None:
+        """Test that circuit breaker uses custom configuration.
+
+        **Why this test is important:**
+          - Custom circuit breaker settings are needed for different environments
+          - Production may need different thresholds than development
+          - Validates that configuration is properly applied
+
+        **What it tests:**
+          - Custom failure threshold is applied
+          - Custom recovery timeout is applied
+        """
+        client = S3ClientWrapper(
+            endpoint_url="http://minio.example.com:9000",
+            access_key_id="test-key",
+            secret_access_key="test-secret",
+            circuit_breaker_threshold=10,
+            circuit_breaker_timeout=300,
+        )
+
+        assert client._breaker.fail_max == 10
+        assert client._breaker.reset_timeout == 300
+
+    def test_from_config_creates_client(self) -> None:
+        """Test that from_config creates a properly configured client.
+
+        **Why this test is important:**
+          - from_config is the primary way to create clients from configuration
+          - Ensures all config values are properly mapped to client attributes
+          - Validates integration with MinIOConfig
+
+        **What it tests:**
+          - All config values are passed to the client
+          - Resilience settings are correctly applied
+        """
+        # Create a mock config object with all required attributes
+        mock_config = MagicMock()
+        mock_config.endpoint_url = "http://minio.example.com:9000"
+        mock_config.access_key_id = "test-key"
+        mock_config.secret_access_key = "test-secret"
+        mock_config.region = "us-west-2"
+        mock_config.max_retries = 5
+        mock_config.retry_min_wait = 2.0
+        mock_config.retry_max_wait = 20.0
+        mock_config.timeout = 60
+        mock_config.circuit_breaker_threshold = 10
+        mock_config.circuit_breaker_timeout = 300
+
+        client = S3ClientWrapper.from_config(mock_config)
+
+        assert client.endpoint_url == "http://minio.example.com:9000"
+        assert client.access_key_id == "test-key"
+        assert client.secret_access_key == "test-secret"
+        assert client.region_name == "us-west-2"
+        assert client.max_retries == 5
+        assert client.retry_min_wait == 2.0
+        assert client.retry_max_wait == 20.0
+        assert client.timeout_s == 60
+        assert client.circuit_breaker_threshold == 10
+        assert client.circuit_breaker_timeout == 300
+        assert client._breaker.fail_max == 10
+        assert client._breaker.reset_timeout == 300
 
 
 # =============================================================================
@@ -204,8 +270,13 @@ class TestS3ClientWrapperPutObject:
           - ClientError is wrapped in UpstreamError
           - Error message includes context
         """
+        # AccessDenied is a non-retriable 4xx error, should fail immediately
         mock_boto3_client.put_object.side_effect = ClientError(
-            {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}}, "PutObject"
+            {
+                "Error": {"Code": "AccessDenied", "Message": "Access Denied"},
+                "ResponseMetadata": {"HTTPStatusCode": 403},
+            },
+            "PutObject",
         )
 
         with pytest.raises(UpstreamError, match="S3 put_object failed"):
@@ -277,8 +348,12 @@ class TestS3ClientWrapperGetObject:
           - ClientError is wrapped in UpstreamError
           - Error message includes context
         """
+        # NoSuchKey is a non-retriable 404 error, should fail immediately
         mock_boto3_client.get_object.side_effect = ClientError(
-            {"Error": {"Code": "NoSuchKey", "Message": "The specified key does not exist"}},
+            {
+                "Error": {"Code": "NoSuchKey", "Message": "The specified key does not exist"},
+                "ResponseMetadata": {"HTTPStatusCode": 404},
+            },
             "GetObject",
         )
 
@@ -401,8 +476,13 @@ class TestS3ClientWrapperListObjects:
           - ClientError is wrapped in UpstreamError
           - Error message includes context
         """
+        # AccessDenied is a non-retriable 4xx error
         mock_boto3_client.get_paginator.side_effect = ClientError(
-            {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}}, "ListObjects"
+            {
+                "Error": {"Code": "AccessDenied", "Message": "Access Denied"},
+                "ResponseMetadata": {"HTTPStatusCode": 403},
+            },
+            "ListObjects",
         )
 
         with pytest.raises(UpstreamError, match="S3 list_objects failed"):

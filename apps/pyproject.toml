@@ -48,12 +48,18 @@ dev = [
     "pytest-asyncio>=0.25.2",
     "pytest-cov>=7.0.0",
     "pytest-mock>=3.15.1",
+    "pytest-xdist>=3.5.0",
+    "testcontainers[minio]>=4.10.0",
 ]
 
 [tool.pytest.ini_options]
 addopts = "--verbose -vv --capture=no --cov=foundation --cov-report html --cov-report term --cov-report xml:coverage.xml --cov-fail-under=70.0"
 testpaths = ["tests"]
 norecursedirs = []
+asyncio_mode = "auto"
+markers = [
+    "integration: marks tests as integration tests (require Docker)",
+]
 
 [tool.ruff]
 line-length = 110
