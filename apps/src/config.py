@@ -21,6 +21,14 @@ defaults):
   (default: `http://ollama.ml-system:11434`)
 - `OLLAMA_MODEL`: Default embedding model name
   (default: `nomic-embed-text`)
+- `OLLAMA_TIMEOUT`: Request timeout in seconds (default: `60`)
+- `OLLAMA_CIRCUIT_BREAKER_THRESHOLD`: Failures before circuit opens
+  (default: `5`)
+- `OLLAMA_CIRCUIT_BREAKER_TIMEOUT`: Circuit recovery timeout in seconds
+  (default: `30`)
+- `OLLAMA_BATCH_TIMEOUT_MULTIPLIER`: Multiplier for batch timeout
+  (default: `1.0`)
+- `OLLAMA_MAX_BATCH_SIZE`: Maximum texts per batch request (default: `12`)
 
 **Qdrant (Vector Database)**
 - `QDRANT_URL`: Qdrant service URL. Auto-detected based on environment:
@@ -236,6 +244,14 @@ class EmbeddingConfig(BaseModel):
             not set.
         ollama_model: Ollama model name. Required if
             provider_type="ollama". Default: "nomic-embed-text".
+        ollama_timeout: Ollama request timeout in seconds. Default: 60.
+        ollama_circuit_breaker_threshold: Failures before circuit opens.
+            Default: 5.
+        ollama_circuit_breaker_timeout: Circuit recovery timeout in seconds.
+            Default: 30.
+        ollama_batch_timeout_multiplier: Multiplier for batch timeout.
+            Default: 1.0.
+        ollama_max_batch_size: Maximum texts per batch request. Default: 12.
         openai_api_key: OpenAI API key. Required if
             provider_type="openai".
         openai_model: OpenAI model name. Required if
@@ -252,12 +268,25 @@ class EmbeddingConfig(BaseModel):
 
     provider_type: Literal["ollama", "openai", "huggingface", "sagemaker"]
     vector_size: int | None = None
+
+    # Ollama settings
     ollama_url: str | None = None
     ollama_model: str | None = None
+    ollama_timeout: int = 60
+    ollama_circuit_breaker_threshold: int = 5
+    ollama_circuit_breaker_timeout: int = 30
+    ollama_batch_timeout_multiplier: float = 1.0
+    ollama_max_batch_size: int = 12
+
+    # OpenAI settings
     openai_api_key: str | None = None
     openai_model: str | None = None
+
+    # HuggingFace settings
     huggingface_model: str | None = None
     huggingface_device: str | None = None
+
+    # SageMaker settings
     sagemaker_endpoint: str | None = None
     sagemaker_region: str | None = None
 
@@ -309,6 +338,11 @@ class EmbeddingConfig(BaseModel):
                 vector_size=vector_size,
                 ollama_url=ollama_url_val,
                 ollama_model=ollama_model_val,
+                ollama_timeout=int(os.getenv("OLLAMA_TIMEOUT", "60")),
+                ollama_circuit_breaker_threshold=int(os.getenv("OLLAMA_CIRCUIT_BREAKER_THRESHOLD", "5")),
+                ollama_circuit_breaker_timeout=int(os.getenv("OLLAMA_CIRCUIT_BREAKER_TIMEOUT", "30")),
+                ollama_batch_timeout_multiplier=float(os.getenv("OLLAMA_BATCH_TIMEOUT_MULTIPLIER", "1.0")),
+                ollama_max_batch_size=int(os.getenv("OLLAMA_MAX_BATCH_SIZE", "12")),
             )
 
         if provider_type == "openai":

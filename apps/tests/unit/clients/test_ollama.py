@@ -9,8 +9,8 @@ The tests cover:
   - Client Initialization: Default and custom configuration, from_config factory
   - Session Management: Session creation, set_session method, session property
   - Embedding Generation: Single and batch embeddings, success and error cases
-  - Circuit Breaker Integration: Circuit breaker usage, error handling
-  - Async Operations: Async embedding methods
+  - Circuit Breaker Integration: Circuit breaker usage, error handling (sync and async)
+  - Async Operations: Async embedding methods with async circuit breaker
   - Error Handling: UpstreamError on failures, circuit breaker errors
   - Vector Size: Model-based vector size determination
 
@@ -26,6 +26,7 @@ Run with: pytest tests/unit/clients/test_ollama.py
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiobreaker
 import pybreaker
 import pytest
 import requests
@@ -81,26 +82,99 @@ class TestOllamaClientInit:
         assert client.timeout_s == 120
 
     def test_creates_circuit_breaker(self) -> None:
-        """Test that circuit breaker is created during initialization.
+        """Test that both sync and async circuit breakers are created during initialization.
 
         **Why this test is important:**
           - Circuit breaker provides fault tolerance
           - Ensures circuit breaker is configured with correct parameters
           - Critical for production reliability
-          - Validates circuit breaker integration
+          - Validates both sync (pybreaker) and async (aiobreaker) circuit breaker integration
 
         **What it tests:**
-          - Circuit breaker is created with correct configuration
-          - Failure threshold and recovery timeout are set correctly
+          - Sync circuit breaker (pybreaker) is created with correct configuration
+          - Async circuit breaker (aiobreaker) is created with correct configuration
+          - Failure threshold and recovery timeout are set correctly for both
         """
         client = OllamaClient(base_url="http://ollama.example.com:11434", model="test-model")
 
-        # Verify circuit breaker was created
+        # Verify sync circuit breaker (pybreaker) was created
         assert client._breaker is not None
         assert isinstance(client._breaker, pybreaker.CircuitBreaker)
         assert client._breaker.name == "ollama"
         assert client._breaker.fail_max == 5
         assert client._breaker.reset_timeout == 30
+
+        # Verify async circuit breaker (aiobreaker) was created
+        assert client._async_breaker is not None
+        assert isinstance(client._async_breaker, aiobreaker.CircuitBreaker)
+        assert client._async_breaker.name == "ollama"
+        assert client._async_breaker.fail_max == 5
+
+    def test_creates_client_with_custom_circuit_breaker_config(self) -> None:
+        """Test that client accepts custom circuit breaker configuration.
+
+        **Why this test is important:**
+          - Different deployments need different failure tolerance
+          - Critical path vs background jobs may need different thresholds
+          - Validates configurable resilience parameters
+
+        **What it tests:**
+          - Custom failure threshold is applied to both breakers
+          - Custom recovery timeout is applied to both breakers
+        """
+        client = OllamaClient(
+            base_url="http://ollama.example.com:11434",
+            model="test-model",
+            circuit_breaker_failure_threshold=3,
+            circuit_breaker_recovery_timeout_s=60,
+        )
+
+        assert client._breaker.fail_max == 3
+        assert client._breaker.reset_timeout == 60
+        assert client._async_breaker.fail_max == 3
+
+    def test_creates_client_with_batch_config(self) -> None:
+        """Test that client accepts batch configuration.
+
+        **Why this test is important:**
+          - Batch size limits prevent quality degradation
+          - Timeout multiplier allows tuning for different models
+          - Critical for production performance tuning
+
+        **What it tests:**
+          - max_batch_size is stored correctly
+          - batch_timeout_multiplier is stored correctly
+        """
+        client = OllamaClient(
+            base_url="http://ollama.example.com:11434",
+            model="test-model",
+            max_batch_size=8,
+            batch_timeout_multiplier=2.0,
+        )
+
+        assert client.max_batch_size == 8
+        assert client.batch_timeout_multiplier == 2.0
+
+    def test_creates_client_with_vector_size_override(self) -> None:
+        """Test that client accepts vector size override.
+
+        **Why this test is important:**
+          - Custom/fine-tuned models may have non-standard dimensions
+          - Override allows using models not in the known model map
+          - Critical for extensibility
+
+        **What it tests:**
+          - vector_size_override is stored correctly
+          - vector_size property returns override value
+        """
+        client = OllamaClient(
+            base_url="http://ollama.example.com:11434",
+            model="custom-model",
+            vector_size_override=1024,
+        )
+
+        assert client.vector_size_override == 1024
+        assert client.vector_size == 1024
 
     def test_from_config_creates_client(self) -> None:
         """Test that from_config factory creates client correctly.
@@ -162,6 +236,44 @@ class TestOllamaClientInit:
 
         with pytest.raises(ValueError, match="requires: ollama_url, ollama_model"):
             OllamaClient.from_config(config)
+
+    def test_from_config_passes_resilience_settings(self) -> None:
+        """Test that from_config passes all resilience settings from config.
+
+        **Why this test is important:**
+          - Resilience settings must propagate from config to client
+          - Ensures timeout, circuit breaker, and batch settings are applied
+          - Critical for environment-specific configuration
+
+        **What it tests:**
+          - ollama_timeout is passed as timeout_s
+          - ollama_circuit_breaker_threshold is passed correctly
+          - ollama_circuit_breaker_timeout is passed correctly
+          - ollama_batch_timeout_multiplier is passed correctly
+          - ollama_max_batch_size is passed correctly
+        """
+        config = EmbeddingConfig(
+            provider_type="ollama",
+            ollama_url="http://ollama.example.com:11434",
+            ollama_model="test-model",
+            ollama_timeout=120,
+            ollama_circuit_breaker_threshold=10,
+            ollama_circuit_breaker_timeout=60,
+            ollama_batch_timeout_multiplier=2.0,
+            ollama_max_batch_size=8,
+        )
+
+        client = OllamaClient.from_config(config)
+
+        assert client.timeout_s == 120
+        assert client.circuit_breaker_failure_threshold == 10
+        assert client.circuit_breaker_recovery_timeout_s == 60
+        assert client.batch_timeout_multiplier == 2.0
+        assert client.max_batch_size == 8
+
+        # Verify circuit breaker was configured with custom values
+        assert client._breaker.fail_max == 10
+        assert client._breaker.reset_timeout == 60
 
 
 # =============================================================================
@@ -395,6 +507,60 @@ class TestOllamaClientEmbedBatch:
         """
         with pytest.raises(ValueError, match="texts list cannot be empty"):
             ollama_client.embed_batch([])
+
+    def test_embed_batch_raises_value_error_on_exceeding_max_batch_size(self) -> None:
+        """Test that embed_batch raises ValueError when exceeding max_batch_size.
+
+        **Why this test is important:**
+          - Batch size limits prevent quality degradation
+          - Large batches can cause OOM or slow responses
+          - Critical for production reliability
+
+        **What it tests:**
+          - Batch exceeding max_batch_size raises ValueError
+          - Error message includes both actual and max size
+        """
+        client = OllamaClient(
+            base_url="http://ollama.example.com:11434",
+            model="test-model",
+            max_batch_size=5,
+        )
+
+        texts = ["text"] * 10  # 10 texts exceeds max of 5
+        with pytest.raises(ValueError, match="exceeds max_batch_size"):
+            client.embed_batch(texts)
+
+    def test_embed_batch_allows_unlimited_when_max_batch_size_none(
+        self, ollama_client: OllamaClient, mock_session: MagicMock
+    ) -> None:
+        """Test that embed_batch allows any size when max_batch_size is None.
+
+        **Why this test is important:**
+          - Some use cases need unlimited batch sizes
+          - None value should disable the limit
+          - Critical for flexibility
+
+        **What it tests:**
+          - Large batch is accepted when max_batch_size=None
+          - No ValueError is raised
+        """
+        # Create client with no batch limit
+        client = OllamaClient(
+            base_url="http://ollama.example.com:11434",
+            model="test-model",
+            max_batch_size=None,
+        )
+        client.set_session(mock_session)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"embeddings": [[0.1]] * 20}
+        mock_session.post.return_value = mock_response
+
+        texts = ["text"] * 20  # Large batch
+        result = client.embed_batch(texts)
+
+        assert len(result) == 20
 
     def test_embed_batch_scales_timeout_by_batch_size(
         self, ollama_client: OllamaClient, mock_session: MagicMock
@@ -642,20 +808,28 @@ class TestOllamaClientEmbedAsync:
         with pytest.raises(UpstreamError, match="missing embedding"):
             await ollama_client.embed_async("hello world")
 
-    @patch("clients.ollama.handle_circuit_breaker_error")
+    @patch("foundation.circuit_breaker.handle_circuit_breaker_error")
     @pytest.mark.asyncio
     async def test_embed_async_handles_circuit_breaker_open(
         self, mock_handle_error: MagicMock, ollama_client: OllamaClient
     ) -> None:
-        """Test that embed_async handles circuit breaker open state."""
-        from unittest.mock import PropertyMock
+        """Test that embed_async handles circuit breaker open state.
 
+        **Why this test is important:**
+          - Async methods use aiobreaker for circuit breaking
+          - Circuit breaker open state should fail fast
+          - Critical for fault tolerance in async code paths
+
+        **What it tests:**
+          - Async circuit breaker open state triggers UpstreamError
+          - handle_circuit_breaker_error is called with correct service name
+        """
         mock_handle_error.side_effect = UpstreamError("service unavailable")
 
-        # Mock the circuit breaker's current_state property
-        mock_breaker = MagicMock(spec=pybreaker.CircuitBreaker)
-        type(mock_breaker).current_state = PropertyMock(return_value=pybreaker.STATE_OPEN)
-        object.__setattr__(ollama_client, "_breaker", mock_breaker)
+        # Mock the async circuit breaker's current_state property
+        mock_async_breaker = MagicMock(spec=aiobreaker.CircuitBreaker)
+        mock_async_breaker.current_state = aiobreaker.state.CircuitBreakerState.OPEN
+        object.__setattr__(ollama_client, "_async_breaker", mock_async_breaker)
 
         with pytest.raises(UpstreamError, match="service unavailable"):
             await ollama_client.embed_async("hello world")
@@ -707,7 +881,18 @@ class TestOllamaClientEmbedBatchAsync:
         mock_async_client_cls: MagicMock,
         ollama_client: OllamaClient,
     ) -> None:
-        """Test that embed_batch_async falls back to individual calls on failure."""
+        """Test that embed_batch_async falls back to individual calls on failure.
+
+        **Why this test is important:**
+          - Fallback ensures compatibility with older Ollama versions
+          - Graceful degradation improves reliability
+          - Uses internal _embed_async_impl to avoid double circuit breaker wrapping
+
+        **What it tests:**
+          - Batch API failure triggers fallback
+          - Individual _embed_async_impl calls are made
+          - Correct result is returned after fallback
+        """
         import httpx
 
         # Mock batch API failure
@@ -723,27 +908,37 @@ class TestOllamaClientEmbedBatchAsync:
         mock_client.__aexit__.return_value = None
         mock_async_client_cls.return_value = mock_client
 
-        # Mock individual embed_async calls
-        with patch.object(ollama_client, "embed_async", side_effect=[[0.1, 0.2], [0.3, 0.4]]) as mock_embed:
+        # Mock internal _embed_async_impl method (avoids double circuit breaker wrapping)
+        with patch.object(
+            ollama_client, "_embed_async_impl", side_effect=[[0.1, 0.2], [0.3, 0.4]]
+        ) as mock_embed_impl:
             result = await ollama_client.embed_batch_async(["hello", "world"], fallback_to_individual=True)
 
             assert result == [[0.1, 0.2], [0.3, 0.4]]
-            assert mock_embed.call_count == 2
+            assert mock_embed_impl.call_count == 2
 
-    @patch("clients.ollama.handle_circuit_breaker_error")
+    @patch("foundation.circuit_breaker.handle_circuit_breaker_error")
     @pytest.mark.asyncio
     async def test_embed_batch_async_handles_circuit_breaker_open(
         self, mock_handle_error: MagicMock, ollama_client: OllamaClient
     ) -> None:
-        """Test that embed_batch_async handles circuit breaker open state."""
-        from unittest.mock import PropertyMock
+        """Test that embed_batch_async handles circuit breaker open state.
 
+        **Why this test is important:**
+          - Async batch methods use aiobreaker for circuit breaking
+          - Circuit breaker open state should fail fast
+          - Critical for fault tolerance in async batch operations
+
+        **What it tests:**
+          - Async circuit breaker open state triggers UpstreamError
+          - handle_circuit_breaker_error is called with correct service name
+        """
         mock_handle_error.side_effect = UpstreamError("service unavailable")
 
-        # Mock the circuit breaker's current_state property
-        mock_breaker = MagicMock(spec=pybreaker.CircuitBreaker)
-        type(mock_breaker).current_state = PropertyMock(return_value=pybreaker.STATE_OPEN)
-        object.__setattr__(ollama_client, "_breaker", mock_breaker)
+        # Mock the async circuit breaker's current_state property
+        mock_async_breaker = MagicMock(spec=aiobreaker.CircuitBreaker)
+        mock_async_breaker.current_state = aiobreaker.state.CircuitBreakerState.OPEN
+        object.__setattr__(ollama_client, "_async_breaker", mock_async_breaker)
 
         with pytest.raises(UpstreamError, match="service unavailable"):
             await ollama_client.embed_batch_async(["hello", "world"])

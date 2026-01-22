@@ -383,3 +383,86 @@ class TestVectorDBConfigQdrantResilience:
         assert config.qdrant_timeout == 300
         assert config.qdrant_circuit_breaker_threshold == 3
         assert config.qdrant_circuit_breaker_timeout == 60
+
+
+# =============================================================================
+# EmbeddingConfig Tests
+# =============================================================================
+
+
+class TestEmbeddingConfigOllamaResilience:
+    """Test suite for EmbeddingConfig Ollama resilience settings."""
+
+    @patch.dict(
+        os.environ,
+        {
+            "EMBEDDING_PROVIDER": "ollama",
+            "OLLAMA_BASE_URL": "http://ollama:11434",
+            "OLLAMA_MODEL": "nomic-embed-text",
+            "OLLAMA_TIMEOUT": "120",
+            "OLLAMA_CIRCUIT_BREAKER_THRESHOLD": "10",
+            "OLLAMA_CIRCUIT_BREAKER_TIMEOUT": "60",
+            "OLLAMA_BATCH_TIMEOUT_MULTIPLIER": "2.0",
+            "OLLAMA_MAX_BATCH_SIZE": "8",
+        },
+        clear=False,
+    )
+    @patch("config._is_in_cluster", return_value=False)
+    def test_ollama_resilience_settings_from_env(self, mock_cluster: patch) -> None:
+        """Test that Ollama resilience settings are parsed from environment.
+
+        **Why this test is important:**
+          - Resilience settings must be configurable per environment
+          - Production may need different timeouts than development
+          - Critical for operational flexibility
+
+        **What it tests:**
+          - ollama_timeout is parsed from OLLAMA_TIMEOUT
+          - ollama_circuit_breaker_threshold is parsed correctly
+          - ollama_circuit_breaker_timeout is parsed correctly
+          - ollama_batch_timeout_multiplier is parsed correctly
+          - ollama_max_batch_size is parsed correctly
+        """
+        from config import EmbeddingConfig
+
+        config = EmbeddingConfig.from_env()
+
+        assert config.ollama_timeout == 120
+        assert config.ollama_circuit_breaker_threshold == 10
+        assert config.ollama_circuit_breaker_timeout == 60
+        assert config.ollama_batch_timeout_multiplier == 2.0
+        assert config.ollama_max_batch_size == 8
+
+    @patch.dict(
+        os.environ,
+        {
+            "EMBEDDING_PROVIDER": "ollama",
+            "OLLAMA_BASE_URL": "http://ollama:11434",
+        },
+        clear=False,
+    )
+    @patch("config._is_in_cluster", return_value=False)
+    def test_ollama_resilience_default_values(self, mock_cluster: patch) -> None:
+        """Test that default Ollama resilience values are applied.
+
+        **Why this test is important:**
+          - Sensible defaults reduce configuration burden
+          - Critical for easy onboarding
+          - Defaults should match common production patterns
+
+        **What it tests:**
+          - Default ollama_timeout is 60 seconds
+          - Default ollama_circuit_breaker_threshold is 5
+          - Default ollama_circuit_breaker_timeout is 30 seconds
+          - Default ollama_batch_timeout_multiplier is 1.0
+          - Default ollama_max_batch_size is 12
+        """
+        from config import EmbeddingConfig
+
+        config = EmbeddingConfig.from_env()
+
+        assert config.ollama_timeout == 60
+        assert config.ollama_circuit_breaker_threshold == 5
+        assert config.ollama_circuit_breaker_timeout == 30
+        assert config.ollama_batch_timeout_multiplier == 1.0
+        assert config.ollama_max_batch_size == 12
