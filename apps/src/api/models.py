@@ -254,6 +254,63 @@ class RayJobStatusResponse(BaseModel):
     message: str | None = None
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Databricks Job Management Models
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class DatabricksJobRequest(BaseModel):
+    """Request to submit a Databricks processing job.
+
+    Attributes:
+        s3_prefix: S3 prefix to process (e.g., "inputs/").
+        collection: Vector DB collection name.
+
+    Example:
+        ```json
+        {
+            "s3_prefix": "inputs/",
+            "collection": "documents"
+        }
+        ```
+    """
+
+    s3_prefix: str = Field(..., example="inputs/", description="S3 prefix to process")
+    collection: str = Field(..., example="documents", description="Vector DB collection")
+
+
+class DatabricksJobResponse(BaseModel):
+    """Response after submitting a Databricks job.
+
+    Attributes:
+        run_id: Databricks run ID.
+        status: Job status (always "submitted" on success).
+        namespace: Kubernetes namespace used for config resolution.
+        s3_prefix: S3 prefix being processed.
+        collection: Target vector DB collection.
+        submitted_at: ISO 8601 timestamp when job was submitted.
+
+    Example:
+        ```json
+        {
+            "run_id": "123456789",
+            "status": "submitted",
+            "namespace": "ml-system",
+            "s3_prefix": "inputs/",
+            "collection": "documents",
+            "submitted_at": "2026-01-12T15:30:45.123456Z"
+        }
+        ```
+    """
+
+    run_id: str
+    status: str
+    namespace: str
+    s3_prefix: str
+    collection: str
+    submitted_at: str
+
+
 class RayJobLogsResponse(BaseModel):
     r"""Response containing Ray job logs.
 

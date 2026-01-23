@@ -41,6 +41,7 @@ from clients.interfaces.embedding import create_embedding_provider
 from clients.interfaces.vector_db import create_vector_db_provider
 from config import EmbeddingConfig, MinIOConfig, VectorDBConfig, get_settings
 from core.exceptions import BadRequestError, PipelineError
+from core.services.databricks_ray_service import DatabricksRayService
 from core.services.ray_service import RayService
 from core.services.search_service import SearchService
 from fastapi import APIRouter, Query
@@ -292,6 +293,59 @@ async def submit_ray_job(req: models.RayJobRequest) -> models.RayJobResponse:
         )
     except Exception as e:
         raise PipelineError(f"Failed to submit Ray job: {e!s}") from e
+
+
+@router.post(
+    "/databricks/jobs",
+    response_model=models.DatabricksJobResponse,
+    status_code=202,
+    tags=["databricks-jobs"],
+)
+async def submit_databricks_job(req: models.DatabricksJobRequest) -> models.DatabricksJobResponse:
+    """Submit a new Databricks job to process S3 documents.
+
+    This submits a run for a preconfigured Databricks Job and returns immediately.
+
+    Args:
+        req: Request containing s3_prefix and collection.
+
+    Returns:
+        Job metadata including Databricks run ID and submission timestamp.
+
+    Raises:
+        HTTPException(500): If job submission fails.
+    """
+    try:
+        settings = get_settings()
+        namespace = settings.k8s_namespace
+
+        databricks_service = DatabricksRayService()
+        minio_cfg = MinIOConfig.from_env(namespace)
+        embed_cfg = EmbeddingConfig.from_env(namespace)
+        vector_cfg = VectorDBConfig.from_env(namespace)
+
+        run_id = databricks_service.submit_s3_to_qdrant(
+            namespace=namespace,
+            s3_endpoint=minio_cfg.endpoint_url,
+            s3_access_key_id=minio_cfg.access_key_id,
+            s3_secret_access_key=minio_cfg.secret_access_key,
+            s3_bucket=minio_cfg.bucket,
+            s3_prefix=req.s3_prefix,
+            embedding_config=embed_cfg,
+            vector_db_config=vector_cfg,
+            collection=req.collection,
+        )
+
+        return models.DatabricksJobResponse(
+            run_id=str(run_id),
+            status="submitted",
+            namespace=namespace,
+            s3_prefix=req.s3_prefix,
+            collection=req.collection,
+            submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+        )
+    except Exception as e:
+        raise PipelineError(f"Failed to submit Databricks job: {e!s}") from e
 
 
 @router.get("/ray/jobs/{job_id}", response_model=models.RayJobStatusResponse, tags=["ray-jobs"])
