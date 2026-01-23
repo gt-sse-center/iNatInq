@@ -102,6 +102,12 @@ export WEAVIATE_URL=https://your-cluster.region.weaviate.cloud
 export WEAVIATE_API_KEY=your-api-key
 make docker-up
 
+# Azure Databricks (optional - for Databricks job execution/integration tests)
+export DATABRICKS_HOST=https://adb-<workspace-id>.<region>.azuredatabricks.net
+export DATABRICKS_TOKEN=your-databricks-token
+export DATABRICKS_JOB_ID=123
+export DATABRICKS_TASK_TYPE=python
+
 # Or use a local config file (gitignored)
 cp apps/zarf/compose/dev/env.local.example apps/zarf/compose/dev/.env.local
 # Edit .env.local with your credentials

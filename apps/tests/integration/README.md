@@ -24,6 +24,11 @@ And prove the system behaves safely under all of them.
 # Run all integration tests
 pytest tests/integration/ -v
 
+# Run Databricks connectivity test (requires env vars)
+DATABRICKS_HOST=https://adb-... \
+DATABRICKS_TOKEN=... \
+pytest tests/integration/clients/test_databricks.py -v
+
 # Run S3 client tests only
 pytest tests/integration/clients/test_s3.py -v
 
@@ -33,6 +38,11 @@ pytest tests/integration/ -v --log-cli-level=INFO
 # Run without coverage (faster)
 pytest tests/integration/ -v --no-cov
 ```
+
+## Environment Variables
+
+Integration tests load overrides from `zarf/compose/dev/.env.local` if the file
+exists. Variables already set in the shell/CI take precedence.
 
 ## Test Categories
 
@@ -108,6 +118,10 @@ to manage Docker containers. Containers are:
 - **Session-scoped**: Started once per test run for efficiency
 - **Self-contained**: No external docker-compose required
 - **Deterministic**: Same behavior locally and in CI
+
+Some integration tests use real external services instead of containers (for
+example, the Databricks connectivity test). These tests require explicit
+environment variables to be set.
 
 ### MinIO Container
 

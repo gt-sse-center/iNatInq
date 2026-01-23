@@ -149,6 +149,13 @@ defaults):
 - `RAY_RETRY_MIN_WAIT`: Min retry wait in seconds (default: `1.0`)
 - `RAY_RETRY_MAX_WAIT`: Max retry wait in seconds (default: `10.0`)
 
+**Databricks Job Configuration**
+- `DATABRICKS_HOST`: Databricks workspace host (e.g., `https://dbc.cloud`)
+- `DATABRICKS_TOKEN`: Databricks access token
+- `DATABRICKS_JOB_ID`: Databricks job ID (integer)
+- `DATABRICKS_TASK_TYPE`: Task parameter style (`python` only, default: `python`)
+- `DATABRICKS_WORKSPACE_PATH`: Optional workspace path (if used)
+
 **Embedding Provider Configuration**
 - `EMBEDDING_PROVIDER`: Provider type - `ollama`, `openai`,
   `huggingface`, or `sagemaker` (default: `ollama`)
@@ -996,6 +1003,74 @@ class RayJobConfig(BaseModel):
             retry_max_attempts=int(os.getenv("RAY_RETRY_MAX_ATTEMPTS", "3")),
             retry_min_wait=float(os.getenv("RAY_RETRY_MIN_WAIT", "1.0")),
             retry_max_wait=float(os.getenv("RAY_RETRY_MAX_WAIT", "10.0")),
+        )
+
+
+class DatabricksRayJobConfig(BaseModel):
+    """Configuration for Databricks job execution.
+
+    Attributes:
+        host: Databricks workspace host URL.
+        token: Databricks access token.
+        job_id: Databricks job ID.
+        task_type: Parameter style for job tasks.
+            Supported value: "python".
+        workspace_path: Optional workspace path (used by notebook tasks).
+    """
+
+    host: str
+    token: str
+    job_id: int
+    task_type: Literal["python"] = "python"
+    workspace_path: str | None = None
+
+    model_config = SettingsConfigDict(frozen=True)
+
+    @classmethod
+    def from_env(cls) -> "DatabricksRayJobConfig":
+        """Create DatabricksRayJobConfig from environment variables.
+
+        Environment Variables:
+            DATABRICKS_HOST: Databricks workspace host URL.
+            DATABRICKS_TOKEN: Databricks access token.
+            DATABRICKS_JOB_ID: Databricks job ID (integer).
+            DATABRICKS_TASK_TYPE: Task parameter style ("python" only).
+            DATABRICKS_WORKSPACE_PATH: Optional workspace path.
+        """
+        host = os.getenv("DATABRICKS_HOST")
+        token = os.getenv("DATABRICKS_TOKEN")
+        job_id_raw = os.getenv("DATABRICKS_JOB_ID")
+        task_type = os.getenv("DATABRICKS_TASK_TYPE", "python").lower()
+        workspace_path = os.getenv("DATABRICKS_WORKSPACE_PATH")
+
+        missing = [
+            name
+            for name, value in (
+                ("DATABRICKS_HOST", host),
+                ("DATABRICKS_TOKEN", token),
+                ("DATABRICKS_JOB_ID", job_id_raw),
+            )
+            if not value
+        ]
+        if missing:
+            raise ValueError(f"Missing required Databricks config: {', '.join(missing)}")
+
+        try:
+            job_id = int(job_id_raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("DATABRICKS_JOB_ID must be an integer") from exc
+
+        valid_task_types = ("python",)
+        if task_type not in valid_task_types:
+            msg = f"Invalid DATABRICKS_TASK_TYPE: {task_type}. Must be one of: {valid_task_types}"
+            raise ValueError(msg)
+
+        return cls(
+            host=host,
+            token=token,
+            job_id=job_id,
+            task_type=task_type,
+            workspace_path=workspace_path,
         )
 
 
