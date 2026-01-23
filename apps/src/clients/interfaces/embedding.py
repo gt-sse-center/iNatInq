@@ -3,9 +3,13 @@
 This module defines the `EmbeddingProvider` ABC and factory functions for embedding
 providers. Configuration classes are in `pipeline.config`.
 Concrete implementations live in the parent `clients` package (e.g., `OllamaClient`).
+
+Also defines `ImageEmbeddingProvider` protocol for multi-modal image embedding
+providers (e.g., CLIP, LLaVA) that can generate embeddings from image data.
 """
 
 from abc import ABC, abstractmethod
+from typing import Protocol, runtime_checkable
 
 import requests
 
@@ -170,6 +174,147 @@ class EmbeddingProvider(ABC):
         Raises:
             ValueError: If config is invalid or missing required fields.
         """
+
+
+@runtime_checkable
+class ImageEmbeddingProvider(Protocol):
+    """Protocol for image embedding providers (CLIP, LLaVA, etc.).
+
+    This protocol defines the interface for providers that generate embeddings
+    from image data. Unlike the text-based `EmbeddingProvider`, this interface
+    accepts raw image bytes and produces vector embeddings suitable for
+    image similarity search.
+
+    Multi-modal models like CLIP can embed both images and text into the same
+    vector space, enabling cross-modal search (e.g., finding images matching
+    a text description).
+
+    Example:
+        ```python
+        class CLIPClient(ImageEmbeddingProvider):
+            @property
+            def vector_size(self) -> int:
+                return 512  # CLIP ViT-B/32
+
+            def embed_image(self, image_bytes: bytes) -> list[float]:
+                # Encode image with CLIP
+                return [0.1, 0.2, ...]
+
+            async def embed_image_async(self, image_bytes: bytes) -> list[float]:
+                # Async version
+                return [0.1, 0.2, ...]
+
+            def embed_image_batch(self, images: list[bytes]) -> list[list[float]]:
+                # Batch encode multiple images
+                return [[0.1, ...], [0.2, ...]]
+
+            async def embed_image_batch_async(
+                self, images: list[bytes]
+            ) -> list[list[float]]:
+                # Async batch version
+                return [[0.1, ...], [0.2, ...]]
+        ```
+
+    Note:
+        - Image bytes should be in a supported format (JPEG, PNG, WebP, GIF)
+        - Preprocessing (resize, normalize) is typically handled by the provider
+        - Vector dimensions vary by model (CLIP ViT-B/32: 512, ViT-L/14: 768)
+    """
+
+    @property
+    def vector_size(self) -> int:
+        """Return the dimension of vectors produced by this provider.
+
+        Returns:
+            Vector dimension. Common sizes:
+            - CLIP ViT-B/32: 512
+            - CLIP ViT-B/16: 512
+            - CLIP ViT-L/14: 768
+            - OpenCLIP ViT-H/14: 1024
+        """
+        ...
+
+    def embed_image(self, image_bytes: bytes) -> list[float]:
+        """Generate embedding for a single image.
+
+        Args:
+            image_bytes: Raw image bytes (JPEG, PNG, WebP, or GIF format).
+                The image will be preprocessed (resized, normalized) by the
+                provider before encoding.
+
+        Returns:
+            List of floats representing the image embedding vector.
+
+        Raises:
+            UpstreamError: If the embedding service is unreachable or returns
+                an error.
+            ValueError: If image_bytes is empty or not a valid image format.
+        """
+        ...
+
+    async def embed_image_async(self, image_bytes: bytes) -> list[float]:
+        """Generate embedding for a single image (async).
+
+        Args:
+            image_bytes: Raw image bytes (JPEG, PNG, WebP, or GIF format).
+
+        Returns:
+            List of floats representing the image embedding vector.
+
+        Raises:
+            UpstreamError: If the embedding service is unreachable or returns
+                an error.
+            ValueError: If image_bytes is empty or not a valid image format.
+        """
+        ...
+
+    def embed_image_batch(self, images: list[bytes]) -> list[list[float]]:
+        """Generate embeddings for multiple images in one call.
+
+        This method batches multiple images into a single API call for better
+        performance. Note that image batches are typically smaller than text
+        batches due to memory constraints (10-20 images vs 100+ texts).
+
+        Args:
+            images: List of raw image bytes to embed.
+
+        Returns:
+            List of embedding vectors, one per input image. Each vector is a
+            list of floats with the same dimension as single embeddings.
+
+        Raises:
+            UpstreamError: If the embedding service is unreachable or returns
+                an error.
+            ValueError: If images is empty or contains invalid image data.
+
+        Example:
+            ```python
+            with open("cat.jpg", "rb") as f1, open("dog.jpg", "rb") as f2:
+                images = [f1.read(), f2.read()]
+            vectors = provider.embed_image_batch(images)
+            # Returns: [[0.1, 0.2, ...], [0.3, 0.4, ...]]
+            ```
+        """
+        ...
+
+    async def embed_image_batch_async(self, images: list[bytes]) -> list[list[float]]:
+        """Generate embeddings for multiple images in one call (async).
+
+        This is the async version of embed_image_batch(). Use this method
+        when you need non-blocking batch image embedding generation.
+
+        Args:
+            images: List of raw image bytes to embed.
+
+        Returns:
+            List of embedding vectors, one per input image.
+
+        Raises:
+            UpstreamError: If the embedding service is unreachable or returns
+                an error.
+            ValueError: If images is empty or contains invalid image data.
+        """
+        ...
 
 
 # Provider registry: maps provider_type to provider class
