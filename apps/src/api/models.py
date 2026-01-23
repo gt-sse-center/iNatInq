@@ -311,6 +311,46 @@ class DatabricksJobResponse(BaseModel):
     submitted_at: str
 
 
+class DatabricksJobStopResponse(BaseModel):
+    """Response after stopping a Databricks job run.
+
+    Attributes:
+        run_id: Databricks run ID that was stopped.
+        status: Stop status (always "stopped" on success).
+    """
+
+    run_id: str
+    status: str
+
+
+class DatabricksJobStatusResponse(BaseModel):
+    """Response containing Databricks run status details.
+
+    Attributes:
+        run_id: Databricks run ID.
+        life_cycle_state: Run lifecycle state (e.g., RUNNING, TERMINATED).
+        result_state: Run result state (e.g., SUCCESS, FAILED) if available.
+        state_message: Optional state message from Databricks.
+    """
+
+    run_id: str
+    life_cycle_state: str | None
+    result_state: str | None
+    state_message: str | None
+
+
+class DatabricksJobLogsResponse(BaseModel):
+    """Response containing Databricks run output/logs.
+
+    Attributes:
+        run_id: Databricks run ID.
+        logs: Run output/logs (best-effort).
+    """
+
+    run_id: str
+    logs: str
+
+
 class RayJobLogsResponse(BaseModel):
     r"""Response containing Ray job logs.
 

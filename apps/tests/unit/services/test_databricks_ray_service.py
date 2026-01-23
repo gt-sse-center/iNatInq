@@ -177,6 +177,163 @@ class TestDatabricksRayServiceSubmitJob:
                 collection="test-collection",
             )
 
+
+# =============================================================================
+# Job Stop Tests
+# =============================================================================
+
+
+class TestDatabricksRayServiceStopRun:
+    """Test suite for DatabricksRayService.stop_run."""
+
+    @patch("core.services.databricks_ray_service.DatabricksRayJobConfig.from_env")
+    @patch("core.services.databricks_ray_service.WorkspaceClient")
+    def test_stop_run_success(
+        self,
+        mock_client_cls: MagicMock,
+        mock_config: MagicMock,
+    ) -> None:
+        """Test that stop_run cancels a Databricks job run."""
+        mock_databricks_config = MagicMock()
+        mock_databricks_config.host = "https://dbc.example.cloud"
+        mock_databricks_config.token = "databricks-token"
+        mock_config.return_value = mock_databricks_config
+
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+
+        service = DatabricksRayService()
+        service.stop_run(123)
+
+        mock_client_cls.assert_called_once_with(host="https://dbc.example.cloud", token="databricks-token")
+        mock_client.jobs.cancel_run.assert_called_once_with(run_id=123)
+
+    @patch("core.services.databricks_ray_service.DatabricksRayJobConfig.from_env")
+    @patch("core.services.databricks_ray_service.WorkspaceClient")
+    def test_stop_run_raises_on_client_error(
+        self,
+        mock_client_cls: MagicMock,
+        mock_config: MagicMock,
+    ) -> None:
+        """Test that stop_run wraps Databricks SDK errors in UpstreamError."""
+        mock_databricks_config = MagicMock()
+        mock_databricks_config.host = "https://dbc.example.cloud"
+        mock_databricks_config.token = "databricks-token"
+        mock_config.return_value = mock_databricks_config
+
+        mock_client = MagicMock()
+        mock_client.jobs.cancel_run.side_effect = Exception("boom")
+        mock_client_cls.return_value = mock_client
+
+        service = DatabricksRayService()
+        with pytest.raises(UpstreamError, match="Failed to stop Databricks job"):
+            service.stop_run("456")
+
+
+# =============================================================================
+# Job Status/Logs Tests
+# =============================================================================
+
+
+class TestDatabricksRayServiceStatusLogs:
+    """Test suite for DatabricksRayService status/log retrieval."""
+
+    @patch("core.services.databricks_ray_service.DatabricksRayJobConfig.from_env")
+    @patch("core.services.databricks_ray_service.WorkspaceClient")
+    def test_get_run_status_success(
+        self,
+        mock_client_cls: MagicMock,
+        mock_config: MagicMock,
+    ) -> None:
+        """Test that get_run_status returns run state fields."""
+        mock_databricks_config = MagicMock()
+        mock_databricks_config.host = "https://dbc.example.cloud"
+        mock_databricks_config.token = "databricks-token"
+        mock_config.return_value = mock_databricks_config
+
+        mock_state = MagicMock()
+        mock_state.life_cycle_state = "RUNNING"
+        mock_state.result_state = None
+        mock_state.state_message = "Job is running"
+        mock_run = MagicMock()
+        mock_run.state = mock_state
+
+        mock_client = MagicMock()
+        mock_client.jobs.get_run.return_value = mock_run
+        mock_client_cls.return_value = mock_client
+
+        service = DatabricksRayService()
+        status = service.get_run_status(123)
+
+        assert status["life_cycle_state"] == "RUNNING"
+        assert status["result_state"] is None
+        assert status["state_message"] == "Job is running"
+
+    @patch("core.services.databricks_ray_service.DatabricksRayJobConfig.from_env")
+    @patch("core.services.databricks_ray_service.WorkspaceClient")
+    def test_get_run_status_raises_on_error(
+        self,
+        mock_client_cls: MagicMock,
+        mock_config: MagicMock,
+    ) -> None:
+        """Test that get_run_status wraps SDK errors in UpstreamError."""
+        mock_databricks_config = MagicMock()
+        mock_databricks_config.host = "https://dbc.example.cloud"
+        mock_databricks_config.token = "databricks-token"
+        mock_config.return_value = mock_databricks_config
+
+        mock_client = MagicMock()
+        mock_client.jobs.get_run.side_effect = Exception("boom")
+        mock_client_cls.return_value = mock_client
+
+        service = DatabricksRayService()
+        with pytest.raises(UpstreamError, match="Failed to get Databricks run status"):
+            service.get_run_status(123)
+
+    @patch("core.services.databricks_ray_service.DatabricksRayJobConfig.from_env")
+    @patch("core.services.databricks_ray_service.WorkspaceClient")
+    def test_get_run_output_prefers_logs(
+        self,
+        mock_client_cls: MagicMock,
+        mock_config: MagicMock,
+    ) -> None:
+        """Test that get_run_output returns logs when available."""
+        mock_databricks_config = MagicMock()
+        mock_databricks_config.host = "https://dbc.example.cloud"
+        mock_databricks_config.token = "databricks-token"
+        mock_config.return_value = mock_databricks_config
+
+        mock_output = MagicMock()
+        mock_output.logs = "log output"
+
+        mock_client = MagicMock()
+        mock_client.jobs.get_run_output.return_value = mock_output
+        mock_client_cls.return_value = mock_client
+
+        service = DatabricksRayService()
+        assert service.get_run_output(123) == "log output"
+
+    @patch("core.services.databricks_ray_service.DatabricksRayJobConfig.from_env")
+    @patch("core.services.databricks_ray_service.WorkspaceClient")
+    def test_get_run_output_raises_on_error(
+        self,
+        mock_client_cls: MagicMock,
+        mock_config: MagicMock,
+    ) -> None:
+        """Test that get_run_output wraps SDK errors in UpstreamError."""
+        mock_databricks_config = MagicMock()
+        mock_databricks_config.host = "https://dbc.example.cloud"
+        mock_databricks_config.token = "databricks-token"
+        mock_config.return_value = mock_databricks_config
+
+        mock_client = MagicMock()
+        mock_client.jobs.get_run_output.side_effect = Exception("boom")
+        mock_client_cls.return_value = mock_client
+
+        service = DatabricksRayService()
+        with pytest.raises(UpstreamError, match="Failed to get Databricks run output"):
+            service.get_run_output(123)
+
     @patch("core.services.databricks_ray_service.DatabricksRayJobConfig.from_env")
     @patch("core.services.databricks_ray_service.WorkspaceClient")
     def test_submit_raises_on_client_error(

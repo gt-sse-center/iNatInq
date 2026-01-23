@@ -348,6 +348,81 @@ async def submit_databricks_job(req: models.DatabricksJobRequest) -> models.Data
         raise PipelineError(f"Failed to submit Databricks job: {e!s}") from e
 
 
+@router.delete(
+    "/databricks/jobs/{run_id}",
+    response_model=models.DatabricksJobStopResponse,
+    tags=["databricks-jobs"],
+)
+async def stop_databricks_job(run_id: str) -> models.DatabricksJobStopResponse:
+    """Stop a running Databricks job run.
+
+    Args:
+        run_id: Databricks run ID to stop.
+
+    Returns:
+        Stop confirmation.
+
+    Raises:
+        HTTPException(500): If stopping fails.
+    """
+    try:
+        databricks_service = DatabricksRayService()
+        databricks_service.stop_run(run_id)
+        return models.DatabricksJobStopResponse(run_id=str(run_id), status="stopped")
+    except Exception as e:
+        raise PipelineError(f"Failed to stop Databricks job: {e!s}") from e
+
+
+@router.get(
+    "/databricks/jobs/{run_id}",
+    response_model=models.DatabricksJobStatusResponse,
+    tags=["databricks-jobs"],
+)
+async def get_databricks_job_status(run_id: str) -> models.DatabricksJobStatusResponse:
+    """Get the status of a Databricks job run.
+
+    Args:
+        run_id: Databricks run ID to query.
+
+    Returns:
+        Run status details including lifecycle/result states.
+
+    Raises:
+        HTTPException(500): If status query fails.
+    """
+    try:
+        databricks_service = DatabricksRayService()
+        status = databricks_service.get_run_status(run_id)
+        return models.DatabricksJobStatusResponse(run_id=str(run_id), **status)
+    except Exception as e:
+        raise PipelineError(f"Failed to get Databricks job status: {e!s}") from e
+
+
+@router.get(
+    "/databricks/jobs/{run_id}/logs",
+    response_model=models.DatabricksJobLogsResponse,
+    tags=["databricks-jobs"],
+)
+async def get_databricks_job_logs(run_id: str) -> models.DatabricksJobLogsResponse:
+    """Get output/logs for a Databricks job run.
+
+    Args:
+        run_id: Databricks run ID to query.
+
+    Returns:
+        Run output/logs as a string (best-effort).
+
+    Raises:
+        HTTPException(500): If log retrieval fails.
+    """
+    try:
+        databricks_service = DatabricksRayService()
+        logs = databricks_service.get_run_output(run_id)
+        return models.DatabricksJobLogsResponse(run_id=str(run_id), logs=logs)
+    except Exception as e:
+        raise PipelineError(f"Failed to get Databricks job logs: {e!s}") from e
+
+
 @router.get("/ray/jobs/{job_id}", response_model=models.RayJobStatusResponse, tags=["ray-jobs"])
 async def get_ray_job_status(job_id: str) -> models.RayJobStatusResponse:
     """Get the status of a Ray job.

@@ -36,6 +36,12 @@ API collection and environment for the iNatInq ML Pipeline service.
 - `GET /ray/jobs/{job_id}/logs` - Get job logs
 - `DELETE /ray/jobs/{job_id}` - Stop job
 
+### Databricks Jobs
+- `POST /databricks/jobs` - Submit job
+- `GET /databricks/jobs/{run_id}` - Get run status
+- `GET /databricks/jobs/{run_id}/logs` - Get run logs/output
+- `DELETE /databricks/jobs/{run_id}` - Stop run
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -45,6 +51,7 @@ API collection and environment for the iNatInq ML Pipeline service.
 | `s3_prefix` | `inputs/` | S3 prefix for jobs |
 | `job_id` | (auto-set) | Ray job ID |
 | `job_name` | (auto-set) | Spark job name |
+| `run_id` | (auto-set) | Databricks run ID |
 
 ## Usage Tips
 
@@ -52,4 +59,3 @@ API collection and environment for the iNatInq ML Pipeline service.
 2. **Run Health Check** to verify connectivity
 3. **Submit a job** - the response auto-saves `job_id` or `job_name`
 4. **Check status** - uses the saved job identifier
-

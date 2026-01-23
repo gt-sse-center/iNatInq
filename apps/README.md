@@ -51,6 +51,10 @@ The ingestion engine processes documents from S3 into vector databases using dis
 
 - `POST /ray/jobs` – Submit Ray job
 - `POST /spark/jobs` – Submit Spark job
+- `POST /databricks/jobs` – Submit Databricks job run
+- `GET /databricks/jobs/{run_id}` – Get Databricks run status
+- `GET /databricks/jobs/{run_id}/logs` – Get Databricks run output
+- `DELETE /databricks/jobs/{run_id}` – Stop Databricks run
 
 **Flow**: Job Submit → S3 List → Parallel Workers → Embed → Upsert to Qdrant + Weaviate
 

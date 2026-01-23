@@ -155,3 +155,78 @@ class DatabricksRayService:
         except Exception as e:
             logger.exception("Failed to submit Databricks job", extra={"error": str(e)})
             raise UpstreamError(f"Failed to submit Databricks job: {e}") from e
+
+    def stop_run(self, run_id: int | str) -> None:
+        """Stop a running Databricks job run.
+
+        Args:
+            run_id: Databricks run ID to cancel.
+
+        Raises:
+            UpstreamError: If the cancellation fails.
+        """
+        databricks_config = DatabricksRayJobConfig.from_env()
+        try:
+            client = WorkspaceClient(host=databricks_config.host, token=databricks_config.token)
+            client.jobs.cancel_run(run_id=int(run_id))
+        except Exception as e:
+            logger.exception("Failed to stop Databricks job", extra={"error": str(e), "run_id": run_id})
+            raise UpstreamError(f"Failed to stop Databricks job: {e}") from e
+
+    def get_run_status(self, run_id: int | str) -> dict[str, str | None]:
+        """Get Databricks run status details.
+
+        Args:
+            run_id: Databricks run ID to query.
+
+        Returns:
+            Dictionary with run status fields.
+
+        Raises:
+            UpstreamError: If the status query fails.
+        """
+        databricks_config = DatabricksRayJobConfig.from_env()
+        try:
+            client = WorkspaceClient(host=databricks_config.host, token=databricks_config.token)
+            run = client.jobs.get_run(run_id=int(run_id))
+            state = getattr(run, "state", None)
+            return {
+                "life_cycle_state": getattr(state, "life_cycle_state", None),
+                "result_state": getattr(state, "result_state", None),
+                "state_message": getattr(state, "state_message", None),
+            }
+        except Exception as e:
+            logger.exception("Failed to get Databricks run status", extra={"error": str(e), "run_id": run_id})
+            raise UpstreamError(f"Failed to get Databricks run status: {e}") from e
+
+    def get_run_output(self, run_id: int | str) -> str:
+        """Get Databricks run output/logs.
+
+        Args:
+            run_id: Databricks run ID to query.
+
+        Returns:
+            Run output/logs as a string (best-effort).
+
+        Raises:
+            UpstreamError: If output retrieval fails.
+        """
+        databricks_config = DatabricksRayJobConfig.from_env()
+        try:
+            client = WorkspaceClient(host=databricks_config.host, token=databricks_config.token)
+            output = client.jobs.get_run_output(run_id=int(run_id))
+
+            # Best-effort extraction across task types.
+            for attr in ("logs", "error"):
+                value = getattr(output, attr, None)
+                if value:
+                    return str(value)
+            notebook_output = getattr(output, "notebook_output", None)
+            if notebook_output is not None:
+                result = getattr(notebook_output, "result", None)
+                if result:
+                    return str(result)
+            return ""
+        except Exception as e:
+            logger.exception("Failed to get Databricks run output", extra={"error": str(e), "run_id": run_id})
+            raise UpstreamError(f"Failed to get Databricks run output: {e}") from e
