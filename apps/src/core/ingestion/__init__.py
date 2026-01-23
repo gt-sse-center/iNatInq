@@ -1,5 +1,5 @@
 """Ingestion modules for ML pipeline.
 
-This package contains ingestion implementations for different distributed
-computing frameworks (Spark, Ray).
+This package contains ingestion implementations using Ray for distributed
+computing.
 """

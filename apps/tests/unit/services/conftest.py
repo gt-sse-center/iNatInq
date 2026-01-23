@@ -13,31 +13,14 @@ import pytest
 
 from clients.interfaces.embedding import EmbeddingProvider
 from clients.interfaces.vector_db import VectorDBProvider
-from clients.k8s_spark import SparkJobClient
 from config import EmbeddingConfig, RayJobConfig, VectorDBConfig
 from core.models import SearchResultItem, SearchResults
 from core.services.ray_service import RayService
 from core.services.search_service import SearchService
-from core.services.spark_service import SparkService
 
 # =============================================================================
 # Mock Clients
 # =============================================================================
-
-
-@pytest.fixture
-def mock_spark_client() -> MagicMock:
-    """Create a mock SparkJobClient for testing.
-
-    Returns:
-        MagicMock: A mock Spark job client with common methods.
-    """
-    client = MagicMock(spec=SparkJobClient)
-    client.submit_job = MagicMock()
-    client.get_job_status = MagicMock()
-    client.list_jobs = MagicMock()
-    client.delete_job = MagicMock()
-    return client
 
 
 @pytest.fixture
@@ -143,26 +126,6 @@ def ray_job_config() -> RayJobConfig:
 # =============================================================================
 # Service Fixtures
 # =============================================================================
-
-
-@pytest.fixture
-def spark_service(mock_spark_client: MagicMock) -> SparkService:
-    """Create a SparkService instance with mocked client.
-
-    Args:
-        mock_spark_client: Mock SparkJobClient fixture.
-
-    Returns:
-        SparkService: Configured service with mocked client.
-    """
-    from unittest.mock import patch
-
-    with patch(
-        "core.services.spark_service.SparkJobClient",
-        return_value=mock_spark_client,
-    ):
-        service = SparkService(namespace="test-namespace")
-    return service
 
 
 @pytest.fixture

@@ -10,9 +10,9 @@ This module defines all HTTP endpoints for the pipeline service. It handles:
 - `GET /healthz`: Liveness/readiness probe (no dependency checks)
 - `GET /search`: Perform semantic search over documents in vector database
 (Qdrant or Weaviate)
-- `POST /process`: Submit Spark/Ray job to process S3 data and store embeddings
+- `POST /ray/jobs`: Submit Ray job to process S3 data and store embeddings
 in vector database
-- `GET /process/{job_name}/status`: Check status of a submitted job
+- `GET /ray/jobs/{job_id}`: Check status of a submitted job
 
 ## Error Handling
 
@@ -43,7 +43,6 @@ from config import EmbeddingConfig, MinIOConfig, VectorDBConfig, get_settings
 from core.exceptions import BadRequestError, PipelineError
 from core.services.ray_service import RayService
 from core.services.search_service import SearchService
-from core.services.spark_service import SparkService
 from fastapi import APIRouter, Query
 
 router = APIRouter()
@@ -55,7 +54,7 @@ def healthz() -> dict[str, str]:
 
     This endpoint is used by Kubernetes liveness and readiness probes. It
     returns a simple success response without checking dependencies (MinIO,
-    Spark, Ollama, Qdrant).
+    Ray, Ollama, Qdrant).
 
     Returns:
         A simple status dict: `{"status": "ok"}`
@@ -208,182 +207,6 @@ async def search(
     # They will be garbage collected when the function returns since they're
     # local variables created for this request. The underlying HTTP sessions
     # will be cleaned up by Python's garbage collector.
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Spark Job Management Endpoints
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-@router.post(
-    "/spark/jobs",
-    response_model=models.SparkJobResponse,
-    status_code=202,
-    tags=["spark-jobs"],
-)
-async def submit_spark_job(req: models.SparkJobRequest) -> models.SparkJobResponse:
-    """Submit a new Spark job to process S3 documents.
-
-    This creates a SparkApplication in Kubernetes and returns immediately.
-    Use GET /spark/jobs/{job_name} to check status.
-
-    The job will:
-    1. List documents from S3/MinIO at the specified prefix
-    2. Generate embeddings via Ollama
-    3. Store vectors in Qdrant and Weaviate
-
-    Args:
-        req: Request containing s3_prefix, collection, executor config, and optional job name.
-
-    Returns:
-        Job metadata including auto-generated job name and submission timestamp.
-
-    Raises:
-        HTTPException(500): If job submission fails.
-
-    Example Request:
-        ```json
-        POST /spark/jobs
-        {
-            "s3_prefix": "inputs/",
-            "collection": "documents",
-            "executor_instances": 2,
-            "executor_memory": "1g"
-        }
-        ```
-
-    Example Response:
-        ```json
-        {
-            "job_name": "s3-to-vector-db-20260112-153045-a1b2c3d4",
-            "status": "submitted",
-            "namespace": "ml-system",
-            "s3_prefix": "inputs/",
-            "collection": "documents",
-            "submitted_at": "2026-01-12T15:30:45.123456Z"
-        }
-        ```
-    """
-    try:
-        spark_service = SparkService()
-        result = spark_service.submit_processing_job(
-            s3_prefix=req.s3_prefix,
-            collection=req.collection,
-            executor_instances=req.executor_instances,
-            executor_memory=req.executor_memory,
-            job_name=req.job_name,
-        )
-        return models.SparkJobResponse(**result)
-    except Exception as e:
-        raise PipelineError(f"Failed to submit Spark job: {e!s}") from e
-
-
-@router.get(
-    "/spark/jobs/{job_name}",
-    response_model=models.SparkJobStatusResponse,
-    tags=["spark-jobs"],
-)
-async def get_spark_job_status(job_name: str) -> models.SparkJobStatusResponse:
-    """Get the status of a Spark job.
-
-    Args:
-        job_name: Name of the Spark job (returned from POST /spark/jobs).
-
-    Returns:
-        Current job status including state, driver info, and execution attempts.
-
-    Raises:
-        HTTPException(404): If job not found.
-        HTTPException(500): If status query fails.
-
-    Example Response:
-        ```json
-        {
-            "job_name": "s3-to-vector-db-20260112-153045-a1b2c3d4",
-            "state": "RUNNING",
-            "spark_state": "RUNNING",
-            "driver_info": {
-                "podName": "s3-to-vector-db-...-driver",
-                "webUIAddress": "http://10.244.0.123:4040"
-            },
-            "execution_attempts": 1,
-            "last_submission_attempt_time": "2026-01-12T15:30:45Z",
-            "termination_time": null
-        }
-        ```
-    """
-    try:
-        spark_service = SparkService()
-        status = spark_service.get_job_status(job_name)
-        return models.SparkJobStatusResponse(**status)
-    except RuntimeError as e:
-        raise PipelineError(f"Job not found or error: {e!s}") from e
-
-
-@router.get("/spark/jobs", response_model=models.SparkJobListResponse, tags=["spark-jobs"])
-async def list_spark_jobs() -> models.SparkJobListResponse:
-    """List all Spark jobs in the namespace.
-
-    Returns:
-        List of all SparkApplications with their current state.
-
-    Example Response:
-        ```json
-        {
-            "jobs": [
-                {
-                    "job_name": "s3-to-vector-db-20260112-153045-a1b2c3d4",
-                    "state": "COMPLETED",
-                    "created_at": "2026-01-12T15:30:45Z"
-                },
-                {
-                    "job_name": "s3-to-vector-db-20260112-164520-b2c3d4e5",
-                    "state": "RUNNING",
-                    "created_at": "2026-01-12T16:45:20Z"
-                }
-            ],
-            "total": 2
-        }
-        ```
-    """
-    spark_service = SparkService()
-    jobs = spark_service.list_jobs()
-    return models.SparkJobListResponse(jobs=jobs, total=len(jobs))
-
-
-@router.delete(
-    "/spark/jobs/{job_name}",
-    response_model=models.SparkJobDeleteResponse,
-    tags=["spark-jobs"],
-)
-async def delete_spark_job(job_name: str) -> models.SparkJobDeleteResponse:
-    """Delete a Spark job (cleanup after completion).
-
-    This removes the SparkApplication resource and terminates any running pods.
-
-    Args:
-        job_name: Name of the Spark job to delete.
-
-    Returns:
-        Deletion confirmation.
-
-    Raises:
-        HTTPException(500): If deletion fails.
-
-    Example Response:
-        ```json
-        {
-            "job_name": "s3-to-vector-db-20260112-153045-a1b2c3d4",
-            "status": "deleted"
-        }
-        ```
-    """
-    try:
-        spark_service = SparkService()
-        result = spark_service.delete_job(job_name)
-        return models.SparkJobDeleteResponse(**result)
-    except Exception as e:
-        raise PipelineError(f"Failed to delete job: {e!s}") from e
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

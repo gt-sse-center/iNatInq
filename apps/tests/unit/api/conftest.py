@@ -132,53 +132,6 @@ def mock_search_service() -> MagicMock:
 
 
 @pytest.fixture
-def mock_spark_service() -> MagicMock:
-    """Create a mock SparkService for testing.
-
-    Returns:
-        MagicMock: A mock Spark service with job management methods.
-    """
-    service = MagicMock()
-    service.submit_processing_job = MagicMock(
-        return_value={
-            "job_name": "s3-to-vector-db-20260112-153045-a1b2c3d4",
-            "status": "submitted",
-            "namespace": "ml-system",
-            "s3_prefix": "inputs/",
-            "collection": "documents",
-            "submitted_at": "2026-01-12T15:30:45.123456Z",
-        }
-    )
-    service.get_job_status = MagicMock(
-        return_value={
-            "job_name": "s3-to-vector-db-20260112-153045-a1b2c3d4",
-            "state": "RUNNING",
-            "spark_state": "RUNNING",
-            "driver_info": {"podName": "s3-to-vector-db-driver"},
-            "execution_attempts": 1,
-            "last_submission_attempt_time": "2026-01-12T15:30:45Z",
-            "termination_time": None,
-        }
-    )
-    service.list_jobs = MagicMock(
-        return_value=[
-            {
-                "job_name": "s3-to-vector-db-20260112-153045-a1b2c3d4",
-                "state": "COMPLETED",
-                "created_at": "2026-01-12T15:30:45Z",
-            }
-        ]
-    )
-    service.delete_job = MagicMock(
-        return_value={
-            "job_name": "s3-to-vector-db-20260112-153045-a1b2c3d4",
-            "status": "deleted",
-        }
-    )
-    return service
-
-
-@pytest.fixture
 def mock_ray_service() -> MagicMock:
     """Create a mock RayService for testing.
 

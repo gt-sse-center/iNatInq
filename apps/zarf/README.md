@@ -193,10 +193,8 @@ The local containers will still run but won't be used when cloud credentials are
 | Storage | PersistentVolumeClaims | Docker volumes |
 | Secrets | K8s Secrets/ConfigMaps | `.env` files |
 | Scaling | HPA/Replicas | `--scale` flag |
-| Spark | Spark Operator | Not included* |
+| Ray | Ray Operator | Ray head + workers |
 | Health Checks | Probes | HEALTHCHECK |
-
-*For Spark workloads, use Ray or integrate with an external Spark cluster.
 
 ## Troubleshooting
 
