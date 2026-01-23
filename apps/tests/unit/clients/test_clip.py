@@ -41,7 +41,17 @@ class TestCLIPClientInit:
     """Tests for CLIPClient initialization."""
 
     def test_creates_with_required_params(self) -> None:
-        """CLIPClient should initialize with base_url and model."""
+        """Test that CLIPClient initializes with required parameters.
+
+        **Why this test is important:**
+          - Client initialization is the foundation for all operations
+          - Ensures required parameters are accepted
+          - Validates default values are set correctly
+
+        **What it tests:**
+          - base_url and model are stored correctly
+          - Default timeout and batch size are set
+        """
         client = CLIPClient(base_url="http://localhost:11434", model="llava")
 
         assert client.base_url == "http://localhost:11434"
@@ -50,7 +60,16 @@ class TestCLIPClientInit:
         assert client.max_batch_size == 8  # Default
 
     def test_creates_with_custom_params(self) -> None:
-        """CLIPClient should accept custom configuration."""
+        """Test that CLIPClient accepts custom configuration parameters.
+
+        **Why this test is important:**
+          - Custom configuration is needed for different deployment environments
+          - Validates all configurable options work correctly
+
+        **What it tests:**
+          - Custom timeout, circuit breaker, and batch settings are stored
+          - Vector size override is applied correctly
+        """
         client = CLIPClient(
             base_url="http://custom:11434",
             model="bakllava",
@@ -70,13 +89,30 @@ class TestCLIPClientInit:
         assert client.vector_size_override == 1024
 
     def test_initializes_session(self) -> None:
-        """CLIPClient should initialize a requests session."""
+        """Test that CLIPClient initializes an HTTP session.
+
+        **Why this test is important:**
+          - HTTP session is required for making API requests
+          - Session reuse improves performance via connection pooling
+
+        **What it tests:**
+          - Session is created during initialization
+        """
         client = CLIPClient(base_url="http://localhost:11434", model="llava")
 
         assert client.session is not None
 
     def test_initializes_circuit_breakers(self) -> None:
-        """CLIPClient should initialize sync and async circuit breakers."""
+        """Test that CLIPClient initializes circuit breakers.
+
+        **Why this test is important:**
+          - Circuit breakers prevent cascading failures
+          - Both sync and async operations need protection
+
+        **What it tests:**
+          - Sync circuit breaker is created
+          - Async circuit breaker is created
+        """
         client = CLIPClient(base_url="http://localhost:11434", model="llava")
 
         assert client._breaker is not None
@@ -87,12 +123,28 @@ class TestCLIPClientVectorSize:
     """Tests for CLIPClient.vector_size property."""
 
     def test_returns_known_model_size(self) -> None:
-        """vector_size should return correct size for known models."""
+        """Test that vector_size returns correct size for known models.
+
+        **Why this test is important:**
+          - Vector size must match model output for correct indexing
+          - Mismatched sizes cause vector DB errors
+
+        **What it tests:**
+          - Known model (llava) returns its documented vector size
+        """
         client = CLIPClient(base_url="http://localhost:11434", model="llava")
         assert client.vector_size == 4096
 
     def test_returns_override_when_set(self) -> None:
-        """vector_size should return override when specified."""
+        """Test that vector_size_override takes precedence.
+
+        **Why this test is important:**
+          - Allows using custom or fine-tuned models with different sizes
+          - Override must take priority over model lookup
+
+        **What it tests:**
+          - Override value is returned instead of model default
+        """
         client = CLIPClient(
             base_url="http://localhost:11434",
             model="llava",
@@ -101,7 +153,15 @@ class TestCLIPClientVectorSize:
         assert client.vector_size == 768
 
     def test_returns_default_for_unknown_model(self) -> None:
-        """vector_size should return 512 for unknown models."""
+        """Test that unknown models fall back to default size.
+
+        **Why this test is important:**
+          - New models shouldn't break the client
+          - Default provides reasonable fallback
+
+        **What it tests:**
+          - Unknown model returns 512 (CLIP default)
+        """
         client = CLIPClient(
             base_url="http://localhost:11434",
             model="unknown-model",
@@ -120,7 +180,15 @@ class TestCLIPClientVectorSize:
         ],
     )
     def test_known_model_sizes(self, model: str, expected_size: int) -> None:
-        """vector_size should return correct size for each known model."""
+        """Test that all known models return their correct vector sizes.
+
+        **Why this test is important:**
+          - Documents expected sizes for all supported models
+          - Catches regressions in model size mapping
+
+        **What it tests:**
+          - Each model in the size map returns correct dimension
+        """
         client = CLIPClient(base_url="http://localhost:11434", model=model)
         assert client.vector_size == expected_size
 
@@ -129,7 +197,16 @@ class TestCLIPClientEncoding:
     """Tests for image encoding."""
 
     def test_encode_image_returns_base64(self) -> None:
-        """_encode_image should return base64 string."""
+        """Test that _encode_image returns valid base64 string.
+
+        **Why this test is important:**
+          - Image data must be base64 encoded for API transport
+          - Encoding errors would cause API failures
+
+        **What it tests:**
+          - Returns string type
+          - Base64 decodes back to original bytes
+        """
         client = CLIPClient(base_url="http://localhost:11434", model="llava")
         image_bytes = b"\x89PNG\r\n\x1a\n"  # PNG magic bytes
 
@@ -141,7 +218,15 @@ class TestCLIPClientEncoding:
         assert decoded == image_bytes
 
     def test_encode_image_empty_raises(self) -> None:
-        """_encode_image should raise ValueError for empty bytes."""
+        """Test that _encode_image rejects empty bytes.
+
+        **Why this test is important:**
+          - Empty images are invalid input
+          - Fail fast prevents wasted API calls
+
+        **What it tests:**
+          - ValueError raised for empty bytes
+        """
         client = CLIPClient(base_url="http://localhost:11434", model="llava")
 
         with pytest.raises(ValueError, match="empty"):
@@ -162,7 +247,16 @@ class TestCLIPClientEmbedImage:
         mock_clip_session: MagicMock,
         mock_response: dict,
     ) -> None:
-        """embed_image should make POST request with correct payload."""
+        """Test that embed_image makes correct API request.
+
+        **Why this test is important:**
+          - Request format must match API specification
+          - Incorrect payloads cause embedding failures
+
+        **What it tests:**
+          - POST to correct endpoint
+          - Payload includes model, prompt, and images
+        """
         mock_clip_session.post.return_value.json.return_value = mock_response
         mock_clip_session.post.return_value.raise_for_status = MagicMock()
 
@@ -183,7 +277,16 @@ class TestCLIPClientEmbedImage:
         mock_clip_session: MagicMock,
         mock_response: dict,
     ) -> None:
-        """embed_image should return embedding vector."""
+        """Test that embed_image returns embedding vector from response.
+
+        **Why this test is important:**
+          - Correct response parsing is critical for downstream use
+          - Wrong vector format would break similarity search
+
+        **What it tests:**
+          - Returns embedding array from response
+          - Vector has expected length
+        """
         mock_clip_session.post.return_value.json.return_value = mock_response
         mock_clip_session.post.return_value.raise_for_status = MagicMock()
 
@@ -193,7 +296,15 @@ class TestCLIPClientEmbedImage:
         assert len(result) == 512
 
     def test_embed_image_empty_raises(self, clip_client_with_mock: CLIPClient) -> None:
-        """embed_image should raise ValueError for empty bytes."""
+        """Test that embed_image rejects empty image bytes.
+
+        **Why this test is important:**
+          - Empty images are invalid and waste API calls
+          - Fail-fast improves error diagnosis
+
+        **What it tests:**
+          - ValueError raised with descriptive message
+        """
         with pytest.raises(ValueError, match="empty"):
             clip_client_with_mock.embed_image(b"")
 
@@ -207,12 +318,28 @@ class TestCLIPClientEmbedImageBatch:
         return {"embedding": [0.1] * 512}
 
     def test_embed_image_batch_empty_raises(self, clip_client_with_mock: CLIPClient) -> None:
-        """embed_image_batch should raise ValueError for empty list."""
+        """Test that embed_image_batch rejects empty list.
+
+        **Why this test is important:**
+          - Empty batch is a programming error
+          - Early validation prevents downstream confusion
+
+        **What it tests:**
+          - ValueError raised for empty list
+        """
         with pytest.raises(ValueError, match="empty"):
             clip_client_with_mock.embed_image_batch([])
 
     def test_embed_image_batch_exceeds_max_raises(self, clip_client_with_mock: CLIPClient) -> None:
-        """embed_image_batch should raise ValueError when exceeding max_batch_size."""
+        """Test that embed_image_batch rejects oversized batches.
+
+        **Why this test is important:**
+          - Large batches can overwhelm the API
+          - Batch size limits prevent memory issues
+
+        **What it tests:**
+          - ValueError raised when batch exceeds max_batch_size
+        """
         images = [b"image"] * 10  # Exceeds default max of 8
 
         with pytest.raises(ValueError, match="exceeds max_batch_size"):
@@ -224,7 +351,16 @@ class TestCLIPClientEmbedImageBatch:
         mock_clip_session: MagicMock,
         mock_response: dict,
     ) -> None:
-        """embed_image_batch should return one embedding per image."""
+        """Test that embed_image_batch returns one embedding per image.
+
+        **Why this test is important:**
+          - Batch operations must maintain 1:1 mapping
+          - Wrong count would corrupt vector index
+
+        **What it tests:**
+          - Returns same number of embeddings as input images
+          - Each image gets its own API call
+        """
         mock_clip_session.post.return_value.json.return_value = mock_response
         mock_clip_session.post.return_value.raise_for_status = MagicMock()
 
@@ -248,7 +384,16 @@ class TestCLIPClientAsync:
     async def test_embed_image_async_returns_embedding(
         self, mock_async_client_cls: MagicMock, mock_response: dict
     ) -> None:
-        """embed_image_async should return embedding vector."""
+        """Test that embed_image_async returns embedding vector.
+
+        **Why this test is important:**
+          - Async operations are used in Ray workers for parallelism
+          - Must return same format as sync version
+
+        **What it tests:**
+          - Returns embedding from API response
+          - Async client is used correctly
+        """
         # Setup mock response
         mock_post_response = MagicMock()
         mock_post_response.json.return_value = mock_response
@@ -269,7 +414,15 @@ class TestCLIPClientAsync:
 
     @pytest.mark.asyncio
     async def test_embed_image_batch_async_empty_raises(self) -> None:
-        """embed_image_batch_async should raise ValueError for empty list."""
+        """Test that embed_image_batch_async rejects empty list.
+
+        **Why this test is important:**
+          - Consistent validation between sync and async
+          - Fail fast for programming errors
+
+        **What it tests:**
+          - ValueError raised for empty list
+        """
         client = CLIPClient(base_url="http://localhost:11434", model="llava")
 
         with pytest.raises(ValueError, match="empty"):
@@ -278,7 +431,16 @@ class TestCLIPClientAsync:
     @patch("clients.clip.httpx.AsyncClient")
     @pytest.mark.asyncio
     async def test_embed_image_batch_async_returns_vectors(self, mock_async_client_cls: MagicMock) -> None:
-        """embed_image_batch_async should return vectors for all images."""
+        """Test that embed_image_batch_async returns vectors for all images.
+
+        **Why this test is important:**
+          - Async batch is main code path for Ray workers
+          - Must process all images correctly
+
+        **What it tests:**
+          - Returns correct number of embeddings
+          - Concurrent execution (asyncio.gather)
+        """
         mock_response = {"embedding": [0.1] * 512}
         mock_post_response = MagicMock()
         mock_post_response.json.return_value = mock_response
@@ -304,7 +466,16 @@ class TestCLIPClientErrorHandling:
     def test_embed_image_raises_upstream_error_on_request_error(
         self, clip_client_with_mock: CLIPClient, mock_clip_session: MagicMock
     ) -> None:
-        """embed_image should raise UpstreamError on request failure."""
+        """Test that embed_image raises UpstreamError on network failure.
+
+        **Why this test is important:**
+          - Network errors must be surfaced with proper error type
+          - UpstreamError enables circuit breaker integration
+
+        **What it tests:**
+          - RequestException is caught and wrapped
+          - Error message is descriptive
+        """
         import requests
 
         mock_clip_session.post.side_effect = requests.RequestException("Connection failed")
@@ -317,7 +488,16 @@ class TestCLIPClientErrorHandling:
     def test_embed_image_raises_upstream_error_on_missing_embedding(
         self, clip_client_with_mock: CLIPClient, mock_clip_session: MagicMock
     ) -> None:
-        """embed_image should raise UpstreamError when embedding is missing."""
+        """Test that embed_image handles missing embedding in response.
+
+        **Why this test is important:**
+          - API may return malformed responses
+          - Must fail clearly rather than silently corrupt data
+
+        **What it tests:**
+          - Empty response triggers UpstreamError
+          - Error message indicates unexpected format
+        """
         mock_clip_session.post.return_value.json.return_value = {}
         mock_clip_session.post.return_value.raise_for_status = MagicMock()
 
@@ -329,7 +509,15 @@ class TestCLIPClientErrorHandling:
     def test_embed_image_raises_upstream_error_on_http_error(
         self, clip_client_with_mock: CLIPClient, mock_clip_session: MagicMock
     ) -> None:
-        """embed_image should raise UpstreamError on HTTP error status."""
+        """Test that embed_image handles HTTP error status codes.
+
+        **Why this test is important:**
+          - Server errors (5xx) must trigger circuit breaker
+          - Consistent error handling across failure modes
+
+        **What it tests:**
+          - HTTP errors are wrapped in UpstreamError
+        """
         import requests
 
         mock_response = MagicMock()
@@ -346,7 +534,15 @@ class TestCLIPClientErrorHandling:
     async def test_embed_image_async_raises_upstream_error_on_http_error(
         self, mock_async_client_cls: MagicMock
     ) -> None:
-        """embed_image_async should raise UpstreamError on HTTP error."""
+        """Test that embed_image_async handles HTTP errors.
+
+        **Why this test is important:**
+          - Async path must have same error behavior as sync
+          - Enables consistent circuit breaker integration
+
+        **What it tests:**
+          - httpx.HTTPError is wrapped in UpstreamError
+        """
         import httpx
 
         mock_client = AsyncMock()
@@ -366,7 +562,15 @@ class TestCLIPClientErrorHandling:
     async def test_embed_image_async_raises_upstream_error_on_missing_embedding(
         self, mock_async_client_cls: MagicMock
     ) -> None:
-        """embed_image_async should raise UpstreamError when embedding is missing."""
+        """Test that embed_image_async handles missing embedding in response.
+
+        **Why this test is important:**
+          - Async path must validate response format
+          - Malformed responses must be caught
+
+        **What it tests:**
+          - Empty response triggers UpstreamError
+        """
         mock_response = MagicMock()
         mock_response.json.return_value = {}  # Missing 'embedding' key
         mock_response.raise_for_status = MagicMock()
@@ -388,7 +592,15 @@ class TestCLIPClientCircuitBreaker:
     """Tests for circuit breaker behavior."""
 
     def test_circuit_breaker_starts_closed(self) -> None:
-        """Circuit breaker should start in closed state."""
+        """Test that sync circuit breaker starts in closed state.
+
+        **Why this test is important:**
+          - Closed state allows requests to flow
+          - Incorrect initial state would block all requests
+
+        **What it tests:**
+          - Sync breaker exists and is closed
+        """
         import pybreaker
 
         client = CLIPClient(base_url="http://localhost:11434", model="llava")
@@ -397,7 +609,15 @@ class TestCLIPClientCircuitBreaker:
         assert client._breaker.current_state == pybreaker.STATE_CLOSED
 
     def test_async_circuit_breaker_starts_closed(self) -> None:
-        """Async circuit breaker should start in closed state."""
+        """Test that async circuit breaker starts in closed state.
+
+        **Why this test is important:**
+          - Async breaker is used in Ray workers
+          - Must allow initial requests
+
+        **What it tests:**
+          - Async breaker exists and is closed
+        """
         import aiobreaker
 
         client = CLIPClient(base_url="http://localhost:11434", model="llava")
@@ -406,7 +626,16 @@ class TestCLIPClientCircuitBreaker:
         assert client._async_breaker.current_state == aiobreaker.state.CircuitBreakerState.CLOSED
 
     def test_circuit_breaker_uses_configured_thresholds(self) -> None:
-        """Circuit breaker should use configured failure threshold."""
+        """Test that circuit breaker respects configuration.
+
+        **Why this test is important:**
+          - Thresholds control failure tolerance
+          - Configuration must take effect
+
+        **What it tests:**
+          - Custom failure threshold is applied
+          - Custom recovery timeout is applied
+        """
         client = CLIPClient(
             base_url="http://localhost:11434",
             model="llava",
@@ -418,7 +647,16 @@ class TestCLIPClientCircuitBreaker:
         assert client._breaker.reset_timeout == 15
 
     def test_embed_image_handles_circuit_breaker_open(self, clip_client_with_mock: CLIPClient) -> None:
-        """embed_image should raise UpstreamError when circuit is open."""
+        """Test that embed_image fails fast when circuit is open.
+
+        **Why this test is important:**
+          - Open circuit should prevent requests
+          - Fail-fast protects downstream services
+
+        **What it tests:**
+          - UpstreamError raised when circuit is open
+          - No actual request made
+        """
         import pybreaker
 
         from core.exceptions import UpstreamError
@@ -436,12 +674,29 @@ class TestCLIPClientProtocol:
     """Tests for ImageEmbeddingProvider protocol compliance."""
 
     def test_implements_protocol(self) -> None:
-        """CLIPClient should implement ImageEmbeddingProvider protocol."""
+        """Test that CLIPClient implements ImageEmbeddingProvider protocol.
+
+        **Why this test is important:**
+          - Protocol compliance enables dependency injection
+          - Allows swapping implementations in tests
+
+        **What it tests:**
+          - isinstance check passes for protocol
+        """
         client = CLIPClient(base_url="http://localhost:11434", model="llava")
         assert isinstance(client, ImageEmbeddingProvider)
 
     def test_has_required_methods(self) -> None:
-        """CLIPClient should have all required protocol methods."""
+        """Test that CLIPClient has all required protocol methods.
+
+        **Why this test is important:**
+          - Protocol methods must exist for interface contract
+          - Missing methods would break callers
+
+        **What it tests:**
+          - vector_size property exists
+          - embed_image method exists
+        """
         client = CLIPClient(base_url="http://localhost:11434", model="llava")
 
         assert hasattr(client, "vector_size")
@@ -455,7 +710,16 @@ class TestCLIPClientFromConfig:
     """Tests for CLIPClient.from_config factory method."""
 
     def test_creates_from_config(self) -> None:
-        """from_config should create CLIPClient from ImageEmbeddingConfig."""
+        """Test that from_config creates client from ImageEmbeddingConfig.
+
+        **Why this test is important:**
+          - Factory method is the standard way to create clients
+          - Must correctly map all config fields to client attributes
+
+        **What it tests:**
+          - All config values are transferred to client
+          - Client is usable after creation
+        """
         config = ImageEmbeddingConfig(
             clip_url="http://test:11434",
             clip_model="llava",
@@ -477,21 +741,45 @@ class TestCLIPClientFromConfig:
         assert client.vector_size_override == 1024
 
     def test_raises_without_url(self) -> None:
-        """from_config should raise ValueError if clip_url is missing."""
+        """Test that from_config requires clip_url.
+
+        **Why this test is important:**
+          - URL is required for API connectivity
+          - Must fail early with clear message
+
+        **What it tests:**
+          - ValueError raised for missing URL
+        """
         config = ImageEmbeddingConfig(clip_model="llava")
 
         with pytest.raises(ValueError, match="clip_url is required"):
             CLIPClient.from_config(config)
 
     def test_raises_without_model(self) -> None:
-        """from_config should raise ValueError if clip_model is missing."""
+        """Test that from_config requires clip_model.
+
+        **Why this test is important:**
+          - Model is required for embedding generation
+          - Must fail early with clear message
+
+        **What it tests:**
+          - ValueError raised for missing model
+        """
         config = ImageEmbeddingConfig(clip_url="http://test:11434")
 
         with pytest.raises(ValueError, match="clip_model is required"):
             CLIPClient.from_config(config)
 
     def test_accepts_custom_session(self) -> None:
-        """from_config should accept custom session."""
+        """Test that from_config accepts custom HTTP session.
+
+        **Why this test is important:**
+          - Custom session enables connection pooling
+          - Allows shared session across clients
+
+        **What it tests:**
+          - Custom session is stored on client
+        """
         config = ImageEmbeddingConfig(
             clip_url="http://test:11434",
             clip_model="llava",
@@ -507,7 +795,15 @@ class TestCLIPClientCleanup:
     """Tests for resource cleanup."""
 
     def test_close_closes_session(self) -> None:
-        """close() should close the HTTP session."""
+        """Test that close() releases HTTP session.
+
+        **Why this test is important:**
+          - Prevents resource leaks in long-running processes
+          - Required for proper shutdown
+
+        **What it tests:**
+          - Session is set to None after close
+        """
         client = CLIPClient(base_url="http://localhost:11434", model="llava")
         # Access session to ensure it's created
         _ = client.session
@@ -517,7 +813,15 @@ class TestCLIPClientCleanup:
         assert client._session is None
 
     def test_set_session_replaces_session(self) -> None:
-        """set_session should replace existing session."""
+        """Test that set_session replaces existing session.
+
+        **Why this test is important:**
+          - Enables connection pooling with shared session
+          - Required for retry session integration
+
+        **What it tests:**
+          - New session replaces old one
+        """
         client = CLIPClient(base_url="http://localhost:11434", model="llava")
         new_session = MagicMock()
 
@@ -530,7 +834,15 @@ class TestImageEmbeddingConfigFromEnv:
     """Tests for ImageEmbeddingConfig.from_env factory method."""
 
     def test_creates_with_defaults(self) -> None:
-        """from_env should create config with defaults."""
+        """Test that from_env creates config with sensible defaults.
+
+        **Why this test is important:**
+          - Defaults enable zero-config local development
+          - Must work without environment variables
+
+        **What it tests:**
+          - Default URL, model, timeout, and batch size
+        """
         with patch.dict("os.environ", {}, clear=True):
             config = ImageEmbeddingConfig.from_env()
 
@@ -541,7 +853,15 @@ class TestImageEmbeddingConfigFromEnv:
             assert config.clip_max_batch_size == 8
 
     def test_respects_env_vars(self) -> None:
-        """from_env should read from environment variables."""
+        """Test that from_env reads from environment variables.
+
+        **Why this test is important:**
+          - Environment variables configure production deployments
+          - All settings must be overridable
+
+        **What it tests:**
+          - All CLIP_* environment variables are respected
+        """
         env = {
             "CLIP_URL": "http://custom:11434",
             "CLIP_MODEL": "bakllava",
@@ -564,7 +884,15 @@ class TestImageEmbeddingConfigFromEnv:
             assert config.clip_vector_size == 768
 
     def test_falls_back_to_ollama_url(self) -> None:
-        """from_env should fall back to OLLAMA_BASE_URL if CLIP_URL not set."""
+        """Test that from_env falls back to OLLAMA_BASE_URL.
+
+        **Why this test is important:**
+          - Backwards compatibility with Ollama-based setups
+          - Reduces configuration duplication
+
+        **What it tests:**
+          - OLLAMA_BASE_URL used when CLIP_URL not set
+        """
         env = {"OLLAMA_BASE_URL": "http://ollama:11434"}
 
         with patch.dict("os.environ", env, clear=True):
@@ -584,7 +912,16 @@ class TestCLIPClientEmbedText:
     def test_embed_text_returns_embedding(
         self, clip_client_with_mock: CLIPClient, mock_clip_session: MagicMock
     ) -> None:
-        """embed_text should return embedding vector."""
+        """Test that embed_text returns embedding vector.
+
+        **Why this test is important:**
+          - Text embeddings enable cross-modal search
+          - Must return vectors in same space as image embeddings
+
+        **What it tests:**
+          - Returns vector of expected dimension
+          - All elements are floats
+        """
         mock_response = MagicMock()
         mock_response.json.return_value = {"embedding": [0.1] * 512}
         mock_response.raise_for_status = MagicMock()
@@ -596,19 +933,45 @@ class TestCLIPClientEmbedText:
         assert all(isinstance(x, float) for x in result)
 
     def test_embed_text_empty_raises_value_error(self, clip_client_with_mock: CLIPClient) -> None:
-        """embed_text should raise ValueError for empty text."""
+        """Test that embed_text rejects empty text.
+
+        **Why this test is important:**
+          - Empty text produces meaningless embeddings
+          - Fail fast prevents wasted API calls
+
+        **What it tests:**
+          - ValueError raised with descriptive message
+        """
         with pytest.raises(ValueError, match="empty"):
             clip_client_with_mock.embed_text("")
 
     def test_embed_text_whitespace_raises_value_error(self, clip_client_with_mock: CLIPClient) -> None:
-        """embed_text should raise ValueError for whitespace-only text."""
+        """Test that embed_text rejects whitespace-only text.
+
+        **Why this test is important:**
+          - Whitespace is effectively empty
+          - Must be caught like empty string
+
+        **What it tests:**
+          - ValueError raised for whitespace
+        """
         with pytest.raises(ValueError, match="empty"):
             clip_client_with_mock.embed_text("   ")
 
     def test_embed_text_makes_correct_request_ollama(
         self, clip_client_with_mock: CLIPClient, mock_clip_session: MagicMock
     ) -> None:
-        """embed_text should make correct request to Ollama backend."""
+        """Test that embed_text makes correct request to Ollama backend.
+
+        **Why this test is important:**
+          - Ollama API format differs from ai4all/clip
+          - Must use prompt field (not texts array)
+
+        **What it tests:**
+          - POST to /api/embeddings endpoint
+          - Payload uses prompt field
+          - No images array in payload
+        """
         mock_response = MagicMock()
         mock_response.json.return_value = {"embedding": [0.1] * 512}
         mock_response.raise_for_status = MagicMock()
@@ -627,7 +990,16 @@ class TestCLIPClientEmbedText:
         assert "images" not in payload
 
     def test_embed_text_makes_correct_request_clip_backend(self, mock_clip_session: MagicMock) -> None:
-        """embed_text should make correct request to CLIP backend (ai4all/clip API format)."""
+        """Test that embed_text makes correct request to ai4all/clip backend.
+
+        **Why this test is important:**
+          - ai4all/clip uses different API format than Ollama
+          - Must use /embedding/text with texts array
+
+        **What it tests:**
+          - POST to /embedding/text endpoint
+          - Payload uses texts array format
+        """
         client = CLIPClient(
             base_url="http://clip:8000",
             model="ViT-B/32",
@@ -658,7 +1030,16 @@ class TestCLIPClientEmbedTextAsync:
     @patch("clients.clip.httpx.AsyncClient")
     @pytest.mark.asyncio
     async def test_embed_text_async_returns_embedding(self, mock_async_client_cls: MagicMock) -> None:
-        """embed_text_async should return embedding vector."""
+        """Test that embed_text_async returns embedding vector.
+
+        **Why this test is important:**
+          - Async text embedding used in Ray workers
+          - Must match sync behavior
+
+        **What it tests:**
+          - Returns vector of expected dimension
+          - Async client is used correctly
+        """
         mock_response = {"embedding": [0.1] * 512}
 
         mock_client = MagicMock()
@@ -678,7 +1059,15 @@ class TestCLIPClientEmbedTextAsync:
 
     @pytest.mark.asyncio
     async def test_embed_text_async_empty_raises_value_error(self) -> None:
-        """embed_text_async should raise ValueError for empty text."""
+        """Test that embed_text_async rejects empty text.
+
+        **Why this test is important:**
+          - Consistent validation between sync and async
+          - Fail fast on invalid input
+
+        **What it tests:**
+          - ValueError raised for empty text
+        """
         client = CLIPClient(base_url="http://localhost:11434", model="llava")
         with pytest.raises(ValueError, match="empty"):
             await client.embed_text_async("")
@@ -690,7 +1079,16 @@ class TestCLIPClientEmbedTextBatch:
     def test_embed_text_batch_returns_multiple_embeddings(
         self, clip_client_with_mock: CLIPClient, mock_clip_session: MagicMock
     ) -> None:
-        """embed_text_batch should return embeddings for all texts."""
+        """Test that embed_text_batch returns embeddings for all texts.
+
+        **Why this test is important:**
+          - Batch operations improve throughput
+          - Must maintain 1:1 mapping with inputs
+
+        **What it tests:**
+          - Returns correct number of embeddings
+          - Each text gets its own API call
+        """
         mock_response = MagicMock()
         mock_response.json.return_value = {"embedding": [0.1] * 512}
         mock_response.raise_for_status = MagicMock()
@@ -703,14 +1101,30 @@ class TestCLIPClientEmbedTextBatch:
         assert mock_clip_session.post.call_count == 3
 
     def test_embed_text_batch_empty_list_raises_value_error(self, clip_client_with_mock: CLIPClient) -> None:
-        """embed_text_batch should raise ValueError for empty list."""
+        """Test that embed_text_batch rejects empty list.
+
+        **Why this test is important:**
+          - Empty batch is a programming error
+          - Consistent with embed_image_batch behavior
+
+        **What it tests:**
+          - ValueError raised for empty list
+        """
         with pytest.raises(ValueError, match="empty"):
             clip_client_with_mock.embed_text_batch([])
 
     def test_embed_text_batch_empty_string_raises_value_error(
         self, clip_client_with_mock: CLIPClient, mock_clip_session: MagicMock
     ) -> None:
-        """embed_text_batch should raise ValueError if any text is empty."""
+        """Test that embed_text_batch rejects batches containing empty text.
+
+        **Why this test is important:**
+          - Any empty text invalidates the batch
+          - Fail fast before partial processing
+
+        **What it tests:**
+          - ValueError raised when batch contains empty string
+        """
         mock_response = MagicMock()
         mock_response.json.return_value = {"embedding": [0.1] * 512}
         mock_response.raise_for_status = MagicMock()
@@ -720,7 +1134,15 @@ class TestCLIPClientEmbedTextBatch:
             clip_client_with_mock.embed_text_batch(["cat", "", "dog"])
 
     def test_embed_text_batch_exceeds_max_raises_value_error(self, clip_client_with_mock: CLIPClient) -> None:
-        """embed_text_batch should raise ValueError when exceeding max_batch_size."""
+        """Test that embed_text_batch rejects oversized batches.
+
+        **Why this test is important:**
+          - Batch size limits prevent memory issues
+          - Consistent with embed_image_batch behavior
+
+        **What it tests:**
+          - ValueError raised when batch exceeds max_batch_size
+        """
         texts = ["text"] * 10  # Exceeds default max of 8
 
         with pytest.raises(ValueError, match="exceeds max_batch_size"):
@@ -735,7 +1157,16 @@ class TestCLIPClientEmbedTextBatchAsync:
     async def test_embed_text_batch_async_returns_multiple_embeddings(
         self, mock_async_client_cls: MagicMock
     ) -> None:
-        """embed_text_batch_async should return embeddings for all texts."""
+        """Test that embed_text_batch_async returns embeddings for all texts.
+
+        **Why this test is important:**
+          - Async batch is main code path for text queries in Ray
+          - Must process all texts correctly
+
+        **What it tests:**
+          - Returns correct number of embeddings
+          - Concurrent execution via asyncio.gather
+        """
         mock_response = {"embedding": [0.1] * 512}
 
         mock_client = MagicMock()
@@ -755,14 +1186,30 @@ class TestCLIPClientEmbedTextBatchAsync:
 
     @pytest.mark.asyncio
     async def test_embed_text_batch_async_empty_list_raises_value_error(self) -> None:
-        """embed_text_batch_async should raise ValueError for empty list."""
+        """Test that embed_text_batch_async rejects empty list.
+
+        **Why this test is important:**
+          - Consistent validation between sync and async
+          - Empty batch is a programming error
+
+        **What it tests:**
+          - ValueError raised for empty list
+        """
         client = CLIPClient(base_url="http://localhost:11434", model="llava")
         with pytest.raises(ValueError, match="empty"):
             await client.embed_text_batch_async([])
 
     @pytest.mark.asyncio
     async def test_embed_text_batch_async_empty_string_raises_value_error(self) -> None:
-        """embed_text_batch_async should raise ValueError if any text is empty."""
+        """Test that embed_text_batch_async rejects batches with empty text.
+
+        **Why this test is important:**
+          - Any empty text invalidates the batch
+          - Consistent with sync batch behavior
+
+        **What it tests:**
+          - ValueError raised when batch contains empty string
+        """
         client = CLIPClient(base_url="http://localhost:11434", model="llava")
         with pytest.raises(ValueError, match="empty"):
             await client.embed_text_batch_async(["cat", "", "dog"])
@@ -774,7 +1221,15 @@ class TestCLIPClientCrossModalSearch:
     def test_image_and_text_use_same_vector_size(
         self, clip_client_with_mock: CLIPClient, mock_clip_session: MagicMock
     ) -> None:
-        """Image and text embeddings should have the same dimensions."""
+        """Test that image and text embeddings have the same dimensions.
+
+        **Why this test is important:**
+          - Cross-modal search requires vectors in same space
+          - Mismatched dimensions would break similarity calculations
+
+        **What it tests:**
+          - Image and text embeddings have equal length
+        """
         # Mock both image and text embedding responses
         mock_response = MagicMock()
         mock_response.json.return_value = {"embedding": [0.1] * 512}
@@ -789,7 +1244,16 @@ class TestCLIPClientCrossModalSearch:
     def test_text_embedding_request_differs_from_image(
         self, clip_client_with_mock: CLIPClient, mock_clip_session: MagicMock
     ) -> None:
-        """Text embedding request payload should differ from image request."""
+        """Test that text embedding uses different payload than image embedding.
+
+        **Why this test is important:**
+          - Text uses prompt field, image uses images array
+          - API distinguishes modalities by payload structure
+
+        **What it tests:**
+          - Text payload has prompt, no images
+          - Image payload has images, empty prompt
+        """
         mock_response = MagicMock()
         mock_response.json.return_value = {"embedding": [0.1] * 512}
         mock_response.raise_for_status = MagicMock()
