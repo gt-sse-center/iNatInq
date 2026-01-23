@@ -47,21 +47,30 @@ from config import ImageEmbeddingConfig
 
 logger = logging.getLogger(__name__)
 
-# Skip marker for tests that require working CLIP API
-SKIP_NO_CLIP_API = pytest.mark.skip(
-    reason="Requires working CLIP API - ai4all/clip endpoint format not yet documented"
-)
 
-# Sample image data (1x1 pixel PNG - minimal valid PNG)
-SAMPLE_PNG = (
-    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
-    b"\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00"
-    b"\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00"
-    b"\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
-)
+def _create_solid_color_png(color: tuple[int, int, int], size: int = 10) -> bytes:
+    """Create a solid color PNG image.
 
-# Second sample image (different bytes for comparison tests)
-SAMPLE_IMAGE_2 = b"\x89PNG\r\n\x1a\nDIFFERENT_IMAGE_DATA"
+    Args:
+        color: RGB tuple (r, g, b).
+        size: Image dimensions (size x size).
+
+    Returns:
+        PNG image bytes.
+    """
+    from io import BytesIO
+
+    from PIL import Image
+
+    img = Image.new("RGB", (size, size), color=color)
+    buffer = BytesIO()
+    img.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+# Sample images for testing - created with PIL for validity
+SAMPLE_PNG = _create_solid_color_png((255, 0, 0))  # Red image
+SAMPLE_IMAGE_2 = _create_solid_color_png((0, 0, 255))  # Blue image (different from red)
 
 
 # =============================================================================
@@ -116,7 +125,6 @@ def mock_image_bytes() -> bytes:
 
 
 @pytest.mark.integration
-@SKIP_NO_CLIP_API
 class TestHappyPath:
     """Test suite for basic successful operations.
 
@@ -189,7 +197,6 @@ class TestHappyPath:
 
 
 @pytest.mark.integration
-@SKIP_NO_CLIP_API
 class TestBatchOperations:
     """Test suite for batch embedding operations.
 
@@ -242,7 +249,6 @@ class TestBatchOperations:
 
 
 @pytest.mark.integration
-@SKIP_NO_CLIP_API
 class TestCircuitBreaker:
     """Test suite for circuit breaker behavior.
 
@@ -408,7 +414,6 @@ class TestResourceCleanup:
 
         assert client._session is None
 
-    @SKIP_NO_CLIP_API
     def test_client_usable_after_close_and_reopen(self, clip_container) -> None:
         """Test that client can be used after close if session is reset.
 
@@ -499,7 +504,6 @@ class TestFactoryMethod:
 
 
 @pytest.mark.integration
-@SKIP_NO_CLIP_API
 class TestTextEmbedding:
     """Test suite for text embedding operations.
 
@@ -559,7 +563,6 @@ class TestTextEmbedding:
 
 
 @pytest.mark.integration
-@SKIP_NO_CLIP_API
 class TestTextEmbeddingBatch:
     """Test suite for batch text embedding operations."""
 
@@ -666,7 +669,6 @@ class TestTextEmbeddingValidation:
 
 
 @pytest.mark.integration
-@SKIP_NO_CLIP_API
 class TestCrossModalSearch:
     """Test suite for cross-modal (text-to-image) search scenarios.
 

@@ -627,7 +627,7 @@ class TestCLIPClientEmbedText:
         assert "images" not in payload
 
     def test_embed_text_makes_correct_request_clip_backend(self, mock_clip_session: MagicMock) -> None:
-        """embed_text should make correct request to CLIP backend."""
+        """embed_text should make correct request to CLIP backend (ai4all/clip API format)."""
         client = CLIPClient(
             base_url="http://clip:8000",
             model="ViT-B/32",
@@ -636,18 +636,20 @@ class TestCLIPClientEmbedText:
         client.set_session(mock_clip_session)
 
         mock_response = MagicMock()
-        mock_response.json.return_value = {"embedding": [0.1] * 512}
+        # ai4all/clip API returns list of {text, vector} objects
+        mock_response.json.return_value = [{"text": "test query", "vector": [0.1] * 512}]
         mock_response.raise_for_status = MagicMock()
         mock_clip_session.post.return_value = mock_response
 
         client.embed_text("test query")
 
         call_args = mock_clip_session.post.call_args
-        assert call_args[0][0] == "http://clip:8000/embed/text"
+        # ai4all/clip uses /embedding/text endpoint
+        assert call_args[0][0] == "http://clip:8000/embedding/text"
 
         payload = call_args[1]["json"]
-        assert payload["text"] == "test query"
-        assert payload["model"] == "ViT-B/32"
+        # ai4all/clip expects {"texts": [...]} format
+        assert payload["texts"] == ["test query"]
 
 
 class TestCLIPClientEmbedTextAsync:

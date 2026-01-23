@@ -219,11 +219,15 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
     def _encode_image(self, image_bytes: bytes) -> str:
         """Encode image bytes to base64 string.
 
+        For the 'clip' backend (ai4all/clip), this returns a data URL with
+        the `data:image/...;base64,` prefix. For the 'ollama' backend, it
+        returns raw base64.
+
         Args:
             image_bytes: Raw image data.
 
         Returns:
-            Base64-encoded string.
+            Base64-encoded string (with data URL prefix for clip backend).
 
         Raises:
             ValueError: If image_bytes is empty.
@@ -231,7 +235,37 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         if not image_bytes:
             msg = "Image bytes cannot be empty"
             raise ValueError(msg)
-        return base64.b64encode(image_bytes).decode("utf-8")
+
+        b64_data = base64.b64encode(image_bytes).decode("utf-8")
+
+        if self.backend == "clip":
+            # ai4all/clip requires data URL format with MIME type prefix
+            # Detect image format from magic bytes
+            mime_type = self._detect_image_mime_type(image_bytes)
+            return f"data:{mime_type};base64,{b64_data}"
+
+        return b64_data
+
+    def _detect_image_mime_type(self, image_bytes: bytes) -> str:
+        """Detect MIME type from image magic bytes.
+
+        Args:
+            image_bytes: Raw image data.
+
+        Returns:
+            MIME type string (e.g., "image/png", "image/jpeg").
+        """
+        # Check magic bytes for common image formats
+        if image_bytes.startswith(b"\x89PNG"):
+            return "image/png"
+        if image_bytes.startswith(b"\xff\xd8\xff"):
+            return "image/jpeg"
+        if image_bytes.startswith((b"GIF87a", b"GIF89a")):
+            return "image/gif"
+        if image_bytes.startswith(b"RIFF") and b"WEBP" in image_bytes[:12]:
+            return "image/webp"
+        # Default to PNG if unknown
+        return "image/png"
 
     def _make_embed_request(self, image_b64: str) -> list[float]:
         """Make synchronous embedding request.
@@ -251,20 +285,20 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         """
         try:
             if self.backend == "clip":
-                # ai4all/clip API format
-                url = f"{self.base_url}/embed/image"
-                payload = {"image": image_b64, "model": self.model}
+                # ai4all/clip API format: POST /embedding/image with {"images": [...]}
+                # Returns: list of {image, vector} objects
+                url = f"{self.base_url}/embedding/image"
+                payload = {"images": [image_b64]}
                 response = self.session.post(url, json=payload, timeout=self.timeout_s)
                 response.raise_for_status()
                 data = response.json()
 
-                # ai4all/clip returns {"embedding": [...]} or {"embeddings": [[...]]}
-                if "embedding" in data:
-                    return data["embedding"]
-                if "embeddings" in data and len(data["embeddings"]) > 0:
-                    return data["embeddings"][0]
+                # ai4all/clip returns a list of {image, vector} objects
+                if isinstance(data, list) and len(data) > 0 and "vector" in data[0]:
+                    return data[0]["vector"]
                 msg = f"Unexpected response format from CLIP server: {data}"
                 raise UpstreamError(msg)
+
             # Ollama API format (default)
             url = f"{self.base_url}/api/embeddings"
             payload = {
@@ -305,19 +339,19 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         try:
             async with httpx.AsyncClient(timeout=self.timeout_s) as client:
                 if self.backend == "clip":
-                    # ai4all/clip API format
-                    url = f"{self.base_url}/embed/image"
-                    payload = {"image": image_b64, "model": self.model}
+                    # ai4all/clip API format: POST /embedding/image with {"images": [...]}
+                    # Returns: list of {image, vector} objects
+                    url = f"{self.base_url}/embedding/image"
+                    payload = {"images": [image_b64]}
                     response = await client.post(url, json=payload)
                     response.raise_for_status()
                     data = response.json()
 
-                    if "embedding" in data:
-                        return data["embedding"]
-                    if "embeddings" in data and len(data["embeddings"]) > 0:
-                        return data["embeddings"][0]
+                    if isinstance(data, list) and len(data) > 0 and "vector" in data[0]:
+                        return data[0]["vector"]
                     msg = f"Unexpected response format from CLIP server: {data}"
                     raise UpstreamError(msg)
+
                 # Ollama API format (default)
                 url = f"{self.base_url}/api/embeddings"
                 payload = {
@@ -457,7 +491,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
         Supports multiple backends:
         - ollama: Uses /api/embeddings with prompt
-        - clip: Uses /embed/text with text data
+        - clip: Uses /embedding/text with texts array
 
         Args:
             text: Text to embed.
@@ -470,17 +504,16 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         """
         try:
             if self.backend == "clip":
-                # ai4all/clip API format
-                url = f"{self.base_url}/embed/text"
-                payload = {"text": text, "model": self.model}
+                # ai4all/clip API format: POST /embedding/text with {"texts": [...]}
+                # Returns: list of {text, vector} objects
+                url = f"{self.base_url}/embedding/text"
+                payload = {"texts": [text]}
                 response = self.session.post(url, json=payload, timeout=self.timeout_s)
                 response.raise_for_status()
                 data = response.json()
 
-                if "embedding" in data:
-                    return data["embedding"]
-                if "embeddings" in data and len(data["embeddings"]) > 0:
-                    return data["embeddings"][0]
+                if isinstance(data, list) and len(data) > 0 and "vector" in data[0]:
+                    return data[0]["vector"]
                 msg = f"Unexpected response format from CLIP server: {data}"
                 raise UpstreamError(msg)
 
@@ -509,7 +542,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
         Supports multiple backends:
         - ollama: Uses /api/embeddings with prompt
-        - clip: Uses /embed/text with text data
+        - clip: Uses /embedding/text with texts array
 
         Args:
             text: Text to embed.
@@ -523,17 +556,16 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         try:
             async with httpx.AsyncClient(timeout=self.timeout_s) as client:
                 if self.backend == "clip":
-                    # ai4all/clip API format
-                    url = f"{self.base_url}/embed/text"
-                    payload = {"text": text, "model": self.model}
+                    # ai4all/clip API format: POST /embedding/text with {"texts": [...]}
+                    # Returns: list of {text, vector} objects
+                    url = f"{self.base_url}/embedding/text"
+                    payload = {"texts": [text]}
                     response = await client.post(url, json=payload)
                     response.raise_for_status()
                     data = response.json()
 
-                    if "embedding" in data:
-                        return data["embedding"]
-                    if "embeddings" in data and len(data["embeddings"]) > 0:
-                        return data["embeddings"][0]
+                    if isinstance(data, list) and len(data) > 0 and "vector" in data[0]:
+                        return data[0]["vector"]
                     msg = f"Unexpected response format from CLIP server: {data}"
                     raise UpstreamError(msg)
 
