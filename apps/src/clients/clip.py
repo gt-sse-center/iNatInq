@@ -1,7 +1,10 @@
-"""CLIP client class for generating image embeddings.
+"""CLIP client class for generating image and text embeddings.
 
 This module provides a CLIP client class that generates embeddings for images
-using Ollama's multi-modal models (like LLaVA) or compatible CLIP services.
+and text using Ollama's multi-modal models (like LLaVA) or compatible CLIP services.
+
+CLIP's key capability is that both image and text embeddings live in the same
+vector space, enabling cross-modal search (e.g., text-to-image search).
 
 ## Usage
 
@@ -14,18 +17,21 @@ client = CLIPClient(
     timeout_s=60
 )
 
+# Image embedding (for indexing)
 with open("image.jpg", "rb") as f:
-    image_bytes = f.read()
+    image_vector = client.embed_image(f.read())
 
-vector = client.embed_image(image_bytes)
-# Returns: [0.1, 0.2, 0.3, ...]  # 512 or 768 floats depending on model
+# Text embedding (for search queries)
+text_vector = client.embed_text("a fluffy cat sitting on a couch")
+
+# Both vectors are in the same space - can compute similarity!
 ```
 
 ## Design
 
 The client class:
 - Encapsulates configuration (base_url, model, timeout)
-- Provides sync and async methods for single and batch image embedding
+- Provides sync and async methods for single and batch image/text embedding
 - Implements `ImageEmbeddingProvider` protocol
 - Handles errors consistently via `UpstreamError`
 - Uses circuit breaker pattern for resilience
@@ -73,12 +79,14 @@ CLIP_VECTOR_SIZES: dict[str, int] = {
 class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
     """Client for generating image embeddings via CLIP-compatible APIs.
 
-    This client supports Ollama's multi-modal models (LLaVA, BakLLaVA) and can be
-    extended to support other CLIP-compatible services.
+    This client supports multiple backends:
+    - **ollama**: Ollama's multi-modal models (LLaVA, BakLLaVA)
+    - **clip**: Dedicated CLIP servers like ai4all/clip (https://hub.docker.com/r/ai4all/clip)
 
     Attributes:
-        base_url: Base URL for the embedding service (e.g., `http://ollama:11434`).
-        model: Model name to use for image embedding (e.g., `llava`).
+        base_url: Base URL for the embedding service.
+        model: Model name to use for image embedding.
+        backend: API backend type. One of "ollama" or "clip". Default: "ollama".
         timeout_s: Request timeout in seconds (default: 120, higher for images).
         circuit_breaker_failure_threshold: Number of consecutive failures before
             circuit opens. Default: 5.
@@ -91,17 +99,21 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
     Example:
         ```python
+        # Using Ollama backend (default)
         client = CLIPClient(
             base_url="http://ollama:11434",
             model="llava"
         )
 
+        # Using ai4all/clip backend
+        client = CLIPClient(
+            base_url="http://clip-server:8000",
+            model="ViT-B/32",
+            backend="clip"
+        )
+
         with open("cat.jpg", "rb") as f:
             vector = client.embed_image(f.read())
-
-        # Batch embedding
-        images = [open(f, "rb").read() for f in ["cat.jpg", "dog.jpg"]]
-        vectors = client.embed_image_batch(images)
         ```
 
     Note:
@@ -112,6 +124,9 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
     # Required parameters
     base_url: str
     model: str
+
+    # Backend type: "ollama" or "clip"
+    backend: str = attrs.field(default="ollama")
 
     # Timeout configuration (higher default for images)
     timeout_s: int = attrs.field(default=120)
@@ -219,7 +234,11 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         return base64.b64encode(image_bytes).decode("utf-8")
 
     def _make_embed_request(self, image_b64: str) -> list[float]:
-        """Make synchronous embedding request to Ollama.
+        """Make synchronous embedding request.
+
+        Supports multiple backends:
+        - ollama: Uses /api/embeddings with images array
+        - clip: Uses /embed/image with base64 image data
 
         Args:
             image_b64: Base64-encoded image.
@@ -230,14 +249,29 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         Raises:
             UpstreamError: If request fails.
         """
-        url = f"{self.base_url}/api/embeddings"
-        payload = {
-            "model": self.model,
-            "prompt": "",  # Empty for image-only embedding
-            "images": [image_b64],
-        }
-
         try:
+            if self.backend == "clip":
+                # ai4all/clip API format
+                url = f"{self.base_url}/embed/image"
+                payload = {"image": image_b64, "model": self.model}
+                response = self.session.post(url, json=payload, timeout=self.timeout_s)
+                response.raise_for_status()
+                data = response.json()
+
+                # ai4all/clip returns {"embedding": [...]} or {"embeddings": [[...]]}
+                if "embedding" in data:
+                    return data["embedding"]
+                if "embeddings" in data and len(data["embeddings"]) > 0:
+                    return data["embeddings"][0]
+                msg = f"Unexpected response format from CLIP server: {data}"
+                raise UpstreamError(msg)
+            # Ollama API format (default)
+            url = f"{self.base_url}/api/embeddings"
+            payload = {
+                "model": self.model,
+                "prompt": "",  # Empty for image-only embedding
+                "images": [image_b64],
+            }
             response = self.session.post(url, json=payload, timeout=self.timeout_s)
             response.raise_for_status()
             data = response.json()
@@ -253,7 +287,11 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             raise UpstreamError(msg) from e
 
     async def _make_embed_request_async(self, image_b64: str) -> list[float]:
-        """Make asynchronous embedding request to Ollama.
+        """Make asynchronous embedding request.
+
+        Supports multiple backends:
+        - ollama: Uses /api/embeddings with images array
+        - clip: Uses /embed/image with base64 image data
 
         Args:
             image_b64: Base64-encoded image.
@@ -264,15 +302,29 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         Raises:
             UpstreamError: If request fails.
         """
-        url = f"{self.base_url}/api/embeddings"
-        payload = {
-            "model": self.model,
-            "prompt": "",
-            "images": [image_b64],
-        }
-
         try:
             async with httpx.AsyncClient(timeout=self.timeout_s) as client:
+                if self.backend == "clip":
+                    # ai4all/clip API format
+                    url = f"{self.base_url}/embed/image"
+                    payload = {"image": image_b64, "model": self.model}
+                    response = await client.post(url, json=payload)
+                    response.raise_for_status()
+                    data = response.json()
+
+                    if "embedding" in data:
+                        return data["embedding"]
+                    if "embeddings" in data and len(data["embeddings"]) > 0:
+                        return data["embeddings"][0]
+                    msg = f"Unexpected response format from CLIP server: {data}"
+                    raise UpstreamError(msg)
+                # Ollama API format (default)
+                url = f"{self.base_url}/api/embeddings"
+                payload = {
+                    "model": self.model,
+                    "prompt": "",
+                    "images": [image_b64],
+                }
                 response = await client.post(url, json=payload)
                 response.raise_for_status()
                 data = response.json()
@@ -396,6 +448,235 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
         return list(results)
 
+    # =========================================================================
+    # Text Embedding Methods (for cross-modal search)
+    # =========================================================================
+
+    def _make_text_embed_request(self, text: str) -> list[float]:
+        """Make synchronous text embedding request.
+
+        Supports multiple backends:
+        - ollama: Uses /api/embeddings with prompt
+        - clip: Uses /embed/text with text data
+
+        Args:
+            text: Text to embed.
+
+        Returns:
+            Embedding vector.
+
+        Raises:
+            UpstreamError: If request fails.
+        """
+        try:
+            if self.backend == "clip":
+                # ai4all/clip API format
+                url = f"{self.base_url}/embed/text"
+                payload = {"text": text, "model": self.model}
+                response = self.session.post(url, json=payload, timeout=self.timeout_s)
+                response.raise_for_status()
+                data = response.json()
+
+                if "embedding" in data:
+                    return data["embedding"]
+                if "embeddings" in data and len(data["embeddings"]) > 0:
+                    return data["embeddings"][0]
+                msg = f"Unexpected response format from CLIP server: {data}"
+                raise UpstreamError(msg)
+
+            # Ollama API format (default)
+            url = f"{self.base_url}/api/embeddings"
+            payload = {
+                "model": self.model,
+                "prompt": text,
+            }
+            response = self.session.post(url, json=payload, timeout=self.timeout_s)
+            response.raise_for_status()
+            data = response.json()
+
+            if "embedding" not in data:
+                msg = f"Unexpected response format from Ollama: {data}"
+                raise UpstreamError(msg)
+
+            return data["embedding"]
+
+        except requests.RequestException as e:
+            msg = f"CLIP text embedding request failed: {e}"
+            raise UpstreamError(msg) from e
+
+    async def _make_text_embed_request_async(self, text: str) -> list[float]:
+        """Make asynchronous text embedding request.
+
+        Supports multiple backends:
+        - ollama: Uses /api/embeddings with prompt
+        - clip: Uses /embed/text with text data
+
+        Args:
+            text: Text to embed.
+
+        Returns:
+            Embedding vector.
+
+        Raises:
+            UpstreamError: If request fails.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_s) as client:
+                if self.backend == "clip":
+                    # ai4all/clip API format
+                    url = f"{self.base_url}/embed/text"
+                    payload = {"text": text, "model": self.model}
+                    response = await client.post(url, json=payload)
+                    response.raise_for_status()
+                    data = response.json()
+
+                    if "embedding" in data:
+                        return data["embedding"]
+                    if "embeddings" in data and len(data["embeddings"]) > 0:
+                        return data["embeddings"][0]
+                    msg = f"Unexpected response format from CLIP server: {data}"
+                    raise UpstreamError(msg)
+
+                # Ollama API format (default)
+                url = f"{self.base_url}/api/embeddings"
+                payload = {
+                    "model": self.model,
+                    "prompt": text,
+                }
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+                data = response.json()
+
+                if "embedding" not in data:
+                    msg = f"Unexpected response format from Ollama: {data}"
+                    raise UpstreamError(msg)
+
+                return data["embedding"]
+
+        except httpx.HTTPError as e:
+            msg = f"CLIP text embedding request failed: {e}"
+            raise UpstreamError(msg) from e
+
+    @with_circuit_breaker("clip")
+    def embed_text(self, text: str) -> list[float]:
+        """Generate embedding for a text query.
+
+        The resulting vector is in the same space as image embeddings,
+        enabling cross-modal similarity search (text-to-image).
+
+        Args:
+            text: Text to embed (e.g., "a fluffy cat").
+
+        Returns:
+            List of floats representing the text embedding vector.
+
+        Raises:
+            UpstreamError: If the embedding service is unreachable or returns an error.
+            ValueError: If text is empty.
+        """
+        if not text or not text.strip():
+            msg = "Text cannot be empty"
+            raise ValueError(msg)
+        return self._make_text_embed_request(text)
+
+    @with_circuit_breaker_async("clip")
+    async def embed_text_async(self, text: str) -> list[float]:
+        """Generate embedding for a text query (async).
+
+        The resulting vector is in the same space as image embeddings,
+        enabling cross-modal similarity search (text-to-image).
+
+        Args:
+            text: Text to embed (e.g., "a fluffy cat").
+
+        Returns:
+            List of floats representing the text embedding vector.
+
+        Raises:
+            UpstreamError: If the embedding service is unreachable or returns an error.
+            ValueError: If text is empty.
+        """
+        if not text or not text.strip():
+            msg = "Text cannot be empty"
+            raise ValueError(msg)
+        return await self._make_text_embed_request_async(text)
+
+    @with_circuit_breaker("clip")
+    def embed_text_batch(self, texts: list[str]) -> list[list[float]]:
+        """Generate embeddings for multiple text queries.
+
+        Args:
+            texts: List of text strings to embed.
+
+        Returns:
+            List of embedding vectors, one per input text.
+
+        Raises:
+            UpstreamError: If any embedding request fails.
+            ValueError: If texts list is empty or contains empty strings.
+        """
+        if not texts:
+            msg = "Texts list cannot be empty"
+            raise ValueError(msg)
+
+        # Apply batch size limit
+        if self.max_batch_size is not None and len(texts) > self.max_batch_size:
+            msg = (
+                f"Batch size {len(texts)} exceeds max_batch_size {self.max_batch_size}. "
+                "Split into smaller batches."
+            )
+            raise ValueError(msg)
+
+        results = []
+        for text in texts:
+            if not text or not text.strip():
+                msg = "Text cannot be empty"
+                raise ValueError(msg)
+            embedding = self._make_text_embed_request(text)
+            results.append(embedding)
+
+        return results
+
+    @with_circuit_breaker_async("clip")
+    async def embed_text_batch_async(self, texts: list[str]) -> list[list[float]]:
+        """Generate embeddings for multiple text queries (async).
+
+        Uses asyncio.gather for concurrent processing.
+
+        Args:
+            texts: List of text strings to embed.
+
+        Returns:
+            List of embedding vectors, one per input text.
+
+        Raises:
+            UpstreamError: If any embedding request fails.
+            ValueError: If texts list is empty or contains empty strings.
+        """
+        if not texts:
+            msg = "Texts list cannot be empty"
+            raise ValueError(msg)
+
+        # Apply batch size limit
+        if self.max_batch_size is not None and len(texts) > self.max_batch_size:
+            msg = (
+                f"Batch size {len(texts)} exceeds max_batch_size {self.max_batch_size}. "
+                "Split into smaller batches."
+            )
+            raise ValueError(msg)
+
+        # Validate all texts first
+        for text in texts:
+            if not text or not text.strip():
+                msg = "Text cannot be empty"
+                raise ValueError(msg)
+
+        # Make concurrent requests
+        tasks = [self._make_text_embed_request_async(text) for text in texts]
+        results = await asyncio.gather(*tasks)
+
+        return list(results)
+
     def close(self) -> None:
         """Close HTTP session and cleanup resources."""
         if self._session is not None:
@@ -440,6 +721,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         client = cls(
             base_url=config.clip_url,
             model=config.clip_model,
+            backend=config.clip_backend,
             timeout_s=config.clip_timeout,
             circuit_breaker_failure_threshold=config.clip_circuit_breaker_threshold,
             circuit_breaker_recovery_timeout_s=config.clip_circuit_breaker_timeout,

@@ -571,3 +571,243 @@ class TestImageEmbeddingConfigFromEnv:
             config = ImageEmbeddingConfig.from_env()
 
             assert config.clip_url == "http://ollama:11434"
+
+
+# =============================================================================
+# Text Embedding Tests
+# =============================================================================
+
+
+class TestCLIPClientEmbedText:
+    """Tests for CLIPClient.embed_text method."""
+
+    def test_embed_text_returns_embedding(
+        self, clip_client_with_mock: CLIPClient, mock_clip_session: MagicMock
+    ) -> None:
+        """embed_text should return embedding vector."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"embedding": [0.1] * 512}
+        mock_response.raise_for_status = MagicMock()
+        mock_clip_session.post.return_value = mock_response
+
+        result = clip_client_with_mock.embed_text("a fluffy cat")
+
+        assert len(result) == 512
+        assert all(isinstance(x, float) for x in result)
+
+    def test_embed_text_empty_raises_value_error(self, clip_client_with_mock: CLIPClient) -> None:
+        """embed_text should raise ValueError for empty text."""
+        with pytest.raises(ValueError, match="empty"):
+            clip_client_with_mock.embed_text("")
+
+    def test_embed_text_whitespace_raises_value_error(self, clip_client_with_mock: CLIPClient) -> None:
+        """embed_text should raise ValueError for whitespace-only text."""
+        with pytest.raises(ValueError, match="empty"):
+            clip_client_with_mock.embed_text("   ")
+
+    def test_embed_text_makes_correct_request_ollama(
+        self, clip_client_with_mock: CLIPClient, mock_clip_session: MagicMock
+    ) -> None:
+        """embed_text should make correct request to Ollama backend."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"embedding": [0.1] * 512}
+        mock_response.raise_for_status = MagicMock()
+        mock_clip_session.post.return_value = mock_response
+
+        clip_client_with_mock.embed_text("test query")
+
+        # Check the URL
+        call_args = mock_clip_session.post.call_args
+        assert call_args[0][0] == "http://localhost:11434/api/embeddings"
+
+        # Check the payload has prompt (not images)
+        payload = call_args[1]["json"]
+        assert payload["model"] == "llava"
+        assert payload["prompt"] == "test query"
+        assert "images" not in payload
+
+    def test_embed_text_makes_correct_request_clip_backend(self, mock_clip_session: MagicMock) -> None:
+        """embed_text should make correct request to CLIP backend."""
+        client = CLIPClient(
+            base_url="http://clip:8000",
+            model="ViT-B/32",
+            backend="clip",
+        )
+        client.set_session(mock_clip_session)
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"embedding": [0.1] * 512}
+        mock_response.raise_for_status = MagicMock()
+        mock_clip_session.post.return_value = mock_response
+
+        client.embed_text("test query")
+
+        call_args = mock_clip_session.post.call_args
+        assert call_args[0][0] == "http://clip:8000/embed/text"
+
+        payload = call_args[1]["json"]
+        assert payload["text"] == "test query"
+        assert payload["model"] == "ViT-B/32"
+
+
+class TestCLIPClientEmbedTextAsync:
+    """Tests for CLIPClient.embed_text_async method."""
+
+    @patch("clients.clip.httpx.AsyncClient")
+    @pytest.mark.asyncio
+    async def test_embed_text_async_returns_embedding(self, mock_async_client_cls: MagicMock) -> None:
+        """embed_text_async should return embedding vector."""
+        mock_response = {"embedding": [0.1] * 512}
+
+        mock_client = MagicMock()
+        mock_async_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_async_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        mock_post_response = MagicMock()
+        mock_post_response.json.return_value = mock_response
+        mock_post_response.raise_for_status = MagicMock()
+        mock_client.post = AsyncMock(return_value=mock_post_response)
+
+        client = CLIPClient(base_url="http://localhost:11434", model="llava")
+        result = await client.embed_text_async("a fluffy cat")
+
+        assert len(result) == 512
+        assert all(isinstance(x, float) for x in result)
+
+    @pytest.mark.asyncio
+    async def test_embed_text_async_empty_raises_value_error(self) -> None:
+        """embed_text_async should raise ValueError for empty text."""
+        client = CLIPClient(base_url="http://localhost:11434", model="llava")
+        with pytest.raises(ValueError, match="empty"):
+            await client.embed_text_async("")
+
+
+class TestCLIPClientEmbedTextBatch:
+    """Tests for CLIPClient.embed_text_batch method."""
+
+    def test_embed_text_batch_returns_multiple_embeddings(
+        self, clip_client_with_mock: CLIPClient, mock_clip_session: MagicMock
+    ) -> None:
+        """embed_text_batch should return embeddings for all texts."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"embedding": [0.1] * 512}
+        mock_response.raise_for_status = MagicMock()
+        mock_clip_session.post.return_value = mock_response
+
+        texts = ["cat", "dog", "bird"]
+        results = clip_client_with_mock.embed_text_batch(texts)
+
+        assert len(results) == 3
+        assert mock_clip_session.post.call_count == 3
+
+    def test_embed_text_batch_empty_list_raises_value_error(self, clip_client_with_mock: CLIPClient) -> None:
+        """embed_text_batch should raise ValueError for empty list."""
+        with pytest.raises(ValueError, match="empty"):
+            clip_client_with_mock.embed_text_batch([])
+
+    def test_embed_text_batch_empty_string_raises_value_error(
+        self, clip_client_with_mock: CLIPClient, mock_clip_session: MagicMock
+    ) -> None:
+        """embed_text_batch should raise ValueError if any text is empty."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"embedding": [0.1] * 512}
+        mock_response.raise_for_status = MagicMock()
+        mock_clip_session.post.return_value = mock_response
+
+        with pytest.raises(ValueError, match="empty"):
+            clip_client_with_mock.embed_text_batch(["cat", "", "dog"])
+
+    def test_embed_text_batch_exceeds_max_raises_value_error(self, clip_client_with_mock: CLIPClient) -> None:
+        """embed_text_batch should raise ValueError when exceeding max_batch_size."""
+        texts = ["text"] * 10  # Exceeds default max of 8
+
+        with pytest.raises(ValueError, match="exceeds max_batch_size"):
+            clip_client_with_mock.embed_text_batch(texts)
+
+
+class TestCLIPClientEmbedTextBatchAsync:
+    """Tests for CLIPClient.embed_text_batch_async method."""
+
+    @patch("clients.clip.httpx.AsyncClient")
+    @pytest.mark.asyncio
+    async def test_embed_text_batch_async_returns_multiple_embeddings(
+        self, mock_async_client_cls: MagicMock
+    ) -> None:
+        """embed_text_batch_async should return embeddings for all texts."""
+        mock_response = {"embedding": [0.1] * 512}
+
+        mock_client = MagicMock()
+        mock_async_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_async_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        mock_post_response = MagicMock()
+        mock_post_response.json.return_value = mock_response
+        mock_post_response.raise_for_status = MagicMock()
+        mock_client.post = AsyncMock(return_value=mock_post_response)
+
+        client = CLIPClient(base_url="http://localhost:11434", model="llava")
+        texts = ["cat", "dog"]
+        results = await client.embed_text_batch_async(texts)
+
+        assert len(results) == 2
+
+    @pytest.mark.asyncio
+    async def test_embed_text_batch_async_empty_list_raises_value_error(self) -> None:
+        """embed_text_batch_async should raise ValueError for empty list."""
+        client = CLIPClient(base_url="http://localhost:11434", model="llava")
+        with pytest.raises(ValueError, match="empty"):
+            await client.embed_text_batch_async([])
+
+    @pytest.mark.asyncio
+    async def test_embed_text_batch_async_empty_string_raises_value_error(self) -> None:
+        """embed_text_batch_async should raise ValueError if any text is empty."""
+        client = CLIPClient(base_url="http://localhost:11434", model="llava")
+        with pytest.raises(ValueError, match="empty"):
+            await client.embed_text_batch_async(["cat", "", "dog"])
+
+
+class TestCLIPClientCrossModalSearch:
+    """Tests for cross-modal (text-to-image) search scenarios."""
+
+    def test_image_and_text_use_same_vector_size(
+        self, clip_client_with_mock: CLIPClient, mock_clip_session: MagicMock
+    ) -> None:
+        """Image and text embeddings should have the same dimensions."""
+        # Mock both image and text embedding responses
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"embedding": [0.1] * 512}
+        mock_response.raise_for_status = MagicMock()
+        mock_clip_session.post.return_value = mock_response
+
+        image_embedding = clip_client_with_mock.embed_image(b"fake_image")
+        text_embedding = clip_client_with_mock.embed_text("a cat")
+
+        assert len(image_embedding) == len(text_embedding)
+
+    def test_text_embedding_request_differs_from_image(
+        self, clip_client_with_mock: CLIPClient, mock_clip_session: MagicMock
+    ) -> None:
+        """Text embedding request payload should differ from image request."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"embedding": [0.1] * 512}
+        mock_response.raise_for_status = MagicMock()
+        mock_clip_session.post.return_value = mock_response
+
+        # Make text request
+        clip_client_with_mock.embed_text("a cat")
+        text_payload = mock_clip_session.post.call_args[1]["json"]
+
+        mock_clip_session.post.reset_mock()
+
+        # Make image request
+        clip_client_with_mock.embed_image(b"fake_image")
+        image_payload = mock_clip_session.post.call_args[1]["json"]
+
+        # Text request has prompt, no images
+        assert "prompt" in text_payload
+        assert text_payload["prompt"] == "a cat"
+        assert "images" not in text_payload
+
+        # Image request has images, empty prompt
+        assert "images" in image_payload
+        assert image_payload["prompt"] == ""
