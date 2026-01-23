@@ -43,6 +43,7 @@ help:
 	@echo "│ make logs-ray          Tail ray-head logs                                   │"
 	@echo "│ make logs-minio        Tail minio logs                                      │"
 	@echo "│ make logs-weaviate     Tail weaviate logs                                  │"
+	@echo "│ make logs-clip         Tail clip logs                                      │"
 	@echo "├── Docker Shell Access ──────────────────────────────────────────────────────┤"
 	@echo "│ make shell-pipeline    Shell into pipeline container                        │"
 	@echo "│ make shell-ollama      Shell into ollama container                          │"
@@ -167,6 +168,7 @@ docker-up:
 	@echo "   Weaviate Console: http://localhost:8081"
 	@echo "   Ray Dashboard:    http://localhost:8265"
 	@echo "   Ollama:           http://localhost:11434"
+	@echo "   CLIP API:         http://localhost:8001"
 
 .PHONY: docker-down
 docker-down:
@@ -234,6 +236,7 @@ docker-health:
 	@printf "│ Ollama:          "; curl -sf http://localhost:11434/api/tags >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
 	@printf "│ MinIO:           "; curl -sf http://localhost:9000/minio/health/live >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
 	@printf "│ Ray Dashboard:   "; curl -sf http://localhost:8265 >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
+	@printf "│ CLIP:            "; curl -sf http://localhost:8001/ >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
 	@echo "└──────────────────────────────────────────────────────────────────────────────┘"
 	@echo ""
 	@echo "📝 Local Compose Endpoints:"
@@ -244,6 +247,7 @@ docker-health:
 	@echo "   Weaviate Console: http://localhost:8081"
 	@echo "   Ray Dashboard:    http://localhost:8265"
 	@echo "   Ollama:           http://localhost:11434"
+	@echo "   CLIP API:         http://localhost:8001"
 
 .PHONY: smoke-providers
 smoke-providers:
@@ -283,6 +287,10 @@ logs-minio:
 .PHONY: logs-weaviate
 logs-weaviate:
 	$(DOCKER_COMPOSE) logs -f weaviate
+
+.PHONY: logs-clip
+logs-clip:
+	$(DOCKER_COMPOSE) logs -f clip
 
 # =============================================================================
 # Docker Scaling
