@@ -77,6 +77,57 @@ class ContentResult:
 
 
 @attrs.define(frozen=True, slots=True)
+class ImageContentResult:
+    r"""Downloaded S3 image content with metadata.
+
+    Used by ImageContentFetcher to return raw image bytes along with
+    detected format and optional dimensions. Format detection uses
+    magic bytes for reliability.
+
+    Attributes:
+        s3_key: The S3 object key.
+        image_bytes: Raw image data as bytes.
+        format: Detected image format ("jpeg", "png", "webp", "gif").
+        size_bytes: Size of the image in bytes.
+        width: Image width in pixels (None if not extracted).
+        height: Image height in pixels (None if not extracted).
+
+    Example:
+        >>> result = ImageContentResult(
+        ...     s3_key="images/photo.jpg",
+        ...     image_bytes=b"\xff\xd8\xff...",
+        ...     format="jpeg",
+        ...     size_bytes=102400,
+        ...     width=1920,
+        ...     height=1080,
+        ... )
+    """
+
+    s3_key: str
+    image_bytes: bytes
+    format: str
+    size_bytes: int
+    width: int | None = None
+    height: int | None = None
+
+    @property
+    def s3_uri(self) -> str:
+        """Return the S3 URI for this object."""
+        return f"s3://{self.s3_key}"
+
+    @property
+    def mime_type(self) -> str:
+        """Return the MIME type based on detected format."""
+        mime_map = {
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+            "webp": "image/webp",
+            "gif": "image/gif",
+        }
+        return mime_map.get(self.format, "application/octet-stream")
+
+
+@attrs.define(frozen=True, slots=True)
 class BatchEmbeddingResult:
     """Result of batch embedding generation.
 
