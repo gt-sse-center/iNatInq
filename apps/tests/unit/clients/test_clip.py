@@ -275,6 +275,162 @@ class TestCLIPClientAsync:
         with pytest.raises(ValueError, match="empty"):
             await client.embed_image_batch_async([])
 
+    @patch("clients.clip.httpx.AsyncClient")
+    @pytest.mark.asyncio
+    async def test_embed_image_batch_async_returns_vectors(self, mock_async_client_cls: MagicMock) -> None:
+        """embed_image_batch_async should return vectors for all images."""
+        mock_response = {"embedding": [0.1] * 512}
+        mock_post_response = MagicMock()
+        mock_post_response.json.return_value = mock_response
+        mock_post_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_post_response
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_async_client_cls.return_value = mock_client
+
+        client = CLIPClient(base_url="http://localhost:11434", model="llava")
+        images = [b"img1", b"img2"]
+        result = await client.embed_image_batch_async(images)
+
+        assert len(result) == 2
+        assert all(len(v) == 512 for v in result)
+
+
+class TestCLIPClientErrorHandling:
+    """Tests for error handling behavior."""
+
+    def test_embed_image_raises_upstream_error_on_request_error(
+        self, clip_client_with_mock: CLIPClient, mock_clip_session: MagicMock
+    ) -> None:
+        """embed_image should raise UpstreamError on request failure."""
+        import requests
+
+        mock_clip_session.post.side_effect = requests.RequestException("Connection failed")
+
+        from core.exceptions import UpstreamError
+
+        with pytest.raises(UpstreamError, match="CLIP embedding request failed"):
+            clip_client_with_mock.embed_image(b"fake image")
+
+    def test_embed_image_raises_upstream_error_on_missing_embedding(
+        self, clip_client_with_mock: CLIPClient, mock_clip_session: MagicMock
+    ) -> None:
+        """embed_image should raise UpstreamError when embedding is missing."""
+        mock_clip_session.post.return_value.json.return_value = {}
+        mock_clip_session.post.return_value.raise_for_status = MagicMock()
+
+        from core.exceptions import UpstreamError
+
+        with pytest.raises(UpstreamError, match="Unexpected response format"):
+            clip_client_with_mock.embed_image(b"fake image")
+
+    def test_embed_image_raises_upstream_error_on_http_error(
+        self, clip_client_with_mock: CLIPClient, mock_clip_session: MagicMock
+    ) -> None:
+        """embed_image should raise UpstreamError on HTTP error status."""
+        import requests
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = requests.HTTPError("500 Server Error")
+        mock_clip_session.post.return_value = mock_response
+
+        from core.exceptions import UpstreamError
+
+        with pytest.raises(UpstreamError, match="CLIP embedding request failed"):
+            clip_client_with_mock.embed_image(b"fake image")
+
+    @patch("clients.clip.httpx.AsyncClient")
+    @pytest.mark.asyncio
+    async def test_embed_image_async_raises_upstream_error_on_http_error(
+        self, mock_async_client_cls: MagicMock
+    ) -> None:
+        """embed_image_async should raise UpstreamError on HTTP error."""
+        import httpx
+
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = httpx.HTTPError("Connection failed")
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_async_client_cls.return_value = mock_client
+
+        from core.exceptions import UpstreamError
+
+        client = CLIPClient(base_url="http://localhost:11434", model="llava")
+        with pytest.raises(UpstreamError, match="CLIP embedding request failed"):
+            await client.embed_image_async(b"fake image")
+
+    @patch("clients.clip.httpx.AsyncClient")
+    @pytest.mark.asyncio
+    async def test_embed_image_async_raises_upstream_error_on_missing_embedding(
+        self, mock_async_client_cls: MagicMock
+    ) -> None:
+        """embed_image_async should raise UpstreamError when embedding is missing."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {}  # Missing 'embedding' key
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_async_client_cls.return_value = mock_client
+
+        from core.exceptions import UpstreamError
+
+        client = CLIPClient(base_url="http://localhost:11434", model="llava")
+        with pytest.raises(UpstreamError, match="Unexpected response format"):
+            await client.embed_image_async(b"fake image")
+
+
+class TestCLIPClientCircuitBreaker:
+    """Tests for circuit breaker behavior."""
+
+    def test_circuit_breaker_starts_closed(self) -> None:
+        """Circuit breaker should start in closed state."""
+        import pybreaker
+
+        client = CLIPClient(base_url="http://localhost:11434", model="llava")
+
+        assert client._breaker is not None
+        assert client._breaker.current_state == pybreaker.STATE_CLOSED
+
+    def test_async_circuit_breaker_starts_closed(self) -> None:
+        """Async circuit breaker should start in closed state."""
+        import aiobreaker
+
+        client = CLIPClient(base_url="http://localhost:11434", model="llava")
+
+        assert client._async_breaker is not None
+        assert client._async_breaker.current_state == aiobreaker.state.CircuitBreakerState.CLOSED
+
+    def test_circuit_breaker_uses_configured_thresholds(self) -> None:
+        """Circuit breaker should use configured failure threshold."""
+        client = CLIPClient(
+            base_url="http://localhost:11434",
+            model="llava",
+            circuit_breaker_failure_threshold=3,
+            circuit_breaker_recovery_timeout_s=15,
+        )
+
+        assert client._breaker.fail_max == 3
+        assert client._breaker.reset_timeout == 15
+
+    def test_embed_image_handles_circuit_breaker_open(self, clip_client_with_mock: CLIPClient) -> None:
+        """embed_image should raise UpstreamError when circuit is open."""
+        import pybreaker
+
+        from core.exceptions import UpstreamError
+
+        # Set circuit breaker to OPEN state
+        mock_breaker = MagicMock(spec=pybreaker.CircuitBreaker)
+        mock_breaker.current_state = pybreaker.STATE_OPEN
+        object.__setattr__(clip_client_with_mock, "_breaker", mock_breaker)
+
+        with pytest.raises(UpstreamError, match="service is currently unavailable"):
+            clip_client_with_mock.embed_image(b"fake image")
+
 
 class TestCLIPClientProtocol:
     """Tests for ImageEmbeddingProvider protocol compliance."""
