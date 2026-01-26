@@ -185,7 +185,6 @@ class TestCreateApp:
         assert "health" in tag_names
         assert "embeddings" in tag_names
         assert "vector-store" in tag_names
-        assert "spark-jobs" in tag_names
         assert "ray-jobs" in tag_names
 
 
@@ -301,5 +300,4 @@ class TestOpenAPIRouteRegistration:
         # Verify key endpoints are documented
         assert "/healthz" in paths
         assert "/search" in paths
-        assert "/spark/jobs" in paths
         assert "/ray/jobs" in paths

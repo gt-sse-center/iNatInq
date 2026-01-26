@@ -103,7 +103,7 @@ def create_app() -> FastAPI:
         description=(
             "ML pipeline orchestrator service for end-to-end data processing workflows. "
             "Provides endpoints for generating embeddings, storing vectors, and running "
-            "distributed Spark and Ray jobs for parallel data processing."
+            "distributed Ray jobs for parallel data processing."
         ),
         version="0.1.0",
         contact={
@@ -127,14 +127,6 @@ def create_app() -> FastAPI:
             {
                 "name": "vector-store",
                 "description": "Vector storage and retrieval operations via Qdrant vector database",
-            },
-            {
-                "name": "spark-jobs",
-                "description": (
-                    "Spark job management via Kubernetes Spark Operator. "
-                    "Submit, monitor, and manage distributed Spark jobs for processing "
-                    "S3 documents into vector embeddings."
-                ),
             },
             {
                 "name": "ray-jobs",

@@ -154,7 +154,6 @@ dependencies = [
     { name = "pybreaker" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
-    { name = "pyspark" },
     { name = "qdrant-client" },
     { name = "ray", extra = ["default"] },
     { name = "requests" },
@@ -184,7 +183,6 @@ requires-dist = [
     { name = "pybreaker", specifier = ">=0.9.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
-    { name = "pyspark", specifier = ">=3.5.0" },
     { name = "qdrant-client", specifier = ">=1.15.1" },
     { name = "ray", extras = ["default"], specifier = ">=2.53.0" },
     { name = "requests", specifier = ">=2.31" },
@@ -2370,15 +2368,6 @@ wheels = [
 ]
 
 [[package]]
-name = "py4j"
-version = "0.10.9.9"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/38/31/0b210511177070c8d5d3059556194352e5753602fa64b85b7ab81ec1a009/py4j-0.10.9.9.tar.gz", hash = "sha256:f694cad19efa5bd1dee4f3e5270eb406613c974394035e5bfc4ec1aba870b879", size = 761089, upload-time = "2025-01-15T03:53:18.624Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/bd/db/ea0203e495be491c85af87b66e37acfd3bf756fd985f87e46fc5e3bf022c/py4j-0.10.9.9-py2.py3-none-any.whl", hash = "sha256:c7c26e4158defb37b0bb124933163641a2ff6e3a3913f7811b0ddbe07ed61533", size = 203008, upload-time = "2025-01-15T03:53:15.648Z" },
-]
-
-[[package]]
 name = "pyarrow"
 version = "22.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2585,15 +2574,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/6a/12/fb8c409adbebac2a8
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/91/ba4a7a781f3ced3198ddd5ec3f07fd4d7398c1810410825bb3d4375a3ad0/pymilvus-2.6.4-py3-none-any.whl", hash = "sha256:40a5a2eb6200b2bfdb3f192b7a13b02462410c17da769ed2ab1409410917a22b", size = 278014, upload-time = "2025-11-26T08:29:51.596Z" },
 ]
-
-[[package]]
-name = "pyspark"
-version = "4.1.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "py4j" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/19/bf/58ee13add151469c25825b7125bbf62c3bdcec05eec4d458fcb5c5516066/pyspark-4.1.1.tar.gz", hash = "sha256:77f78984aa84fbe865c717dd37b49913b4e5c97d76ef6824f932f1aefa6621ec", size = 455359625, upload-time = "2026-01-09T09:38:38.28Z" }
 
 [[package]]
 name = "pytest"

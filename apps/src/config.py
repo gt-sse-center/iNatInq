@@ -658,150 +658,6 @@ class VectorDBConfig(BaseModel):
         )
 
 
-class SparkJobConfig(BaseModel):
-    """Configuration for Spark job execution.
-
-    All settings are loaded from environment variables with sensible defaults.
-    This allows fine-tuning Spark job performance without code changes.
-
-    Attributes:
-        master_url: Spark master URL (e.g.,
-            `spark://spark-master:7077` or `local[*]`). Set to None when
-            using Spark Operator (operator manages master URL).
-        executor_memory: Memory per executor (e.g., `2g`, `4g`).
-            Default: "2g".
-        executor_cores: Number of CPU cores per executor. Default: 2.
-        driver_memory: Driver memory (e.g., `1g`, `2g`). Default: "1g".
-        default_parallelism: Default number of partitions for RDDs.
-            Default: 200.
-        shuffle_partitions: Number of partitions for shuffle operations.
-            Default: 200.
-        network_timeout: Network timeout for Spark operations.
-            Default: "600s".
-        heartbeat_interval: Executor heartbeat interval to Spark master.
-            Default: "60s".
-        checkpoint_dir: Checkpoint directory path (local path or S3 URI).
-            Default: "/tmp/spark-checkpoints".
-        checkpoint_enabled: Whether to enable checkpointing for job
-            recovery. Default: True.
-        checkpoint_save_interval: Save checkpoint after this many
-            successful items. Default: 10.
-        checkpoint_save_interval_seconds: Save checkpoint after this many
-            seconds. Default: 30.0.
-        partition_target_size: Target number of S3 keys per partition.
-            Default: 100.
-        max_partitions: Maximum number of partitions to create.
-            Default: 200.
-        batch_upsert_size: Batch size for vector database upserts.
-            Default: 200.
-        embed_batch_size: Batch size for embedding generation.
-            Default: 8.
-        max_concurrent_per_partition: Maximum concurrent operations per
-            partition. Default: 20.
-        max_concurrent_batch_upserts: Maximum concurrent batch upsert
-            operations per partition. Default: 5.
-        retry_max_attempts: Maximum retry attempts for failed operations.
-            Default: 3.
-        retry_wait_min: Minimum wait time between retries in seconds.
-            Default: 2.0.
-        retry_wait_max: Maximum wait time between retries in seconds.
-            Default: 10.0.
-        retry_multiplier: Exponential backoff multiplier for retry
-            delays. Default: 1.0.
-    """
-
-    master_url: str | None
-    executor_memory: str = "2g"
-    executor_cores: int = 2
-    driver_memory: str = "1g"
-    default_parallelism: int = 200
-    shuffle_partitions: int = 200
-    network_timeout: str = "600s"
-    heartbeat_interval: str = "60s"
-    checkpoint_dir: str = "/tmp/spark-checkpoints"
-    checkpoint_enabled: bool = True
-    checkpoint_save_interval: int = 10
-    checkpoint_save_interval_seconds: float = 30.0
-    partition_target_size: int = 100
-    max_partitions: int = 200
-    batch_upsert_size: int = 200
-    embed_batch_size: int = 8
-    max_concurrent_per_partition: int = 20
-    max_concurrent_batch_upserts: int = 5
-    retry_max_attempts: int = 3
-    retry_wait_min: float = 2.0
-    retry_wait_max: float = 10.0
-    retry_multiplier: float = 1.0
-
-    model_config = SettingsConfigDict(frozen=True)
-
-    @classmethod
-    def from_env(cls, namespace: str | None = None) -> "SparkJobConfig":
-        """Create SparkJobConfig from environment variables.
-
-        Args:
-            namespace: Kubernetes namespace for constructing default master
-                URL.
-
-        Returns:
-            Configured SparkJobConfig instance.
-
-        Raises:
-            ValueError: If SPARK_MASTER_URL is not set and namespace is
-                not provided.
-        """
-        # Get SPARK_MASTER_URL from environment
-        # If not set and namespace provided, auto-construct for
-        # standalone Spark cluster
-        # If not set and running with Spark Operator, leave as None
-        # (Spark Operator manages master)
-        master_url = os.environ.get("SPARK_MASTER_URL")
-        if master_url is not None:
-            # Use provided master URL
-            pass
-        elif os.environ.get("SPARK_APPLICATION_ID"):
-            # Running with Spark Operator - don't set master URL
-            master_url = None
-        elif namespace:
-            # Auto-construct Spark master URL for standalone Spark cluster
-            master_url = f"spark://spark-master.{namespace}:7077"
-        else:
-            raise ValueError(
-                "SPARK_MASTER_URL is required when not using Spark "
-                "Operator. Set SPARK_MASTER_URL environment variable or "
-                "provide namespace to connect to external Spark cluster. "
-                "When using Spark Operator, SPARK_MASTER_URL should not "
-                "be set."
-            )
-
-        return cls(
-            master_url=master_url,
-            executor_memory=os.getenv("SPARK_EXECUTOR_MEMORY", "2g"),
-            executor_cores=int(os.getenv("SPARK_EXECUTOR_CORES", "2")),
-            driver_memory=os.getenv("SPARK_DRIVER_MEMORY", "1g"),
-            default_parallelism=int(os.getenv("SPARK_DEFAULT_PARALLELISM", "200")),
-            shuffle_partitions=int(os.getenv("SPARK_SHUFFLE_PARTITIONS", "200")),
-            network_timeout=os.getenv("SPARK_NETWORK_TIMEOUT", "600s"),
-            heartbeat_interval=os.getenv("SPARK_HEARTBEAT_INTERVAL", "60s"),
-            checkpoint_dir=os.getenv("SPARK_CHECKPOINT_DIR", "/tmp/spark-checkpoints"),
-            checkpoint_enabled=os.getenv("SPARK_CHECKPOINT_ENABLED", "true").lower() == "true",
-            checkpoint_save_interval=int(os.getenv("SPARK_CHECKPOINT_SAVE_INTERVAL", "10")),
-            checkpoint_save_interval_seconds=float(
-                os.getenv("SPARK_CHECKPOINT_SAVE_INTERVAL_SECONDS", "30.0")
-            ),
-            partition_target_size=int(os.getenv("SPARK_PARTITION_TARGET_SIZE", "100")),
-            max_partitions=int(os.getenv("SPARK_MAX_PARTITIONS", "200")),
-            batch_upsert_size=int(os.getenv("SPARK_BATCH_UPSERT_SIZE", "200")),
-            embed_batch_size=int(os.getenv("SPARK_EMBED_BATCH_SIZE", "8")),
-            max_concurrent_per_partition=int(os.getenv("SPARK_MAX_CONCURRENT_PER_PARTITION", "20")),
-            max_concurrent_batch_upserts=int(os.getenv("SPARK_MAX_CONCURRENT_BATCH_UPSERTS", "5")),
-            retry_max_attempts=int(os.getenv("SPARK_RETRY_MAX_ATTEMPTS", "3")),
-            retry_wait_min=float(os.getenv("SPARK_RETRY_WAIT_MIN", "2.0")),
-            retry_wait_max=float(os.getenv("SPARK_RETRY_WAIT_MAX", "10.0")),
-            retry_multiplier=float(os.getenv("SPARK_RETRY_MULTIPLIER", "1.0")),
-        )
-
-
 class RayJobConfig(BaseModel):
     """Configuration for Ray job execution.
 
@@ -1089,9 +945,6 @@ class Settings(BaseModel):
         minio: MinIO/S3 configuration for object storage. Contains
             endpoint URL, credentials, bucket name, and connection
             settings.
-        spark: Spark job configuration. Contains master URL,
-            executor/driver resources, checkpoint settings, and
-            performance tuning parameters.
         k8s_namespace: Kubernetes namespace where ML components are
             deployed. Used for service discovery and resource naming.
     """
@@ -1099,7 +952,6 @@ class Settings(BaseModel):
     embedding: EmbeddingConfig
     vector_db: VectorDBConfig
     minio: MinIOConfig
-    spark: SparkJobConfig
     k8s_namespace: str
 
     model_config = SettingsConfigDict(frozen=True)
@@ -1121,7 +973,6 @@ class Settings(BaseModel):
             embedding=EmbeddingConfig.from_env(namespace=ns),
             vector_db=VectorDBConfig.from_env(namespace=ns),
             minio=MinIOConfig.from_env(namespace=ns),
-            spark=SparkJobConfig.from_env(namespace=ns),
             k8s_namespace=ns,
         )
 

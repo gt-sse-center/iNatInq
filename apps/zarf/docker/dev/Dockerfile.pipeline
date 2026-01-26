@@ -1,7 +1,7 @@
 # =============================================================================
 # Pipeline Service Dockerfile (Development)
 # =============================================================================
-# Uses the pre-built base image with heavy dependencies (Ray, PySpark, etc.)
+# Uses the pre-built base image with heavy dependencies (Ray, etc.)
 # Only installs lightweight dependencies and copies application code.
 #
 # Build context: iNatInq/apps/
@@ -14,7 +14,7 @@
 #   docker build -f zarf/docker/base/Dockerfile.pipeline-base -t inatinq/pipeline-base:0.1.0 .
 #   docker compose -f zarf/compose/dev/docker-compose.yaml up -d --build pipeline
 
-# Use existing ml/pipeline-base image which has Ray, PySpark, and heavy deps
+# Use existing ml/pipeline-base image which has Ray and heavy deps
 # Build your own with: make docker-build-base
 FROM ml/pipeline-base:0.1.0
 
@@ -26,7 +26,7 @@ ENV PYTHONPATH=/app/src
 # Copy dependency files
 COPY pyproject.toml ./
 
-# Install remaining lightweight dependencies (Ray, PySpark, requests are in base image)
+# Install remaining lightweight dependencies (Ray, requests are in base image)
 RUN pip install --no-cache-dir \
     fastapi \
     uvicorn \

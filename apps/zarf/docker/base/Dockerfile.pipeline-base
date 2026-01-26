@@ -31,7 +31,6 @@ RUN pip install --no-cache-dir uv
 RUN --mount=type=cache,target=/root/.cache/pip \
     uv pip install --system \
     "ray[default]>=2.40.0" \
-    "pyspark>=3.5.0" \
     "qdrant-client>=1.15.1" \
     "weaviate-client>=4.9.3" \
     "boto3>=1.35.0" \
