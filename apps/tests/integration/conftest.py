@@ -41,7 +41,6 @@ To change Ryuk image:
 """
 
 import logging
-
 import pytest
 
 # Note: testcontainers deprecation warnings are filtered in pyproject.toml
@@ -57,7 +56,6 @@ logging.basicConfig(
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("botocore").setLevel(logging.WARNING)
 logging.getLogger("docker").setLevel(logging.WARNING)
-
 
 @pytest.fixture(scope="session")
 def integration_test_session():
