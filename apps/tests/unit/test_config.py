@@ -22,7 +22,7 @@ from unittest.mock import patch
 
 import pytest
 
-from config import MinIOConfig, RayJobConfig
+from config import DatabricksRayJobConfig, MinIOConfig, RayJobConfig
 
 
 # =============================================================================
@@ -232,6 +232,62 @@ class TestRayJobConfigOtherSettings:
         assert config.embed_batch_max == 8
         assert config.batch_upsert_size == 200
         assert config.checkpoint_enabled is True
+
+
+# =============================================================================
+# DatabricksRayJobConfig Tests
+# =============================================================================
+
+
+class TestDatabricksRayJobConfig:
+    """Test suite for DatabricksRayJobConfig parsing and validation."""
+
+    @pytest.mark.parametrize(
+        "missing_key",
+        ["DATABRICKS_HOST", "DATABRICKS_TOKEN", "DATABRICKS_JOB_ID"],
+    )
+    def test_missing_required_fields(self, missing_key: str) -> None:
+        """Test that required env vars are validated."""
+        base_env = {
+            "DATABRICKS_HOST": "https://dbc.example.cloud",
+            "DATABRICKS_TOKEN": "databricks-token",
+            "DATABRICKS_JOB_ID": "123",
+        }
+        base_env.pop(missing_key)
+
+        with patch.dict(os.environ, base_env, clear=True):
+            with pytest.raises(ValueError, match="Missing required Databricks config"):
+                DatabricksRayJobConfig.from_env()
+
+    def test_default_task_type(self) -> None:
+        """Test that task_type defaults to python."""
+        with patch.dict(
+            os.environ,
+            {
+                "DATABRICKS_HOST": "https://dbc.example.cloud",
+                "DATABRICKS_TOKEN": "databricks-token",
+                "DATABRICKS_JOB_ID": "456",
+            },
+            clear=True,
+        ):
+            config = DatabricksRayJobConfig.from_env()
+            assert config.task_type == "python"
+            assert config.job_id == 456
+
+    def test_invalid_task_type(self) -> None:
+        """Test that invalid task types are rejected."""
+        with patch.dict(
+            os.environ,
+            {
+                "DATABRICKS_HOST": "https://dbc.example.cloud",
+                "DATABRICKS_TOKEN": "databricks-token",
+                "DATABRICKS_JOB_ID": "789",
+                "DATABRICKS_TASK_TYPE": "jar",
+            },
+            clear=True,
+        ):
+            with pytest.raises(ValueError, match="Invalid DATABRICKS_TASK_TYPE"):
+                DatabricksRayJobConfig.from_env()
 
 
 # =============================================================================
