@@ -254,6 +254,103 @@ class RayJobStatusResponse(BaseModel):
     message: str | None = None
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Databricks Job Management Models
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class DatabricksJobRequest(BaseModel):
+    """Request to submit a Databricks processing job.
+
+    Attributes:
+        s3_prefix: S3 prefix to process (e.g., "inputs/").
+        collection: Vector DB collection name.
+
+    Example:
+        ```json
+        {
+            "s3_prefix": "inputs/",
+            "collection": "documents"
+        }
+        ```
+    """
+
+    s3_prefix: str = Field(..., example="inputs/", description="S3 prefix to process")
+    collection: str = Field(..., example="documents", description="Vector DB collection")
+
+
+class DatabricksJobResponse(BaseModel):
+    """Response after submitting a Databricks job.
+
+    Attributes:
+        run_id: Databricks run ID.
+        status: Job status (always "submitted" on success).
+        namespace: Kubernetes namespace used for config resolution.
+        s3_prefix: S3 prefix being processed.
+        collection: Target vector DB collection.
+        submitted_at: ISO 8601 timestamp when job was submitted.
+
+    Example:
+        ```json
+        {
+            "run_id": "123456789",
+            "status": "submitted",
+            "namespace": "ml-system",
+            "s3_prefix": "inputs/",
+            "collection": "documents",
+            "submitted_at": "2026-01-12T15:30:45.123456Z"
+        }
+        ```
+    """
+
+    run_id: str
+    status: str
+    namespace: str
+    s3_prefix: str
+    collection: str
+    submitted_at: str
+
+
+class DatabricksJobStopResponse(BaseModel):
+    """Response after stopping a Databricks job run.
+
+    Attributes:
+        run_id: Databricks run ID that was stopped.
+        status: Stop status (always "stopped" on success).
+    """
+
+    run_id: str
+    status: str
+
+
+class DatabricksJobStatusResponse(BaseModel):
+    """Response containing Databricks run status details.
+
+    Attributes:
+        run_id: Databricks run ID.
+        life_cycle_state: Run lifecycle state (e.g., RUNNING, TERMINATED).
+        result_state: Run result state (e.g., SUCCESS, FAILED) if available.
+        state_message: Optional state message from Databricks.
+    """
+
+    run_id: str
+    life_cycle_state: str | None
+    result_state: str | None
+    state_message: str | None
+
+
+class DatabricksJobLogsResponse(BaseModel):
+    """Response containing Databricks run output/logs.
+
+    Attributes:
+        run_id: Databricks run ID.
+        logs: Run output/logs (best-effort).
+    """
+
+    run_id: str
+    logs: str
+
+
 class RayJobLogsResponse(BaseModel):
     r"""Response containing Ray job logs.
 

@@ -267,15 +267,17 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         # Default to PNG if unknown
         return "image/png"
 
-    def _make_embed_request(self, image_b64: str) -> list[float]:
+    def _make_embed_request(self, image_b64: str, text: str | None = None) -> list[float]:
         """Make synchronous embedding request.
 
         Supports multiple backends:
-        - ollama: Uses /api/embeddings with images array
-        - clip: Uses /embed/image with base64 image data
+        - ollama: Uses /api/embeddings with images array and optional prompt
+        - clip: Uses /embed/image with base64 image data (text ignored)
 
         Args:
             image_b64: Base64-encoded image.
+            text: Optional text to embed alongside the image. Used for Ollama
+                backend's prompt field. Ignored for clip backend.
 
         Returns:
             Embedding vector.
@@ -287,6 +289,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             if self.backend == "clip":
                 # ai4all/clip API format: POST /embedding/image with {"images": [...]}
                 # Returns: list of {image, vector} objects
+                # Note: clip backend doesn't support text alongside images
                 url = f"{self.base_url}/embedding/image"
                 payload = {"images": [image_b64]}
                 response = self.session.post(url, json=payload, timeout=self.timeout_s)
@@ -303,7 +306,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             url = f"{self.base_url}/api/embeddings"
             payload = {
                 "model": self.model,
-                "prompt": "",  # Empty for image-only embedding
+                "prompt": text or "",  # Use text if provided, otherwise empty
                 "images": [image_b64],
             }
             response = self.session.post(url, json=payload, timeout=self.timeout_s)
@@ -320,15 +323,17 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             msg = f"CLIP embedding request failed: {e}"
             raise UpstreamError(msg) from e
 
-    async def _make_embed_request_async(self, image_b64: str) -> list[float]:
+    async def _make_embed_request_async(self, image_b64: str, text: str | None = None) -> list[float]:
         """Make asynchronous embedding request.
 
         Supports multiple backends:
-        - ollama: Uses /api/embeddings with images array
-        - clip: Uses /embed/image with base64 image data
+        - ollama: Uses /api/embeddings with images array and optional prompt
+        - clip: Uses /embed/image with base64 image data (text ignored)
 
         Args:
             image_b64: Base64-encoded image.
+            text: Optional text to embed alongside the image. Used for Ollama
+                backend's prompt field. Ignored for clip backend.
 
         Returns:
             Embedding vector.
@@ -341,6 +346,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                 if self.backend == "clip":
                     # ai4all/clip API format: POST /embedding/image with {"images": [...]}
                     # Returns: list of {image, vector} objects
+                    # Note: clip backend doesn't support text alongside images
                     url = f"{self.base_url}/embedding/image"
                     payload = {"images": [image_b64]}
                     response = await client.post(url, json=payload)
@@ -356,7 +362,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                 url = f"{self.base_url}/api/embeddings"
                 payload = {
                     "model": self.model,
-                    "prompt": "",
+                    "prompt": text or "",  # Use text if provided, otherwise empty
                     "images": [image_b64],
                 }
                 response = await client.post(url, json=payload)
@@ -374,11 +380,16 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             raise UpstreamError(msg) from e
 
     @with_circuit_breaker("clip")
-    def embed_image(self, image_bytes: bytes) -> list[float]:
+    def embed_image(self, image_bytes: bytes, text: str | None = None) -> list[float]:
         """Generate embedding for a single image.
 
         Args:
             image_bytes: Raw image bytes (JPEG, PNG, WebP, or GIF format).
+            text: Optional text to embed alongside the image. This enables
+                multi-modal embeddings where both image and text are encoded
+                into the same vector space. Implementations can ignore this
+                parameter if not supported. Useful for future filter support
+                and combined image+metadata embeddings.
 
         Returns:
             List of floats representing the image embedding vector.
@@ -388,14 +399,19 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             ValueError: If image_bytes is empty.
         """
         image_b64 = self._encode_image(image_bytes)
-        return self._make_embed_request(image_b64)
+        return self._make_embed_request(image_b64, text)
 
     @with_circuit_breaker_async("clip")
-    async def embed_image_async(self, image_bytes: bytes) -> list[float]:
+    async def embed_image_async(self, image_bytes: bytes, text: str | None = None) -> list[float]:
         """Generate embedding for a single image (async).
 
         Args:
             image_bytes: Raw image bytes (JPEG, PNG, WebP, or GIF format).
+            text: Optional text to embed alongside the image. This enables
+                multi-modal embeddings where both image and text are encoded
+                into the same vector space. Implementations can ignore this
+                parameter if not supported. Useful for future filter support
+                and combined image+metadata embeddings.
 
         Returns:
             List of floats representing the image embedding vector.
@@ -405,10 +421,10 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             ValueError: If image_bytes is empty.
         """
         image_b64 = self._encode_image(image_bytes)
-        return await self._make_embed_request_async(image_b64)
+        return await self._make_embed_request_async(image_b64, text)
 
     @with_circuit_breaker("clip")
-    def embed_image_batch(self, images: list[bytes]) -> list[list[float]]:
+    def embed_image_batch(self, images: list[bytes], texts: list[str] | None = None) -> list[list[float]]:
         """Generate embeddings for multiple images.
 
         Note: Ollama doesn't natively support batch image embeddings, so this
@@ -417,16 +433,27 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
         Args:
             images: List of raw image bytes to embed.
+            texts: Optional list of text strings to embed alongside images.
+                If provided, must have the same length as images. Each text
+                will be embedded with its corresponding image. Implementations
+                can ignore this parameter if not supported. Useful for future
+                filter support and combined image+metadata embeddings.
 
         Returns:
             List of embedding vectors, one per input image.
 
         Raises:
             UpstreamError: If any embedding request fails.
-            ValueError: If images list is empty or contains empty bytes.
+            ValueError: If images list is empty or contains empty bytes, or
+                if texts is provided but has a different length than images.
         """
         if not images:
             msg = "Images list cannot be empty"
+            raise ValueError(msg)
+
+        # Validate texts length if provided
+        if texts is not None and len(texts) != len(images):
+            msg = f"Texts list length ({len(texts)}) must match images list length ({len(images)})"
             raise ValueError(msg)
 
         # Apply batch size limit
@@ -438,31 +465,45 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             raise ValueError(msg)
 
         results = []
-        for image_bytes in images:
+        for i, image_bytes in enumerate(images):
             image_b64 = self._encode_image(image_bytes)
-            embedding = self._make_embed_request(image_b64)
+            text = texts[i] if texts is not None else None
+            embedding = self._make_embed_request(image_b64, text)
             results.append(embedding)
 
         return results
 
     @with_circuit_breaker_async("clip")
-    async def embed_image_batch_async(self, images: list[bytes]) -> list[list[float]]:
+    async def embed_image_batch_async(
+        self, images: list[bytes], texts: list[str] | None = None
+    ) -> list[list[float]]:
         """Generate embeddings for multiple images (async).
 
         Uses asyncio.gather for concurrent processing of images.
 
         Args:
             images: List of raw image bytes to embed.
+            texts: Optional list of text strings to embed alongside images.
+                If provided, must have the same length as images. Each text
+                will be embedded with its corresponding image. Implementations
+                can ignore this parameter if not supported. Useful for future
+                filter support and combined image+metadata embeddings.
 
         Returns:
             List of embedding vectors, one per input image.
 
         Raises:
             UpstreamError: If any embedding request fails.
-            ValueError: If images list is empty or contains empty bytes.
+            ValueError: If images list is empty or contains empty bytes, or
+                if texts is provided but has a different length than images.
         """
         if not images:
             msg = "Images list cannot be empty"
+            raise ValueError(msg)
+
+        # Validate texts length if provided
+        if texts is not None and len(texts) != len(images):
+            msg = f"Texts list length ({len(texts)}) must match images list length ({len(images)})"
             raise ValueError(msg)
 
         # Apply batch size limit
@@ -476,8 +517,11 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         # Encode all images first
         encoded_images = [self._encode_image(img) for img in images]
 
-        # Make concurrent requests
-        tasks = [self._make_embed_request_async(img_b64) for img_b64 in encoded_images]
+        # Make concurrent requests with optional text
+        tasks = [
+            self._make_embed_request_async(img_b64, texts[i] if texts is not None else None)
+            for i, img_b64 in enumerate(encoded_images)
+        ]
         results = await asyncio.gather(*tasks)
 
         return list(results)

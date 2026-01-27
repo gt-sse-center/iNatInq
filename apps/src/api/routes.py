@@ -41,6 +41,7 @@ from clients.interfaces.embedding import create_embedding_provider
 from clients.interfaces.vector_db import create_vector_db_provider
 from config import EmbeddingConfig, MinIOConfig, VectorDBConfig, get_settings
 from core.exceptions import BadRequestError, PipelineError
+from core.services.databricks_ray_service import DatabricksRayService
 from core.services.ray_service import RayService
 from core.services.search_service import SearchService
 from fastapi import APIRouter, Query
@@ -292,6 +293,134 @@ async def submit_ray_job(req: models.RayJobRequest) -> models.RayJobResponse:
         )
     except Exception as e:
         raise PipelineError(f"Failed to submit Ray job: {e!s}") from e
+
+
+@router.post(
+    "/databricks/jobs",
+    response_model=models.DatabricksJobResponse,
+    status_code=202,
+    tags=["databricks-jobs"],
+)
+async def submit_databricks_job(req: models.DatabricksJobRequest) -> models.DatabricksJobResponse:
+    """Submit a new Databricks job to process S3 documents.
+
+    This submits a run for a preconfigured Databricks Job and returns immediately.
+
+    Args:
+        req: Request containing s3_prefix and collection.
+
+    Returns:
+        Job metadata including Databricks run ID and submission timestamp.
+
+    Raises:
+        HTTPException(500): If job submission fails.
+    """
+    try:
+        settings = get_settings()
+        namespace = settings.k8s_namespace
+
+        databricks_service = DatabricksRayService()
+        minio_cfg = MinIOConfig.from_env(namespace)
+        embed_cfg = EmbeddingConfig.from_env(namespace)
+        vector_cfg = VectorDBConfig.from_env(namespace)
+
+        run_id = databricks_service.submit_s3_to_qdrant(
+            namespace=namespace,
+            s3_endpoint=minio_cfg.endpoint_url,
+            s3_access_key_id=minio_cfg.access_key_id,
+            s3_secret_access_key=minio_cfg.secret_access_key,
+            s3_bucket=minio_cfg.bucket,
+            s3_prefix=req.s3_prefix,
+            embedding_config=embed_cfg,
+            vector_db_config=vector_cfg,
+            collection=req.collection,
+        )
+
+        return models.DatabricksJobResponse(
+            run_id=str(run_id),
+            status="submitted",
+            namespace=namespace,
+            s3_prefix=req.s3_prefix,
+            collection=req.collection,
+            submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+        )
+    except Exception as e:
+        raise PipelineError(f"Failed to submit Databricks job: {e!s}") from e
+
+
+@router.delete(
+    "/databricks/jobs/{run_id}",
+    response_model=models.DatabricksJobStopResponse,
+    tags=["databricks-jobs"],
+)
+async def stop_databricks_job(run_id: str) -> models.DatabricksJobStopResponse:
+    """Stop a running Databricks job run.
+
+    Args:
+        run_id: Databricks run ID to stop.
+
+    Returns:
+        Stop confirmation.
+
+    Raises:
+        HTTPException(500): If stopping fails.
+    """
+    try:
+        databricks_service = DatabricksRayService()
+        databricks_service.stop_run(run_id)
+        return models.DatabricksJobStopResponse(run_id=str(run_id), status="stopped")
+    except Exception as e:
+        raise PipelineError(f"Failed to stop Databricks job: {e!s}") from e
+
+
+@router.get(
+    "/databricks/jobs/{run_id}",
+    response_model=models.DatabricksJobStatusResponse,
+    tags=["databricks-jobs"],
+)
+async def get_databricks_job_status(run_id: str) -> models.DatabricksJobStatusResponse:
+    """Get the status of a Databricks job run.
+
+    Args:
+        run_id: Databricks run ID to query.
+
+    Returns:
+        Run status details including lifecycle/result states.
+
+    Raises:
+        HTTPException(500): If status query fails.
+    """
+    try:
+        databricks_service = DatabricksRayService()
+        status = databricks_service.get_run_status(run_id)
+        return models.DatabricksJobStatusResponse(run_id=str(run_id), **status)
+    except Exception as e:
+        raise PipelineError(f"Failed to get Databricks job status: {e!s}") from e
+
+
+@router.get(
+    "/databricks/jobs/{run_id}/logs",
+    response_model=models.DatabricksJobLogsResponse,
+    tags=["databricks-jobs"],
+)
+async def get_databricks_job_logs(run_id: str) -> models.DatabricksJobLogsResponse:
+    """Get output/logs for a Databricks job run.
+
+    Args:
+        run_id: Databricks run ID to query.
+
+    Returns:
+        Run output/logs as a string (best-effort).
+
+    Raises:
+        HTTPException(500): If log retrieval fails.
+    """
+    try:
+        databricks_service = DatabricksRayService()
+        logs = databricks_service.get_run_output(run_id)
+        return models.DatabricksJobLogsResponse(run_id=str(run_id), logs=logs)
+    except Exception as e:
+        raise PipelineError(f"Failed to get Databricks job logs: {e!s}") from e
 
 
 @router.get("/ray/jobs/{job_id}", response_model=models.RayJobStatusResponse, tags=["ray-jobs"])
