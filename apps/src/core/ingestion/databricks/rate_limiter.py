@@ -13,8 +13,18 @@ class RateLimiterActor:
         self._limiter = RateLimiter(rate_per_sec)
 
     async def acquire(self) -> bool:
+        """Acquire permission from the rate limiter.
+
+        Returns:
+            True when permission is acquired.
+        """
         await self._limiter.acquire_permission()
         return True
 
     def get_rate(self) -> float:
+        """Get the current rate limit.
+
+        Returns:
+            Current rate limit in requests per second.
+        """
         return self._limiter.get_rate()
