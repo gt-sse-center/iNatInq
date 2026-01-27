@@ -379,10 +379,11 @@ def process_s3_batch_ray(
 
     # Log circuit breaker / upstream errors explicitly for visibility
     for r in results:
-        if not r.success and "circuit breaker" in r.error.lower():
-            task_logger.warning("CIRCUIT_BREAKER_OPEN: %s - %s", r.s3_key, r.error)
-        elif not r.success and "upstream" in r.error.lower():
-            task_logger.warning("UPSTREAM_ERROR: %s - %s", r.s3_key, r.error)
+        error_message = r.error_message
+        if not r.success and "circuit breaker" in error_message.lower():
+            task_logger.warning("CIRCUIT_BREAKER_OPEN: %s - %s", r.s3_key, error_message)
+        elif not r.success and "upstream" in error_message.lower():
+            task_logger.warning("UPSTREAM_ERROR: %s - %s", r.s3_key, error_message)
 
     return [r.to_tuple() for r in results]
 
