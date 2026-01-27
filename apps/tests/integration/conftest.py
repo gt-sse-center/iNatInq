@@ -57,6 +57,7 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("botocore").setLevel(logging.WARNING)
 logging.getLogger("docker").setLevel(logging.WARNING)
 
+
 @pytest.fixture(scope="session")
 def integration_test_session():
     """Marker fixture to identify integration test sessions.
