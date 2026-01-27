@@ -412,6 +412,100 @@ class EmbeddingConfig(BaseModel):
         raise ValueError(msg)
 
 
+class ImageEmbeddingConfig(BaseModel):
+    """Configuration for image embedding provider (CLIP, LLaVA, etc.).
+
+    This configuration class supports multi-modal embedding providers that can
+    generate embeddings from image data.
+
+    Attributes:
+        provider_type: Type of image embedding provider. Currently supports "clip".
+        clip_url: CLIP/Ollama service URL. Required if provider_type="clip".
+            Auto-detected based on environment if not set.
+        clip_model: Model name for image embedding (e.g., "llava", "ViT-B/32").
+            Default: "llava".
+        clip_backend: API backend type. One of "ollama" or "clip". Default: "ollama".
+            - "ollama": Uses Ollama's /api/embeddings endpoint with LLaVA
+            - "clip": Uses ai4all/clip's /embed/image endpoint
+        clip_timeout: Request timeout in seconds. Default: 120 (higher for images).
+        clip_circuit_breaker_threshold: Failures before circuit opens. Default: 5.
+        clip_circuit_breaker_timeout: Circuit recovery timeout in seconds. Default: 30.
+        clip_max_batch_size: Maximum images per batch request. Default: 8.
+        clip_vector_size: Override auto-detected vector size. Default: None.
+    """
+
+    provider_type: Literal["clip"] = "clip"
+
+    # CLIP settings
+    clip_url: str | None = None
+    clip_model: str | None = None
+    clip_backend: Literal["ollama", "clip"] = "ollama"
+    clip_timeout: int = 120
+    clip_circuit_breaker_threshold: int = 5
+    clip_circuit_breaker_timeout: int = 30
+    clip_max_batch_size: int = 8
+    clip_vector_size: int | None = None
+
+    model_config = SettingsConfigDict(frozen=True)
+
+    @classmethod
+    def from_env(cls, namespace: str = "ml-system") -> "ImageEmbeddingConfig":
+        """Create ImageEmbeddingConfig from environment variables.
+
+        Supports:
+        - IMAGE_EMBEDDING_PROVIDER: Provider type (currently only "clip")
+        - CLIP_URL or OLLAMA_BASE_URL: Service URL
+        - CLIP_MODEL: Model name (default: "llava")
+        - CLIP_BACKEND: API backend type ("ollama" or "clip", default: "ollama")
+        - CLIP_TIMEOUT: Request timeout in seconds
+        - CLIP_CIRCUIT_BREAKER_THRESHOLD: Failures before circuit opens
+        - CLIP_CIRCUIT_BREAKER_TIMEOUT: Circuit recovery timeout
+        - CLIP_MAX_BATCH_SIZE: Maximum images per batch
+        - CLIP_VECTOR_SIZE: Override vector dimension
+
+        Args:
+            namespace: Kubernetes namespace for service discovery.
+
+        Returns:
+            Configured ImageEmbeddingConfig instance.
+        """
+        in_cluster = _is_in_cluster()
+
+        # Get backend type (ollama or clip)
+        clip_backend = os.getenv("CLIP_BACKEND", "ollama").lower()
+        if clip_backend not in ("ollama", "clip"):
+            clip_backend = "ollama"
+
+        # Resolve URL based on backend
+        if clip_backend == "clip":
+            default_url = f"http://clip.{namespace}:8000" if in_cluster else "http://localhost:8000"
+            default_model = "ViT-B/32"
+        else:
+            default_url = f"http://ollama.{namespace}:11434" if in_cluster else "http://localhost:11434"
+            default_model = "llava"
+
+        clip_url = os.getenv("CLIP_URL") or os.getenv("OLLAMA_BASE_URL", default_url)
+        clip_model = os.getenv("CLIP_MODEL", default_model)
+
+        # Parse optional vector size
+        vector_size_str = os.getenv("CLIP_VECTOR_SIZE")
+        clip_vector_size: int | None = None
+        if vector_size_str:
+            clip_vector_size = int(vector_size_str)
+
+        return cls(
+            provider_type="clip",
+            clip_url=clip_url,
+            clip_model=clip_model,
+            clip_backend=clip_backend,  # type: ignore[arg-type]
+            clip_timeout=int(os.getenv("CLIP_TIMEOUT", "120")),
+            clip_circuit_breaker_threshold=int(os.getenv("CLIP_CIRCUIT_BREAKER_THRESHOLD", "5")),
+            clip_circuit_breaker_timeout=int(os.getenv("CLIP_CIRCUIT_BREAKER_TIMEOUT", "30")),
+            clip_max_batch_size=int(os.getenv("CLIP_MAX_BATCH_SIZE", "8")),
+            clip_vector_size=clip_vector_size,
+        )
+
+
 class MinIOConfig(BaseModel):
     """Configuration for MinIO/S3-compatible object storage.
 

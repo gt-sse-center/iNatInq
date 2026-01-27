@@ -551,3 +551,96 @@ def ollama_client(ollama_url: str) -> OllamaClient:
 
     # Cleanup
     client.close()
+
+
+# =============================================================================
+# CLIP Container Fixtures (ai4all/clip)
+# =============================================================================
+
+
+@pytest.fixture(scope="session")
+def clip_container():
+    """Start an ai4all/clip container for image embedding tests.
+
+    Uses the ai4all/clip image which provides a dedicated CLIP API server
+    supporting image & text embedding, similarity, and retrieval.
+
+    See: https://hub.docker.com/r/ai4all/clip
+
+    Yields:
+        DockerContainer: Running CLIP container with connection info.
+    """
+    logger.info("Starting CLIP container (ai4all/clip)...")
+
+    container = DockerContainer("ai4all/clip:latest").with_exposed_ports(8000)
+
+    container.start()
+
+    # Wait for CLIP API to be ready
+    _wait_for_clip_health(container)
+
+    logger.info(
+        "CLIP container started",
+        extra={
+            "url": _get_clip_url(container),
+            "container_id": container.get_wrapped_container().short_id,
+        },
+    )
+
+    yield container
+
+    logger.info("Stopping CLIP container...")
+    container.stop()
+
+
+def _get_clip_url(container: DockerContainer) -> str:
+    """Get the CLIP HTTP URL from a container.
+
+    Args:
+        container: Running CLIP container.
+
+    Returns:
+        str: HTTP URL for CLIP API.
+    """
+    host = container.get_container_host_ip()
+    port = container.get_exposed_port(8000)
+    return f"http://{host}:{port}"
+
+
+def _wait_for_clip_health(container: DockerContainer, timeout: int = 120) -> None:
+    """Wait for CLIP container to be ready.
+
+    Args:
+        container: CLIP container instance.
+        timeout: Maximum seconds to wait.
+
+    Raises:
+        TimeoutError: If CLIP doesn't become healthy within timeout.
+    """
+    url = _get_clip_url(container)
+    # Try common health check endpoints
+    health_endpoints = [f"{url}/health", f"{url}/", f"{url}/docs"]
+
+    start = time.time()
+    while time.time() - start < timeout:
+        for health_url in health_endpoints:
+            try:
+                response = httpx.get(health_url, timeout=5.0)
+                if response.status_code in (200, 404):  # 404 means server is up
+                    logger.info("CLIP container healthy at %s", health_url)
+                    return
+            except httpx.RequestError:
+                pass
+        time.sleep(1.0)
+
+    raise TimeoutError(f"CLIP container not healthy after {timeout}s")
+
+
+@pytest.fixture(scope="session")
+def clip_url(clip_container: DockerContainer) -> str:
+    """Get CLIP connection URL.
+
+    Returns:
+        str: CLIP HTTP API URL.
+    """
+    return _get_clip_url(clip_container)
