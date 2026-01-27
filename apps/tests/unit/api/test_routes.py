@@ -426,3 +426,134 @@ class TestRayJobEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "stopped"
+
+
+# =============================================================================
+# Databricks Job Management Endpoints Tests
+# =============================================================================
+
+
+class TestDatabricksJobEndpoints:
+    """Test suite for /databricks/jobs/* endpoints."""
+
+    def test_submit_databricks_job_success(
+        self,
+        test_client: TestClient,
+        mock_ray_service: MagicMock,
+    ) -> None:
+        """Test successful Databricks job submission."""
+        with patch("api.routes.DatabricksRayService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.submit_s3_to_qdrant.return_value = 123
+            mock_service_cls.return_value = mock_service
+
+            with patch("api.routes.get_settings") as mock_settings:
+                mock_settings.return_value.k8s_namespace = "ml-system"
+                response = test_client.post(
+                    "/databricks/jobs",
+                    json={
+                        "s3_prefix": "inputs/",
+                        "collection": "documents",
+                    },
+                )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["run_id"] == "123"
+        assert data["status"] == "submitted"
+
+    def test_get_databricks_job_status_success(self, test_client: TestClient) -> None:
+        """Test getting Databricks job status."""
+        with patch("api.routes.DatabricksRayService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.get_run_status.return_value = {
+                "life_cycle_state": "RUNNING",
+                "result_state": None,
+                "state_message": "Job is running",
+            }
+            mock_service_cls.return_value = mock_service
+
+            response = test_client.get("/databricks/jobs/123")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["run_id"] == "123"
+        assert data["life_cycle_state"] == "RUNNING"
+        assert data["state_message"] == "Job is running"
+
+    def test_get_databricks_job_logs_success(self, test_client: TestClient) -> None:
+        """Test getting Databricks job logs."""
+        with patch("api.routes.DatabricksRayService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.get_run_output.return_value = "log output"
+            mock_service_cls.return_value = mock_service
+
+            response = test_client.get("/databricks/jobs/456/logs")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["run_id"] == "456"
+        assert data["logs"] == "log output"
+
+    def test_stop_databricks_job_success(self, test_client: TestClient) -> None:
+        """Test stopping a Databricks job run."""
+        with patch("api.routes.DatabricksRayService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service_cls.return_value = mock_service
+
+            response = test_client.delete("/databricks/jobs/789")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["run_id"] == "789"
+        assert data["status"] == "stopped"
+
+    def test_submit_databricks_job_failure_returns_500(self, test_client: TestClient) -> None:
+        """Test that submit returns 500 on Databricks service error."""
+        with patch("api.routes.DatabricksRayService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.submit_s3_to_qdrant.side_effect = Exception("boom")
+            mock_service_cls.return_value = mock_service
+
+            response = test_client.post(
+                "/databricks/jobs",
+                json={
+                    "s3_prefix": "inputs/",
+                    "collection": "documents",
+                },
+            )
+
+        assert response.status_code == 500
+
+    def test_get_databricks_job_status_failure_returns_500(self, test_client: TestClient) -> None:
+        """Test that status returns 500 on Databricks service error."""
+        with patch("api.routes.DatabricksRayService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.get_run_status.side_effect = Exception("boom")
+            mock_service_cls.return_value = mock_service
+
+            response = test_client.get("/databricks/jobs/123")
+
+        assert response.status_code == 500
+
+    def test_get_databricks_job_logs_failure_returns_500(self, test_client: TestClient) -> None:
+        """Test that logs returns 500 on Databricks service error."""
+        with patch("api.routes.DatabricksRayService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.get_run_output.side_effect = Exception("boom")
+            mock_service_cls.return_value = mock_service
+
+            response = test_client.get("/databricks/jobs/456/logs")
+
+        assert response.status_code == 500
+
+    def test_stop_databricks_job_failure_returns_500(self, test_client: TestClient) -> None:
+        """Test that stop returns 500 on Databricks service error."""
+        with patch("api.routes.DatabricksRayService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.stop_run.side_effect = Exception("boom")
+            mock_service_cls.return_value = mock_service
+
+            response = test_client.delete("/databricks/jobs/789")
+
+        assert response.status_code == 500
