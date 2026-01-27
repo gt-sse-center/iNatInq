@@ -196,20 +196,22 @@ class ImageEmbeddingProvider(Protocol):
             def vector_size(self) -> int:
                 return 512  # CLIP ViT-B/32
 
-            def embed_image(self, image_bytes: bytes) -> list[float]:
-                # Encode image with CLIP
+            def embed_image(self, image_bytes: bytes, text: str | None = None) -> list[float]:
+                # Encode image with CLIP (text parameter can be used for multi-modal)
                 return [0.1, 0.2, ...]
 
-            async def embed_image_async(self, image_bytes: bytes) -> list[float]:
+            async def embed_image_async(self, image_bytes: bytes, text: str | None = None) -> list[float]:
                 # Async version
                 return [0.1, 0.2, ...]
 
-            def embed_image_batch(self, images: list[bytes]) -> list[list[float]]:
-                # Batch encode multiple images
+            def embed_image_batch(
+                self, images: list[bytes], texts: list[str] | None = None
+            ) -> list[list[float]]:
+                # Batch encode multiple images (texts can be used for multi-modal)
                 return [[0.1, ...], [0.2, ...]]
 
             async def embed_image_batch_async(
-                self, images: list[bytes]
+                self, images: list[bytes], texts: list[str] | None = None
             ) -> list[list[float]]:
                 # Async batch version
                 return [[0.1, ...], [0.2, ...]]
@@ -234,13 +236,18 @@ class ImageEmbeddingProvider(Protocol):
         """
         ...
 
-    def embed_image(self, image_bytes: bytes) -> list[float]:
+    def embed_image(self, image_bytes: bytes, text: str | None = None) -> list[float]:
         """Generate embedding for a single image.
 
         Args:
             image_bytes: Raw image bytes (JPEG, PNG, WebP, or GIF format).
                 The image will be preprocessed (resized, normalized) by the
                 provider before encoding.
+            text: Optional text to embed alongside the image. This enables
+                multi-modal embeddings where both image and text are encoded
+                into the same vector space. Implementations can ignore this
+                parameter if not supported. Useful for future filter support
+                and combined image+metadata embeddings.
 
         Returns:
             List of floats representing the image embedding vector.
@@ -252,11 +259,16 @@ class ImageEmbeddingProvider(Protocol):
         """
         ...
 
-    async def embed_image_async(self, image_bytes: bytes) -> list[float]:
+    async def embed_image_async(self, image_bytes: bytes, text: str | None = None) -> list[float]:
         """Generate embedding for a single image (async).
 
         Args:
             image_bytes: Raw image bytes (JPEG, PNG, WebP, or GIF format).
+            text: Optional text to embed alongside the image. This enables
+                multi-modal embeddings where both image and text are encoded
+                into the same vector space. Implementations can ignore this
+                parameter if not supported. Useful for future filter support
+                and combined image+metadata embeddings.
 
         Returns:
             List of floats representing the image embedding vector.
@@ -268,7 +280,7 @@ class ImageEmbeddingProvider(Protocol):
         """
         ...
 
-    def embed_image_batch(self, images: list[bytes]) -> list[list[float]]:
+    def embed_image_batch(self, images: list[bytes], texts: list[str] | None = None) -> list[list[float]]:
         """Generate embeddings for multiple images in one call.
 
         This method batches multiple images into a single API call for better
@@ -277,6 +289,11 @@ class ImageEmbeddingProvider(Protocol):
 
         Args:
             images: List of raw image bytes to embed.
+            texts: Optional list of text strings to embed alongside images.
+                If provided, must have the same length as images. Each text
+                will be embedded with its corresponding image. Implementations
+                can ignore this parameter if not supported. Useful for future
+                filter support and combined image+metadata embeddings.
 
         Returns:
             List of embedding vectors, one per input image. Each vector is a
@@ -285,7 +302,8 @@ class ImageEmbeddingProvider(Protocol):
         Raises:
             UpstreamError: If the embedding service is unreachable or returns
                 an error.
-            ValueError: If images is empty or contains invalid image data.
+            ValueError: If images is empty or contains invalid image data, or
+                if texts is provided but has a different length than images.
 
         Example:
             ```python
@@ -297,7 +315,9 @@ class ImageEmbeddingProvider(Protocol):
         """
         ...
 
-    async def embed_image_batch_async(self, images: list[bytes]) -> list[list[float]]:
+    async def embed_image_batch_async(
+        self, images: list[bytes], texts: list[str] | None = None
+    ) -> list[list[float]]:
         """Generate embeddings for multiple images in one call (async).
 
         This is the async version of embed_image_batch(). Use this method
@@ -305,6 +325,11 @@ class ImageEmbeddingProvider(Protocol):
 
         Args:
             images: List of raw image bytes to embed.
+            texts: Optional list of text strings to embed alongside images.
+                If provided, must have the same length as images. Each text
+                will be embedded with its corresponding image. Implementations
+                can ignore this parameter if not supported. Useful for future
+                filter support and combined image+metadata embeddings.
 
         Returns:
             List of embedding vectors, one per input image.
@@ -312,7 +337,8 @@ class ImageEmbeddingProvider(Protocol):
         Raises:
             UpstreamError: If the embedding service is unreachable or returns
                 an error.
-            ValueError: If images is empty or contains invalid image data.
+            ValueError: If images is empty or contains invalid image data, or
+                if texts is provided but has a different length than images.
         """
         ...
 

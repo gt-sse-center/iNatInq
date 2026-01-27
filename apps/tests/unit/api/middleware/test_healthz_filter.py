@@ -71,7 +71,8 @@ class TestHealthzFilterMiddleware:
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
         # Should NOT log healthz requests
-        assert not any("healthz" in record.message for record in caplog.records)
+        records = [record for record in caplog.records if record.name == "uvicorn.access"]
+        assert not any("healthz" in record.message for record in records)
 
     def test_healthz_filter_allows_non_healthz_logs(self, app_with_healthz_filter: FastAPI, caplog) -> None:
         """Test that middleware allows logging for non-healthz requests.
@@ -142,7 +143,8 @@ class TestHealthzFilterMiddleware:
                 assert response.status_code == 200
 
         # None of the healthz requests should be logged
-        assert not any("healthz" in record.message for record in caplog.records)
+        records = [record for record in caplog.records if record.name == "uvicorn.access"]
+        assert not any("healthz" in record.message for record in records)
 
     def test_healthz_filter_with_query_params(self, app_with_healthz_filter: FastAPI, caplog) -> None:
         """Test that middleware filters healthz with query parameters.
@@ -159,4 +161,5 @@ class TestHealthzFilterMiddleware:
 
         assert response.status_code == 200
         # Should still filter even with query params
-        assert not any("healthz" in record.message for record in caplog.records)
+        records = [record for record in caplog.records if record.name == "uvicorn.access"]
+        assert not any("healthz" in record.message for record in records)

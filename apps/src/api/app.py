@@ -136,6 +136,13 @@ def create_app() -> FastAPI:
                     "processing S3 documents into vector embeddings."
                 ),
             },
+            {
+                "name": "databricks-jobs",
+                "description": (
+                    "Databricks job submission for Ray-based ingestion. "
+                    "Submits runs to Databricks Jobs API with ingestion parameters."
+                ),
+            },
         ],
     )
 
