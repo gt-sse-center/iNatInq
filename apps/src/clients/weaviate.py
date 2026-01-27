@@ -27,6 +27,7 @@ The client wrapper:
 - Implements VectorDBProvider ABC for provider-agnostic usage
 """
 
+import asyncio
 from typing import Any
 from urllib.parse import urlparse
 
@@ -129,6 +130,19 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
 
     def __attrs_post_init__(self) -> None:
         """Initialize the Weaviate async client and circuit breaker after attrs construction."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            else:
+                if loop.is_closed():
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+
         auth_config = None
         if self.api_key:
             auth_config = AuthApiKey(api_key=self.api_key)
