@@ -6,8 +6,17 @@ variables before invoking the Ray ingestion entrypoint.
 
 import os
 import sys
+from logging.config import dictConfig
+from pathlib import Path
+
+repo_src = Path.cwd() / ".." / ".."/ ".."   # adjust if needed
+sys.path.insert(0, str(repo_src.resolve()))
+
+from foundation.logger import LOGGING_CONFIG
 
 from core.ingestion.databricks.process_s3_to_qdrant import main
+
+dictConfig(LOGGING_CONFIG)
 
 
 def _load_params(params: list[str]) -> None:

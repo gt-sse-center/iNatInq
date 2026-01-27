@@ -13,12 +13,16 @@ invokes run_now() on a pre-configured job definition.
 
 import logging
 import os
+from logging.config import dictConfig
 
 import attrs
 from databricks.sdk import WorkspaceClient
 
 from config import DatabricksRayJobConfig, EmbeddingConfig, VectorDBConfig
 from core.exceptions import UpstreamError
+from foundation.logger import LOGGING_CONFIG
+
+dictConfig(LOGGING_CONFIG)
 
 logger = logging.getLogger("pipeline.databricks.ray.service")
 
@@ -88,6 +92,11 @@ class DatabricksRayService:
         for key in optional_env_keys:
             value = os.getenv(key)
             if value:
+                params.append((key, value))
+
+        # Pass through any Ray tuning env vars (e.g., RAY_NUM_WORKERS).
+        for key, value in os.environ.items():
+            if key.startswith("RAY_") and value:
                 params.append((key, value))
 
         return [f"{key}={value}" for key, value in params]

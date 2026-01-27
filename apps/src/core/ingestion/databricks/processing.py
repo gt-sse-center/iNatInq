@@ -8,7 +8,7 @@ Databricks run logs.
 import asyncio
 import logging
 import os
-import sys
+from logging.config import dictConfig
 from typing import Any
 
 import attrs
@@ -26,24 +26,15 @@ from core.ingestion.interfaces import (
     VectorDBUpserter,
     VectorPointFactory,
 )
+from foundation.logger import LOGGING_CONFIG
 from foundation.rate_limiter import RateLimiter
+
+dictConfig(LOGGING_CONFIG)
 
 
 def get_ray_logger(name: str = "ray.task") -> logging.Logger:
     """Get a logger configured for Ray workers."""
-    ray_logger = logging.getLogger(name)
-    if not ray_logger.handlers:
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-        )
-        ray_logger.addHandler(handler)
-        ray_logger.setLevel(logging.INFO)
-        ray_logger.propagate = False
-    return ray_logger
+    return logging.getLogger(name)
 
 
 logger = get_ray_logger("ray.pipeline")

@@ -40,7 +40,7 @@ def _setup_ray_cluster(config: RayJobConfig) -> object | None:
         raise RuntimeError("ray.util.spark is required to start Ray on Databricks.")
 
     kwargs = {
-        "num_workers": config.num_workers,
+        "num_worker_nodes": config.num_workers,
         "cpus_per_node": int(config.worker_cpus),
         "memory_per_node": config.worker_memory,
     }
