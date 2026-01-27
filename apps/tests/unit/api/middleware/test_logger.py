@@ -72,7 +72,8 @@ class TestLoggerMiddleware:
 
         assert response.status_code == 200
         # Check for "request started" log message
-        assert any("request started" in record.message for record in caplog.records)
+        records = [record for record in caplog.records if record.name == "pipeline.access"]
+        assert any("request started" in record.message for record in records)
 
     def test_logger_middleware_logs_request_completion(
         self, app_with_logger_middleware: FastAPI, caplog
@@ -91,7 +92,8 @@ class TestLoggerMiddleware:
 
         assert response.status_code == 200
         # Check for "request completed" log message
-        assert any("request completed" in record.message for record in caplog.records)
+        records = [record for record in caplog.records if record.name == "pipeline.access"]
+        assert any("request completed" in record.message for record in records)
 
     def test_logger_middleware_includes_query_params(
         self, app_with_logger_middleware: FastAPI, caplog
@@ -110,9 +112,10 @@ class TestLoggerMiddleware:
 
         assert response.status_code == 200
         # Verify logs were created for the request
-        assert len(caplog.records) >= 2  # start and completion
-        assert any("request started" in record.message for record in caplog.records)
-        assert any("request completed" in record.message for record in caplog.records)
+        records = [record for record in caplog.records if record.name == "pipeline.access"]
+        assert len(records) >= 2  # start and completion
+        assert any("request started" in record.message for record in records)
+        assert any("request completed" in record.message for record in records)
 
     def test_logger_middleware_skips_healthz_requests(
         self, app_with_logger_middleware: FastAPI, caplog
@@ -131,8 +134,9 @@ class TestLoggerMiddleware:
 
         assert response.status_code == 200
         # Should NOT log healthz requests
-        assert not any("healthz" in record.message for record in caplog.records)
-        assert not any("request started" in record.message for record in caplog.records)
+        records = [record for record in caplog.records if record.name == "pipeline.access"]
+        assert not any("healthz" in record.message for record in records)
+        assert not any("request started" in record.message for record in records)
 
     def test_logger_middleware_captures_remote_address(
         self, app_with_logger_middleware: FastAPI, caplog
@@ -151,9 +155,10 @@ class TestLoggerMiddleware:
 
         assert response.status_code == 200
         # Verify logs were created for the request
-        assert len(caplog.records) >= 2  # start and completion
-        assert any("request started" in record.message for record in caplog.records)
-        assert any("request completed" in record.message for record in caplog.records)
+        records = [record for record in caplog.records if record.name == "pipeline.access"]
+        assert len(records) >= 2  # start and completion
+        assert any("request started" in record.message for record in records)
+        assert any("request completed" in record.message for record in records)
 
     def test_logger_middleware_includes_status_code(
         self, app_with_logger_middleware: FastAPI, caplog
@@ -172,7 +177,9 @@ class TestLoggerMiddleware:
 
         assert response.status_code == 200
         # Check that status code is in log extra data
-        completed_logs = [r for r in caplog.records if "request completed" in r.message]
+        completed_logs = [
+            r for r in caplog.records if r.name == "pipeline.access" and "request completed" in r.message
+        ]
         assert len(completed_logs) > 0
 
     def test_logger_middleware_includes_http_method(
@@ -192,9 +199,10 @@ class TestLoggerMiddleware:
 
         assert response.status_code == 200
         # Verify logs were created for the request
-        assert len(caplog.records) >= 2  # start and completion
-        assert any("request started" in record.message for record in caplog.records)
-        assert any("request completed" in record.message for record in caplog.records)
+        records = [record for record in caplog.records if record.name == "pipeline.access"]
+        assert len(records) >= 2  # start and completion
+        assert any("request started" in record.message for record in records)
+        assert any("request completed" in record.message for record in records)
 
     def test_logger_middleware_timing_is_positive(self, app_with_logger_middleware: FastAPI, caplog) -> None:
         """Test that middleware records positive timing values.
@@ -211,6 +219,8 @@ class TestLoggerMiddleware:
 
         assert response.status_code == 200
         # Check that timing value exists and is reasonable
-        completed_logs = [r for r in caplog.records if "request completed" in r.message]
+        completed_logs = [
+            r for r in caplog.records if r.name == "pipeline.access" and "request completed" in r.message
+        ]
         assert len(completed_logs) > 0
         # Timing should be in extra data (can't easily assert exact value)
