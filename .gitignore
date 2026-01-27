@@ -30,3 +30,6 @@ data/
 
 *.npy
 .env.local
+
+# Documentation directory
+apps/docs/
