@@ -28,7 +28,6 @@ from foundation.logger import LOGGING_CONFIG
 from ray.util.spark import setup_ray_cluster
 from ray.util.spark import MAX_NUM_WORKER_NODES
 
- 
 
 logger = logging.getLogger("pipeline.ray.databricks")
 dictConfig(LOGGING_CONFIG)
@@ -48,12 +47,28 @@ def _setup_ray_cluster(config: RayJobConfig) -> object | None:
     filtered = {key: value for key, value in kwargs.items() if key in signature.parameters and value}
 
     logger.info("Initializing Ray on Databricks", extra={"params": filtered})
-    return setup_ray_cluster(max_worker_nodes=MAX_NUM_WORKER_NODES,)
+    return setup_ray_cluster(
+        max_worker_nodes=MAX_NUM_WORKER_NODES,
+    )
 
 
 def _init_ray(config: RayJobConfig, ray_cluster: object | None) -> None:
     """Initialize Ray client connection to the Databricks cluster."""
     address = getattr(ray_cluster, "address", None) if ray_cluster is not None else None
+    runtime_env: dict[str, object] = {}
+    pythonpath = os.environ.get("PYTHONPATH")
+    if pythonpath:
+        runtime_env.setdefault("env_vars", {})["PYTHONPATH"] = pythonpath
+    workspace_src = os.environ.get(
+        "INATINQ_SRC_DIR",
+        "/Workspace/Users/kbhardwaj6@gatech.edu/iNatInq/apps/src",
+    )
+    if os.path.isdir(workspace_src):
+        runtime_env["working_dir"] = workspace_src
+    else:
+        logger.warning("Ray working_dir not found", extra={"working_dir": workspace_src})
+    if not runtime_env:
+        runtime_env = None
     if not ray.is_initialized():
         ray.init(
             address=address or "auto",
@@ -61,6 +76,7 @@ def _init_ray(config: RayJobConfig, ray_cluster: object | None) -> None:
             ignore_reinit_error=True,
             logging_level=logging.WARNING,
             log_to_driver=False,
+            runtime_env=runtime_env,
         )
 
 

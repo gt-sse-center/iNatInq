@@ -13,8 +13,10 @@ class RateLimiterActor:
         self._limiter = RateLimiter(rate_per_sec)
 
     async def acquire(self) -> bool:
+        """Acquire permission to make a request."""
         await self._limiter.acquire_permission()
         return True
 
     def get_rate(self) -> float:
+        """Return the configured requests-per-second rate."""
         return self._limiter.get_rate()
