@@ -25,10 +25,10 @@ from core.ingestion.databricks.processing import process_s3_batch_ray
 from core.ingestion.databricks.rate_limiter import RateLimiterActor
 from foundation.logger import LOGGING_CONFIG
 
-try:
-    from ray.util.spark import setup_ray_cluster
-except ImportError:  # pragma: no cover - only available on Databricks
-    setup_ray_cluster = None
+from ray.util.spark import setup_ray_cluster
+from ray.util.spark import MAX_NUM_WORKER_NODES
+
+ 
 
 logger = logging.getLogger("pipeline.ray.databricks")
 dictConfig(LOGGING_CONFIG)
@@ -48,7 +48,7 @@ def _setup_ray_cluster(config: RayJobConfig) -> object | None:
     filtered = {key: value for key, value in kwargs.items() if key in signature.parameters and value}
 
     logger.info("Initializing Ray on Databricks", extra={"params": filtered})
-    return setup_ray_cluster(**filtered)
+    return setup_ray_cluster(max_worker_nodes=MAX_NUM_WORKER_NODES,)
 
 
 def _init_ray(config: RayJobConfig, ray_cluster: object | None) -> None:
