@@ -32,16 +32,20 @@ class TestImageEmbeddingProviderProtocol:
             def vector_size(self) -> int:
                 return 512
 
-            def embed_image(self, image_bytes: bytes) -> list[float]:
+            def embed_image(self, image_bytes: bytes, text: str | None = None) -> list[float]:
                 return [0.1] * 512
 
-            async def embed_image_async(self, image_bytes: bytes) -> list[float]:
+            async def embed_image_async(self, image_bytes: bytes, text: str | None = None) -> list[float]:
                 return [0.1] * 512
 
-            def embed_image_batch(self, images: list[bytes]) -> list[list[float]]:
+            def embed_image_batch(
+                self, images: list[bytes], texts: list[str] | None = None
+            ) -> list[list[float]]:
                 return [[0.1] * 512 for _ in images]
 
-            async def embed_image_batch_async(self, images: list[bytes]) -> list[list[float]]:
+            async def embed_image_batch_async(
+                self, images: list[bytes], texts: list[str] | None = None
+            ) -> list[list[float]]:
                 return [[0.1] * 512 for _ in images]
 
         provider = MockImageProvider()
@@ -96,27 +100,29 @@ class TestMockImageEmbeddingProvider:
             """Return the vector dimension."""
             return self._vector_size
 
-        def embed_image(self, image_bytes: bytes) -> list[float]:
+        def embed_image(self, image_bytes: bytes, text: str | None = None) -> list[float]:
             """Generate mock embedding for an image."""
             if not image_bytes:
                 msg = "Image bytes cannot be empty"
                 raise ValueError(msg)
             return [0.1] * self._vector_size
 
-        async def embed_image_async(self, image_bytes: bytes) -> list[float]:
+        async def embed_image_async(self, image_bytes: bytes, text: str | None = None) -> list[float]:
             """Generate mock embedding for an image (async)."""
-            return self.embed_image(image_bytes)
+            return self.embed_image(image_bytes, text)
 
-        def embed_image_batch(self, images: list[bytes]) -> list[list[float]]:
+        def embed_image_batch(self, images: list[bytes], texts: list[str] | None = None) -> list[list[float]]:
             """Generate mock embeddings for multiple images."""
             if not images:
                 msg = "Images list cannot be empty"
                 raise ValueError(msg)
             return [self.embed_image(img) for img in images]
 
-        async def embed_image_batch_async(self, images: list[bytes]) -> list[list[float]]:
+        async def embed_image_batch_async(
+            self, images: list[bytes], texts: list[str] | None = None
+        ) -> list[list[float]]:
             """Generate mock embeddings for multiple images (async)."""
-            return self.embed_image_batch(images)
+            return self.embed_image_batch(images, texts)
 
     @pytest.fixture
     def mock_client(self) -> TestMockImageEmbeddingProvider.MockCLIPClient:
@@ -187,6 +193,30 @@ class TestMockImageEmbeddingProvider:
         images = [b"image1", b"image2"]
         results = await mock_client.embed_image_batch_async(images)
         assert len(results) == 2
+
+    def test_embed_image_accepts_optional_text(
+        self, mock_client: TestMockImageEmbeddingProvider.MockCLIPClient
+    ) -> None:
+        """embed_image should accept optional text parameter."""
+        image_bytes = b"\x89PNG\r\n\x1a\n"
+        # Should work without text
+        result1 = mock_client.embed_image(image_bytes)
+        # Should work with text (implementation can ignore it)
+        result2 = mock_client.embed_image(image_bytes, text="description")
+        assert len(result1) == 512
+        assert len(result2) == 512
+
+    def test_embed_image_batch_accepts_optional_texts(
+        self, mock_client: TestMockImageEmbeddingProvider.MockCLIPClient
+    ) -> None:
+        """embed_image_batch should accept optional texts parameter."""
+        images = [b"image1", b"image2"]
+        # Should work without texts
+        result1 = mock_client.embed_image_batch(images)
+        # Should work with texts (implementation can ignore it)
+        result2 = mock_client.embed_image_batch(images, texts=["desc1", "desc2"])
+        assert len(result1) == 2
+        assert len(result2) == 2
 
 
 class TestEmbeddingProviderABC:
