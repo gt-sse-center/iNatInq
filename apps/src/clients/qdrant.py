@@ -14,9 +14,9 @@ client = QdrantClientWrapper(url="http://qdrant.ml-system:6333")
 client.ensure_collection_async(collection="documents", vector_size=768)
 results = client.search_async(collection="documents", query_vector=[...], limit=10)
 
-# For image embeddings
-await client.ensure_image_collection_async(collection="documents")
-# Creates "documents_images" collection with 512-dimensional vectors (CLIP default)
+# For image embeddings (use a distinct base name; creates "photos_images" in Qdrant)
+await client.ensure_image_collection_async(collection="photos")
+# Creates "photos_images" collection with 512-dimensional vectors (CLIP default)
 ```
 
 ## Design
@@ -206,16 +206,16 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
 
         Example:
             ```python
-            # Create image collection for documents
-            await client.ensure_image_collection_async(collection="documents")
-            # Creates collection named "documents_images" with 512-dimensional vectors
+            # Create image collection (base name; Qdrant collection will be "{base}_images")
+            await client.ensure_image_collection_async(collection="photos")
+            # Creates collection named "photos_images" with 512-dimensional vectors
 
             # Custom vector size
             await client.ensure_image_collection_async(
-                collection="photos",
+                collection="observations",
                 vector_size=768
             )
-            # Creates collection named "photos_images" with 768-dimensional vectors
+            # Creates collection named "observations_images" with 768-dimensional vectors
             ```
         """
         image_collection = f"{collection}_images"
