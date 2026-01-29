@@ -12,6 +12,15 @@ zarf/
 │       ├── pipeline.env          # Default config (committed)
 │       ├── env.local.example     # Template for cloud credentials
 │       └── .env.local            # Local overrides (gitignored)
+├── databricks/        # Databricks cluster/job specs and scripts
+│   ├── dev/           # Databricks env overrides (gitignored)
+│   │   ├── env.local.example
+│   │   └── .env.local
+│   │   ├── inatinq-azure-databricks-cluster.json.example
+│   │   └── inatinq-ml-pipeline-job.yml.example
+│   ├── azure-databricks-build.py # Create/update cluster from spec
+│   ├── azure-databricks-up.py    # Start cluster
+│   └── azure-databricks-down.py  # Terminate cluster
 ├── docker/           # Dockerfiles
 │   ├── base/         # Base images (heavy dependencies)
 │   │   └── Dockerfile.pipeline-base
@@ -181,6 +190,33 @@ docker compose -f zarf/compose/dev/docker-compose.yaml up -d
 ```bash
 cp zarf/compose/dev/env.local.example zarf/compose/dev/.env.local
 # Edit .env.local with your cloud credentials
+```
+
+### Azure Databricks
+
+Databricks secrets live in `zarf/databricks/dev/.env.local` (gitignored). Copy the template:
+
+```bash
+cp zarf/databricks/dev/env.local.example zarf/databricks/dev/.env.local
+# Edit .env.local with your Databricks credentials
+```
+
+Databricks specs should live in `zarf/databricks/dev/` (gitignored). Copy the templates:
+
+```bash
+cp zarf/databricks/dev/inatinq-azure-databricks-cluster.json.example \
+  zarf/databricks/dev/inatinq-azure-databricks-cluster.json
+cp zarf/databricks/dev/inatinq-ml-pipeline-job.yml.example \
+  zarf/databricks/dev/inatinq-ml-pipeline-job.yml
+# Edit the dev specs with your cluster/job IDs
+```
+
+Manage the Databricks cluster (requires Databricks CLI):
+
+```bash
+make azure-databricks-build
+make azure-databricks-up
+make azure-databricks-down
 ```
 
 The local containers will still run but won't be used when cloud credentials are set.

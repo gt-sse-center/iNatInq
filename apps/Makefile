@@ -77,7 +77,7 @@ COMPOSE_FILE := zarf/compose/dev/docker-compose.yaml
 DOCKER_COMPOSE := docker compose -f $(COMPOSE_FILE)
 SMOKE_ENV_FILE ?= zarf/compose/dev/.env.local
 DATABRICKS_ENV_FILE ?= zarf/databricks/dev/.env.local
-DATABRICKS_CLUSTER_SPEC ?= zarf/databricks/dev/inatinq-azure-databricks-cluster.yml
+DATABRICKS_CLUSTER_SPEC ?= zarf/databricks/dev/inatinq-azure-databricks-cluster.json
 
 # =============================================================================
 # Quick Start Aliases
@@ -271,19 +271,27 @@ providers-health:
 # =============================================================================
 
 .PHONY: azure-databricks-build
-azure-databricks-build:
+azure-databricks-build: databricks-env-check
 	@ENV_FILE=$(DATABRICKS_ENV_FILE) CLUSTER_SPEC_FILE=$(DATABRICKS_CLUSTER_SPEC) \
-		bash zarf/databricks/azure-databricks-build.sh
+		zarf/databricks/azure-databricks-build.py
 
 .PHONY: azure-databricks-up
-azure-databricks-up:
+azure-databricks-up: databricks-env-check
 	@ENV_FILE=$(DATABRICKS_ENV_FILE) CLUSTER_SPEC_FILE=$(DATABRICKS_CLUSTER_SPEC) \
-		bash zarf/databricks/azure-databricks-up.sh
+		zarf/databricks/azure-databricks-up.py
 
 .PHONY: azure-databricks-down
-azure-databricks-down:
+azure-databricks-down: databricks-env-check
 	@ENV_FILE=$(DATABRICKS_ENV_FILE) CLUSTER_SPEC_FILE=$(DATABRICKS_CLUSTER_SPEC) \
-		bash zarf/databricks/azure-databricks-down.sh
+		zarf/databricks/azure-databricks-down.py
+
+.PHONY: databricks-env-check
+databricks-env-check:
+	@if [ ! -f "$(DATABRICKS_ENV_FILE)" ]; then \
+		echo "Missing Databricks env file: $(DATABRICKS_ENV_FILE)"; \
+		echo "Create it from zarf/databricks/dev/env.local.example"; \
+		exit 1; \
+	fi
 
 # =============================================================================
 # Docker Service Logs

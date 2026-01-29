@@ -5,11 +5,11 @@ iNatInq pipeline.
 
 ## Files
 
-- `dev/inatinq-azure-databricks-cluster.yml.example`: Cluster spec template.
+- `dev/inatinq-azure-databricks-cluster.json.example`: Cluster spec template.
 - `dev/inatinq-ml-pipeline-job.yml.example`: Databricks Job spec template.
-- `azure-databricks-build.sh`: Create or update the cluster from the spec.
-- `azure-databricks-up.sh`: Start the cluster.
-- `azure-databricks-down.sh`: Terminate the cluster.
+- `azure-databricks-build.py`: Create or update the cluster from the spec.
+- `azure-databricks-up.py`: Start the cluster.
+- `azure-databricks-down.py`: Terminate the cluster.
 
 ## Local environment
 
@@ -23,8 +23,8 @@ cp zarf/databricks/dev/env.local.example zarf/databricks/dev/.env.local
 Databricks specs should also live in `zarf/databricks/dev/` (gitignored):
 
 ```bash
-cp zarf/databricks/dev/inatinq-azure-databricks-cluster.yml.example \
-  zarf/databricks/dev/inatinq-azure-databricks-cluster.yml
+cp zarf/databricks/dev/inatinq-azure-databricks-cluster.json.example \
+  zarf/databricks/dev/inatinq-azure-databricks-cluster.json
 cp zarf/databricks/dev/inatinq-ml-pipeline-job.yml.example \
   zarf/databricks/dev/inatinq-ml-pipeline-job.yml
 # Edit the dev specs with your cluster/job IDs
@@ -86,7 +86,7 @@ Weaviate Cloud:
 ## Make targets (recommended)
 
 These targets use `zarf/databricks/dev/.env.local` and
-`zarf/databricks/dev/inatinq-azure-databricks-cluster.yml` by default:
+`zarf/databricks/dev/inatinq-azure-databricks-cluster.json` by default:
 
 ```bash
 make azure-databricks-build
@@ -98,6 +98,6 @@ make azure-databricks-down
 
 ```bash
 ENV_FILE=zarf/databricks/dev/.env.local \
-CLUSTER_SPEC_FILE=zarf/databricks/dev/inatinq-azure-databricks-cluster.yml \
-bash zarf/databricks/azure-databricks-build.sh
+CLUSTER_SPEC_FILE=zarf/databricks/dev/inatinq-azure-databricks-cluster.json \
+zarf/databricks/azure-databricks-build.py
 ```
