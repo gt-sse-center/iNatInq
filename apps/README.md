@@ -122,6 +122,8 @@ make azure-databricks-up
 make azure-databricks-down
 ```
 
+For full Databricks setup details, see `zarf/databricks/README.md`.
+
 ---
 
 ## Developer Guide

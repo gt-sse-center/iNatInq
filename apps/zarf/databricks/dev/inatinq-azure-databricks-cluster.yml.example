@@ -1,0 +1,25 @@
+{
+  "spec": {
+    "cluster_name": "inatinq-azure-databricks-cluster",
+    "spark_version": "14.3.x-scala2.12",
+    "spark_conf": {
+      "spark.databricks.cluster.profile": "singleNode",
+      "spark.master": "local[*, 4]"
+    },
+    "azure_attributes": {
+      "first_on_demand": 1,
+      "availability": "ON_DEMAND_AZURE",
+      "spot_bid_max_price": -1
+    },
+    "node_type_id": "Standard_D4ds_v4",
+    "driver_node_type_id": "Standard_D4ds_v4",
+    "custom_tags": {
+      "ResourceClass": "SingleNode"
+    },
+    "autotermination_minutes": 60,
+    "enable_elastic_disk": true,
+    "data_security_mode": "SINGLE_USER",
+    "runtime_engine": "STANDARD",
+    "num_workers": 0
+  }
+}

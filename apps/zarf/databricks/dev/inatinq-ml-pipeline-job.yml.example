@@ -5,8 +5,8 @@ resources:
       tasks:
         - task_key: inatinq-ml-pipeline
           spark_python_task:
-            python_file: /Workspace/Users/kbhardwaj6@gatech.edu/iNatInq/apps/src/core/ingestion/databricks/run_ingest.py
-          existing_cluster_id: 0127-181721-v5zdorz6
+            python_file: /Workspace/Users/<user>/iNatInq/apps/src/core/ingestion/databricks/run_ingest.py
+          existing_cluster_id: <cluster-id>
           libraries:
             - pypi:
                 package: pyspark==3.5.2

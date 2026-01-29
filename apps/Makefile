@@ -77,7 +77,7 @@ COMPOSE_FILE := zarf/compose/dev/docker-compose.yaml
 DOCKER_COMPOSE := docker compose -f $(COMPOSE_FILE)
 SMOKE_ENV_FILE ?= zarf/compose/dev/.env.local
 DATABRICKS_ENV_FILE ?= zarf/databricks/dev/.env.local
-DATABRICKS_CLUSTER_SPEC ?= zarf/databricks/inatinq-azure-databricks-cluster.yml
+DATABRICKS_CLUSTER_SPEC ?= zarf/databricks/dev/inatinq-azure-databricks-cluster.yml
 
 # =============================================================================
 # Quick Start Aliases

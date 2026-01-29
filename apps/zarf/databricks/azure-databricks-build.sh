@@ -6,11 +6,11 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." >/dev/null 2>&1 && pwd)"
 
 ENV_FILE="${ENV_FILE:-${REPO_ROOT}/zarf/databricks/dev/.env.local}"
-CLUSTER_SPEC_FILE="${CLUSTER_SPEC_FILE:-${REPO_ROOT}/zarf/databricks/inatinq-azure-databricks-cluster.yml}"
+CLUSTER_SPEC_FILE="${CLUSTER_SPEC_FILE:-${REPO_ROOT}/zarf/databricks/dev/inatinq-azure-databricks-cluster.yml}"
 
 if [[ ! -f "${ENV_FILE}" ]]; then
   echo "Missing env file: ${ENV_FILE}" >&2
-  echo "Create it from zarf/compose/dev/env.local.example or set ENV_FILE." >&2
+  echo "Create it from zarf/databricks/dev/env.local.example or set ENV_FILE." >&2
   exit 1
 fi
 
