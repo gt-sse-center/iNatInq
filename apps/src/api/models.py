@@ -254,6 +254,64 @@ class RayJobStatusResponse(BaseModel):
     message: str | None = None
 
 
+class RayImageJobRequest(BaseModel):
+    """Request to submit a Ray image ingestion job.
+
+    Attributes:
+        s3_bucket: S3 bucket containing images.
+        s3_prefix: S3 prefix to process (e.g., "images/").
+        collection: Base collection name (image collections created as {collection}_images).
+
+    Example:
+        ```json
+        {
+            "s3_bucket": "pipeline",
+            "s3_prefix": "images/",
+            "collection": "documents"
+        }
+        ```
+    """
+
+    s3_bucket: str = Field(..., example="pipeline", description="S3 bucket containing images")
+    s3_prefix: str = Field(..., example="images/", description="S3 prefix to process")
+    collection: str = Field(..., example="documents", description="Vector DB base collection name")
+
+
+class RayImageJobResponse(BaseModel):
+    """Response after submitting a Ray image job.
+
+    Attributes:
+        job_id: Ray-generated job ID (e.g., "raysubmit_1234567890").
+        status: Job status (always "submitted" on success).
+        namespace: Kubernetes namespace where Ray cluster runs.
+        s3_bucket: S3 bucket being processed.
+        s3_prefix: S3 prefix being processed.
+        collection: Target base collection name.
+        submitted_at: ISO 8601 timestamp when job was submitted.
+
+    Example:
+        ```json
+        {
+            "job_id": "raysubmit_1234567890",
+            "status": "submitted",
+            "namespace": "ml-system",
+            "s3_bucket": "pipeline",
+            "s3_prefix": "images/",
+            "collection": "documents",
+            "submitted_at": "2026-01-12T15:30:45.123456Z"
+        }
+        ```
+    """
+
+    job_id: str
+    status: str
+    namespace: str
+    s3_bucket: str
+    s3_prefix: str
+    collection: str
+    submitted_at: str
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Databricks Job Management Models
 # ═══════════════════════════════════════════════════════════════════════════════

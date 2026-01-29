@@ -357,6 +357,50 @@ class TestRayJobEndpoints:
         assert data["job_id"] == "raysubmit_1234567890"
         assert data["status"] == "submitted"
 
+    def test_submit_ray_image_job_success(
+        self,
+        test_client: TestClient,
+        mock_ray_service: MagicMock,
+    ) -> None:
+        """Test successful Ray image job submission.
+
+        **Why this test is important:**
+          - Validates image job submission flow
+          - Tests RayService.submit_image_job integration
+          - Ensures proper response format (job_id, s3_bucket, s3_prefix, collection)
+        """
+        with patch(
+            "api.routes.RayService",
+            return_value=mock_ray_service,
+        ):
+            with patch("api.routes.get_settings") as mock_settings:
+                mock_settings.return_value.k8s_namespace = "ml-system"
+                with patch("api.routes.MinIOConfig.from_env") as mock_minio:
+                    mock_minio.return_value.endpoint_url = "http://minio:9000"
+                    mock_minio.return_value.access_key_id = "minioadmin"
+                    mock_minio.return_value.secret_access_key = "minioadmin"
+                    response = test_client.post(
+                        "/ray/jobs/images",
+                        json={
+                            "s3_bucket": "pipeline",
+                            "s3_prefix": "images/",
+                            "collection": "documents",
+                        },
+                    )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["job_id"] == "raysubmit_1234567890"
+        assert data["status"] == "submitted"
+        assert data["s3_bucket"] == "pipeline"
+        assert data["s3_prefix"] == "images/"
+        assert data["collection"] == "documents"
+        mock_ray_service.submit_image_job.assert_called_once()
+        call_kw = mock_ray_service.submit_image_job.call_args.kwargs
+        assert call_kw["s3_bucket"] == "pipeline"
+        assert call_kw["s3_prefix"] == "images/"
+        assert call_kw["collection"] == "documents"
+
     def test_get_ray_job_status_success(
         self,
         test_client: TestClient,

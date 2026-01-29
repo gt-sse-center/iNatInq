@@ -15,6 +15,7 @@ from typing import Any
 
 import attrs
 import ray  # type: ignore[import-untyped]
+from qdrant_client.models import PointStruct
 
 from clients.clip import CLIPClient
 from clients.interfaces.vector_db import VectorDBProvider  # noqa: TC001
@@ -27,9 +28,8 @@ from core.ingestion.interfaces.operations import ImageContentFetcher
 from core.ingestion.interfaces.types import ImageContentResult, ProcessingResult
 from foundation.http import create_retry_session
 from foundation.rate_limiter import RateLimiter  # noqa: TC001
-from qdrant_client.models import PointStruct
 
-from .processing import get_ray_logger, _RayActorRateLimiter
+from .processing import _RayActorRateLimiter, get_ray_logger
 
 logger = get_ray_logger("ray.image_pipeline")
 
