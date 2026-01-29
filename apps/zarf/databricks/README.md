@@ -39,6 +39,7 @@ Databricks job/CLI settings:
 - `DATABRICKS_JOB_ID`
 - `DATABRICKS_TASK_TYPE` (default: `python`)
 - `DATABRICKS_CLUSTER_ID` (optional override for cluster start/stop)
+- `INATINQ_SRC_DIR` (optional; override the workspace src path)
 
 ### Ray tuning (Databricks runtime)
 
