@@ -113,8 +113,13 @@ export DATABRICKS_JOB_ID=123
 export DATABRICKS_TASK_TYPE=python
 
 # Or use a local config file (gitignored)
-cp apps/zarf/compose/dev/env.local.example apps/zarf/compose/dev/.env.local
-# Edit .env.local with your credentials
+cp apps/zarf/databricks/dev/env.local.example apps/zarf/databricks/dev/.env.local
+# Edit .env.local with your Databricks credentials
+
+# Manage the Databricks cluster (requires Databricks CLI)
+make azure-databricks-build
+make azure-databricks-up
+make azure-databricks-down
 ```
 
 ---

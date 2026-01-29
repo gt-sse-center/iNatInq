@@ -41,8 +41,9 @@ pytest tests/integration/ -v --no-cov
 
 ## Environment Variables
 
-Integration tests load overrides from `zarf/compose/dev/.env.local` if the file
-exists. Variables already set in the shell/CI take precedence.
+The Databricks integration test loads overrides from
+`zarf/databricks/dev/.env.local` if the file exists. Variables already set in
+the shell/CI take precedence.
 
 ## Test Categories
 
