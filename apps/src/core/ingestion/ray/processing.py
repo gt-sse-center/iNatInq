@@ -295,6 +295,8 @@ def process_s3_batch_ray(
     embed_batch_size: int = 8,
     qdrant_batch_size: int = 200,
     rate_limiter: Any | None = None,
+    batch_id: int | None = None,
+    total_batches: int | None = None,
     # Configurable task parameters
     pipeline_concurrency: int = 10,
     circuit_breaker_threshold: int = 5,
@@ -321,6 +323,8 @@ def process_s3_batch_ray(
         embed_batch_size: Batch size for embeddings.
         qdrant_batch_size: Batch size for Qdrant upserts.
         rate_limiter: Optional Ray actor for distributed rate limiting.
+        batch_id: Optional batch index for progress logging.
+        total_batches: Optional total batch count for progress logging.
         pipeline_concurrency: Max concurrent async operations within task.
         circuit_breaker_threshold: Failures before circuit breaker opens.
         circuit_breaker_timeout: Seconds before circuit breaker recovery.
@@ -333,9 +337,17 @@ def process_s3_batch_ray(
     Returns:
         List of tuples (s3_key, success, error_message).
     """
-    # Use Ray's logger for proper integration across all deployments
     task_logger = get_ray_logger("ray.task")
-    task_logger.info("Processing batch of %d keys", len(s3_keys))
+    if batch_id is not None and total_batches is not None:
+        task_logger.info(
+            "Processing batch %d/%d (%d keys)",
+            batch_id,
+            total_batches,
+            len(s3_keys),
+            extra={"batch_id": batch_id, "total_batches": total_batches, "keys": len(s3_keys)},
+        )
+    else:
+        task_logger.info("Processing batch of %d keys", len(s3_keys))
 
     namespace = os.getenv("K8S_NAMESPACE", "ml-system")
 
@@ -359,23 +371,31 @@ def process_s3_batch_ray(
         retry_max_wait=retry_max_wait,
     )
 
-    # Create rate limiter wrapper if actor provided
     local_rate_limiter = None
     if rate_limiter is not None:
-        # Wrap the Ray actor in a local rate limiter interface
         local_rate_limiter = _RayActorRateLimiter(rate_limiter)
 
     pipeline = RayProcessingPipeline(config, local_rate_limiter)
     results = pipeline.process_keys_sync(s3_keys)
 
-    # Log results with structured info for observability
     successes = sum(1 for r in results if r.success)
     failures = len(results) - successes
-    task_logger.info(
-        "Batch complete: %d succeeded, %d failed",
-        successes,
-        failures,
-    )
+    if batch_id is not None and total_batches is not None:
+        task_logger.info(
+            "Batch complete %d/%d: %d succeeded, %d failed",
+            batch_id,
+            total_batches,
+            successes,
+            failures,
+            extra={
+                "batch_id": batch_id,
+                "total_batches": total_batches,
+                "succeeded": successes,
+                "failed": failures,
+            },
+        )
+    else:
+        task_logger.info("Batch complete: %d succeeded, %d failed", successes, failures)
 
     # Log circuit breaker / upstream errors explicitly for visibility
     for r in results:

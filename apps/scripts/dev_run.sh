@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ENV_FILE="zarf/compose/dev/.env.local"
+ENV_FILE="zarf/databricks/dev/.env.local"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "Missing $ENV_FILE; aborting." >&2

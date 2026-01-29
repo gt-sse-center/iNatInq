@@ -22,8 +22,8 @@ from botocore.exceptions import ClientError
 from clients.s3 import S3ClientWrapper
 from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
 from core.ingestion.checkpoint import CheckpointManager, is_s3_path
-from core.ingestion.databricks.processing import process_s3_batch_ray
-from core.ingestion.databricks.rate_limiter import RateLimiterActor
+from core.ingestion.ray.processing import process_s3_batch_ray
+from core.ingestion.ray.rate_limiter import RateLimiterActor
 from foundation.logger import LOGGING_CONFIG
 
 from ray.util.spark import setup_ray_cluster
