@@ -31,6 +31,7 @@ from config import EmbeddingConfig
 from core.ingestion.interfaces.types import (
     BatchEmbeddingResult,
     ContentResult,
+    ImageContentResult,
     ProcessingClients,
     ProcessingConfig,
     ProcessingResult,
@@ -224,6 +225,198 @@ class TestContentResult:
 
         with pytest.raises(attrs.exceptions.FrozenInstanceError):
             content.content = "modified"
+
+
+# =============================================================================
+# ImageContentResult Tests
+# =============================================================================
+
+
+class TestImageContentResult:
+    """Test suite for ImageContentResult type class."""
+
+    def test_creates_image_result_with_required_fields(self) -> None:
+        """Test that ImageContentResult is created with required fields.
+
+        **Why this test is important:**
+          - ImageContentResult holds downloaded image data
+          - Validates all required fields are stored
+
+        **What it tests:**
+          - Result created with s3_key, image_bytes, format, size_bytes
+          - Optional width/height default to None
+        """
+        image_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+
+        result = ImageContentResult(
+            s3_key="images/photo.png",
+            image_bytes=image_bytes,
+            format="png",
+            size_bytes=len(image_bytes),
+        )
+
+        assert result.s3_key == "images/photo.png"
+        assert result.image_bytes == image_bytes
+        assert result.format == "png"
+        assert result.size_bytes == len(image_bytes)
+        assert result.width is None
+        assert result.height is None
+
+    def test_creates_image_result_with_dimensions(self) -> None:
+        """Test that ImageContentResult accepts width/height.
+
+        **Why this test is important:**
+          - Dimensions are needed for image metadata
+          - Validates optional fields work
+
+        **What it tests:**
+          - width and height stored correctly
+        """
+        result = ImageContentResult(
+            s3_key="images/photo.jpg",
+            image_bytes=b"\xff\xd8\xff",
+            format="jpeg",
+            size_bytes=1024,
+            width=1920,
+            height=1080,
+        )
+
+        assert result.width == 1920
+        assert result.height == 1080
+
+    def test_s3_uri_property(self) -> None:
+        """Test that s3_uri property returns correct URI.
+
+        **Why this test is important:**
+          - S3 URIs used for referencing objects
+          - Validates URI format
+
+        **What it tests:**
+          - s3_uri returns s3://<key> format
+        """
+        result = ImageContentResult(
+            s3_key="images/photo.jpg",
+            image_bytes=b"\xff\xd8\xff",
+            format="jpeg",
+            size_bytes=100,
+        )
+
+        assert result.s3_uri == "s3://images/photo.jpg"
+
+    def test_mime_type_property_jpeg(self) -> None:
+        """Test mime_type property for JPEG format.
+
+        **Why this test is important:**
+          - MIME types needed for HTTP responses
+          - Validates JPEG mapping
+
+        **What it tests:**
+          - Returns image/jpeg for jpeg format
+        """
+        result = ImageContentResult(
+            s3_key="photo.jpg",
+            image_bytes=b"\xff\xd8\xff",
+            format="jpeg",
+            size_bytes=100,
+        )
+
+        assert result.mime_type == "image/jpeg"
+
+    def test_mime_type_property_png(self) -> None:
+        """Test mime_type property for PNG format.
+
+        **Why this test is important:**
+          - MIME types needed for HTTP responses
+          - Validates PNG mapping
+
+        **What it tests:**
+          - Returns image/png for png format
+        """
+        result = ImageContentResult(
+            s3_key="photo.png",
+            image_bytes=b"\x89PNG",
+            format="png",
+            size_bytes=100,
+        )
+
+        assert result.mime_type == "image/png"
+
+    def test_mime_type_property_webp(self) -> None:
+        """Test mime_type property for WebP format.
+
+        **Why this test is important:**
+          - WebP is common modern format
+          - Validates WebP mapping
+
+        **What it tests:**
+          - Returns image/webp for webp format
+        """
+        result = ImageContentResult(
+            s3_key="photo.webp",
+            image_bytes=b"RIFF",
+            format="webp",
+            size_bytes=100,
+        )
+
+        assert result.mime_type == "image/webp"
+
+    def test_mime_type_property_gif(self) -> None:
+        """Test mime_type property for GIF format.
+
+        **Why this test is important:**
+          - GIF support for animations
+          - Validates GIF mapping
+
+        **What it tests:**
+          - Returns image/gif for gif format
+        """
+        result = ImageContentResult(
+            s3_key="photo.gif",
+            image_bytes=b"GIF89a",
+            format="gif",
+            size_bytes=100,
+        )
+
+        assert result.mime_type == "image/gif"
+
+    def test_mime_type_property_unknown(self) -> None:
+        """Test mime_type property for unknown format.
+
+        **Why this test is important:**
+          - Unknown formats may occur
+          - Should return safe default
+
+        **What it tests:**
+          - Returns application/octet-stream for unknown
+        """
+        result = ImageContentResult(
+            s3_key="photo.unknown",
+            image_bytes=b"data",
+            format="unknown",
+            size_bytes=100,
+        )
+
+        assert result.mime_type == "application/octet-stream"
+
+    def test_image_result_is_immutable(self) -> None:
+        """Test that ImageContentResult is immutable.
+
+        **Why this test is important:**
+          - Immutability ensures thread safety
+          - Prevents accidental modification
+
+        **What it tests:**
+          - Modification raises FrozenInstanceError
+        """
+        result = ImageContentResult(
+            s3_key="photo.jpg",
+            image_bytes=b"\xff\xd8\xff",
+            format="jpeg",
+            size_bytes=100,
+        )
+
+        with pytest.raises(attrs.exceptions.FrozenInstanceError):
+            result.format = "png"
 
 
 # =============================================================================

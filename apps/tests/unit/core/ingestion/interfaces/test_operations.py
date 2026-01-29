@@ -29,8 +29,10 @@ from core.exceptions import UpstreamError
 from core.ingestion.interfaces.operations import (
     BatchProcessor,
     EmbeddingGenerator,
+    ImageContentFetcher,
     S3ContentFetcher,
     VectorDBUpserter,
+    detect_image_format,
 )
 from core.ingestion.interfaces.types import (
     BatchEmbeddingResult,
@@ -203,6 +205,523 @@ class TestS3ContentFetcher:
 
         assert len(contents) == 0
         assert len(failures) == 0
+
+
+# =============================================================================
+# detect_image_format Tests
+# =============================================================================
+
+
+class TestDetectImageFormat:
+    """Test suite for detect_image_format function."""
+
+    def test_detects_jpeg_format(self) -> None:
+        """Test JPEG detection from magic bytes.
+
+        **Why this test is important:**
+          - JPEG is most common image format
+          - Must detect reliably from magic bytes
+
+        **What it tests:**
+          - Returns 'jpeg' for JPEG magic bytes
+        """
+        jpeg_bytes = b"\xff\xd8\xff\xe0" + b"\x00" * 100
+
+        result = detect_image_format(jpeg_bytes)
+
+        assert result == "jpeg"
+
+    def test_detects_png_format(self) -> None:
+        """Test PNG detection from magic bytes.
+
+        **Why this test is important:**
+          - PNG widely used for lossless images
+          - Must detect reliably
+
+        **What it tests:**
+          - Returns 'png' for PNG magic bytes
+        """
+        png_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+
+        result = detect_image_format(png_bytes)
+
+        assert result == "png"
+
+    def test_detects_gif87a_format(self) -> None:
+        """Test GIF87a detection from magic bytes.
+
+        **Why this test is important:**
+          - GIF87a is older GIF version
+          - Must support both GIF versions
+
+        **What it tests:**
+          - Returns 'gif' for GIF87a magic bytes
+        """
+        gif_bytes = b"GIF87a" + b"\x00" * 100
+
+        result = detect_image_format(gif_bytes)
+
+        assert result == "gif"
+
+    def test_detects_gif89a_format(self) -> None:
+        """Test GIF89a detection from magic bytes.
+
+        **Why this test is important:**
+          - GIF89a supports animation
+          - Most common GIF version
+
+        **What it tests:**
+          - Returns 'gif' for GIF89a magic bytes
+        """
+        gif_bytes = b"GIF89a" + b"\x00" * 100
+
+        result = detect_image_format(gif_bytes)
+
+        assert result == "gif"
+
+    def test_detects_webp_format(self) -> None:
+        """Test WebP detection from magic bytes.
+
+        **Why this test is important:**
+          - WebP is modern efficient format
+          - Requires RIFF + WEBP check
+
+        **What it tests:**
+          - Returns 'webp' for WebP magic bytes
+        """
+        # WebP: RIFF....WEBP where .... is file size
+        webp_bytes = b"RIFF\x00\x00\x00\x00WEBP" + b"\x00" * 100
+
+        result = detect_image_format(webp_bytes)
+
+        assert result == "webp"
+
+    def test_returns_none_for_unknown_format(self) -> None:
+        """Test that unknown formats return None.
+
+        **Why this test is important:**
+          - Unknown formats should be rejected
+          - Returns None for validation
+
+        **What it tests:**
+          - Returns None for unknown magic bytes
+        """
+        unknown_bytes = b"UNKNOWN_FORMAT" + b"\x00" * 100
+
+        result = detect_image_format(unknown_bytes)
+
+        assert result is None
+
+    def test_returns_none_for_too_short_data(self) -> None:
+        """Test that short data returns None.
+
+        **Why this test is important:**
+          - Need minimum bytes for detection
+          - Edge case handling
+
+        **What it tests:**
+          - Returns None if < 12 bytes
+        """
+        short_bytes = b"\xff\xd8\xff"  # Only 3 bytes
+
+        result = detect_image_format(short_bytes)
+
+        assert result is None
+
+    def test_returns_none_for_empty_data(self) -> None:
+        """Test that empty data returns None.
+
+        **Why this test is important:**
+          - Empty data is edge case
+          - Should not raise
+
+        **What it tests:**
+          - Returns None for empty bytes
+        """
+        result = detect_image_format(b"")
+
+        assert result is None
+
+
+# =============================================================================
+# ImageContentFetcher Tests
+# =============================================================================
+
+
+class TestImageContentFetcher:
+    """Test suite for ImageContentFetcher."""
+
+    # Sample magic bytes for different formats
+    JPEG_HEADER = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01"
+    PNG_HEADER = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+    GIF_HEADER = b"GIF89a\x00\x00\x00\x00\x00\x00"
+    WEBP_HEADER = b"RIFF\x00\x00\x00\x00WEBP\x00\x00"
+
+    def test_creates_fetcher(self) -> None:
+        """Test fetcher initialization.
+
+        **Why this test is important:**
+          - ImageContentFetcher is core image operation
+          - Validates constructor with all params
+
+        **What it tests:**
+          - Fetcher stores client, bucket, and size limits
+        """
+        mock_s3 = MagicMock()
+        fetcher = ImageContentFetcher(
+            mock_s3,
+            bucket="pipeline",
+            min_size_bytes=50,
+            max_size_bytes=10_000_000,
+        )
+
+        assert fetcher.s3 == mock_s3
+        assert fetcher.bucket == "pipeline"
+        assert fetcher.min_size_bytes == 50
+        assert fetcher.max_size_bytes == 10_000_000
+
+    def test_creates_fetcher_with_defaults(self) -> None:
+        """Test fetcher initialization with default size limits.
+
+        **Why this test is important:**
+          - Defaults should be sensible
+          - Validates default values
+
+        **What it tests:**
+          - Default min/max sizes are set
+        """
+        mock_s3 = MagicMock()
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline")
+
+        assert fetcher.min_size_bytes == 100
+        assert fetcher.max_size_bytes == 50 * 1024 * 1024
+
+    def test_fetch_one_success_jpeg(self) -> None:
+        """Test successful JPEG image fetch.
+
+        **Why this test is important:**
+          - Core S3 image operation
+          - JPEG is most common format
+
+        **What it tests:**
+          - fetch_one returns ImageContentResult for JPEG
+        """
+        mock_s3 = MagicMock()
+        jpeg_data = self.JPEG_HEADER + b"\x00" * 100
+        mock_s3.get_object.return_value = jpeg_data
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline")
+        result = fetcher.fetch_one("images/photo.jpg")
+
+        assert result is not None
+        assert result.s3_key == "images/photo.jpg"
+        assert result.format == "jpeg"
+        assert result.size_bytes == len(jpeg_data)
+        assert result.image_bytes == jpeg_data
+
+    def test_fetch_one_success_png(self) -> None:
+        """Test successful PNG image fetch.
+
+        **Why this test is important:**
+          - PNG widely used for lossless
+          - Validates PNG detection
+
+        **What it tests:**
+          - fetch_one returns ImageContentResult for PNG
+        """
+        mock_s3 = MagicMock()
+        png_data = self.PNG_HEADER + b"\x00" * 100
+        mock_s3.get_object.return_value = png_data
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline")
+        result = fetcher.fetch_one("images/photo.png")
+
+        assert result is not None
+        assert result.format == "png"
+
+    def test_fetch_one_success_gif(self) -> None:
+        """Test successful GIF image fetch.
+
+        **Why this test is important:**
+          - GIF used for animations
+          - Validates GIF detection
+
+        **What it tests:**
+          - fetch_one returns ImageContentResult for GIF
+        """
+        mock_s3 = MagicMock()
+        gif_data = self.GIF_HEADER + b"\x00" * 100
+        mock_s3.get_object.return_value = gif_data
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline")
+        result = fetcher.fetch_one("images/photo.gif")
+
+        assert result is not None
+        assert result.format == "gif"
+
+    def test_fetch_one_success_webp(self) -> None:
+        """Test successful WebP image fetch.
+
+        **Why this test is important:**
+          - WebP is modern efficient format
+          - Validates WebP detection
+
+        **What it tests:**
+          - fetch_one returns ImageContentResult for WebP
+        """
+        mock_s3 = MagicMock()
+        webp_data = self.WEBP_HEADER + b"\x00" * 100
+        mock_s3.get_object.return_value = webp_data
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline")
+        result = fetcher.fetch_one("images/photo.webp")
+
+        assert result is not None
+        assert result.format == "webp"
+
+    def test_fetch_one_returns_none_on_client_error(self) -> None:
+        """Test that fetch returns None on ClientError.
+
+        **Why this test is important:**
+          - Error handling is critical
+          - Graceful degradation
+
+        **What it tests:**
+          - None returned on S3 error
+        """
+        mock_s3 = MagicMock()
+        mock_s3.get_object.side_effect = ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline")
+        result = fetcher.fetch_one("missing.jpg")
+
+        assert result is None
+
+    def test_fetch_one_returns_none_on_upstream_error(self) -> None:
+        """Test that fetch returns None on UpstreamError.
+
+        **Why this test is important:**
+          - Pipeline error handling
+          - Validates error type
+
+        **What it tests:**
+          - None returned on UpstreamError
+        """
+        mock_s3 = MagicMock()
+        mock_s3.get_object.side_effect = UpstreamError("S3 unavailable")
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline")
+        result = fetcher.fetch_one("images/photo.jpg")
+
+        assert result is None
+
+    def test_fetch_one_returns_none_for_too_small(self) -> None:
+        """Test that fetch returns None for images below min size.
+
+        **Why this test is important:**
+          - Tiny images often corrupt
+          - Size validation critical
+
+        **What it tests:**
+          - None returned for images < min_size_bytes
+        """
+        mock_s3 = MagicMock()
+        # Very small "image" that's below default min of 100 bytes
+        mock_s3.get_object.return_value = self.JPEG_HEADER  # Only ~12 bytes
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline")
+        result = fetcher.fetch_one("images/tiny.jpg")
+
+        assert result is None
+
+    def test_fetch_one_returns_none_for_too_large(self) -> None:
+        """Test that fetch returns None for images above max size.
+
+        **Why this test is important:**
+          - Large images can cause OOM
+          - Size limits protect pipeline
+
+        **What it tests:**
+          - None returned for images > max_size_bytes
+        """
+        mock_s3 = MagicMock()
+        # Create image data larger than custom max
+        large_data = self.JPEG_HEADER + b"\x00" * 2000
+        mock_s3.get_object.return_value = large_data
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline", max_size_bytes=1000)
+        result = fetcher.fetch_one("images/huge.jpg")
+
+        assert result is None
+
+    def test_fetch_one_returns_none_for_unknown_format(self) -> None:
+        """Test that fetch returns None for unknown image formats.
+
+        **Why this test is important:**
+          - Only support known formats
+          - Unknown formats rejected
+
+        **What it tests:**
+          - None returned for unsupported format
+        """
+        mock_s3 = MagicMock()
+        # Random data that isn't a recognized image format
+        mock_s3.get_object.return_value = b"UNKNOWN_FORMAT" + b"\x00" * 200
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline")
+        result = fetcher.fetch_one("images/mystery.xyz")
+
+        assert result is None
+
+    def test_fetch_all_success(self) -> None:
+        """Test fetching all images successfully.
+
+        **Why this test is important:**
+          - Batch fetching common
+          - Validates tuple return
+
+        **What it tests:**
+          - All images returned, no failures
+        """
+        mock_s3 = MagicMock()
+        jpeg_data = self.JPEG_HEADER + b"\x00" * 100
+        mock_s3.get_object.return_value = jpeg_data
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline")
+        images, failures = fetcher.fetch_all(["img1.jpg", "img2.jpg"])
+
+        assert len(images) == 2
+        assert len(failures) == 0
+
+    def test_fetch_all_mixed_results(self) -> None:
+        """Test fetching with mixed success/failure.
+
+        **Why this test is important:**
+          - Partial failures happen
+          - Must track both
+
+        **What it tests:**
+          - Successful and failed separated correctly
+        """
+        mock_s3 = MagicMock()
+        jpeg_data = self.JPEG_HEADER + b"\x00" * 100
+
+        def side_effect(bucket, key):
+            if key == "img1.jpg":
+                return jpeg_data
+            else:
+                raise ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+
+        mock_s3.get_object.side_effect = side_effect
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline")
+        images, failures = fetcher.fetch_all(["img1.jpg", "img2.jpg"])
+
+        assert len(images) == 1
+        assert len(failures) == 1
+        assert images[0].s3_key == "img1.jpg"
+        assert failures[0].s3_key == "img2.jpg"
+        assert failures[0].success is False
+
+    def test_fetch_all_empty_list(self) -> None:
+        """Test fetching empty list.
+
+        **Why this test is important:**
+          - Edge case handling
+          - No errors on empty
+
+        **What it tests:**
+          - Empty lists returned
+        """
+        mock_s3 = MagicMock()
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline")
+
+        images, failures = fetcher.fetch_all([])
+
+        assert len(images) == 0
+        assert len(failures) == 0
+
+    def test_filter_image_keys_filters_correctly(self) -> None:
+        """Test that filter_image_keys filters correctly.
+
+        **Why this test is important:**
+          - Need to filter S3 keys by extension
+          - Only process image files
+
+        **What it tests:**
+          - Only supported extensions returned
+        """
+        keys = [
+            "images/photo.jpg",
+            "images/image.jpeg",
+            "images/logo.png",
+            "images/animation.gif",
+            "images/modern.webp",
+            "docs/readme.txt",
+            "docs/data.json",
+            "images/config.yaml",
+        ]
+
+        result = ImageContentFetcher.filter_image_keys(keys)
+
+        assert len(result) == 5
+        assert "images/photo.jpg" in result
+        assert "images/image.jpeg" in result
+        assert "images/logo.png" in result
+        assert "images/animation.gif" in result
+        assert "images/modern.webp" in result
+        assert "docs/readme.txt" not in result
+        assert "docs/data.json" not in result
+
+    def test_filter_image_keys_case_insensitive(self) -> None:
+        """Test that filter_image_keys is case insensitive.
+
+        **Why this test is important:**
+          - Extensions may be uppercase
+          - Must handle both cases
+
+        **What it tests:**
+          - Uppercase extensions filtered correctly
+        """
+        keys = [
+            "photo.JPG",
+            "image.PNG",
+            "ANIMATION.GIF",
+        ]
+
+        result = ImageContentFetcher.filter_image_keys(keys)
+
+        assert len(result) == 3
+
+    def test_filter_image_keys_empty_list(self) -> None:
+        """Test filter_image_keys with empty list.
+
+        **Why this test is important:**
+          - Edge case handling
+          - Should not raise
+
+        **What it tests:**
+          - Empty list returned for empty input
+        """
+        result = ImageContentFetcher.filter_image_keys([])
+
+        assert result == []
+
+    def test_filter_image_keys_no_extension(self) -> None:
+        """Test filter_image_keys with files without extensions.
+
+        **Why this test is important:**
+          - Some files have no extension
+          - Should be excluded
+
+        **What it tests:**
+          - Files without extensions filtered out
+        """
+        keys = ["photo", "image", "Makefile"]
+
+        result = ImageContentFetcher.filter_image_keys(keys)
+
+        assert result == []
 
 
 # =============================================================================

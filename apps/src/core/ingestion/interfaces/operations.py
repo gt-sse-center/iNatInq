@@ -17,7 +17,13 @@ from clients.s3 import S3ClientWrapper
 from core.exceptions import UpstreamError
 from foundation.rate_limiter import RateLimiter
 
-from .types import BatchEmbeddingResult, ContentResult, ProcessingResult, UpsertResult
+from .types import (
+    BatchEmbeddingResult,
+    ContentResult,
+    ImageContentResult,
+    ProcessingResult,
+    UpsertResult,
+)
 
 if TYPE_CHECKING:
     from .factories import VectorPointFactory
@@ -98,6 +104,283 @@ class S3ContentFetcher:
                 failures.append(ProcessingResult.failure_result(key, "S3 fetch failed in fetch_all"))
 
         return contents, failures
+
+
+# =============================================================================
+# Image Format Detection Constants
+# =============================================================================
+
+# Magic bytes for supported image formats
+# Reference: https://en.wikipedia.org/wiki/List_of_file_signatures
+_IMAGE_MAGIC_BYTES = {
+    "jpeg": (b"\xff\xd8\xff",),
+    "png": (b"\x89PNG\r\n\x1a\n",),
+    "gif": (b"GIF87a", b"GIF89a"),
+    "webp": None,  # Special handling: RIFF....WEBP
+}
+
+# Supported image extensions (for filtering S3 keys)
+SUPPORTED_IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif"})
+
+
+def detect_image_format(data: bytes) -> str | None:
+    r"""Detect image format from magic bytes.
+
+    Args:
+        data: Raw image bytes (at least first 12 bytes needed).
+
+    Returns:
+        Format string ("jpeg", "png", "gif", "webp") or None if unrecognized.
+
+    Example:
+        >>> detect_image_format(b"\xff\xd8\xff...")
+        'jpeg'
+        >>> detect_image_format(b"\x89PNG\r\n\x1a\n...")
+        'png'
+    """
+    if len(data) < 12:
+        return None
+
+    # Check JPEG
+    if data.startswith(b"\xff\xd8\xff"):
+        return "jpeg"
+
+    # Check PNG
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+
+    # Check GIF (87a or 89a)
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "gif"
+
+    # Check WebP: starts with RIFF, has WEBP at offset 8
+    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "webp"
+
+    return None
+
+
+class ImageContentFetcher:
+    """Fetches binary image content from S3 objects.
+
+    Similar to S3ContentFetcher but for images. Returns raw bytes with
+    metadata including detected format from magic bytes and basic
+    validation (size limits, format support).
+
+    Does NOT perform any image preprocessing (resizing, normalization).
+    That is handled by the image preprocessing utilities.
+
+    Example:
+        >>> fetcher = ImageContentFetcher(s3_client, bucket="pipeline")
+        >>> result = fetcher.fetch_one("images/photo.jpg")
+        >>> if result:
+        ...     print(f"Format: {result.format}, Size: {result.size_bytes}")
+    """
+
+    # Default size limits (in bytes)
+    DEFAULT_MIN_SIZE = 100  # 100 bytes - reject tiny/corrupt images
+    DEFAULT_MAX_SIZE = 50 * 1024 * 1024  # 50 MB
+
+    def __init__(
+        self,
+        s3_client: S3ClientWrapper,
+        bucket: str,
+        min_size_bytes: int = DEFAULT_MIN_SIZE,
+        max_size_bytes: int = DEFAULT_MAX_SIZE,
+    ) -> None:
+        """Initialize the image fetcher.
+
+        Args:
+            s3_client: S3 client wrapper.
+            bucket: S3 bucket name.
+            min_size_bytes: Minimum valid image size in bytes.
+            max_size_bytes: Maximum valid image size in bytes.
+        """
+        self.s3 = s3_client
+        self.bucket = bucket
+        self.min_size_bytes = min_size_bytes
+        self.max_size_bytes = max_size_bytes
+
+    def _validate_image(
+        self,
+        key: str,
+        data: bytes,
+        detected_format: str | None,
+    ) -> tuple[bool, str]:
+        """Validate image data.
+
+        Args:
+            key: S3 object key (for error messages).
+            data: Raw image bytes.
+            detected_format: Detected format from magic bytes.
+
+        Returns:
+            Tuple of (is_valid, error_message).
+        """
+        size = len(data)
+
+        # Check size limits
+        if size < self.min_size_bytes:
+            return False, f"Image too small: {size} bytes (min: {self.min_size_bytes})"
+
+        if size > self.max_size_bytes:
+            return False, f"Image too large: {size} bytes (max: {self.max_size_bytes})"
+
+        # Check format
+        if detected_format is None:
+            return False, "Unsupported or unrecognized image format"
+
+        return True, ""
+
+    def fetch_one(self, key: str) -> ImageContentResult | None:
+        """Fetch image from a single S3 object.
+
+        Downloads the image, detects format from magic bytes, and performs
+        basic validation. Does NOT extract dimensions (expensive operation).
+
+        Args:
+            key: S3 object key.
+
+        Returns:
+            ImageContentResult if successful and valid, None if failed.
+        """
+        try:
+            data = self.s3.get_object(bucket=self.bucket, key=key)
+
+            # Detect format from magic bytes
+            detected_format = detect_image_format(data)
+
+            # Validate image
+            is_valid, error_msg = self._validate_image(key, data, detected_format)
+            if not is_valid:
+                logger.warning(
+                    "Image validation failed",
+                    extra={"s3_key": key, "error": error_msg},
+                )
+                return None
+
+            # detected_format is guaranteed non-None here due to validation
+            return ImageContentResult(
+                s3_key=key,
+                image_bytes=data,
+                format=detected_format,  # type: ignore[arg-type]
+                size_bytes=len(data),
+            )
+
+        except (UpstreamError, ClientError, OSError, ValueError) as e:
+            logger.error(
+                "Failed to fetch S3 image object",
+                extra={"s3_key": key, "error": str(e), "error_type": type(e).__name__},
+                exc_info=True,
+            )
+            return None
+        except (RuntimeError, MemoryError, AttributeError, TypeError) as e:
+            logger.error(
+                "Unexpected error fetching S3 image object",
+                extra={"s3_key": key, "error": str(e), "error_type": type(e).__name__},
+                exc_info=True,
+            )
+            return None
+
+    def fetch_one_with_dimensions(self, key: str) -> ImageContentResult | None:
+        """Fetch image and extract dimensions using PIL.
+
+        More expensive than fetch_one() as it requires parsing the image.
+        Use when dimensions are needed for metadata.
+
+        Args:
+            key: S3 object key.
+
+        Returns:
+            ImageContentResult with width/height populated, or None if failed.
+        """
+        result = self.fetch_one(key)
+        if result is None:
+            return None
+
+        try:
+            # Import PIL only when needed (optional dependency for basic fetch)
+            from io import BytesIO
+
+            from PIL import Image
+
+            with Image.open(BytesIO(result.image_bytes)) as img:
+                width, height = img.size
+
+            # Create new result with dimensions (attrs is frozen)
+            return ImageContentResult(
+                s3_key=result.s3_key,
+                image_bytes=result.image_bytes,
+                format=result.format,
+                size_bytes=result.size_bytes,
+                width=width,
+                height=height,
+            )
+        except ImportError:
+            logger.warning(
+                "PIL not available for dimension extraction",
+                extra={"s3_key": key},
+            )
+            return result
+        except Exception as e:
+            logger.warning(
+                "Failed to extract image dimensions",
+                extra={"s3_key": key, "error": str(e), "error_type": type(e).__name__},
+            )
+            return result
+
+    def fetch_all(
+        self,
+        keys: list[str],
+        *,
+        with_dimensions: bool = False,
+    ) -> tuple[list[ImageContentResult], list[ProcessingResult]]:
+        """Fetch images from all S3 objects.
+
+        Args:
+            keys: List of S3 object keys.
+            with_dimensions: If True, extract dimensions using PIL.
+
+        Returns:
+            Tuple of (successful image results, failed processing results).
+        """
+        images: list[ImageContentResult] = []
+        failures: list[ProcessingResult] = []
+
+        fetch_fn = self.fetch_one_with_dimensions if with_dimensions else self.fetch_one
+
+        for key in keys:
+            result = fetch_fn(key)
+            if result is not None:
+                images.append(result)
+            else:
+                failures.append(ProcessingResult.failure_result(key, "Image fetch/validation failed"))
+
+        return images, failures
+
+    @staticmethod
+    def filter_image_keys(keys: list[str]) -> list[str]:
+        """Filter a list of S3 keys to only include supported image extensions.
+
+        Args:
+            keys: List of S3 object keys.
+
+        Returns:
+            Filtered list containing only image keys.
+
+        Example:
+            >>> ImageContentFetcher.filter_image_keys(["a.jpg", "b.txt", "c.png"])
+            ['a.jpg', 'c.png']
+        """
+        result = []
+        for key in keys:
+            # Get extension (lowercase)
+            dot_idx = key.rfind(".")
+            if dot_idx != -1:
+                ext = key[dot_idx:].lower()
+                if ext in SUPPORTED_IMAGE_EXTENSIONS:
+                    result.append(key)
+        return result
 
 
 class EmbeddingGenerator:
