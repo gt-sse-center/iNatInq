@@ -189,6 +189,108 @@ class RayService:
             logger.exception("Failed to submit Ray job", extra={"error": str(e)})
             raise UpstreamError(f"Failed to submit Ray job: {e}") from e
 
+    def submit_image_job(
+        self,
+        *,
+        namespace: str,
+        s3_endpoint: str,
+        s3_access_key_id: str,
+        s3_secret_access_key: str,
+        s3_bucket: str,
+        s3_prefix: str = "images/",
+        collection: str,
+    ) -> str:
+        """Submit a Ray job to process S3 images and store embeddings in vector DB image collections.
+
+        Lists objects under s3_bucket/s3_prefix, filters by image extensions
+        (.jpg, .jpeg, .png, .webp, .gif), and runs the image pipeline on Ray workers.
+        Returns immediately with a job ID; use get_job_status(job_id) for status.
+
+        Args:
+            namespace: Kubernetes namespace.
+            s3_endpoint: S3 service endpoint URL.
+            s3_access_key_id: S3 access key.
+            s3_secret_access_key: S3 secret key.
+            s3_bucket: S3 bucket name containing images.
+            s3_prefix: S3 prefix to process (default: "images/").
+            collection: Base collection name (image collections: {collection}_images).
+
+        Returns:
+            Ray job ID (e.g., "raysubmit_1234567890").
+
+        Raises:
+            UpstreamError: If job submission fails.
+        """
+        ray_config = RayJobConfig.from_env(namespace)
+        if not ray_config.dashboard_address:
+            raise UpstreamError(
+                "RAY_DASHBOARD_ADDRESS not configured. Cannot submit image job to Ray cluster."
+            )
+
+        dashboard_address = ray_config.dashboard_address
+        logger.info(
+            "Submitting Ray image job",
+            extra={"s3_bucket": s3_bucket, "s3_prefix": s3_prefix, "dashboard_address": dashboard_address},
+        )
+
+        env_vars = {
+            "K8S_NAMESPACE": namespace,
+            "S3_PREFIX": s3_prefix,
+            "S3_ENDPOINT": s3_endpoint,
+            "S3_ACCESS_KEY_ID": s3_access_key_id,
+            "S3_SECRET_ACCESS_KEY": s3_secret_access_key,
+            "S3_BUCKET": s3_bucket,
+            "VECTOR_DB_COLLECTION": collection,
+        }
+        if os.getenv("QDRANT_URL"):
+            env_vars["QDRANT_URL"] = os.getenv("QDRANT_URL")
+        if os.getenv("QDRANT_API_KEY"):
+            env_vars["QDRANT_API_KEY"] = os.getenv("QDRANT_API_KEY")
+        if os.getenv("WEAVIATE_URL"):
+            env_vars["WEAVIATE_URL"] = os.getenv("WEAVIATE_URL")
+        if os.getenv("WEAVIATE_API_KEY"):
+            env_vars["WEAVIATE_API_KEY"] = os.getenv("WEAVIATE_API_KEY")
+        if os.getenv("WEAVIATE_GRPC_HOST"):
+            env_vars["WEAVIATE_GRPC_HOST"] = os.getenv("WEAVIATE_GRPC_HOST")
+        if os.getenv("CLIP_URL"):
+            env_vars["CLIP_URL"] = os.getenv("CLIP_URL")
+        if os.getenv("OLLAMA_BASE_URL"):
+            env_vars["OLLAMA_BASE_URL"] = os.getenv("OLLAMA_BASE_URL")
+        if os.getenv("CLIP_MODEL"):
+            env_vars["CLIP_MODEL"] = os.getenv("CLIP_MODEL")
+        if os.getenv("CLIP_BACKEND"):
+            env_vars["CLIP_BACKEND"] = os.getenv("CLIP_BACKEND")
+
+        try:
+            client = JobSubmissionClient(dashboard_address)
+            job_id = client.submit_job(
+                entrypoint="python -m core.ingestion.ray.process_s3_images",
+                runtime_env={
+                    "env_vars": {
+                        **env_vars,
+                        "PYTHONPATH": "/app/src",
+                    },
+                    "pip": [
+                        "boto3",
+                        "attrs",
+                        "pydantic",
+                        "pydantic-settings",
+                        "httpx",
+                        "qdrant-client>=1.12.0,<1.13.0",
+                        "weaviate-client",
+                        "tenacity",
+                        "pybreaker",
+                        "aiobreaker",
+                        "pillow",
+                    ],
+                },
+            )
+            logger.info("Ray image job submitted", extra={"job_id": job_id})
+            return str(job_id)
+        except Exception as e:
+            logger.exception("Failed to submit Ray image job", extra={"error": str(e)})
+            raise UpstreamError(f"Failed to submit Ray image job: {e}") from e
+
     def get_job_status(self, job_id: str, namespace: str) -> dict[str, Any]:
         """Get the status of a Ray job.
 

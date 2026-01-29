@@ -329,6 +329,81 @@ class TestRayServiceSubmitJob:
 
 
 # =============================================================================
+# Image Job Submission Tests
+# =============================================================================
+
+
+class TestRayServiceSubmitImageJob:
+    """Test suite for RayService.submit_image_job method."""
+
+    @patch("core.services.ray_service.RayJobConfig.from_env")
+    @patch("core.services.ray_service.JobSubmissionClient")
+    def test_submit_image_job_success(
+        self,
+        mock_client_cls: MagicMock,
+        mock_config: MagicMock,
+        ray_service: RayService,
+    ) -> None:
+        """Test that submit_image_job submits job with correct entrypoint and env vars.
+
+        **Why this test is important:**
+          - Image job submission is the core of the image ingestion API
+          - Validates Ray API interaction for image pipeline
+          - Ensures S3 bucket/prefix and collection are passed to workers
+        """
+        mock_ray_config = MagicMock()
+        mock_ray_config.dashboard_address = "http://ray-head.test-namespace:8265"
+        mock_config.return_value = mock_ray_config
+
+        mock_client = MagicMock()
+        mock_client.submit_job.return_value = "raysubmit_image123"
+        mock_client_cls.return_value = mock_client
+
+        job_id = ray_service.submit_image_job(
+            namespace="test-namespace",
+            s3_endpoint="http://minio.test:9000",
+            s3_access_key_id="test-key",
+            s3_secret_access_key="test-secret",
+            s3_bucket="pipeline",
+            s3_prefix="images/",
+            collection="documents",
+        )
+
+        assert job_id == "raysubmit_image123"
+        mock_client.submit_job.assert_called_once()
+        call_kwargs = mock_client.submit_job.call_args[1]
+        assert call_kwargs["entrypoint"] == "python -m core.ingestion.ray.process_s3_images"
+        env_vars = call_kwargs["runtime_env"]["env_vars"]
+        assert env_vars["K8S_NAMESPACE"] == "test-namespace"
+        assert env_vars["S3_BUCKET"] == "pipeline"
+        assert env_vars["S3_PREFIX"] == "images/"
+        assert env_vars["VECTOR_DB_COLLECTION"] == "documents"
+        assert "pillow" in call_kwargs["runtime_env"]["pip"]
+
+    @patch("core.services.ray_service.RayJobConfig.from_env")
+    def test_submit_image_job_raises_on_missing_dashboard_address(
+        self,
+        mock_config: MagicMock,
+        ray_service: RayService,
+    ) -> None:
+        """Test that submit_image_job raises UpstreamError when dashboard_address is missing."""
+        mock_ray_config = MagicMock()
+        mock_ray_config.dashboard_address = None
+        mock_config.return_value = mock_ray_config
+
+        with pytest.raises(UpstreamError, match="RAY_DASHBOARD_ADDRESS not configured"):
+            ray_service.submit_image_job(
+                namespace="test-namespace",
+                s3_endpoint="http://minio.test:9000",
+                s3_access_key_id="test-key",
+                s3_secret_access_key="test-secret",
+                s3_bucket="pipeline",
+                s3_prefix="images/",
+                collection="documents",
+            )
+
+
+# =============================================================================
 # Job Status Tests
 # =============================================================================
 
