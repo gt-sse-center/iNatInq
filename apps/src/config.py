@@ -794,6 +794,10 @@ class RayJobConfig(BaseModel):
             recovery. Default: True.
         s3_batch_size: Number of S3 keys per Ray task. Larger batches reduce
             overhead but increase memory per task. Default: 50.
+        image_batch_size: Number of image S3 keys per Ray task (image pipeline).
+            Smaller than text batches due to higher memory per image. Default: 20.
+        image_embed_batch_size: Batch size for CLIP image embedding per API call.
+            Smaller than text embed batches. Default: 4.
         task_num_cpus: CPUs requested per Ray task. Affects scheduling.
             Default: 1.
         task_max_retries: Maximum retries for failed Ray tasks.
@@ -842,6 +846,8 @@ class RayJobConfig(BaseModel):
     embed_batch_max: int = 8
     batch_upsert_size: int = 200
     s3_batch_size: int = 50
+    image_batch_size: int = 20
+    image_embed_batch_size: int = 4
 
     # Checkpointing
     checkpoint_dir: str = "/tmp/ray-checkpoints"
@@ -932,6 +938,8 @@ class RayJobConfig(BaseModel):
             embed_batch_max=int(os.getenv("RAY_EMBED_BATCH_MAX", "8")),
             batch_upsert_size=int(os.getenv("RAY_BATCH_UPSERT_SIZE", "200")),
             s3_batch_size=int(os.getenv("RAY_S3_BATCH_SIZE", "50")),
+            image_batch_size=int(os.getenv("RAY_IMAGE_BATCH_SIZE", "20")),
+            image_embed_batch_size=int(os.getenv("RAY_IMAGE_EMBED_BATCH_SIZE", "4")),
             # Checkpointing
             checkpoint_dir=os.getenv("RAY_CHECKPOINT_DIR", "/tmp/ray-checkpoints"),
             checkpoint_enabled=os.getenv("RAY_CHECKPOINT_ENABLED", "true").lower() == "true",
