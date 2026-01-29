@@ -15,6 +15,10 @@ from clients.weaviate import WeaviateClientWrapper
 client = WeaviateClientWrapper(url="http://weaviate.ml-system:8080")
 client.ensure_collection_async(collection="documents", vector_size=768)
 results = client.search_async(collection="documents", query_vector=[...], limit=10)
+
+# For image embeddings (CLIP)
+await client.ensure_image_collection_async(collection="documents")
+# Creates class "DocumentsImages" with s3_key, s3_uri, format, width, height, thumbnail_key
 ```
 
 ## Design
@@ -263,6 +267,78 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             if "already exists" in str(e).lower() or "duplicate" in str(e).lower():
                 return
             msg = f"Weaviate collection creation failed: {e}"
+            raise UpstreamError(msg) from e
+
+    @staticmethod
+    def _collection_to_image_class_name(collection: str) -> str:
+        """Derive Weaviate class name for image collection from base collection name.
+
+        Pattern: {Collection}Images (PascalCase base + 'Images'). E.g. 'documents' -> 'DocumentsImages'.
+
+        Args:
+            collection: Base collection name (e.g., 'documents', 'my-photos').
+
+        Returns:
+            Weaviate class name (e.g., 'DocumentsImages', 'MyPhotosImages').
+        """
+        parts = collection.replace("-", "_").split("_")
+        pascal = "".join(part.capitalize() for part in parts)
+        return f"{pascal}Images"
+
+    async def ensure_image_collection_async(
+        self,
+        *,
+        collection: str,
+        vector_size: int = 512,
+    ) -> None:
+        """Create a Weaviate class for image embeddings if it does not already exist.
+
+        Mirrors the Qdrant image collection schema: class name pattern {Collection}Images
+        (e.g., DocumentsImages), with image-specific properties and CLIP vector dimensions.
+
+        Image collections use:
+        - **Class name**: `{Collection}Images` (PascalCase, e.g., DocumentsImages)
+        - **Properties**: s3_key, s3_uri, format, width, height, thumbnail_key
+        - **Vector config**: Cosine distance; dimension from vector_size (default 512 for CLIP).
+
+        Args:
+            collection: Base collection name. The Weaviate class will be named
+                {Collection}Images (e.g., collection="documents" -> "DocumentsImages").
+            vector_size: Dimension of vectors. Default 512 (CLIP models like ViT-B/32).
+
+        Note:
+            If the class already exists, this function does nothing (no-op).
+
+        Example:
+            >>> await client.ensure_image_collection_async(collection="documents")
+            >>> # Creates class "DocumentsImages" with 512-dimensional vectors
+        """
+        image_class = self._collection_to_image_class_name(collection)
+        try:
+            async with self._client:
+                exists = await self._client.collections.exists(image_class)
+                if exists:
+                    return
+
+                await self._client.collections.create(
+                    name=image_class,
+                    vectorizer_config=None,
+                    properties=[
+                        Property(name="s3_key", data_type=DataType.TEXT),
+                        Property(name="s3_uri", data_type=DataType.TEXT),
+                        Property(name="format", data_type=DataType.TEXT),
+                        Property(name="width", data_type=DataType.INT),
+                        Property(name="height", data_type=DataType.INT),
+                        Property(name="thumbnail_key", data_type=DataType.TEXT),
+                    ],
+                    vector_index_config=Configure.VectorIndex.hnsw(
+                        distance_metric=VectorDistances.COSINE,
+                    ),
+                )
+        except Exception as e:
+            if "already exists" in str(e).lower() or "duplicate" in str(e).lower():
+                return
+            msg = f"Weaviate image collection creation failed: {e}"
             raise UpstreamError(msg) from e
 
     async def search_async(
