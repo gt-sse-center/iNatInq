@@ -16,7 +16,6 @@ This allows the API to return immediately while Ray cluster manages job executio
 """
 
 import logging
-import os
 from typing import Any
 
 import attrs
@@ -24,6 +23,7 @@ from ray.job_submission import JobSubmissionClient
 
 from config import EmbeddingConfig, RayJobConfig, VectorDBConfig
 from core.exceptions import UpstreamError
+from core.services.ingestion_params import build_ingestion_env
 
 logger = logging.getLogger("pipeline.ray.service")
 
@@ -120,38 +120,18 @@ class RayService:
             extra={"s3_prefix": s3_prefix, "dashboard_address": dashboard_address},
         )
 
-        # Build environment variables for the job
-        env_vars = {
-            "K8S_NAMESPACE": namespace,
-            "S3_PREFIX": s3_prefix,
-            # Use S3_* env vars to match MinIOConfig.from_env()
-            "S3_ENDPOINT": s3_endpoint,
-            "S3_ACCESS_KEY_ID": s3_access_key_id,
-            "S3_SECRET_ACCESS_KEY": s3_secret_access_key,
-            "S3_BUCKET": s3_bucket,
-            "VECTOR_DB_COLLECTION": collection,
-            "EMBEDDING_PROVIDER_TYPE": embedding_config.provider_type,
-        }
-
-        # Add optional config
-        if embedding_config.vector_size is not None:
-            env_vars["EMBEDDING_VECTOR_SIZE"] = str(embedding_config.vector_size)
-        if embedding_config.ollama_url:
-            env_vars["OLLAMA_BASE_URL"] = embedding_config.ollama_url
-        if embedding_config.ollama_model:
-            env_vars["OLLAMA_MODEL"] = embedding_config.ollama_model
-        # Ray jobs index BOTH Qdrant and Weaviate simultaneously via create_both()
-        # Pass all vector DB env vars from the environment, not just the selected provider
-        if os.getenv("QDRANT_URL"):
-            env_vars["QDRANT_URL"] = os.getenv("QDRANT_URL")
-        if os.getenv("QDRANT_API_KEY"):
-            env_vars["QDRANT_API_KEY"] = os.getenv("QDRANT_API_KEY")
-        if os.getenv("WEAVIATE_URL"):
-            env_vars["WEAVIATE_URL"] = os.getenv("WEAVIATE_URL")
-        if os.getenv("WEAVIATE_API_KEY"):
-            env_vars["WEAVIATE_API_KEY"] = os.getenv("WEAVIATE_API_KEY")
-        if os.getenv("WEAVIATE_GRPC_HOST"):
-            env_vars["WEAVIATE_GRPC_HOST"] = os.getenv("WEAVIATE_GRPC_HOST")
+        # Build environment variables for the job.
+        # Ray jobs index BOTH Qdrant and Weaviate simultaneously via create_both().
+        env_vars = build_ingestion_env(
+            namespace=namespace,
+            s3_endpoint=s3_endpoint,
+            s3_access_key_id=s3_access_key_id,
+            s3_secret_access_key=s3_secret_access_key,
+            s3_bucket=s3_bucket,
+            s3_prefix=s3_prefix,
+            embedding_config=embedding_config,
+            collection=collection,
+        )
 
         try:
             # Create job submission client
