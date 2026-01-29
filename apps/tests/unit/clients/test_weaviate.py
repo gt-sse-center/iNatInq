@@ -409,6 +409,182 @@ class TestWeaviateClientWrapperEnsureCollection:
 
 
 # =============================================================================
+# Image Collection Tests
+# =============================================================================
+
+
+class TestWeaviateClientWrapperEnsureImageCollection:
+    """Test suite for WeaviateClientWrapper.ensure_image_collection_async."""
+
+    @pytest.mark.asyncio
+    async def test_ensure_image_collection_creates_if_missing(
+        self, weaviate_client: WeaviateClientWrapper, mock_weaviate_client: AsyncMock
+    ) -> None:
+        """Test that ensure_image_collection creates class if missing.
+
+        **Why this test is important:**
+          - Image collection creation is essential for image embeddings
+          - Ensures class exists with correct naming pattern {Collection}Images
+          - Critical for dev convenience and CLIP integration
+          - Validates image collection creation logic
+
+        **What it tests:**
+          - exists is called with derived class name (DocumentsImages)
+          - create is called with image properties and vector config
+          - Default vector_size implies CLIP usage (512)
+        """
+        mock_weaviate_client.collections.exists.return_value = False
+        mock_weaviate_client.collections.create.return_value = None
+        mock_weaviate_client.__aenter__ = AsyncMock(return_value=mock_weaviate_client)
+        mock_weaviate_client.__aexit__ = AsyncMock(return_value=None)
+
+        await weaviate_client.ensure_image_collection_async(collection="documents")
+
+        mock_weaviate_client.collections.exists.assert_called_once_with("DocumentsImages")
+        mock_weaviate_client.collections.create.assert_called_once()
+        call_kwargs = mock_weaviate_client.collections.create.call_args[1]
+        assert call_kwargs["name"] == "DocumentsImages"
+        props = {p.name: p for p in call_kwargs["properties"]}
+        assert "s3_key" in props
+        assert "s3_uri" in props
+        assert "format" in props
+        assert "width" in props
+        assert "height" in props
+        assert "thumbnail_key" in props
+
+    @pytest.mark.asyncio
+    async def test_ensure_image_collection_creates_with_custom_vector_size(
+        self, weaviate_client: WeaviateClientWrapper, mock_weaviate_client: AsyncMock
+    ) -> None:
+        """Test that ensure_image_collection accepts custom vector_size.
+
+        **Why this test is important:**
+          - Different embedding models have different dimensions
+          - Custom vector_size allows flexibility
+          - Critical for supporting multiple embedding backends
+
+        **What it tests:**
+          - create is called (vector_size is not passed to Weaviate schema;
+            dimension is implied on first insert; we still accept param for API parity)
+        """
+        mock_weaviate_client.collections.exists.return_value = False
+        mock_weaviate_client.__aenter__ = AsyncMock(return_value=mock_weaviate_client)
+        mock_weaviate_client.__aexit__ = AsyncMock(return_value=None)
+
+        await weaviate_client.ensure_image_collection_async(collection="photos", vector_size=768)
+
+        mock_weaviate_client.collections.create.assert_called_once()
+        call_kwargs = mock_weaviate_client.collections.create.call_args[1]
+        assert call_kwargs["name"] == "PhotosImages"
+        assert call_kwargs["vectorizer_config"] is None
+
+    @pytest.mark.asyncio
+    async def test_ensure_image_collection_skips_if_exists(
+        self, weaviate_client: WeaviateClientWrapper, mock_weaviate_client: AsyncMock
+    ) -> None:
+        """Test that ensure_image_collection skips creation if class exists.
+
+        **Why this test is important:**
+          - Idempotent operations prevent errors
+          - Avoids unnecessary API calls
+          - Validates existence checking with {Collection}Images pattern
+
+        **What it tests:**
+          - exists is called with DocumentsImages
+          - create is not called if class exists
+        """
+        mock_weaviate_client.collections.exists.return_value = True
+        mock_weaviate_client.__aenter__ = AsyncMock(return_value=mock_weaviate_client)
+        mock_weaviate_client.__aexit__ = AsyncMock(return_value=None)
+
+        await weaviate_client.ensure_image_collection_async(collection="documents")
+
+        mock_weaviate_client.collections.exists.assert_called_once_with("DocumentsImages")
+        mock_weaviate_client.collections.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_ensure_image_collection_class_name_pattern(
+        self, weaviate_client: WeaviateClientWrapper, mock_weaviate_client: AsyncMock
+    ) -> None:
+        """Test that ensure_image_collection uses {Collection}Images class name pattern.
+
+        **Why this test is important:**
+          - Naming pattern must be consistent: {Collection}Images (PascalCase)
+          - Ensures image collections are clearly distinguished from text collections
+          - Critical for collection organization
+
+        **What it tests:**
+          - documents -> DocumentsImages
+          - photos -> PhotosImages
+          - my_photos -> MyPhotosImages
+        """
+        mock_weaviate_client.collections.exists.return_value = False
+        mock_weaviate_client.__aenter__ = AsyncMock(return_value=mock_weaviate_client)
+        mock_weaviate_client.__aexit__ = AsyncMock(return_value=None)
+
+        test_cases = [
+            ("documents", "DocumentsImages"),
+            ("photos", "PhotosImages"),
+            ("my_photos", "MyPhotosImages"),
+            ("my-photos", "MyPhotosImages"),
+        ]
+        for base_name, expected_class in test_cases:
+            mock_weaviate_client.collections.create.reset_mock()
+            await weaviate_client.ensure_image_collection_async(collection=base_name)
+            call_kwargs = mock_weaviate_client.collections.create.call_args[1]
+            assert call_kwargs["name"] == expected_class
+
+    @pytest.mark.asyncio
+    async def test_ensure_image_collection_handles_already_exists_error(
+        self, weaviate_client: WeaviateClientWrapper, mock_weaviate_client: AsyncMock
+    ) -> None:
+        """Test that ensure_image_collection handles 'already exists' gracefully."""
+        mock_weaviate_client.collections.exists.return_value = False
+        mock_weaviate_client.collections.create.side_effect = Exception("Collection already exists")
+        mock_weaviate_client.__aenter__ = AsyncMock(return_value=mock_weaviate_client)
+        mock_weaviate_client.__aexit__ = AsyncMock(return_value=None)
+
+        await weaviate_client.ensure_image_collection_async(collection="documents")
+
+    @pytest.mark.asyncio
+    async def test_ensure_image_collection_raises_on_other_errors(
+        self, weaviate_client: WeaviateClientWrapper, mock_weaviate_client: AsyncMock
+    ) -> None:
+        """Test that ensure_image_collection raises UpstreamError on other exceptions."""
+        mock_weaviate_client.collections.exists.return_value = False
+        mock_weaviate_client.collections.create.side_effect = Exception("API Error")
+        mock_weaviate_client.__aenter__ = AsyncMock(return_value=mock_weaviate_client)
+        mock_weaviate_client.__aexit__ = AsyncMock(return_value=None)
+
+        with pytest.raises(UpstreamError, match="Weaviate image collection creation failed"):
+            await weaviate_client.ensure_image_collection_async(collection="documents")
+
+
+class TestWeaviateClientWrapperCollectionToImageClassName:
+    """Test suite for _collection_to_image_class_name helper."""
+
+    def test_documents_to_documents_images(self) -> None:
+        """documents -> DocumentsImages."""
+        assert WeaviateClientWrapper._collection_to_image_class_name("documents") == "DocumentsImages"
+
+    def test_photos_to_photos_images(self) -> None:
+        """photos -> PhotosImages."""
+        assert WeaviateClientWrapper._collection_to_image_class_name("photos") == "PhotosImages"
+
+    def test_snake_case_to_pascal_images(self) -> None:
+        """my_photos -> MyPhotosImages."""
+        assert WeaviateClientWrapper._collection_to_image_class_name("my_photos") == "MyPhotosImages"
+
+    def test_kebab_case_to_pascal_images(self) -> None:
+        """my-photos -> MyPhotosImages."""
+        assert WeaviateClientWrapper._collection_to_image_class_name("my-photos") == "MyPhotosImages"
+
+    def test_single_segment(self) -> None:
+        """test -> TestImages."""
+        assert WeaviateClientWrapper._collection_to_image_class_name("test") == "TestImages"
+
+
+# =============================================================================
 # Search Tests
 # =============================================================================
 
