@@ -13,6 +13,10 @@ from clients.qdrant import QdrantClientWrapper
 client = QdrantClientWrapper(url="http://qdrant.ml-system:6333")
 client.ensure_collection_async(collection="documents", vector_size=768)
 results = client.search_async(collection="documents", query_vector=[...], limit=10)
+
+# For image embeddings (use a distinct base name; creates "photos_images" in Qdrant)
+await client.ensure_image_collection_async(collection="photos")
+# Creates "photos_images" collection with 512-dimensional vectors (CLIP default)
 ```
 
 ## Design
@@ -162,6 +166,65 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             return
         await self._client.create_collection(
             collection_name=collection,
+            vectors_config=qmodels.VectorParams(size=vector_size, distance=qmodels.Distance.COSINE),
+        )
+
+    async def ensure_image_collection_async(
+        self,
+        *,
+        collection: str,
+        vector_size: int = 512,
+    ) -> None:
+        """Create a Qdrant collection for image embeddings if it does not already exist.
+
+        This method creates a collection specifically for image embeddings with the
+        naming pattern `{collection}_images`. For example, if `collection="documents"`,
+        the created collection will be named `documents_images`.
+
+        Image collections use a different schema than text collections, storing
+        image-specific metadata in the payload:
+        - `s3_key`: S3 object key for the original image
+        - `s3_uri`: Full S3 URI (s3://bucket/key)
+        - `format`: Image format (jpeg, png, webp, gif)
+        - `width`: Image width in pixels (optional)
+        - `height`: Image height in pixels (optional)
+        - `thumbnail_key`: S3 key for thumbnail version (optional)
+
+        Args:
+            collection: Base collection name. The actual collection will be named
+                `{collection}_images` (e.g., `documents_images`).
+            vector_size: Dimension of vectors that will be stored in this collection.
+                Default: 512 (common for CLIP models like ViT-B/32).
+
+        Note:
+            The collection is created with:
+            - **Distance metric**: Cosine similarity (standard for embeddings)
+            - **Vector size**: As specified by `vector_size` (default: 512 for CLIP)
+            - **Collection name**: `{collection}_images`
+
+            If the collection already exists, this function does nothing (no-op).
+
+        Example:
+            ```python
+            # Create image collection (base name; Qdrant collection will be "{base}_images")
+            await client.ensure_image_collection_async(collection="photos")
+            # Creates collection named "photos_images" with 512-dimensional vectors
+
+            # Custom vector size
+            await client.ensure_image_collection_async(
+                collection="observations",
+                vector_size=768
+            )
+            # Creates collection named "observations_images" with 768-dimensional vectors
+            ```
+        """
+        image_collection = f"{collection}_images"
+        existing_collections = await self._client.get_collections()
+        existing = {c.name for c in existing_collections.collections}
+        if image_collection in existing:
+            return
+        await self._client.create_collection(
+            collection_name=image_collection,
             vectors_config=qmodels.VectorParams(size=vector_size, distance=qmodels.Distance.COSINE),
         )
 
