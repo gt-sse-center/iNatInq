@@ -1,0 +1,40 @@
+{
+    "cluster_name": "your-cluster-name",
+    "spark_version": "18.0.x-cpu-ml-scala2.13",
+    "spark_conf": {
+        "spark.databricks.cluster.profile": "singleNode",
+        "spark.master": "local[*, 4]"
+    },
+    "azure_attributes": {
+        "first_on_demand": 1,
+        "availability": "ON_DEMAND_AZURE",
+        "spot_bid_max_price": -1
+    },
+    "node_type_id": "Standard_D4ds_v4",
+    "driver_node_type_id": "Standard_D4ds_v4",
+    "custom_tags": {
+        "ResourceClass": "SingleNode"
+    },
+    "cluster_log_conf": {
+        "volumes": {
+            "destination": "<databricks volume to store logs>"
+        }
+    },
+    "autotermination_minutes": 60,
+    "enable_elastic_disk": true,
+    "init_scripts": [
+        {
+            "workspace": {
+                "destination": "/Users/<databricks-userid>/iNatInq/apps/scripts/set-pythonpath.sh"
+            }
+        }
+    ],
+    "single_user_name": "<user-nale>",
+    "policy_id": "0013DC096941F07C",
+    "enable_local_disk_encryption": false,
+    "data_security_mode": "SINGLE_USER",
+    "runtime_engine": "STANDARD",
+    "assigned_principal": "user:<userid>",
+    "num_workers": 0,
+    "apply_policy_default_values": false
+}

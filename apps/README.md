@@ -127,9 +127,16 @@ export IMAGE_MAX_SIZE_MB=10.0    # Reject images larger than this
 export IMAGE_TARGET_SIZE=224     # Resize dimension for CLIP input
 
 # Or use a local config file (gitignored)
-cp apps/zarf/compose/dev/env.local.example apps/zarf/compose/dev/.env.local
-# Edit .env.local with your credentials
+cp apps/zarf/databricks/dev/env.local.example apps/zarf/databricks/dev/.env.local
+# Edit .env.local with your Databricks credentials
+
+# Manage the Databricks cluster (requires Databricks CLI)
+make azure-databricks-build
+make azure-databricks-up
+make azure-databricks-down
 ```
+
+For full Databricks setup details, see `zarf/databricks/README.md`.
 
 ---
 

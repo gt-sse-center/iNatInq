@@ -23,7 +23,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from config import EmbeddingConfig, VectorDBConfig
+from config import EmbeddingConfig
 from core.exceptions import UpstreamError
 from core.services.databricks_ray_service import DatabricksRayService
 
@@ -43,7 +43,6 @@ class TestDatabricksRayServiceSubmitJob:
         mock_client_cls: MagicMock,
         mock_config: MagicMock,
         embedding_config: EmbeddingConfig,
-        vector_db_config: VectorDBConfig,
     ) -> None:
         """Test that submit_s3_to_qdrant submits a job successfully."""
         mock_databricks_config = MagicMock()
@@ -67,7 +66,6 @@ class TestDatabricksRayServiceSubmitJob:
             s3_bucket="test-bucket",
             s3_prefix="inputs/",
             embedding_config=embedding_config,
-            vector_db_config=vector_db_config,
             collection="test-collection",
         )
 
@@ -124,12 +122,6 @@ class TestDatabricksRayServiceSubmitJob:
             ollama_model="nomic-embed-text",
             vector_size=768,
         )
-        vector_db_config = VectorDBConfig(
-            provider_type="qdrant",
-            qdrant_url="http://qdrant.test:6333",
-            collection="test_documents",
-        )
-
         service = DatabricksRayService()
         service.submit_s3_to_qdrant(
             namespace="test-namespace",
@@ -139,7 +131,6 @@ class TestDatabricksRayServiceSubmitJob:
             s3_bucket="test-bucket",
             s3_prefix="inputs/",
             embedding_config=embedding_config,
-            vector_db_config=vector_db_config,
             collection="test-collection",
         )
 
@@ -158,7 +149,6 @@ class TestDatabricksRayServiceSubmitJob:
         self,
         mock_config: MagicMock,
         embedding_config: EmbeddingConfig,
-        vector_db_config: VectorDBConfig,
     ) -> None:
         """Test that submit propagates configuration errors."""
         mock_config.side_effect = ValueError("Missing required Databricks config")
@@ -173,7 +163,6 @@ class TestDatabricksRayServiceSubmitJob:
                 s3_bucket="test-bucket",
                 s3_prefix="inputs/",
                 embedding_config=embedding_config,
-                vector_db_config=vector_db_config,
                 collection="test-collection",
             )
 
@@ -341,7 +330,6 @@ class TestDatabricksRayServiceStatusLogs:
         mock_client_cls: MagicMock,
         mock_config: MagicMock,
         embedding_config: EmbeddingConfig,
-        vector_db_config: VectorDBConfig,
     ) -> None:
         """Test that submit wraps Databricks SDK errors in UpstreamError."""
         mock_databricks_config = MagicMock()
@@ -364,6 +352,5 @@ class TestDatabricksRayServiceStatusLogs:
                 s3_bucket="test-bucket",
                 s3_prefix="inputs/",
                 embedding_config=embedding_config,
-                vector_db_config=vector_db_config,
                 collection="test-collection",
             )
