@@ -41,13 +41,14 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from api import models
+from clients.clip import CLIPClient
 from clients.interfaces.embedding import create_embedding_provider
 from clients.interfaces.vector_db import create_vector_db_provider
-from config import EmbeddingConfig, MinIOConfig, VectorDBConfig, get_settings
+from config import EmbeddingConfig, ImageEmbeddingConfig, MinIOConfig, VectorDBConfig, get_settings
 from core.exceptions import BadRequestError, PipelineError
 from core.services.databricks_ray_service import DatabricksRayService
 from core.services.ray_service import RayService
-from core.services.search_service import SearchService
+from core.services.search_service import ImageSearchService, SearchService
 
 router = APIRouter()
 
@@ -211,6 +212,144 @@ async def search(
     # They will be garbage collected when the function returns since they're
     # local variables created for this request. The underlying HTTP sessions
     # will be cleaned up by Python's garbage collector.
+
+
+@router.get("/search/images", response_model=models.ImageSearchResponse, tags=["vector-store"])
+async def search_images(
+    q: str,
+    limit: int = 10,
+    collection: str | None = None,
+    provider: Annotated[
+        str | None,
+        Query(
+            pattern="^(qdrant|weaviate)$",
+            description="Vector database provider (defaults to VECTOR_DB_PROVIDER env var)",
+        ),
+    ] = None,
+) -> models.ImageSearchResponse:
+    """Perform text-to-image search over image collections using CLIP embeddings.
+
+    CLIP embeddings allow searching images using natural language text queries.
+    Both text and image embeddings live in the same vector space, enabling
+    cross-modal search (e.g., "sunset over ocean" finds matching images).
+
+    This endpoint:
+    1. Generates a CLIP text embedding for the query
+    2. Searches the image collection ({collection}_images) for similar vectors
+    3. Returns ranked image results with similarity scores and metadata
+
+    Args:
+        q: Natural language text query (e.g., "a fluffy cat sitting on a couch").
+        limit: Maximum number of results to return (default: 10, max: 100).
+        collection: Optional base collection name (defaults to service default).
+            The actual image collection searched will be {collection}_images.
+        provider: Optional vector database provider (qdrant or weaviate).
+            If not specified, uses VECTOR_DB_PROVIDER environment variable.
+
+    Returns:
+        Response containing image search results ordered by similarity (highest first).
+
+    Raises:
+        HTTPException(400): If query is empty, limit is invalid, or provider is invalid.
+        HTTPException(502): If CLIP or vector database operations fail.
+        HTTPException(404): If image collection doesn't exist.
+
+    Example Request:
+        ```
+        GET /search/images?q=sunset%20over%20ocean&limit=5&provider=qdrant
+        GET /search/images?q=fluffy%20cat&collection=photos&provider=weaviate
+        ```
+
+    Example Response:
+        ```json
+        {
+            "query": "sunset over ocean",
+            "model": "ViT-B/32",
+            "collection": "documents_images",
+            "provider": "qdrant",
+            "results": [
+                {
+                    "id": "d790dd2c-99eb-4901-b9c9-538b58318fe3",
+                    "score": 0.8234,
+                    "s3_key": "images/sunset-001.jpg",
+                    "s3_uri": "s3://pipeline/images/sunset-001.jpg",
+                    "format": "jpeg",
+                    "width": 1920,
+                    "height": 1080,
+                    "thumbnail_key": "thumbnails/sunset-001.jpg"
+                }
+            ],
+            "total": 1
+        }
+        ```
+
+    Note:
+        - Requires CLIP model that supports both text and image encoding
+        - Results are ordered by similarity score (highest first)
+        - Score ranges from 0.0 to 1.0 (1.0 = identical, 0.0 = completely different)
+        - Image collection must exist (created via image ingestion job)
+    """
+    s = get_settings()
+
+    # Create CLIP client for text embedding
+    image_embed_config = ImageEmbeddingConfig.from_env(s.k8s_namespace)
+    clip_client = CLIPClient.from_config(image_embed_config)
+
+    # Determine provider type: use query parameter if provided, otherwise use settings
+    if provider:
+        try:
+            vector_db_config = VectorDBConfig.from_env_for_provider(
+                provider_type=provider.lower(), namespace=s.k8s_namespace
+            )
+        except ValueError as e:
+            raise BadRequestError(str(e)) from e
+        provider_type = vector_db_config.provider_type
+    else:
+        vector_db_config = s.vector_db
+        provider_type = vector_db_config.provider_type
+
+    vector_db_provider = create_vector_db_provider(vector_db_config)
+    collection_name = collection or vector_db_config.collection
+
+    image_search_service = ImageSearchService(
+        clip_client=clip_client,
+        vector_db_provider=vector_db_provider,
+    )
+
+    search_results = await image_search_service.search_images_async(
+        collection=collection_name,
+        query=q,
+        limit=limit,
+    )
+
+    # Convert SearchResultItem to Pydantic ImageSearchResult
+    pydantic_results = []
+    for item in search_results.items:
+        payload = item.payload
+        pydantic_results.append(
+            models.ImageSearchResult(
+                id=item.point_id,
+                score=item.score,
+                s3_key=payload.get("s3_key", ""),
+                s3_uri=payload.get("s3_uri", ""),
+                format=payload.get("format"),
+                width=payload.get("width"),
+                height=payload.get("height"),
+                thumbnail_key=payload.get("thumbnail_key"),
+            )
+        )
+
+    # Image collection name follows pattern {collection}_images
+    image_collection_name = f"{collection_name}_images"
+
+    return models.ImageSearchResponse(
+        query=q,
+        model=image_embed_config.clip_model or "",
+        collection=image_collection_name,
+        provider=provider_type,
+        results=pydantic_results,
+        total=search_results.total,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

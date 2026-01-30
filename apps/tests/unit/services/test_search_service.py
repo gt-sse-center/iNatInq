@@ -1,11 +1,14 @@
 """Unit tests for core.services.search_service module.
 
-This file tests the SearchService class which provides semantic search orchestration
-by coordinating embedding generation and vector database queries.
+This file tests the SearchService and ImageSearchService classes which provide
+semantic search orchestration by coordinating embedding generation and vector
+database queries.
 
 # Test Coverage
 
 The tests cover:
+
+SearchService:
   - Service Initialization: Provider injection via attrs
   - Search Documents: Query validation, embedding generation, vector search
   - Async Search: Async operations, error handling
@@ -13,10 +16,19 @@ The tests cover:
   - Error Handling: BadRequestError on validation, UpstreamError propagation
   - Integration: End-to-end search workflow
 
+ImageSearchService:
+  - Service Initialization: CLIP client and vector DB provider injection
+  - Search Images: Query validation, CLIP text embedding, image collection search
+  - Async Search: Async operations, error handling
+  - Input Validation: Empty queries, invalid limits
+  - Error Handling: BadRequestError on validation, UpstreamError propagation
+  - Collection Naming: Automatic {collection}_images suffix
+
 # Test Structure
 
 Tests use pytest class-based organization with mocking for external dependencies.
-The embedding provider and vector DB provider are mocked to isolate service logic.
+The embedding provider, CLIP client, and vector DB provider are mocked to isolate
+service logic.
 
 # Running Tests
 
@@ -31,7 +43,7 @@ import pytest
 from core.exceptions import BadRequestError, UpstreamError
 from core.models import SearchResultItem as SearchItem
 from core.models import SearchResults
-from core.services.search_service import SearchService
+from core.services.search_service import ImageSearchService, SearchService
 
 # =============================================================================
 # Service Initialization Tests
@@ -573,3 +585,565 @@ class TestSearchServiceIntegration:
         assert results.total == 1
         assert len(results.items) == 1
         assert results.items[0].point_id == "doc1"
+
+
+# =============================================================================
+# ImageSearchService Initialization Tests
+# =============================================================================
+
+
+class TestImageSearchServiceInit:
+    """Test suite for ImageSearchService initialization."""
+
+    def test_creates_service_with_providers(
+        self,
+        mock_clip_client: MagicMock,
+        mock_image_vector_db_provider: MagicMock,
+    ) -> None:
+        """Test that service is created with CLIP client and vector DB provider.
+
+        **Why this test is important:**
+          - Service requires both CLIP client and vector DB provider
+          - Validates dependency injection
+          - Critical for initialization
+          - Validates attrs integration
+
+        **What it tests:**
+          - Service is created with CLIP client
+          - Service is created with vector DB provider
+          - Providers are accessible as attributes
+        """
+        service = ImageSearchService(
+            clip_client=mock_clip_client,
+            vector_db_provider=mock_image_vector_db_provider,
+        )
+
+        assert service.clip_client is mock_clip_client
+        assert service.vector_db_provider is mock_image_vector_db_provider
+
+    def test_service_is_frozen(
+        self,
+        mock_clip_client: MagicMock,
+        mock_image_vector_db_provider: MagicMock,
+    ) -> None:
+        """Test that service is immutable (frozen=True).
+
+        **Why this test is important:**
+          - Immutability prevents accidental modification
+          - Ensures thread safety
+          - Critical for service reliability
+          - Validates attrs frozen configuration
+
+        **What it tests:**
+          - Attributes cannot be modified after creation
+          - FrozenInstanceError is raised on modification attempt
+        """
+        service = ImageSearchService(
+            clip_client=mock_clip_client,
+            vector_db_provider=mock_image_vector_db_provider,
+        )
+
+        with pytest.raises(attrs.exceptions.FrozenInstanceError):
+            service.clip_client = MagicMock()
+
+
+# =============================================================================
+# ImageSearchService Search Images Tests
+# =============================================================================
+
+
+class TestImageSearchServiceSearchImages:
+    """Test suite for ImageSearchService.search_images method."""
+
+    def test_search_success(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images performs text-to-image search successfully.
+
+        **Why this test is important:**
+          - Image search is the core functionality
+          - Validates CLIP text embedding + vector DB orchestration
+          - Ensures proper result formatting
+          - Critical for basic functionality
+
+        **What it tests:**
+          - CLIP client embed_text is called with query
+          - Vector DB provider search is called with embedding
+          - Image collection naming follows {collection}_images pattern
+          - Search results are returned correctly
+        """
+        result = image_search_service.search_images(
+            collection="documents",
+            query="sunset over ocean",
+            limit=10,
+        )
+
+        # Verify CLIP text embedding was generated
+        image_search_service.clip_client.embed_text.assert_called_once_with("sunset over ocean")
+
+        # Verify vector DB was searched with image collection name
+        image_search_service.vector_db_provider.search_async.assert_called_once()
+        call_kwargs = image_search_service.vector_db_provider.search_async.call_args[1]
+        assert call_kwargs["collection"] == "documents_images"
+        assert call_kwargs["query_vector"] == [0.1, 0.2, 0.3]
+        assert call_kwargs["limit"] == 10
+
+        # Verify results
+        assert isinstance(result, SearchResults)
+        assert len(result.items) == 2
+        assert result.total == 2
+        assert result.items[0].score == 0.92
+        assert result.items[1].score == 0.85
+
+    def test_search_strips_whitespace(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images strips whitespace from query.
+
+        **Why this test is important:**
+          - Whitespace can affect embeddings
+          - Query normalization improves consistency
+          - Critical for search quality
+          - Validates input preprocessing
+
+        **What it tests:**
+          - Query is stripped before CLIP embedding generation
+          - Leading/trailing whitespace is removed
+        """
+        image_search_service.search_images(
+            collection="documents",
+            query="  sunset over ocean  ",
+            limit=10,
+        )
+
+        image_search_service.clip_client.embed_text.assert_called_once_with("sunset over ocean")
+
+    def test_search_raises_on_empty_query(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images raises BadRequestError for empty query.
+
+        **Why this test is important:**
+          - Empty queries are invalid
+          - Validation prevents wasted API calls
+          - Critical for error prevention
+          - Validates input validation
+
+        **What it tests:**
+          - BadRequestError is raised for empty string
+          - Error message is descriptive
+        """
+        with pytest.raises(BadRequestError, match="Query string cannot be empty"):
+            image_search_service.search_images(collection="documents", query="", limit=10)
+
+    def test_search_raises_on_whitespace_only_query(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images raises BadRequestError for whitespace-only query.
+
+        **Why this test is important:**
+          - Whitespace-only queries are effectively empty
+          - Validation catches edge cases
+          - Critical for error prevention
+          - Validates input validation
+
+        **What it tests:**
+          - BadRequestError is raised for whitespace-only string
+          - Query.strip() is used for validation
+        """
+        with pytest.raises(BadRequestError, match="Query string cannot be empty"):
+            image_search_service.search_images(collection="documents", query="   ", limit=10)
+
+    def test_search_raises_on_invalid_limit_too_small(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images raises BadRequestError for limit < 1.
+
+        **Why this test is important:**
+          - Limit must be positive
+          - Validation prevents invalid API calls
+          - Critical for error prevention
+          - Validates input validation
+
+        **What it tests:**
+          - BadRequestError is raised for limit=0
+          - Error message is descriptive
+        """
+        with pytest.raises(BadRequestError, match="Limit must be between 1 and 100"):
+            image_search_service.search_images(collection="documents", query="test", limit=0)
+
+    def test_search_raises_on_invalid_limit_too_large(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images raises BadRequestError for limit > 100.
+
+        **Why this test is important:**
+          - Limit must be reasonable
+          - Prevents resource exhaustion
+          - Critical for service protection
+          - Validates input validation
+
+        **What it tests:**
+          - BadRequestError is raised for limit=101
+          - Upper bound is enforced
+        """
+        with pytest.raises(BadRequestError, match="Limit must be between 1 and 100"):
+            image_search_service.search_images(collection="documents", query="test", limit=101)
+
+    def test_search_accepts_valid_limit_range(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images accepts valid limit values.
+
+        **Why this test is important:**
+          - Valid limits should work
+          - Validates boundary conditions
+          - Critical for functionality
+          - Validates validation logic
+
+        **What it tests:**
+          - Limit=1 is accepted (lower boundary)
+          - Limit=100 is accepted (upper boundary)
+          - Limit=50 is accepted (mid-range)
+        """
+        # Lower boundary
+        image_search_service.search_images(collection="documents", query="test", limit=1)
+
+        # Upper boundary
+        image_search_service.search_images(collection="documents", query="test", limit=100)
+
+        # Mid-range
+        image_search_service.search_images(collection="documents", query="test", limit=50)
+
+    def test_search_propagates_clip_error(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images propagates CLIP client errors.
+
+        **Why this test is important:**
+          - CLIP errors need to propagate
+          - UpstreamError is expected error type
+          - Critical for error handling
+          - Validates error propagation
+
+        **What it tests:**
+          - UpstreamError from CLIP client is propagated
+          - Error is not swallowed
+        """
+        image_search_service.clip_client.embed_text.side_effect = UpstreamError("CLIP connection failed")
+
+        with pytest.raises(UpstreamError, match="CLIP connection failed"):
+            image_search_service.search_images(collection="documents", query="test", limit=10)
+
+    def test_search_propagates_vector_db_error(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images propagates vector DB provider errors.
+
+        **Why this test is important:**
+          - Vector DB errors need to propagate
+          - UpstreamError is expected error type
+          - Critical for error handling
+          - Validates error propagation
+
+        **What it tests:**
+          - UpstreamError from vector DB provider is propagated
+          - Error is not swallowed
+        """
+        image_search_service.vector_db_provider.search_async.side_effect = UpstreamError(
+            "Qdrant connection failed"
+        )
+
+        with pytest.raises(UpstreamError, match="Qdrant connection failed"):
+            image_search_service.search_images(collection="documents", query="test", limit=10)
+
+
+# =============================================================================
+# ImageSearchService Async Search Images Tests
+# =============================================================================
+
+
+class TestImageSearchServiceSearchImagesAsync:
+    """Test suite for ImageSearchService.search_images_async method."""
+
+    @pytest.mark.asyncio
+    async def test_search_async_success(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images_async performs text-to-image search successfully.
+
+        **Why this test is important:**
+          - Async image search enables non-blocking operations
+          - Validates async orchestration
+          - Ensures proper result formatting
+          - Critical for API performance
+
+        **What it tests:**
+          - CLIP client embed_text_async is called with query
+          - Vector DB provider search is called with embedding
+          - Image collection naming follows {collection}_images pattern
+          - Search results are returned correctly
+        """
+        result = await image_search_service.search_images_async(
+            collection="photos",
+            query="fluffy cat",
+            limit=10,
+        )
+
+        # Verify CLIP text embedding was generated
+        image_search_service.clip_client.embed_text_async.assert_called_once_with("fluffy cat")
+
+        # Verify vector DB was searched with image collection name
+        image_search_service.vector_db_provider.search_async.assert_called_once()
+        call_kwargs = image_search_service.vector_db_provider.search_async.call_args[1]
+        assert call_kwargs["collection"] == "photos_images"
+        assert call_kwargs["query_vector"] == [0.1, 0.2, 0.3]
+        assert call_kwargs["limit"] == 10
+
+        # Verify results
+        assert isinstance(result, SearchResults)
+        assert len(result.items) == 2
+        assert result.total == 2
+
+    @pytest.mark.asyncio
+    async def test_search_async_strips_whitespace(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images_async strips whitespace from query.
+
+        **Why this test is important:**
+          - Whitespace can affect embeddings
+          - Query normalization improves consistency
+          - Critical for search quality
+          - Validates input preprocessing
+
+        **What it tests:**
+          - Query is stripped before CLIP embedding generation
+          - Leading/trailing whitespace is removed
+        """
+        await image_search_service.search_images_async(
+            collection="photos",
+            query="  fluffy cat  ",
+            limit=10,
+        )
+
+        image_search_service.clip_client.embed_text_async.assert_called_once_with("fluffy cat")
+
+    @pytest.mark.asyncio
+    async def test_search_async_raises_on_empty_query(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images_async raises BadRequestError for empty query.
+
+        **Why this test is important:**
+          - Empty queries are invalid
+          - Validation prevents wasted API calls
+          - Critical for error prevention
+          - Validates input validation
+
+        **What it tests:**
+          - BadRequestError is raised for empty string
+          - Error message is descriptive
+        """
+        with pytest.raises(BadRequestError, match="Query string cannot be empty"):
+            await image_search_service.search_images_async(collection="photos", query="", limit=10)
+
+    @pytest.mark.asyncio
+    async def test_search_async_raises_on_invalid_limit(
+        self, image_search_service: ImageSearchService
+    ) -> None:
+        """Test that search_images_async validates limit parameter.
+
+        **Why this test is important:**
+          - Limit validation prevents invalid requests
+          - Same validation as sync version
+          - Critical for consistency
+          - Validates input validation
+
+        **What it tests:**
+          - BadRequestError is raised for invalid limits
+          - Validation logic matches sync version
+        """
+        with pytest.raises(BadRequestError, match="Limit must be between 1 and 100"):
+            await image_search_service.search_images_async(collection="photos", query="test", limit=0)
+
+        with pytest.raises(BadRequestError, match="Limit must be between 1 and 100"):
+            await image_search_service.search_images_async(collection="photos", query="test", limit=101)
+
+    @pytest.mark.asyncio
+    async def test_search_async_propagates_clip_error(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images_async propagates CLIP client errors.
+
+        **Why this test is important:**
+          - CLIP errors need to propagate
+          - UpstreamError is expected error type
+          - Critical for error handling
+          - Validates error propagation
+
+        **What it tests:**
+          - UpstreamError from CLIP client is propagated
+          - Error is not swallowed
+        """
+        image_search_service.clip_client.embed_text_async.side_effect = UpstreamError(
+            "CLIP connection failed"
+        )
+
+        with pytest.raises(UpstreamError, match="CLIP connection failed"):
+            await image_search_service.search_images_async(collection="photos", query="test", limit=10)
+
+    @pytest.mark.asyncio
+    async def test_search_async_propagates_vector_db_error(
+        self, image_search_service: ImageSearchService
+    ) -> None:
+        """Test that search_images_async propagates vector DB provider errors.
+
+        **Why this test is important:**
+          - Vector DB errors need to propagate
+          - UpstreamError is expected error type
+          - Critical for error handling
+          - Validates error propagation
+
+        **What it tests:**
+          - UpstreamError from vector DB provider is propagated
+          - Error is not swallowed
+        """
+        image_search_service.vector_db_provider.search_async.side_effect = UpstreamError(
+            "Qdrant connection failed"
+        )
+
+        with pytest.raises(UpstreamError, match="Qdrant connection failed"):
+            await image_search_service.search_images_async(collection="photos", query="test", limit=10)
+
+
+# =============================================================================
+# ImageSearchService Integration Tests
+# =============================================================================
+
+
+class TestImageSearchServiceIntegration:
+    """Test suite for end-to-end ImageSearchService integration."""
+
+    def test_full_image_search_workflow(
+        self,
+        mock_clip_client: MagicMock,
+        mock_image_vector_db_provider: MagicMock,
+    ) -> None:
+        """Test complete image search workflow: validate -> embed -> search -> format.
+
+        **Why this test is important:**
+          - Validates end-to-end workflow
+          - Ensures all steps work together
+          - Critical for real-world usage
+          - Validates integration
+
+        **What it tests:**
+          - Input validation passes for valid query
+          - CLIP text embedding is generated correctly
+          - Vector DB search is performed on image collection
+          - Results include image metadata
+        """
+        # Setup mock responses
+        mock_clip_client.embed_text.return_value = [0.5, 0.6, 0.7, 0.8]
+        mock_image_vector_db_provider.search_async.return_value = SearchResults(
+            items=[
+                SearchItem(
+                    point_id="sunset-001",
+                    score=0.95,
+                    payload={
+                        "s3_key": "images/sunset-001.jpg",
+                        "s3_uri": "s3://pipeline/images/sunset-001.jpg",
+                        "format": "jpeg",
+                        "width": 1920,
+                        "height": 1080,
+                        "thumbnail_key": "thumbnails/sunset-001.jpg",
+                    },
+                ),
+                SearchItem(
+                    point_id="beach-002",
+                    score=0.88,
+                    payload={
+                        "s3_key": "images/beach-002.png",
+                        "s3_uri": "s3://pipeline/images/beach-002.png",
+                        "format": "png",
+                        "width": 1280,
+                        "height": 720,
+                    },
+                ),
+            ],
+            total=2,
+        )
+
+        # Create service
+        service = ImageSearchService(
+            clip_client=mock_clip_client,
+            vector_db_provider=mock_image_vector_db_provider,
+        )
+
+        # Perform search
+        results = service.search_images(
+            collection="vacation",
+            query="beautiful sunset over the ocean",
+            limit=5,
+        )
+
+        # Verify CLIP text embedding
+        mock_clip_client.embed_text.assert_called_once_with("beautiful sunset over the ocean")
+
+        # Verify vector DB search with image collection
+        mock_image_vector_db_provider.search_async.assert_called_once()
+        call_kwargs = mock_image_vector_db_provider.search_async.call_args[1]
+        assert call_kwargs["collection"] == "vacation_images"
+        assert call_kwargs["query_vector"] == [0.5, 0.6, 0.7, 0.8]
+        assert call_kwargs["limit"] == 5
+
+        # Verify results
+        assert results.total == 2
+        assert len(results.items) == 2
+        assert results.items[0].point_id == "sunset-001"
+        assert results.items[0].score == 0.95
+        assert results.items[0].payload["s3_key"] == "images/sunset-001.jpg"
+        assert results.items[0].payload["format"] == "jpeg"
+        assert results.items[1].point_id == "beach-002"
+        assert results.items[1].score == 0.88
+
+    @pytest.mark.asyncio
+    async def test_full_image_search_workflow_async(
+        self,
+        mock_clip_client: MagicMock,
+        mock_image_vector_db_provider: MagicMock,
+    ) -> None:
+        """Test complete async image search workflow.
+
+        **Why this test is important:**
+          - Validates end-to-end async workflow
+          - Ensures all async steps work together
+          - Critical for API performance
+          - Validates async integration
+
+        **What it tests:**
+          - Input validation passes for valid query
+          - Async CLIP text embedding is generated correctly
+          - Vector DB search is performed
+          - Results are formatted correctly
+        """
+        # Setup mock responses
+        mock_clip_client.embed_text_async.return_value = [0.1, 0.2, 0.3]
+        mock_image_vector_db_provider.search_async.return_value = SearchResults(
+            items=[
+                SearchItem(
+                    point_id="cat-001",
+                    score=0.91,
+                    payload={
+                        "s3_key": "images/cat-001.jpg",
+                        "s3_uri": "s3://pipeline/images/cat-001.jpg",
+                        "format": "jpeg",
+                        "width": 800,
+                        "height": 600,
+                    },
+                ),
+            ],
+            total=1,
+        )
+
+        # Create service
+        service = ImageSearchService(
+            clip_client=mock_clip_client,
+            vector_db_provider=mock_image_vector_db_provider,
+        )
+
+        # Perform async search
+        results = await service.search_images_async(
+            collection="pets",
+            query="fluffy cat",
+            limit=10,
+        )
+
+        # Verify CLIP text embedding
+        mock_clip_client.embed_text_async.assert_called_once_with("fluffy cat")
+
+        # Verify vector DB search
+        mock_image_vector_db_provider.search_async.assert_called_once()
+        call_kwargs = mock_image_vector_db_provider.search_async.call_args[1]
+        assert call_kwargs["collection"] == "pets_images"
+
+        # Verify results
+        assert results.total == 1
+        assert len(results.items) == 1
+        assert results.items[0].point_id == "cat-001"
+        assert results.items[0].payload["s3_key"] == "images/cat-001.jpg"
