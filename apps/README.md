@@ -28,9 +28,12 @@ The query engine handles semantic search requests by generating embeddings and p
 
 </details>
 
-**Endpoint**: `GET /search?q=your query&limit=10&provider=qdrant`
+**Endpoints**:
 
-**Flow**: HTTP Request → Ollama Embedding → Vector Search → Ranked Results
+- `GET /search?q=your query&limit=10&provider=qdrant` – Text-to-text semantic search
+- `GET /search/images?q=sunset over ocean&limit=10` – Text-to-image search using CLIP
+
+**Flow**: HTTP Request → Embedding (Ollama/CLIP) → Vector Search → Ranked Results
 
 ---
 
@@ -111,6 +114,17 @@ export DATABRICKS_HOST=https://adb-<workspace-id>.<region>.azuredatabricks.net
 export DATABRICKS_TOKEN=your-databricks-token
 export DATABRICKS_JOB_ID=123
 export DATABRICKS_TASK_TYPE=python
+
+# Image Embedding (CLIP) - for image search
+export IMAGE_EMBEDDING_PROVIDER=clip  # or "llava" for Ollama LLaVA
+export CLIP_URL=http://your-clip-host:8000
+export CLIP_MODEL=ViT-B/32
+export CLIP_BACKEND=clip  # "clip" for ai4all/clip, "ollama" for Ollama LLaVA
+
+# Image Processing Settings
+export IMAGE_BATCH_SIZE=10       # Images per processing batch
+export IMAGE_MAX_SIZE_MB=10.0    # Reject images larger than this
+export IMAGE_TARGET_SIZE=224     # Resize dimension for CLIP input
 
 # Or use a local config file (gitignored)
 cp apps/zarf/databricks/dev/env.local.example apps/zarf/databricks/dev/.env.local
