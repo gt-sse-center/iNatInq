@@ -30,9 +30,10 @@ import aiobreaker
 import aiobreaker.state as aio_state
 import pybreaker
 import pytest
+from qdrant_client.http import models as qmodels
 from qdrant_client.models import PointStruct
 
-from clients.qdrant import QdrantClientWrapper
+from clients.qdrant import QdrantClientWrapper, _DISTANCE_METRIC_MAP
 from config import VectorDBConfig
 from core.exceptions import UpstreamError
 from core.models import SearchResults
@@ -438,6 +439,50 @@ class TestQdrantClientWrapperEnsureCollection:
         call_kwargs = mock_async_client.create_collection.call_args[1]
         assert call_kwargs["collection_name"] == "photos_images"
         assert call_kwargs["vectors_config"].size == 768
+
+    @pytest.mark.asyncio
+    async def test_ensure_image_collection_creates_with_custom_distance_metric(
+        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    ) -> None:
+        """Test that ensure_image_collection accepts custom distance_metric.
+
+        **Why this test is important:**
+          - Different use cases may require different distance metrics
+          - Supports cosine, euclidean, and dot product similarity
+          - Critical for flexibility in vector similarity comparisons
+
+        **What it tests:**
+          - create_collection is called with the mapped distance metric
+          - distance_metric parameter correctly maps to qmodels.Distance enum
+        """
+        mock_collections = MagicMock()
+        mock_collections.collections = []
+        mock_async_client.get_collections.return_value = mock_collections
+
+        await qdrant_client.ensure_image_collection_async(collection="photos", distance_metric="euclidean")
+
+        call_kwargs = mock_async_client.create_collection.call_args[1]
+        assert call_kwargs["collection_name"] == "photos_images"
+        assert call_kwargs["vectors_config"].distance == qmodels.Distance.EUCLID
+
+    @pytest.mark.asyncio
+    async def test_ensure_image_collection_distance_metric_mapping(
+        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    ) -> None:
+        """Test that distance_metric mapping covers all supported values.
+
+        **Why this test is important:**
+          - Ensures all advertised distance metrics are properly mapped
+          - Validates the _DISTANCE_METRIC_MAP constant
+
+        **What it tests:**
+          - "cosine" maps to qmodels.Distance.COSINE
+          - "euclidean" maps to qmodels.Distance.EUCLID
+          - "dot" maps to qmodels.Distance.DOT
+        """
+        assert _DISTANCE_METRIC_MAP["cosine"] == qmodels.Distance.COSINE
+        assert _DISTANCE_METRIC_MAP["euclidean"] == qmodels.Distance.EUCLID
+        assert _DISTANCE_METRIC_MAP["dot"] == qmodels.Distance.DOT
 
     @pytest.mark.asyncio
     async def test_ensure_image_collection_skips_if_exists(

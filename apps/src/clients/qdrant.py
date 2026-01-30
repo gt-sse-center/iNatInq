@@ -29,6 +29,7 @@ The client wrapper:
 """
 
 import asyncio
+from typing import Literal
 
 import aiobreaker
 import attrs
@@ -45,6 +46,16 @@ from foundation.circuit_breaker import create_async_circuit_breaker, with_circui
 
 from .base import VectorDBClientBase
 from .interfaces.vector_db import VectorDBProvider
+
+# Type alias for supported distance metrics
+DistanceMetric = Literal["cosine", "euclidean", "dot"]
+
+# Mapping from string distance metric to Qdrant Distance enum
+_DISTANCE_METRIC_MAP: dict[str, qmodels.Distance] = {
+    "cosine": qmodels.Distance.COSINE,
+    "euclidean": qmodels.Distance.EUCLID,
+    "dot": qmodels.Distance.DOT,
+}
 
 
 @attrs.define(frozen=False, slots=True)
@@ -174,6 +185,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         *,
         collection: str,
         vector_size: int = 512,
+        distance_metric: DistanceMetric = "cosine",
     ) -> None:
         """Create a Qdrant collection for image embeddings if it does not already exist.
 
@@ -195,10 +207,12 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
                 `{collection}_images` (e.g., `documents_images`).
             vector_size: Dimension of vectors that will be stored in this collection.
                 Default: 512 (common for CLIP models like ViT-B/32).
+            distance_metric: Distance metric for vector similarity. One of "cosine",
+                "euclidean", or "dot". Default "cosine" (standard for embeddings).
 
         Note:
             The collection is created with:
-            - **Distance metric**: Cosine similarity (standard for embeddings)
+            - **Distance metric**: As specified by `distance_metric` (default: cosine)
             - **Vector size**: As specified by `vector_size` (default: 512 for CLIP)
             - **Collection name**: `{collection}_images`
 
@@ -210,10 +224,11 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             await client.ensure_image_collection_async(collection="photos")
             # Creates collection named "photos_images" with 512-dimensional vectors
 
-            # Custom vector size
+            # Custom vector size and distance metric
             await client.ensure_image_collection_async(
                 collection="observations",
-                vector_size=768
+                vector_size=768,
+                distance_metric="dot"
             )
             # Creates collection named "observations_images" with 768-dimensional vectors
             ```
@@ -225,7 +240,9 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             return
         await self._client.create_collection(
             collection_name=image_collection,
-            vectors_config=qmodels.VectorParams(size=vector_size, distance=qmodels.Distance.COSINE),
+            vectors_config=qmodels.VectorParams(
+                size=vector_size, distance=_DISTANCE_METRIC_MAP[distance_metric]
+            ),
         )
 
     @with_circuit_breaker_async("qdrant")
