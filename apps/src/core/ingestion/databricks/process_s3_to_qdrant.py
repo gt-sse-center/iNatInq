@@ -101,6 +101,7 @@ def _init_ray(config: RayJobConfig, ray_cluster: object | None) -> None:
         "OLLAMA_RETRY_MAX_WAIT",
         "OLLAMA_CIRCUIT_BREAKER_THRESHOLD",
         "OLLAMA_CIRCUIT_BREAKER_TIMEOUT",
+        "INATINQ_SRC_DIR",
     )
     for key in passthrough_keys:
         value = os.environ.get(key)
@@ -109,10 +110,12 @@ def _init_ray(config: RayJobConfig, ray_cluster: object | None) -> None:
 
     if env_vars:
         runtime_env["env_vars"] = env_vars
-    workspace_src = os.environ.get(
-        "INATINQ_SRC_DIR",
-        "/Workspace/Users/kbhardwaj6@gatech.edu/iNatInq/apps/src",
-    )
+    workspace_src = os.environ.get("INATINQ_SRC_DIR")
+    if not workspace_src:
+        raise RuntimeError(
+            "INATINQ_SRC_DIR is not set. Please export INATINQ_SRC_DIR to the repo src path "
+            "(e.g. /Workspace/Users/<user>/iNatInq/apps/src) before running this job."
+        )
     if Path(workspace_src).is_dir():
         runtime_env["working_dir"] = workspace_src
     else:

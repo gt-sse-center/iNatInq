@@ -17,7 +17,7 @@ from logging.config import dictConfig
 import attrs
 from databricks.sdk import WorkspaceClient
 
-from config import DatabricksRayJobConfig, EmbeddingConfig, VectorDBConfig
+from config import DatabricksRayJobConfig, EmbeddingConfig
 from core.exceptions import UpstreamError
 from core.services.ingestion_params import add_ray_tuning_env, build_ingestion_env
 from foundation.logger import LOGGING_CONFIG
@@ -34,7 +34,7 @@ class DatabricksRayService:
     Example:
         ```python
         from core.services.databricks_ray_service import DatabricksRayService
-        from config import EmbeddingConfig, VectorDBConfig
+        from config import EmbeddingConfig
 
         service = DatabricksRayService()
         run_id = service.submit_s3_to_qdrant(
@@ -45,7 +45,6 @@ class DatabricksRayService:
             s3_bucket="pipeline",
             s3_prefix="inputs/",
             embedding_config=EmbeddingConfig.from_env(),
-            vector_db_config=VectorDBConfig.from_env(),
             collection="documents",
         )
         ```
@@ -61,7 +60,6 @@ class DatabricksRayService:
         s3_bucket: str,
         s3_prefix: str = "inputs/",
         embedding_config: EmbeddingConfig,
-        vector_db_config: VectorDBConfig,
         collection: str,
     ) -> int:
         """Submit a Databricks job to process S3 data and store embeddings.
@@ -78,8 +76,6 @@ class DatabricksRayService:
             s3_bucket: S3 bucket name to read from.
             s3_prefix: S3 prefix to filter objects (default: `inputs/`).
             embedding_config: Embedding provider configuration.
-            vector_db_config: Vector database configuration (kept for parity;
-                provider-specific env vars are sourced from the environment).
             collection: Vector DB collection name.
 
         Returns:

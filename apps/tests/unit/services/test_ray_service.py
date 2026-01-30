@@ -27,7 +27,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from config import EmbeddingConfig, VectorDBConfig
+from config import EmbeddingConfig
 from core.exceptions import UpstreamError
 from core.services.ray_service import RayService
 
@@ -47,7 +47,6 @@ class TestRayServiceSubmitJob:
         mock_config: MagicMock,
         ray_service: RayService,
         embedding_config: EmbeddingConfig,
-        vector_db_config: VectorDBConfig,
     ) -> None:
         """Test that submit_s3_to_qdrant submits job successfully.
 
@@ -81,7 +80,6 @@ class TestRayServiceSubmitJob:
             s3_bucket="test-bucket",
             s3_prefix="inputs/",
             embedding_config=embedding_config,
-            vector_db_config=vector_db_config,
             collection="test-collection",
         )
 
@@ -150,13 +148,6 @@ class TestRayServiceSubmitJob:
             ollama_model="nomic-embed-text",
             vector_size=768,
         )
-        vector_db_config = VectorDBConfig(
-            provider_type="qdrant",
-            qdrant_url="http://qdrant.test:6333",
-            collection="test_documents",
-            vector_size=768,
-        )
-
         ray_service.submit_s3_to_qdrant(
             namespace="test-namespace",
             s3_endpoint="http://minio.test:9000",
@@ -165,7 +156,6 @@ class TestRayServiceSubmitJob:
             s3_bucket="test-bucket",
             s3_prefix="inputs/",
             embedding_config=embedding_config,
-            vector_db_config=vector_db_config,
             collection="test-collection",
         )
 
@@ -216,13 +206,6 @@ class TestRayServiceSubmitJob:
             ollama_model="nomic-embed-text",
             vector_size=768,
         )
-        vector_db_config = VectorDBConfig(
-            provider_type="qdrant",  # Provider type doesn't matter - both are indexed
-            qdrant_url="http://qdrant.test:6333",
-            collection="test_documents",
-            vector_size=768,
-        )
-
         ray_service.submit_s3_to_qdrant(
             namespace="test-namespace",
             s3_endpoint="http://minio.test:9000",
@@ -231,7 +214,6 @@ class TestRayServiceSubmitJob:
             s3_bucket="test-bucket",
             s3_prefix="inputs/",
             embedding_config=embedding_config,
-            vector_db_config=vector_db_config,
             collection="test-collection",
         )
 
@@ -250,7 +232,6 @@ class TestRayServiceSubmitJob:
         mock_config: MagicMock,
         ray_service: RayService,
         embedding_config: EmbeddingConfig,
-        vector_db_config: VectorDBConfig,
     ) -> None:
         """Test that submit raises UpstreamError when dashboard_address is missing.
 
@@ -278,7 +259,6 @@ class TestRayServiceSubmitJob:
                 s3_bucket="test-bucket",
                 s3_prefix="inputs/",
                 embedding_config=embedding_config,
-                vector_db_config=vector_db_config,
                 collection="test-collection",
             )
 
@@ -290,7 +270,6 @@ class TestRayServiceSubmitJob:
         mock_config: MagicMock,
         ray_service: RayService,
         embedding_config: EmbeddingConfig,
-        vector_db_config: VectorDBConfig,
     ) -> None:
         """Test that submit raises UpstreamError on client errors.
 
@@ -323,7 +302,6 @@ class TestRayServiceSubmitJob:
                 s3_bucket="test-bucket",
                 s3_prefix="inputs/",
                 embedding_config=embedding_config,
-                vector_db_config=vector_db_config,
                 collection="test-collection",
             )
 
@@ -733,7 +711,6 @@ class TestRayServiceDashboardAddress:
         mock_config: MagicMock,
         ray_service: RayService,
         embedding_config: EmbeddingConfig,
-        vector_db_config: VectorDBConfig,
     ) -> None:
         """Test that dashboard address is taken from RayJobConfig.
 
@@ -765,7 +742,6 @@ class TestRayServiceDashboardAddress:
             s3_bucket="test-bucket",
             s3_prefix="inputs/",
             embedding_config=embedding_config,
-            vector_db_config=vector_db_config,
             collection="test-collection",
         )
 
@@ -780,7 +756,6 @@ class TestRayServiceDashboardAddress:
         mock_config: MagicMock,
         ray_service: RayService,
         embedding_config: EmbeddingConfig,
-        vector_db_config: VectorDBConfig,
     ) -> None:
         """Test that Docker Compose style addresses work correctly.
 
@@ -811,7 +786,6 @@ class TestRayServiceDashboardAddress:
             s3_bucket="pipeline",
             s3_prefix="inputs/",
             embedding_config=embedding_config,
-            vector_db_config=vector_db_config,
             collection="documents",
         )
 

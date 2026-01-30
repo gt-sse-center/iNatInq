@@ -269,8 +269,6 @@ async def submit_ray_job(req: models.RayJobRequest) -> models.RayJobResponse:
         ray_service = RayService()
         minio_cfg = MinIOConfig.from_env(namespace)
         embed_cfg = EmbeddingConfig.from_env(namespace)
-        vector_cfg = VectorDBConfig.from_env(namespace)
-
         job_id = ray_service.submit_s3_to_qdrant(
             namespace=namespace,
             s3_endpoint=minio_cfg.endpoint_url,
@@ -279,7 +277,6 @@ async def submit_ray_job(req: models.RayJobRequest) -> models.RayJobResponse:
             s3_bucket=minio_cfg.bucket,
             s3_prefix=req.s3_prefix,
             embedding_config=embed_cfg,
-            vector_db_config=vector_cfg,
             collection=req.collection,
         )
 
@@ -322,8 +319,6 @@ async def submit_databricks_job(req: models.DatabricksJobRequest) -> models.Data
         databricks_service = DatabricksRayService()
         minio_cfg = MinIOConfig.from_env(namespace)
         embed_cfg = EmbeddingConfig.from_env(namespace)
-        vector_cfg = VectorDBConfig.from_env(namespace)
-
         run_id = databricks_service.submit_s3_to_qdrant(
             namespace=namespace,
             s3_endpoint=minio_cfg.endpoint_url,
@@ -332,7 +327,6 @@ async def submit_databricks_job(req: models.DatabricksJobRequest) -> models.Data
             s3_bucket=minio_cfg.bucket,
             s3_prefix=req.s3_prefix,
             embedding_config=embed_cfg,
-            vector_db_config=vector_cfg,
             collection=req.collection,
         )
 

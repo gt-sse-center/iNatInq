@@ -24,18 +24,15 @@ def _bootstrap_runtime(params: list[str]) -> None:
     _load_params(params)
 
     repo_src_env = os.getenv("INATINQ_SRC_DIR")
-    if repo_src_env:
-        repo_src = Path(repo_src_env)
-    else:
-        # Default to the local repo's src directory based on this file's location.
-        repo_src = Path(__file__).resolve().parents[3]
+    # Default to the local repo's src directory based on this file's location.
+    repo_src = Path(repo_src_env) if repo_src_env else Path(__file__).resolve().parents[3]
 
     if repo_src.exists():
         sys.path.insert(0, str(repo_src.resolve()))
 
     # Deferred import: we must load python_params first so LOGGING_CONFIG can
     # read env-driven settings without being imported too early.
-    from foundation.logger import LOGGING_CONFIG  # noqa: E402
+    from foundation.logger import LOGGING_CONFIG
 
     dictConfig(LOGGING_CONFIG)
 
@@ -43,6 +40,6 @@ def _bootstrap_runtime(params: list[str]) -> None:
 if __name__ == "__main__":
     _bootstrap_runtime(sys.argv[1:])
     # Deferred import: only valid after sys.path is set from INATINQ_SRC_DIR.
-    from core.ingestion.databricks.process_s3_to_qdrant import main  # noqa: E402
+    from core.ingestion.databricks.process_s3_to_qdrant import main
 
     main()

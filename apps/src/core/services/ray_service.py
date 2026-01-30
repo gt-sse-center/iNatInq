@@ -21,7 +21,7 @@ from typing import Any
 import attrs
 from ray.job_submission import JobSubmissionClient
 
-from config import EmbeddingConfig, RayJobConfig, VectorDBConfig
+from config import EmbeddingConfig, RayJobConfig
 from core.exceptions import UpstreamError
 from core.services.ingestion_params import build_ingestion_env
 
@@ -39,7 +39,7 @@ class RayService:
     Example:
         ```python
         from core.services.ray_service import RayService
-        from config import EmbeddingConfig, VectorDBConfig
+        from config import EmbeddingConfig
 
         service = RayService()
 
@@ -51,7 +51,6 @@ class RayService:
             s3_bucket="pipeline",
             s3_prefix="inputs/",
             embedding_config=EmbeddingConfig.from_env(),
-            vector_db_config=VectorDBConfig.from_env(),
             collection="documents",
         )
         ```
@@ -67,7 +66,6 @@ class RayService:
         s3_bucket: str,
         s3_prefix: str = "inputs/",
         embedding_config: EmbeddingConfig,
-        vector_db_config: VectorDBConfig,
         collection: str,
     ) -> str:
         """Submit a Ray job to process S3 data and store embeddings in vector database.
@@ -83,7 +81,6 @@ class RayService:
             s3_bucket: S3 bucket name to read from.
             s3_prefix: S3 prefix to filter objects (default: `inputs/`).
             embedding_config: Embedding provider configuration.
-            vector_db_config: Vector database provider configuration.
             collection: Collection name.
 
         Returns:
@@ -103,7 +100,6 @@ class RayService:
                 s3_bucket="pipeline",
                 s3_prefix="inputs/",
                 embedding_config=EmbeddingConfig.from_env(),
-                vector_db_config=VectorDBConfig.from_env(),
                 collection="documents",
             )
             # Later: check status with get_job_status(job_id)
