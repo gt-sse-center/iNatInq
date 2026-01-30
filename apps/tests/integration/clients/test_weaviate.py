@@ -233,6 +233,25 @@ def vector_size() -> int:
     return 768
 
 
+@pytest.fixture
+def clip_vector_size() -> int:
+    """CLIP vector dimension for image collection tests.
+
+    Returns:
+        int: Vector dimension (512 for CLIP models like ViT-B/32).
+    """
+    return 512
+
+
+@pytest.fixture
+def sample_clip_vector(clip_vector_size: int) -> list[float]:
+    """Sample 512-dimensional vector for image collection tests."""
+    import random
+
+    random.seed(43)
+    return [random.random() for _ in range(clip_vector_size)]  # noqa: S311
+
+
 # =============================================================================
 # 1. Happy Path Tests
 # =============================================================================
@@ -545,6 +564,149 @@ class TestHappyPath:
                 vector_size=vector_size,
             )
         )
+
+
+# =============================================================================
+# 1b. Image Collection Happy Path Tests
+# =============================================================================
+
+
+@pytest.mark.integration
+class TestImageCollection:
+    """Test Weaviate image collection (ensure_image_collection_async).
+
+    Mirrors Qdrant image collection schema: class name {Collection}Images,
+    properties s3_key, s3_uri, format, width, height, thumbnail_key, CLIP vector size.
+    """
+
+    def test_ensure_image_collection_creates_new_class(
+        self,
+        weaviate_client: WeaviateClientWrapper,
+        test_collection: str,
+        clip_vector_size: int,
+    ):
+        """Test that ensure_image_collection_async creates a new Weaviate class.
+
+        **Why this test is important:**
+          - Image collection creation is prerequisite for image embeddings
+          - Validates {Collection}Images class name pattern
+          - Critical for CLIP / image search setup
+
+        **What it tests:**
+          - ensure_image_collection_async creates class {Collection}Images
+          - Class is accessible for upsert and search after creation
+        """
+        asyncio.run(
+            weaviate_client.ensure_image_collection_async(
+                collection=test_collection,
+                vector_size=clip_vector_size,
+            )
+        )
+
+        image_class = weaviate_client._collection_to_image_class_name(test_collection)
+        point = WeaviateDataObject(
+            uuid=str(uuid_module.uuid4()),
+            properties={
+                "s3_key": "images/photo1.jpg",
+                "s3_uri": "s3://bucket/images/photo1.jpg",
+                "format": "jpeg",
+                "width": 800,
+                "height": 600,
+            },
+            vector=[0.1] * clip_vector_size,
+        )
+        asyncio.run(
+            weaviate_client.batch_upsert_async(
+                collection=image_class,
+                points=[point],
+                vector_size=clip_vector_size,
+            )
+        )
+
+    def test_ensure_image_collection_is_idempotent(
+        self,
+        weaviate_client: WeaviateClientWrapper,
+        test_collection: str,
+        clip_vector_size: int,
+    ):
+        """Test that ensure_image_collection_async is idempotent on existing class.
+
+        **Why this test is important:**
+          - Multiple callers may ensure image collection concurrently
+          - Idempotency prevents race condition errors
+          - Critical for distributed system reliability
+
+        **What it tests:**
+          - Calling ensure_image_collection_async twice does not raise
+        """
+        asyncio.run(
+            weaviate_client.ensure_image_collection_async(
+                collection=test_collection,
+                vector_size=clip_vector_size,
+            )
+        )
+        asyncio.run(
+            weaviate_client.ensure_image_collection_async(
+                collection=test_collection,
+                vector_size=clip_vector_size,
+            )
+        )
+
+    def test_image_collection_search_after_upsert(
+        self,
+        weaviate_client: WeaviateClientWrapper,
+        test_collection: str,
+        sample_clip_vector: list[float],
+        clip_vector_size: int,
+    ):
+        """Test that image collection supports upsert and search with CLIP-sized vectors.
+
+        **Why this test is important:**
+          - End-to-end validation of image collection schema
+          - Ensures DocumentsImages-style class works for search
+          - Critical for image similarity search
+
+        **What it tests:**
+          - ensure_image_collection_async creates class
+          - batch_upsert_async inserts image objects with image properties
+          - search_async returns results from image class
+        """
+        asyncio.run(
+            weaviate_client.ensure_image_collection_async(
+                collection=test_collection,
+                vector_size=clip_vector_size,
+            )
+        )
+        image_class = weaviate_client._collection_to_image_class_name(test_collection)
+        point = WeaviateDataObject(
+            uuid=str(uuid_module.uuid4()),
+            properties={
+                "s3_key": "images/test.jpg",
+                "s3_uri": "s3://bucket/images/test.jpg",
+                "format": "jpeg",
+                "width": 1024,
+                "height": 768,
+                "thumbnail_key": "thumbnails/test_thumb.jpg",
+            },
+            vector=sample_clip_vector,
+        )
+        asyncio.run(
+            weaviate_client.batch_upsert_async(
+                collection=image_class,
+                points=[point],
+                vector_size=clip_vector_size,
+            )
+        )
+        results = asyncio.run(
+            weaviate_client.search_async(
+                collection=image_class,
+                query_vector=sample_clip_vector,
+                limit=10,
+            )
+        )
+        assert results.total >= 1
+        assert len(results.items) >= 1
+        assert results.items[0].score > 0.0
 
 
 # =============================================================================
