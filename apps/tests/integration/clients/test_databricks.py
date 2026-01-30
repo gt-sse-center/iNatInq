@@ -12,7 +12,7 @@ from databricks.sdk import WorkspaceClient
 
 pytestmark = pytest.mark.integration
 logger = logging.getLogger(__name__)
-ENV_LOCAL_PATH = Path(__file__).resolve().parents[3] / "zarf/compose/dev/.env.local"
+ENV_LOCAL_PATH = Path(__file__).resolve().parents[3] / "zarf/databricks/dev/.env.local"
 
 
 def _read_env_file(path: Path) -> dict[str, str]:
@@ -40,7 +40,9 @@ def test_workspace_connection() -> None:
     host = env_data.get("DATABRICKS_HOST")
     token = env_data.get("DATABRICKS_TOKEN")
     if not host or not token:
-        pytest.skip("Skipping: DATABRICKS_HOST and DATABRICKS_TOKEN not set in zarf/compose/dev/.env.local")
+        pytest.skip(
+            "Skipping: DATABRICKS_HOST and DATABRICKS_TOKEN not set in zarf/databricks/dev/.env.local"
+        )
 
     client = WorkspaceClient(host=host, token=token)
     current_user = client.current_user.me()

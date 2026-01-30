@@ -9,15 +9,6 @@ import sys
 from logging.config import dictConfig
 from pathlib import Path
 
-repo_src = Path.cwd() / ".." / ".." / ".."  # adjust if needed
-sys.path.insert(0, str(repo_src.resolve()))
-
-from foundation.logger import LOGGING_CONFIG  # noqa: E402
-
-from core.ingestion.databricks.process_s3_to_qdrant import main  # noqa: E402
-
-dictConfig(LOGGING_CONFIG)
-
 
 def _load_params(params: list[str]) -> None:
     """Load KEY=VALUE params into os.environ."""
@@ -28,6 +19,27 @@ def _load_params(params: list[str]) -> None:
         os.environ[key] = value
 
 
+def _bootstrap_runtime(params: list[str]) -> None:
+    """Apply params before resolving repo paths and configuring logging."""
+    _load_params(params)
+
+    repo_src_env = os.getenv("INATINQ_SRC_DIR")
+    # Default to the local repo's src directory based on this file's location.
+    repo_src = Path(repo_src_env) if repo_src_env else Path(__file__).resolve().parents[3]
+
+    if repo_src.exists():
+        sys.path.insert(0, str(repo_src.resolve()))
+
+    # Deferred import: we must load python_params first so LOGGING_CONFIG can
+    # read env-driven settings without being imported too early.
+    from foundation.logger import LOGGING_CONFIG
+
+    dictConfig(LOGGING_CONFIG)
+
+
 if __name__ == "__main__":
-    _load_params(sys.argv[1:])
+    _bootstrap_runtime(sys.argv[1:])
+    # Deferred import: only valid after sys.path is set from INATINQ_SRC_DIR.
+    from core.ingestion.databricks.process_s3_to_qdrant import main
+
     main()
