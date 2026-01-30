@@ -98,6 +98,7 @@ class DatabricksRayService:
             s3_prefix=s3_prefix,
             embedding_config=embedding_config,
             collection=collection,
+            extra_env_keys=("INATINQ_SRC_DIR",),
         )
         add_ray_tuning_env(env_vars)
         python_params = [f"{key}={value}" for key, value in env_vars.items()]
