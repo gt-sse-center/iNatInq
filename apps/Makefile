@@ -36,6 +36,10 @@ help:
 	@echo "│ make docker-rebuild    Rebuild and restart pipeline                         │"
 	@echo "│ make docker-clean      Stop services and remove volumes                     │"
 	@echo "│ make docker-health     Check health of all services                         │"
+	@echo "├── Databricks (Azure) ───────────────────────────────────────────────────────┤"
+	@echo "│ make azure-databricks-build  Create/update cluster from spec                │"
+	@echo "│ make azure-databricks-up     Start cluster                                  │"
+	@echo "│ make azure-databricks-down   Terminate cluster                              │"
 	@echo "├── Docker Service Logs ──────────────────────────────────────────────────────┤"
 	@echo "│ make logs-pipeline     Tail pipeline logs                                   │"
 	@echo "│ make logs-ollama       Tail ollama logs                                     │"
@@ -91,6 +95,8 @@ help:
 COMPOSE_FILE := zarf/compose/dev/docker-compose.yaml
 DOCKER_COMPOSE := docker compose -f $(COMPOSE_FILE)
 SMOKE_ENV_FILE ?= zarf/compose/dev/.env.local
+DATABRICKS_ENV_FILE ?= zarf/databricks/dev/.env.local
+DATABRICKS_CLUSTER_SPEC ?= zarf/databricks/dev/inatinq-azure-databricks-cluster.json
 
 # =============================================================================
 # Quick Start Aliases
@@ -278,6 +284,33 @@ smoke-test: providers-health smoke-providers
 .PHONY: providers-health
 providers-health:
 	@ENV_FILE=$(SMOKE_ENV_FILE) bash zarf/scripts/providers_health.sh
+
+# =============================================================================
+# Azure Databricks
+# =============================================================================
+
+.PHONY: azure-databricks-build
+azure-databricks-build: databricks-env-check
+	@ENV_FILE=$(DATABRICKS_ENV_FILE) CLUSTER_SPEC_FILE=$(DATABRICKS_CLUSTER_SPEC) \
+		zarf/databricks/azure-databricks-build.py
+
+.PHONY: azure-databricks-up
+azure-databricks-up: databricks-env-check
+	@ENV_FILE=$(DATABRICKS_ENV_FILE) CLUSTER_SPEC_FILE=$(DATABRICKS_CLUSTER_SPEC) \
+		zarf/databricks/azure-databricks-up.py
+
+.PHONY: azure-databricks-down
+azure-databricks-down: databricks-env-check
+	@ENV_FILE=$(DATABRICKS_ENV_FILE) CLUSTER_SPEC_FILE=$(DATABRICKS_CLUSTER_SPEC) \
+		zarf/databricks/azure-databricks-down.py
+
+.PHONY: databricks-env-check
+databricks-env-check:
+	@if [ ! -f "$(DATABRICKS_ENV_FILE)" ]; then \
+		echo "Missing Databricks env file: $(DATABRICKS_ENV_FILE)"; \
+		echo "Create it from zarf/databricks/dev/env.local.example"; \
+		exit 1; \
+	fi
 
 # =============================================================================
 # Docker Service Logs

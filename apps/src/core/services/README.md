@@ -77,7 +77,7 @@ Orchestrates semantic search operations by coordinating embedding generation and
 from core.services import SearchService
 from clients.interfaces.embedding import create_embedding_provider
 from clients.interfaces.vector_db import create_vector_db_provider
-from config import EmbeddingConfig, VectorDBConfig
+from config import EmbeddingConfig
 
 # Create service
 embedding_provider = create_embedding_provider(EmbeddingConfig.from_env())
@@ -199,7 +199,7 @@ Orchestrates Ray jobs via the Ray Jobs API for distributed data processing.
 
 ```python
 from core.services import RayService
-from config import EmbeddingConfig, VectorDBConfig
+from config import EmbeddingConfig
 
 # Create service
 service = RayService()
@@ -213,7 +213,6 @@ job_id = service.submit_s3_to_qdrant(
     s3_bucket="pipeline",
     s3_prefix="inputs/",
     embedding_config=EmbeddingConfig.from_env(),
-    vector_db_config=VectorDBConfig.from_env(),
     collection="documents"
 )
 print(f"Job submitted: {job_id}")
