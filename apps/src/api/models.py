@@ -175,6 +175,58 @@ class SearchResponse(BaseModel):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Image Search Models
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class ImageSearchResult(BaseModel):
+    """A single image search result from a vector database.
+
+    Attributes:
+        id: Point/object ID (UUID string from Qdrant or Weaviate).
+        score: Similarity score (0.0 to 1.0, higher is more similar).
+        s3_key: S3 object key for the image.
+        s3_uri: Full S3 URI (e.g., s3://bucket/key).
+        format: Image format (jpeg, png, webp, gif).
+        width: Image width in pixels (if available).
+        height: Image height in pixels (if available).
+        thumbnail_key: S3 key for thumbnail version (if available).
+    """
+
+    id: str = Field(description="Point/object ID (UUID string)")
+    score: float = Field(ge=0.0, le=1.0, description="Similarity score")
+    s3_key: str = Field(description="S3 object key for the image")
+    s3_uri: str = Field(description="Full S3 URI")
+    format: str | None = Field(default=None, description="Image format")
+    width: int | None = Field(default=None, description="Image width in pixels")
+    height: int | None = Field(default=None, description="Image height in pixels")
+    thumbnail_key: str | None = Field(default=None, description="S3 key for thumbnail")
+
+
+class ImageSearchResponse(BaseModel):
+    """Response containing text-to-image search results.
+
+    CLIP embeddings allow searching images using text queries (e.g., "sunset over ocean"
+    finds matching images). Both text and image embeddings live in the same vector space.
+
+    Attributes:
+        query: The original text query string.
+        model: The CLIP model used for text embedding.
+        collection: The image collection that was searched.
+        provider: The vector database provider that was used ("qdrant" or "weaviate").
+        results: List of image search results, ordered by similarity (highest first).
+        total: Total number of results found.
+    """
+
+    query: str = Field(description="Original text query string")
+    model: str = Field(description="CLIP model used for text embedding")
+    collection: str = Field(description="Image collection that was searched")
+    provider: str = Field(description="Vector database provider used (qdrant or weaviate)")
+    results: list[ImageSearchResult] = Field(description="Image results ordered by similarity")
+    total: int = Field(ge=0, description="Total number of results found")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Ray Job Management Models
 # ═══════════════════════════════════════════════════════════════════════════════
 

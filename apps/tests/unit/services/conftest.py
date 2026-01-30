@@ -11,12 +11,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from clients.clip import CLIPClient
 from clients.interfaces.embedding import EmbeddingProvider
 from clients.interfaces.vector_db import VectorDBProvider
 from config import EmbeddingConfig, RayJobConfig, VectorDBConfig
 from core.models import SearchResultItem, SearchResults
 from core.services.ray_service import RayService
-from core.services.search_service import SearchService
+from core.services.search_service import ImageSearchService, SearchService
 
 # =============================================================================
 # Mock Clients
@@ -152,4 +153,82 @@ def search_service(mock_embedding_provider: MagicMock, mock_vector_db_provider: 
     return SearchService(
         embedding_provider=mock_embedding_provider,
         vector_db_provider=mock_vector_db_provider,
+    )
+
+
+@pytest.fixture
+def mock_clip_client() -> MagicMock:
+    """Create a mock CLIPClient for testing.
+
+    Returns:
+        MagicMock: A mock CLIP client with text embedding methods.
+    """
+    client = MagicMock(spec=CLIPClient)
+    client.embed_text = MagicMock(return_value=[0.1, 0.2, 0.3])
+    client.embed_text_async = AsyncMock(return_value=[0.1, 0.2, 0.3])
+    client.vector_size = 512
+    client.model = "clip-vit-base-patch32"
+    return client
+
+
+@pytest.fixture
+def mock_image_vector_db_provider() -> MagicMock:
+    """Create a mock VectorDBProvider for image search testing.
+
+    Returns results with image metadata (s3_key, s3_uri, format, etc.).
+
+    Returns:
+        MagicMock: A mock vector database provider with image search results.
+    """
+    provider = MagicMock(spec=VectorDBProvider)
+    provider.search_async = AsyncMock(
+        return_value=SearchResults(
+            items=[
+                SearchResultItem(
+                    point_id="img-1",
+                    score=0.92,
+                    payload={
+                        "s3_key": "images/sunset.jpg",
+                        "s3_uri": "s3://pipeline/images/sunset.jpg",
+                        "format": "jpeg",
+                        "width": 1920,
+                        "height": 1080,
+                        "thumbnail_key": "thumbnails/sunset.jpg",
+                    },
+                ),
+                SearchResultItem(
+                    point_id="img-2",
+                    score=0.85,
+                    payload={
+                        "s3_key": "images/beach.png",
+                        "s3_uri": "s3://pipeline/images/beach.png",
+                        "format": "png",
+                        "width": 1280,
+                        "height": 720,
+                        "thumbnail_key": None,
+                    },
+                ),
+            ],
+            total=2,
+        )
+    )
+    return provider
+
+
+@pytest.fixture
+def image_search_service(
+    mock_clip_client: MagicMock, mock_image_vector_db_provider: MagicMock
+) -> ImageSearchService:
+    """Create an ImageSearchService instance with mocked providers.
+
+    Args:
+        mock_clip_client: Mock CLIPClient fixture.
+        mock_image_vector_db_provider: Mock VectorDBProvider fixture with image results.
+
+    Returns:
+        ImageSearchService: Configured service with mocked providers.
+    """
+    return ImageSearchService(
+        clip_client=mock_clip_client,
+        vector_db_provider=mock_image_vector_db_provider,
     )

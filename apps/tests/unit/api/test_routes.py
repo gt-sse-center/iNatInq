@@ -8,6 +8,7 @@ Tests cover request/response handling, error cases, and service integration.
 The tests cover:
   - Health check endpoint (/healthz)
   - Search endpoint (/search) with Qdrant and Weaviate providers
+  - Image search endpoint (/search/images) with CLIP embeddings
   - Ray job management endpoints (/ray/jobs/*)
   - Error handling and validation
   - Provider configuration and defaults
@@ -316,6 +317,318 @@ class TestSearchEndpoint:
         assert response.status_code == 502  # Bad Gateway
         data = response.json()
         assert "error" in data
+
+
+# =============================================================================
+# Image Search Endpoint Tests
+# =============================================================================
+
+
+class TestImageSearchEndpoint:
+    """Test suite for /search/images endpoint."""
+
+    def test_image_search_with_qdrant_provider_success(
+        self,
+        test_client: TestClient,
+        patch_get_settings: MagicMock,
+        patch_image_embedding_config: MagicMock,
+        patch_clip_client: MagicMock,
+        mock_image_vector_db_provider: MagicMock,
+    ) -> None:
+        """Test successful image search with Qdrant provider.
+
+        **Why this test is important:**
+          - Validates end-to-end image search flow
+          - Tests CLIP + Qdrant provider integration
+          - Ensures proper response format for image results
+        """
+        with patch(
+            "api.routes.create_vector_db_provider",
+            return_value=mock_image_vector_db_provider,
+        ):
+            response = test_client.get("/search/images?q=sunset%20over%20ocean&limit=5&provider=qdrant")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["query"] == "sunset over ocean"
+        assert data["provider"] == "qdrant"
+        assert data["collection"] == "documents_images"
+        assert len(data["results"]) == 2
+        assert data["results"][0]["score"] == 0.8234
+        assert "s3_key" in data["results"][0]
+        assert "s3_uri" in data["results"][0]
+        assert data["results"][0]["format"] == "jpeg"
+        assert data["results"][0]["width"] == 1920
+        assert data["results"][0]["height"] == 1080
+
+    def test_image_search_with_weaviate_provider_success(
+        self,
+        test_client: TestClient,
+        patch_get_settings: MagicMock,
+        patch_image_embedding_config: MagicMock,
+        patch_clip_client: MagicMock,
+    ) -> None:
+        """Test successful image search with Weaviate provider.
+
+        **Why this test is important:**
+          - Validates Weaviate provider integration for image search
+          - Tests provider switching capability
+          - Ensures multi-provider support works
+        """
+        # Mock Weaviate provider with AsyncMock for search_async
+        mock_weaviate = MagicMock()
+        mock_weaviate.search_async = AsyncMock(
+            return_value=SearchResults(
+                items=[
+                    SearchResultItem(
+                        point_id="weaviate-img-id",
+                        score=0.88,
+                        payload={
+                            "s3_key": "images/cat.jpg",
+                            "s3_uri": "s3://bucket/images/cat.jpg",
+                            "format": "jpeg",
+                        },
+                    )
+                ],
+                total=1,
+            )
+        )
+        mock_weaviate.close = MagicMock()
+
+        with patch(
+            "api.routes.create_vector_db_provider",
+            return_value=mock_weaviate,
+        ):
+            response = test_client.get("/search/images?q=fluffy%20cat&limit=5&provider=weaviate")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["provider"] == "weaviate"
+        assert data["results"][0]["id"] == "weaviate-img-id"
+        assert data["results"][0]["s3_key"] == "images/cat.jpg"
+
+    def test_image_search_with_default_provider_from_settings(
+        self,
+        test_client: TestClient,
+        patch_get_settings: MagicMock,
+        patch_image_embedding_config: MagicMock,
+        patch_clip_client: MagicMock,
+        mock_image_vector_db_provider: MagicMock,
+    ) -> None:
+        """Test image search uses default provider from settings when not specified.
+
+        **Why this test is important:**
+          - Validates default provider configuration
+          - Tests settings integration
+          - Ensures backward compatibility
+        """
+        with patch(
+            "api.routes.create_vector_db_provider",
+            return_value=mock_image_vector_db_provider,
+        ):
+            response = test_client.get("/search/images?q=test%20query")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Should use default from settings (qdrant in our mock)
+        assert data["provider"] == "qdrant"
+
+    def test_image_search_with_invalid_provider_returns_422(
+        self,
+        test_client: TestClient,
+        patch_get_settings: MagicMock,
+    ) -> None:
+        """Test image search with invalid provider returns 422 Unprocessable Entity.
+
+        **Why this test is important:**
+          - Validates provider validation via Pydantic
+          - Tests query parameter validation
+          - Ensures proper error handling
+        """
+        response = test_client.get("/search/images?q=test&provider=pinecone")
+
+        assert response.status_code == 422  # FastAPI/Pydantic validation error
+        data = response.json()
+        assert "detail" in data  # Pydantic validation error format
+
+    def test_image_search_with_empty_query_returns_400(
+        self,
+        test_client: TestClient,
+        patch_get_settings: MagicMock,
+        patch_image_embedding_config: MagicMock,
+        patch_clip_client: MagicMock,
+        mock_image_vector_db_provider: MagicMock,
+    ) -> None:
+        """Test image search with empty query returns 400 Bad Request.
+
+        **Why this test is important:**
+          - Validates query validation
+          - Tests empty string handling
+          - Prevents unnecessary API calls
+        """
+        with patch(
+            "api.routes.create_vector_db_provider",
+            return_value=mock_image_vector_db_provider,
+        ):
+            response = test_client.get("/search/images?q=")
+
+        assert response.status_code == 400
+
+    def test_image_search_with_custom_collection(
+        self,
+        test_client: TestClient,
+        patch_get_settings: MagicMock,
+        patch_image_embedding_config: MagicMock,
+        patch_clip_client: MagicMock,
+        mock_image_vector_db_provider: MagicMock,
+    ) -> None:
+        """Test image search with custom collection name.
+
+        **Why this test is important:**
+          - Validates collection override capability
+          - Tests that image collection follows {collection}_images pattern
+        """
+        with patch(
+            "api.routes.create_vector_db_provider",
+            return_value=mock_image_vector_db_provider,
+        ):
+            response = test_client.get("/search/images?q=test&collection=photos&provider=qdrant")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Image collection should be {collection}_images
+        assert data["collection"] == "photos_images"
+
+    def test_image_search_returns_clip_model_name(
+        self,
+        test_client: TestClient,
+        patch_get_settings: MagicMock,
+        patch_image_embedding_config: MagicMock,
+        patch_clip_client: MagicMock,
+        mock_image_vector_db_provider: MagicMock,
+    ) -> None:
+        """Test image search returns CLIP model name in response.
+
+        **Why this test is important:**
+          - Validates model name is included in response
+          - Tests ImageEmbeddingConfig integration
+        """
+        with patch(
+            "api.routes.create_vector_db_provider",
+            return_value=mock_image_vector_db_provider,
+        ):
+            response = test_client.get("/search/images?q=test&provider=qdrant")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["model"] == "ViT-B/32"  # From mock_image_embedding_config
+
+    def test_image_search_handles_upstream_error(
+        self,
+        test_client: TestClient,
+        patch_get_settings: MagicMock,
+        patch_image_embedding_config: MagicMock,
+        patch_clip_client: MagicMock,
+    ) -> None:
+        """Test that image search handles upstream service errors correctly.
+
+        **Why this test is important:**
+          - Validates error handling for service failures
+          - Tests exception translation to HTTP status
+          - Ensures proper error messages
+        """
+        # Mock vector DB provider that raises UpstreamError
+        mock_vector_db = MagicMock()
+        mock_vector_db.search_async.side_effect = UpstreamError("Qdrant connection failed")
+        mock_vector_db.close = MagicMock()
+
+        with patch(
+            "api.routes.create_vector_db_provider",
+            return_value=mock_vector_db,
+        ):
+            response = test_client.get("/search/images?q=test&provider=qdrant")
+
+        assert response.status_code == 502  # Bad Gateway
+        data = response.json()
+        assert "error" in data
+
+    def test_image_search_handles_clip_error(
+        self,
+        test_client: TestClient,
+        patch_get_settings: MagicMock,
+        patch_image_embedding_config: MagicMock,
+        mock_image_vector_db_provider: MagicMock,
+    ) -> None:
+        """Test that image search handles CLIP client errors correctly.
+
+        **Why this test is important:**
+          - Validates error handling for CLIP failures
+          - Tests exception translation to HTTP status
+          - Ensures proper error messages
+        """
+        # Mock CLIP client that raises UpstreamError
+        mock_clip = MagicMock()
+        mock_clip.embed_text_async = AsyncMock(side_effect=UpstreamError("CLIP connection failed"))
+
+        with patch(
+            "api.routes.CLIPClient.from_config",
+            return_value=mock_clip,
+        ):
+            with patch(
+                "api.routes.create_vector_db_provider",
+                return_value=mock_image_vector_db_provider,
+            ):
+                response = test_client.get("/search/images?q=test&provider=qdrant")
+
+        assert response.status_code == 502  # Bad Gateway
+        data = response.json()
+        assert "error" in data
+
+    def test_image_search_optional_fields_can_be_null(
+        self,
+        test_client: TestClient,
+        patch_get_settings: MagicMock,
+        patch_image_embedding_config: MagicMock,
+        patch_clip_client: MagicMock,
+    ) -> None:
+        """Test that image search handles optional fields being null.
+
+        **Why this test is important:**
+          - Validates that optional fields like thumbnail_key can be null
+          - Tests response model flexibility
+        """
+        # Mock provider returning results with null optional fields
+        mock_vector_db = MagicMock()
+        mock_vector_db.search_async = AsyncMock(
+            return_value=SearchResults(
+                items=[
+                    SearchResultItem(
+                        point_id="img-1",
+                        score=0.9,
+                        payload={
+                            "s3_key": "images/test.jpg",
+                            "s3_uri": "s3://bucket/images/test.jpg",
+                            # format, width, height, thumbnail_key are all missing
+                        },
+                    )
+                ],
+                total=1,
+            )
+        )
+        mock_vector_db.close = MagicMock()
+
+        with patch(
+            "api.routes.create_vector_db_provider",
+            return_value=mock_vector_db,
+        ):
+            response = test_client.get("/search/images?q=test&provider=qdrant")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["results"][0]["format"] is None
+        assert data["results"][0]["width"] is None
+        assert data["results"][0]["height"] is None
+        assert data["results"][0]["thumbnail_key"] is None
 
 
 # =============================================================================
