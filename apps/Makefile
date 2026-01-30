@@ -59,11 +59,27 @@ help:
 	@echo "│ make ui-weaviate       Open Weaviate Console                                 │"
 	@echo "├── Docker Scaling ───────────────────────────────────────────────────────────┤"
 	@echo "│ make ray-scale N=3     Scale Ray workers to N replicas                      │"
-	@echo "├── Synthetic Data ───────────────────────────────────────────────────────────┤"
-	@echo "│ make syntheticdata-generate  Generate test documents from Moby Dick         │"
-	@echo "│ make syntheticdata-upload    Upload documents to MinIO                       │"
-	@echo "│ make syntheticdata-setup     Generate and upload in one step                 │"
-	@echo "│ make syntheticdata-clean     Remove generated documents                      │"
+	@echo "├── Synthetic Data (Text) ────────────────────────────────────────────────────┤"
+	@echo "│ make synthetic-text-generate  Generate test documents from Moby Dick        │"
+	@echo "│ make synthetic-text-upload    Upload documents to MinIO                      │"
+	@echo "│ make synthetic-text-setup     Generate and upload in one step                │"
+	@echo "│ make synthetic-text-clean     Remove generated documents                     │"
+	@echo "├── Synthetic Images ──────────────────────────────────────────────────────────┤"
+	@echo "│ make synthetic-images-generate Generate test images with shapes/colors      │"
+	@echo "│ make synthetic-images-upload   Upload images to MinIO                       │"
+	@echo "│ make synthetic-images-setup    Generate and upload images                   │"
+	@echo "│ make synthetic-images-clean    Remove generated images                      │"
+	@echo "│ make synthetic-clean-all       Remove both text and images                  │"
+	@echo "├── Image Pipeline ────────────────────────────────────────────────────────────┤"
+	@echo "│ make ray-image-job-submit     Submit image processing Ray job               │"
+	@echo "│ make count-images-qdrant      Count images in Qdrant                        │"
+	@echo "│ make count-images-weaviate    Count images in Weaviate                      │"
+	@echo "│ make count-images-all         Count images in both DBs                      │"
+	@echo "│ make search-images-qdrant     Text-to-image search (Qdrant)                 │"
+	@echo "│ make search-images-weaviate   Text-to-image search (Weaviate)               │"
+	@echo "│ make search-images-compare    Compare search across providers               │"
+	@echo "│ make vectordb-clear-images    Clear image collections                       │"
+	@echo "│ make e2e-test-images          Full E2E image pipeline test                  │"
 	@echo "└─────────────────────────────────────────────────────────────────────────────┘"
 
 # =============================================================================
@@ -391,29 +407,81 @@ COUNT ?= 1000
 CHUNK_SIZE ?= 500
 MINIO_ENDPOINT ?= http://localhost:9000
 
-.PHONY: syntheticdata-generate
-syntheticdata-generate:
-	@uv run python syntheticdata/synthetic_data.py generate \
+# Default values for synthetic image generation
+IMAGE_COUNT ?= 100
+IMAGE_SIZE ?= 512
+IMAGE_PREFIX ?= images/
+IMAGE_COLLECTION ?= documents
+IMAGE_QUERY ?= red circle
+
+# --- Text Generation ---
+.PHONY: synthetic-text-generate
+synthetic-text-generate:
+	@uv run python syntheticdata/synthetic_data.py generate-text \
 		--count $(COUNT) \
 		--chunk-size $(CHUNK_SIZE)
 
-.PHONY: syntheticdata-upload
-syntheticdata-upload:
-	@uv run python syntheticdata/synthetic_data.py upload \
+.PHONY: synthetic-text-upload
+synthetic-text-upload:
+	@uv run python syntheticdata/synthetic_data.py upload-text \
 		--endpoint $(MINIO_ENDPOINT)
 
-.PHONY: syntheticdata-setup
-syntheticdata-setup:
-	@uv run python syntheticdata/synthetic_data.py setup \
+.PHONY: synthetic-text-setup
+synthetic-text-setup:
+	@uv run python syntheticdata/synthetic_data.py setup-text \
 		--count $(COUNT) \
 		--chunk-size $(CHUNK_SIZE) \
 		--endpoint $(MINIO_ENDPOINT)
 
-.PHONY: syntheticdata-clean
-syntheticdata-clean:
+.PHONY: synthetic-text-clean
+synthetic-text-clean:
 	@echo "Removing generated synthetic documents..."
-	@rm -rf syntheticdata/inputs
-	@echo "✅ Cleaned syntheticdata/inputs/"
+	@rm -rf syntheticdata/data/txts
+	@echo "✅ Cleaned syntheticdata/data/txts/"
+
+# --- Image Generation ---
+.PHONY: synthetic-images-generate
+synthetic-images-generate:
+	@uv run python syntheticdata/synthetic_data.py generate-images \
+		--count $(IMAGE_COUNT) \
+		--size $(IMAGE_SIZE)
+
+.PHONY: synthetic-images-upload
+synthetic-images-upload:
+	@uv run python syntheticdata/synthetic_data.py upload-images \
+		--endpoint $(MINIO_ENDPOINT) \
+		--prefix $(IMAGE_PREFIX)
+
+.PHONY: synthetic-images-setup
+synthetic-images-setup:
+	@uv run python syntheticdata/synthetic_data.py setup-images \
+		--count $(IMAGE_COUNT) \
+		--size $(IMAGE_SIZE) \
+		--endpoint $(MINIO_ENDPOINT) \
+		--prefix $(IMAGE_PREFIX)
+
+.PHONY: synthetic-images-clean
+synthetic-images-clean:
+	@echo "Removing generated synthetic images..."
+	@rm -rf syntheticdata/data/imgs
+	@echo "✅ Cleaned syntheticdata/data/imgs/"
+
+.PHONY: synthetic-clean-all
+synthetic-clean-all: synthetic-text-clean synthetic-images-clean
+	@echo "✅ All synthetic data cleaned"
+
+# --- Backwards-compatible aliases ---
+.PHONY: syntheticdata-generate syntheticdata-upload syntheticdata-setup syntheticdata-clean
+syntheticdata-generate: synthetic-text-generate
+syntheticdata-upload: synthetic-text-upload
+syntheticdata-setup: synthetic-text-setup
+syntheticdata-clean: synthetic-text-clean
+
+.PHONY: syntheticimages-generate syntheticimages-upload syntheticimages-setup syntheticimages-clean
+syntheticimages-generate: synthetic-images-generate
+syntheticimages-upload: synthetic-images-upload
+syntheticimages-setup: synthetic-images-setup
+syntheticimages-clean: synthetic-images-clean
 
 # =============================================================================
 # Ray Job Operations
@@ -445,6 +513,13 @@ ray-job-logs:
 		echo "No jobs found"; \
 	fi
 
+.PHONY: ray-image-job-submit
+ray-image-job-submit:
+	@echo "Submitting Ray image job to process S3 prefix: $(IMAGE_PREFIX)"
+	@curl -sf -X POST "http://localhost:8000/ray/jobs/images" \
+		-H "Content-Type: application/json" \
+		-d '{"s3_bucket": "pipeline", "s3_prefix": "$(IMAGE_PREFIX)", "collection": "$(IMAGE_COLLECTION)"}' | python3 -c "import sys, json; d=json.load(sys.stdin); print('Job ID:', d.get('job_id', 'N/A'))"
+
 # =============================================================================
 # Document Counts
 # =============================================================================
@@ -467,6 +542,29 @@ count-weaviate:
 
 .PHONY: count-all
 count-all: count-qdrant count-weaviate
+
+# =============================================================================
+# Image Counts
+# =============================================================================
+
+.PHONY: count-images-qdrant
+count-images-qdrant:
+	@echo "Counting images in Qdrant collection '$(IMAGE_COLLECTION)_images'..."
+	@curl -sf "http://localhost:6333/collections/$(IMAGE_COLLECTION)_images" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); print('Qdrant images:', d.get('result', {}).get('points_count', 0))" 2>/dev/null || echo "Qdrant: Collection not found or service unavailable"
+
+.PHONY: count-images-weaviate
+count-images-weaviate:
+	@echo "Counting images in Weaviate collection '$(IMAGE_COLLECTION)Images'..."
+	@COLLECTION_CAP=$$(python3 -c "print('$(IMAGE_COLLECTION)'.capitalize() + 'Images')"); \
+	curl -sf -X POST "http://localhost:8080/v1/graphql" \
+		-H "Content-Type: application/json" \
+		-d "{\"query\":\"{Aggregate{$$COLLECTION_CAP{meta{count}}}}\"}" 2>/dev/null | \
+		python3 -c "import sys, json; d=json.load(sys.stdin); \
+		count=d.get('data',{}).get('Aggregate',{}).get('$$COLLECTION_CAP',[{}])[0].get('meta',{}).get('count',0); \
+		print('Weaviate images:', count)" 2>/dev/null || echo "Weaviate: Collection not found or service unavailable"
+
+.PHONY: count-images-all
+count-images-all: count-images-qdrant count-images-weaviate
 
 # =============================================================================
 # Search Operations
@@ -497,6 +595,34 @@ search-compare:
 	@$(MAKE) search-qdrant QUERY="$(QUERY)"
 	@echo ""
 	@$(MAKE) search-weaviate QUERY="$(QUERY)"
+
+# =============================================================================
+# Image Search Operations
+# =============================================================================
+
+.PHONY: search-images-qdrant
+search-images-qdrant:
+	@echo "Searching images in Qdrant for: '$(IMAGE_QUERY)'"
+	@ENCODED_QUERY=$$(python3 -c 'import urllib.parse; print(urllib.parse.quote_plus("$(IMAGE_QUERY)"))'); \
+	curl -sf "http://localhost:8000/search/images?q=$$ENCODED_QUERY&provider=qdrant&limit=3" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); \
+		print('Results:', len(d.get('results', []))); \
+		[print(f\"  - {r.get('s3_key', 'N/A')} (score: {r.get('score', 0):.3f})\") for r in d.get('results', [])[:3]]" 2>/dev/null || echo "Search failed or service unavailable"
+
+.PHONY: search-images-weaviate
+search-images-weaviate:
+	@echo "Searching images in Weaviate for: '$(IMAGE_QUERY)'"
+	@ENCODED_QUERY=$$(python3 -c 'import urllib.parse; print(urllib.parse.quote_plus("$(IMAGE_QUERY)"))'); \
+	curl -sf "http://localhost:8000/search/images?q=$$ENCODED_QUERY&provider=weaviate&limit=3" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); \
+		print('Results:', len(d.get('results', []))); \
+		[print(f\"  - {r.get('s3_key', 'N/A')} (score: {r.get('score', 0):.3f})\") for r in d.get('results', [])[:3]]" 2>/dev/null || echo "Search failed or service unavailable"
+
+.PHONY: search-images-compare
+search-images-compare:
+	@echo "Comparing image search results across both providers..."
+	@echo ""
+	@$(MAKE) search-images-qdrant IMAGE_QUERY="$(IMAGE_QUERY)"
+	@echo ""
+	@$(MAKE) search-images-weaviate IMAGE_QUERY="$(IMAGE_QUERY)"
 
 # =============================================================================
 # S3/MinIO Operations
@@ -530,6 +656,22 @@ weaviate-clear:
 vectordb-clear: qdrant-clear weaviate-clear
 	@echo "✅ Both vector DBs cleared"
 
+# Image collection clear targets
+.PHONY: qdrant-clear-images
+qdrant-clear-images:
+	@echo "Deleting Qdrant image collection '$(IMAGE_COLLECTION)_images'..."
+	@curl -sf -X DELETE "http://localhost:6333/collections/$(IMAGE_COLLECTION)_images" 2>/dev/null && echo "✅ Qdrant image collection deleted" || echo "Qdrant delete failed or collection doesn't exist"
+
+.PHONY: weaviate-clear-images
+weaviate-clear-images:
+	@echo "Deleting Weaviate image collection '$(IMAGE_COLLECTION)Images'..."
+	@COLLECTION_CAP=$$(python3 -c "print('$(IMAGE_COLLECTION)'.capitalize() + 'Images')"); \
+	curl -sf -X DELETE "http://localhost:8080/v1/schema/$$COLLECTION_CAP" 2>/dev/null && echo "✅ Weaviate image collection deleted" || echo "Weaviate delete failed or collection doesn't exist"
+
+.PHONY: vectordb-clear-images
+vectordb-clear-images: qdrant-clear-images weaviate-clear-images
+	@echo "✅ Both image collections cleared"
+
 # =============================================================================
 # End-to-End Pipeline
 # =============================================================================
@@ -544,7 +686,7 @@ e2e-test:
 	@$(MAKE) vectordb-clear COLLECTION=$(COLLECTION)
 	@echo ""
 	@echo "Step 2: Seed S3 with $(COUNT) documents..."
-	@$(MAKE) syntheticdata-setup COUNT=$(COUNT)
+	@$(MAKE) synthetic-text-setup COUNT=$(COUNT)
 	@echo ""
 	@echo "Step 3: Submit Ray job..."
 	@$(MAKE) ray-job-submit S3_PREFIX=$(S3_PREFIX) COLLECTION=$(COLLECTION)
@@ -559,3 +701,33 @@ e2e-test:
 	@$(MAKE) search-compare QUERY="$(QUERY)"
 	@echo ""
 	@echo "✅ End-to-end test complete!"
+
+# =============================================================================
+# End-to-End Image Pipeline
+# =============================================================================
+
+.PHONY: e2e-test-images
+e2e-test-images:
+	@echo "╔══════════════════════════════════════════════════════════════════════════╗"
+	@echo "║                      End-to-End Image Pipeline Test                      ║"
+	@echo "╚══════════════════════════════════════════════════════════════════════════╝"
+	@echo ""
+	@echo "Step 1: Clear image collections..."
+	@$(MAKE) vectordb-clear-images IMAGE_COLLECTION=$(IMAGE_COLLECTION)
+	@echo ""
+	@echo "Step 2: Generate and upload $(IMAGE_COUNT) images..."
+	@$(MAKE) synthetic-images-setup IMAGE_COUNT=$(IMAGE_COUNT) IMAGE_SIZE=$(IMAGE_SIZE) IMAGE_PREFIX=$(IMAGE_PREFIX)
+	@echo ""
+	@echo "Step 3: Submit Ray image job..."
+	@$(MAKE) ray-image-job-submit IMAGE_PREFIX=$(IMAGE_PREFIX) IMAGE_COLLECTION=$(IMAGE_COLLECTION)
+	@echo ""
+	@echo "Waiting 60 seconds for image job to complete..."
+	@sleep 60
+	@echo ""
+	@echo "Step 4: Check image counts..."
+	@$(MAKE) count-images-all IMAGE_COLLECTION=$(IMAGE_COLLECTION)
+	@echo ""
+	@echo "Step 5: Test image search..."
+	@$(MAKE) search-images-compare IMAGE_QUERY="$(IMAGE_QUERY)"
+	@echo ""
+	@echo "✅ End-to-end image test complete!"
