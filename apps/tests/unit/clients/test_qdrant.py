@@ -384,6 +384,122 @@ class TestQdrantClientWrapperEnsureCollection:
         mock_async_client.get_collections.assert_called_once()
         mock_async_client.create_collection.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_ensure_image_collection_creates_if_missing(
+        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    ) -> None:
+        """Test that ensure_image_collection creates collection if missing.
+
+        **Why this test is important:**
+          - Image collection creation is essential for image embeddings
+          - Ensures collections exist before use with correct naming pattern
+          - Critical for dev convenience functions
+          - Validates image collection creation logic
+
+        **What it tests:**
+          - get_collections is called to check existence
+          - create_collection is called with {collection}_images naming pattern
+          - Default vector_size is 512 (CLIP default)
+        """
+        mock_collections = MagicMock()
+        mock_collections.collections = []  # Empty, collection doesn't exist
+        mock_async_client.get_collections.return_value = mock_collections
+
+        await qdrant_client.ensure_image_collection_async(collection="documents")
+
+        mock_async_client.get_collections.assert_called_once()
+        mock_async_client.create_collection.assert_called_once()
+        call_kwargs = mock_async_client.create_collection.call_args[1]
+        assert call_kwargs["collection_name"] == "documents_images"
+        assert call_kwargs["vectors_config"].size == 512  # CLIP default
+
+    @pytest.mark.asyncio
+    async def test_ensure_image_collection_creates_with_custom_vector_size(
+        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    ) -> None:
+        """Test that ensure_image_collection accepts custom vector_size.
+
+        **Why this test is important:**
+          - Different embedding models have different vector dimensions
+          - Custom vector_size allows flexibility for different models
+          - Critical for supporting multiple embedding backends
+          - Validates parameter passing
+
+        **What it tests:**
+          - Custom vector_size is applied correctly
+          - Collection name still uses _images suffix
+        """
+        mock_collections = MagicMock()
+        mock_collections.collections = []
+        mock_async_client.get_collections.return_value = mock_collections
+
+        await qdrant_client.ensure_image_collection_async(collection="photos", vector_size=768)
+
+        call_kwargs = mock_async_client.create_collection.call_args[1]
+        assert call_kwargs["collection_name"] == "photos_images"
+        assert call_kwargs["vectors_config"].size == 768
+
+    @pytest.mark.asyncio
+    async def test_ensure_image_collection_skips_if_exists(
+        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    ) -> None:
+        """Test that ensure_image_collection skips creation if collection exists.
+
+        **Why this test is important:**
+          - Idempotent operations prevent errors
+          - Avoids unnecessary API calls
+          - Critical for efficiency
+          - Validates existence checking with _images suffix
+
+        **What it tests:**
+          - get_collections is called to check existence
+          - create_collection is not called if collection exists
+          - Collection name includes _images suffix
+        """
+        mock_collection = MagicMock()
+        mock_collection.name = "documents_images"
+        mock_collections = MagicMock()
+        mock_collections.collections = [mock_collection]
+        mock_async_client.get_collections.return_value = mock_collections
+
+        await qdrant_client.ensure_image_collection_async(collection="documents")
+
+        mock_async_client.get_collections.assert_called_once()
+        mock_async_client.create_collection.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_ensure_image_collection_naming_pattern(
+        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    ) -> None:
+        """Test that ensure_image_collection uses correct naming pattern.
+
+        **Why this test is important:**
+          - Naming pattern must be consistent: {collection}_images
+          - Ensures image collections are clearly distinguished from text collections
+          - Critical for collection organization and management
+          - Validates naming convention
+
+        **What it tests:**
+          - Collection name is correctly formatted as {base_collection}_images
+          - Different base collection names produce correct image collection names
+        """
+        mock_collections = MagicMock()
+        mock_collections.collections = []
+        mock_async_client.get_collections.return_value = mock_collections
+
+        # Test with different collection names
+        test_cases = [
+            ("documents", "documents_images"),
+            ("photos", "photos_images"),
+            ("test", "test_images"),
+        ]
+
+        for base_name, expected_name in test_cases:
+            mock_async_client.get_collections.return_value = mock_collections
+            await qdrant_client.ensure_image_collection_async(collection=base_name)
+            call_kwargs = mock_async_client.create_collection.call_args[1]
+            assert call_kwargs["collection_name"] == expected_name
+
 
 # =============================================================================
 # Search Tests
