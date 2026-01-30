@@ -27,7 +27,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pybreaker
 import pytest
 
-from clients.weaviate import WeaviateClientWrapper, WeaviateDataObject
+from weaviate.classes.config import VectorDistances
+
+from clients.weaviate import WeaviateClientWrapper, WeaviateDataObject, _DISTANCE_METRIC_MAP
 from config import VectorDBConfig
 from core.exceptions import UpstreamError
 from core.models import SearchResults
@@ -477,6 +479,53 @@ class TestWeaviateClientWrapperEnsureImageCollection:
         call_kwargs = mock_weaviate_client.collections.create.call_args[1]
         assert call_kwargs["name"] == "PhotosImages"
         assert call_kwargs["vectorizer_config"] is None
+
+    @pytest.mark.asyncio
+    async def test_ensure_image_collection_creates_with_custom_distance_metric(
+        self, weaviate_client: WeaviateClientWrapper, mock_weaviate_client: AsyncMock
+    ) -> None:
+        """Test that ensure_image_collection accepts custom distance_metric.
+
+        **Why this test is important:**
+          - Different use cases may require different distance metrics
+          - Supports cosine, euclidean, and dot product similarity
+          - Critical for flexibility in vector similarity comparisons
+
+        **What it tests:**
+          - create is called with the mapped distance metric
+          - distance_metric parameter correctly maps to VectorDistances enum
+        """
+        mock_weaviate_client.collections.exists.return_value = False
+        mock_weaviate_client.__aenter__ = AsyncMock(return_value=mock_weaviate_client)
+        mock_weaviate_client.__aexit__ = AsyncMock(return_value=None)
+
+        await weaviate_client.ensure_image_collection_async(collection="photos", distance_metric="euclidean")
+
+        mock_weaviate_client.collections.create.assert_called_once()
+        call_kwargs = mock_weaviate_client.collections.create.call_args[1]
+        assert call_kwargs["name"] == "PhotosImages"
+        # Verify distance metric is mapped correctly
+        vector_config = call_kwargs["vector_index_config"]
+        assert vector_config.distance == VectorDistances.L2_SQUARED
+
+    @pytest.mark.asyncio
+    async def test_ensure_image_collection_distance_metric_mapping(
+        self, weaviate_client: WeaviateClientWrapper, mock_weaviate_client: AsyncMock
+    ) -> None:
+        """Test that distance_metric mapping covers all supported values.
+
+        **Why this test is important:**
+          - Ensures all advertised distance metrics are properly mapped
+          - Validates the _DISTANCE_METRIC_MAP constant
+
+        **What it tests:**
+          - "cosine" maps to VectorDistances.COSINE
+          - "euclidean" maps to VectorDistances.L2_SQUARED
+          - "dot" maps to VectorDistances.DOT
+        """
+        assert _DISTANCE_METRIC_MAP["cosine"] == VectorDistances.COSINE
+        assert _DISTANCE_METRIC_MAP["euclidean"] == VectorDistances.L2_SQUARED
+        assert _DISTANCE_METRIC_MAP["dot"] == VectorDistances.DOT
 
     @pytest.mark.asyncio
     async def test_ensure_image_collection_skips_if_exists(

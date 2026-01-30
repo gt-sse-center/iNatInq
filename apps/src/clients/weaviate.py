@@ -31,7 +31,7 @@ The client wrapper:
 - Implements VectorDBProvider ABC for provider-agnostic usage
 """
 
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 import aiobreaker
@@ -50,6 +50,16 @@ from foundation.circuit_breaker import create_async_circuit_breaker, handle_circ
 
 from .base import VectorDBClientBase
 from .interfaces.vector_db import VectorDBProvider
+
+# Type alias for supported distance metrics
+DistanceMetric = Literal["cosine", "euclidean", "dot"]
+
+# Mapping from string distance metric to Weaviate VectorDistances enum
+_DISTANCE_METRIC_MAP: dict[str, VectorDistances] = {
+    "cosine": VectorDistances.COSINE,
+    "euclidean": VectorDistances.L2_SQUARED,
+    "dot": VectorDistances.DOT,
+}
 
 
 @attrs.define(frozen=True, slots=True)
@@ -290,6 +300,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
         *,
         collection: str,
         vector_size: int = 512,
+        distance_metric: DistanceMetric = "cosine",
     ) -> None:
         """Create a Weaviate class for image embeddings if it does not already exist.
 
@@ -299,12 +310,14 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
         Image collections use:
         - **Class name**: `{Collection}Images` (PascalCase, e.g., DocumentsImages)
         - **Properties**: s3_key, s3_uri, format, width, height, thumbnail_key
-        - **Vector config**: Cosine distance; dimension from vector_size (default 512 for CLIP).
+        - **Vector config**: Configurable distance metric; dimension from vector_size.
 
         Args:
             collection: Base collection name. The Weaviate class will be named
                 {Collection}Images (e.g., collection="documents" -> "DocumentsImages").
             vector_size: Dimension of vectors. Default 512 (CLIP models like ViT-B/32).
+            distance_metric: Distance metric for vector similarity. One of "cosine",
+                "euclidean", or "dot". Default "cosine" (standard for embeddings).
 
         Note:
             If the class already exists, this function does nothing (no-op).
@@ -332,7 +345,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
                         Property(name="thumbnail_key", data_type=DataType.TEXT),
                     ],
                     vector_index_config=Configure.VectorIndex.hnsw(
-                        distance_metric=VectorDistances.COSINE,
+                        distance_metric=_DISTANCE_METRIC_MAP[distance_metric],
                     ),
                 )
         except Exception as e:
