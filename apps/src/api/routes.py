@@ -12,6 +12,8 @@ This module defines all HTTP endpoints for the pipeline service. It handles:
 (Qdrant or Weaviate)
 - `POST /ray/jobs`: Submit Ray job to process S3 data and store embeddings
 in vector database
+- `POST /ray/jobs/images`: Submit Ray job to process S3 images and store
+image embeddings in vector DB image collections
 - `GET /ray/jobs/{job_id}`: Check status of a submitted job
 
 ## Error Handling
@@ -36,6 +38,8 @@ FastAPI automatically generates OpenAPI/Swagger documentation at:
 from datetime import datetime, timezone
 from typing import Annotated
 
+from fastapi import APIRouter, Query
+
 from api import models
 from clients.interfaces.embedding import create_embedding_provider
 from clients.interfaces.vector_db import create_vector_db_provider
@@ -44,7 +48,6 @@ from core.exceptions import BadRequestError, PipelineError
 from core.services.databricks_ray_service import DatabricksRayService
 from core.services.ray_service import RayService
 from core.services.search_service import SearchService
-from fastapi import APIRouter, Query
 
 router = APIRouter()
 
@@ -293,6 +296,86 @@ async def submit_ray_job(req: models.RayJobRequest) -> models.RayJobResponse:
         )
     except Exception as e:
         raise PipelineError(f"Failed to submit Ray job: {e!s}") from e
+
+
+@router.post(
+    "/ray/jobs/images",
+    response_model=models.RayImageJobResponse,
+    status_code=202,
+    tags=["ray-jobs"],
+)
+async def submit_ray_image_job(req: models.RayImageJobRequest) -> models.RayImageJobResponse:
+    """Submit a new Ray job to process S3 images.
+
+    This submits a job to the Ray cluster and returns immediately.
+    Use GET /ray/jobs/{job_id} to check status and GET /ray/jobs/{job_id}/logs for logs.
+
+    The job will:
+    1. List objects under the given S3 bucket and prefix
+    2. Filter by image extensions (.jpg, .jpeg, .png, .webp, .gif)
+    3. Preprocess and embed images via CLIP
+    4. Store vectors in Qdrant and Weaviate image collections
+
+    Args:
+        req: Request containing s3_bucket, s3_prefix, and collection.
+
+    Returns:
+        Job metadata including Ray-generated job ID and submission timestamp.
+
+    Raises:
+        HTTPException(500): If job submission fails.
+
+    Example Request:
+        ```json
+        POST /ray/jobs/images
+        {
+            "s3_bucket": "pipeline",
+            "s3_prefix": "images/",
+            "collection": "documents"
+        }
+        ```
+
+    Example Response:
+        ```json
+        {
+            "job_id": "raysubmit_1234567890",
+            "status": "submitted",
+            "namespace": "ml-system",
+            "s3_bucket": "pipeline",
+            "s3_prefix": "images/",
+            "collection": "documents",
+            "submitted_at": "2026-01-12T15:30:45.123456Z"
+        }
+        ```
+    """
+    try:
+        settings = get_settings()
+        namespace = settings.k8s_namespace
+
+        ray_service = RayService()
+        minio_cfg = MinIOConfig.from_env(namespace)
+
+        job_id = ray_service.submit_image_job(
+            namespace=namespace,
+            s3_endpoint=minio_cfg.endpoint_url,
+            s3_access_key_id=minio_cfg.access_key_id,
+            s3_secret_access_key=minio_cfg.secret_access_key,
+            s3_bucket=req.s3_bucket,
+            s3_prefix=req.s3_prefix,
+            collection=req.collection,
+        )
+
+        return models.RayImageJobResponse(
+            job_id=job_id,
+            status="submitted",
+            namespace=namespace,
+            s3_bucket=req.s3_bucket,
+            s3_prefix=req.s3_prefix,
+            collection=req.collection,
+            submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+        )
+    except Exception as e:
+        raise PipelineError(f"Failed to submit Ray image job: {e!s}") from e
 
 
 @router.post(
