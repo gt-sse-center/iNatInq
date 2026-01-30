@@ -78,6 +78,9 @@ help:
 	@echo "│ make search-images-qdrant     Text-to-image search (Qdrant)                 │"
 	@echo "│ make search-images-weaviate   Text-to-image search (Weaviate)               │"
 	@echo "│ make search-images-compare    Compare search across providers               │"
+	@echo "│ make image-search-demo        Search with presigned URLs                    │"
+	@echo "│ make image-search-download    Search and download images                    │"
+	@echo "│ make image-search-open        Search and open top result in browser         │"
 	@echo "│ make vectordb-clear-images    Clear image collections                       │"
 	@echo "│ make e2e-test-images          Full E2E image pipeline test                  │"
 	@echo "└─────────────────────────────────────────────────────────────────────────────┘"
@@ -623,6 +626,19 @@ search-images-compare:
 	@$(MAKE) search-images-qdrant IMAGE_QUERY="$(IMAGE_QUERY)"
 	@echo ""
 	@$(MAKE) search-images-weaviate IMAGE_QUERY="$(IMAGE_QUERY)"
+
+# Image search demo with presigned URLs and download
+.PHONY: image-search-demo
+image-search-demo:
+	@uv run python scripts/image_search_demo.py "$(IMAGE_QUERY)" --limit 5 --urls
+
+.PHONY: image-search-download
+image-search-download:
+	@uv run python scripts/image_search_demo.py "$(IMAGE_QUERY)" --limit 5 --download ./image-results
+
+.PHONY: image-search-open
+image-search-open:
+	@uv run python scripts/image_search_demo.py "$(IMAGE_QUERY)" --limit 1 --open
 
 # =============================================================================
 # S3/MinIO Operations
