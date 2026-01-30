@@ -176,6 +176,31 @@ defaults):
   `EMBEDDING_PROVIDER=sagemaker`)
 - `SAGEMAKER_REGION`: AWS region for SageMaker (default: `us-east-1`)
 
+**Image Embedding Provider Configuration**
+- `IMAGE_EMBEDDING_PROVIDER`: Provider type - `clip` or `llava`
+  (default: `clip`)
+- `CLIP_URL`: CLIP/Ollama service URL (default: auto-detected based on
+  environment and backend)
+- `CLIP_MODEL`: Model name for image embedding (default: `ViT-B/32`
+  for clip backend, `llava` for ollama backend)
+- `CLIP_BACKEND`: API backend type - `ollama` or `clip`
+  (default: `ollama`)
+- `CLIP_TIMEOUT`: Request timeout in seconds (default: `120`)
+- `CLIP_CIRCUIT_BREAKER_THRESHOLD`: Failures before circuit opens
+  (default: `5`)
+- `CLIP_CIRCUIT_BREAKER_TIMEOUT`: Circuit recovery timeout in seconds
+  (default: `30`)
+- `CLIP_MAX_BATCH_SIZE`: Maximum images per batch API request
+  (default: `8`)
+- `CLIP_VECTOR_SIZE`: Override auto-detected vector dimension
+  (optional)
+- `IMAGE_BATCH_SIZE`: Images per processing batch in Ray/pipeline
+  (default: `10`, smaller than text due to memory)
+- `IMAGE_MAX_SIZE_MB`: Maximum allowed image size in megabytes
+  (default: `10.0`)
+- `IMAGE_TARGET_SIZE`: Target dimension for image resizing before
+  embedding (default: `224`, standard CLIP input size)
+
 **Vector Database Provider Configuration**
 - `VECTOR_DB_PROVIDER`: Provider type - `qdrant` or `weaviate`
   (default: `qdrant`)
@@ -419,7 +444,8 @@ class ImageEmbeddingConfig(BaseModel):
     generate embeddings from image data.
 
     Attributes:
-        provider_type: Type of image embedding provider. Currently supports "clip".
+        provider_type: Type of image embedding provider. Supports "clip" or "llava".
+            Default: "clip".
         clip_url: CLIP/Ollama service URL. Required if provider_type="clip".
             Auto-detected based on environment if not set.
         clip_model: Model name for image embedding (e.g., "llava", "ViT-B/32").
@@ -430,11 +456,18 @@ class ImageEmbeddingConfig(BaseModel):
         clip_timeout: Request timeout in seconds. Default: 120 (higher for images).
         clip_circuit_breaker_threshold: Failures before circuit opens. Default: 5.
         clip_circuit_breaker_timeout: Circuit recovery timeout in seconds. Default: 30.
-        clip_max_batch_size: Maximum images per batch request. Default: 8.
+        clip_max_batch_size: Maximum images per batch API request. Default: 8.
         clip_vector_size: Override auto-detected vector size. Default: None.
+        image_batch_size: Number of images per processing batch (Ray/pipeline).
+            Smaller than text batches due to higher memory per image. Default: 10.
+        image_max_size_mb: Maximum allowed image size in megabytes. Images larger
+            than this will be rejected. Default: 10 MB.
+        image_target_size: Target dimension for image resizing before embedding.
+            Images are resized to (target_size, target_size) for CLIP models.
+            Default: 224 (standard CLIP input size).
     """
 
-    provider_type: Literal["clip"] = "clip"
+    provider_type: Literal["clip", "llava"] = "clip"
 
     # CLIP settings
     clip_url: str | None = None
@@ -446,6 +479,11 @@ class ImageEmbeddingConfig(BaseModel):
     clip_max_batch_size: int = 8
     clip_vector_size: int | None = None
 
+    # Image processing settings
+    image_batch_size: int = 10
+    image_max_size_mb: float = 10.0
+    image_target_size: int = 224
+
     model_config = SettingsConfigDict(frozen=True)
 
     @classmethod
@@ -453,15 +491,18 @@ class ImageEmbeddingConfig(BaseModel):
         """Create ImageEmbeddingConfig from environment variables.
 
         Supports:
-        - IMAGE_EMBEDDING_PROVIDER: Provider type (currently only "clip")
+        - IMAGE_EMBEDDING_PROVIDER: Provider type ("clip" or "llava", default: "clip")
         - CLIP_URL or OLLAMA_BASE_URL: Service URL
-        - CLIP_MODEL: Model name (default: "llava")
+        - CLIP_MODEL: Model name (default depends on backend)
         - CLIP_BACKEND: API backend type ("ollama" or "clip", default: "ollama")
         - CLIP_TIMEOUT: Request timeout in seconds
         - CLIP_CIRCUIT_BREAKER_THRESHOLD: Failures before circuit opens
         - CLIP_CIRCUIT_BREAKER_TIMEOUT: Circuit recovery timeout
-        - CLIP_MAX_BATCH_SIZE: Maximum images per batch
+        - CLIP_MAX_BATCH_SIZE: Maximum images per batch API request
         - CLIP_VECTOR_SIZE: Override vector dimension
+        - IMAGE_BATCH_SIZE: Images per processing batch (Ray/pipeline)
+        - IMAGE_MAX_SIZE_MB: Maximum allowed image size in MB
+        - IMAGE_TARGET_SIZE: Target dimension for image resizing
 
         Args:
             namespace: Kubernetes namespace for service discovery.
@@ -470,6 +511,11 @@ class ImageEmbeddingConfig(BaseModel):
             Configured ImageEmbeddingConfig instance.
         """
         in_cluster = _is_in_cluster()
+
+        # Get provider type (clip or llava)
+        provider_type = os.getenv("IMAGE_EMBEDDING_PROVIDER", "clip").lower()
+        if provider_type not in ("clip", "llava"):
+            provider_type = "clip"
 
         # Get backend type (ollama or clip)
         clip_backend = os.getenv("CLIP_BACKEND", "ollama").lower()
@@ -494,7 +540,7 @@ class ImageEmbeddingConfig(BaseModel):
             clip_vector_size = int(vector_size_str)
 
         return cls(
-            provider_type="clip",
+            provider_type=provider_type,  # type: ignore[arg-type]
             clip_url=clip_url,
             clip_model=clip_model,
             clip_backend=clip_backend,  # type: ignore[arg-type]
@@ -503,6 +549,9 @@ class ImageEmbeddingConfig(BaseModel):
             clip_circuit_breaker_timeout=int(os.getenv("CLIP_CIRCUIT_BREAKER_TIMEOUT", "30")),
             clip_max_batch_size=int(os.getenv("CLIP_MAX_BATCH_SIZE", "8")),
             clip_vector_size=clip_vector_size,
+            image_batch_size=int(os.getenv("IMAGE_BATCH_SIZE", "10")),
+            image_max_size_mb=float(os.getenv("IMAGE_MAX_SIZE_MB", "10.0")),
+            image_target_size=int(os.getenv("IMAGE_TARGET_SIZE", "224")),
         )
 
 
