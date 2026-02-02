@@ -97,7 +97,7 @@ class DatabricksStrategy:
         Returns:
             Configured DatabricksStrategy instance.
         """
-        return cls(_config=RayJobConfig.from_env(namespace))
+        return cls(config=RayJobConfig.from_env(namespace))
 
     @property
     def config(self) -> RayJobConfig:
