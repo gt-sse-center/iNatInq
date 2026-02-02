@@ -32,7 +32,7 @@ The client wrapper:
 """
 
 import asyncio
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 import aiobreaker
@@ -309,6 +309,21 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
         pascal = "".join(part.capitalize() for part in parts)
         return f"{pascal}Images"
 
+    def _to_class_name(self, collection: str) -> str:
+        """Convert any collection name to Weaviate class name (PascalCase).
+
+        Weaviate requires class names to be PascalCase. This method converts
+        snake_case or kebab-case names to PascalCase.
+
+        Args:
+            collection: Collection name (e.g., 'documents_images', 'my-photos').
+
+        Returns:
+            Weaviate class name in PascalCase (e.g., 'DocumentsImages', 'MyPhotos').
+        """
+        parts = collection.replace("-", "_").split("_")
+        return "".join(part.capitalize() for part in parts)
+
     async def ensure_image_collection_async(
         self,
         *,
@@ -405,9 +420,11 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
 
         async def _do_search() -> SearchResults:
             """Inner search function to be wrapped by circuit breaker."""
+            # Convert collection name to Weaviate class name (PascalCase)
+            class_name = self._to_class_name(collection)
             # Weaviate v4 client is the async context manager
             async with self._client:
-                collection_obj = self._client.collections.get(collection)
+                collection_obj = self._client.collections.get(class_name)
 
                 # Perform vector search (await the coroutine)
                 response = await collection_obj.query.near_vector(
