@@ -1,7 +1,7 @@
-"""Ray job: S3 → Ollama embeddings → Qdrant.
+"""Ray job: S3 → embeddings → vector databases.
 
 This script processes S3 objects using Ray for parallel execution.
-It mirrors the Spark implementation but uses Ray's distributed task execution.
+It indexes to both Qdrant and Weaviate vector databases simultaneously.
 
 Main responsibilities:
 - Initialize Ray cluster
@@ -22,12 +22,12 @@ from botocore.exceptions import ClientError
 
 from clients.s3 import S3ClientWrapper
 from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
-from core.ingestion.checkpoint import CheckpointManager, is_s3_path
+from foundation.checkpoint import CheckpointManager, is_s3_path
+from core.ingestion.shared import RateLimiterActor
+from core.ingestion.strategies import LocalRayStrategy
 from foundation.logger import LOGGING_CONFIG
 
-from .processing import process_s3_batch_ray
-from .rate_limiter import RateLimiterActor
-from .ray_cluster import init_ray_cluster, shutdown_ray_cluster
+from core.ingestion.tasks import process_s3_batch_ray
 
 dictConfig(LOGGING_CONFIG)
 
@@ -35,7 +35,7 @@ logger = logging.getLogger("pipeline.ray")
 
 
 def main() -> None:
-    """Process S3 objects and store embeddings in Qdrant using Ray.
+    """Process S3 objects and store embeddings in vector databases using Ray.
 
     This function initializes Ray, lists S3 objects, loads checkpoints,
     and processes objects using Ray remote functions.
@@ -70,8 +70,10 @@ def main() -> None:
         job_logger.error("Ray is not installed. Install with: pip install ray[default]")
         sys.exit(1)
 
+    # Use LocalRayStrategy for cluster initialization
+    strategy = LocalRayStrategy.from_env(namespace)
     try:
-        init_ray_cluster(ray_cfg)
+        strategy.init()
         job_logger.info("Ray cluster initialized")
     except (ImportError, RuntimeError, ValueError) as e:
         job_logger.error("Failed to initialize Ray cluster", extra={"error": str(e)}, exc_info=True)
@@ -261,7 +263,7 @@ def main() -> None:
         job_logger.error("Unexpected error in Ray job: %s", e, extra={"error": str(e)}, exc_info=True)
         raise
     finally:
-        shutdown_ray_cluster()
+        strategy.shutdown()
 
 
 if __name__ == "__main__":

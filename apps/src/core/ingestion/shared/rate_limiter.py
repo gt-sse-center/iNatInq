@@ -1,12 +1,20 @@
-"""Ray actor for distributed rate limiting.
+"""Rate limiting utilities for distributed Ray workers.
 
-This module provides a Ray actor that wraps the foundation RateLimiter for
-distributed rate limiting across multiple Ray workers.
+This module provides:
+- RateLimiterActor: Ray actor for distributed rate limiting
+- RayActorRateLimiter: Adapter to use Ray actor with local interface
 """
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 import ray
 
 from foundation.rate_limiter import RateLimiter
+
+if TYPE_CHECKING:
+    from ray import ObjectRef
 
 
 @ray.remote
@@ -24,7 +32,7 @@ class RateLimiterActor:
     Example:
         ```python
         import ray
-        from core.ingestion.ray.rate_limiter import RateLimiterActor
+        from core.ingestion.shared import RateLimiterActor
 
         limiter = RateLimiterActor.remote(rate_per_sec=5)
         await limiter.acquire.remote()
@@ -63,3 +71,39 @@ class RateLimiterActor:
             Maximum number of requests per second configured for this limiter.
         """
         return self._limiter.get_rate()
+
+
+class RayActorRateLimiter:
+    """Adapter that wraps a Ray rate limiter actor as a local RateLimiter.
+
+    This allows processing pipelines to use a distributed rate limiter
+    actor transparently through the same interface as a local RateLimiter.
+
+    Example:
+        ```python
+        from core.ingestion.shared import RateLimiterActor, RayActorRateLimiter
+
+        # Create distributed actor
+        actor = RateLimiterActor.remote(rate_per_sec=10)
+
+        # Wrap for local interface
+        limiter = RayActorRateLimiter(actor)
+        await limiter.acquire()
+        ```
+    """
+
+    def __init__(self, actor: ObjectRef[Any]) -> None:
+        """Initialize with a Ray rate limiter actor.
+
+        Args:
+            actor: Ray actor with an `acquire` remote method.
+        """
+        self._actor = actor
+
+    async def acquire(self) -> None:
+        """Acquire permission from the distributed rate limiter."""
+        await self._actor.acquire.remote()
+
+    def get_rate(self) -> float:
+        """Get the rate limit (not used, but required by interface)."""
+        return 0.0

@@ -801,7 +801,7 @@ class TestDatabricksJobEndpoints:
         """Test successful Databricks job submission."""
         with patch("api.routes.DatabricksRayService") as mock_service_cls:
             mock_service = MagicMock()
-            mock_service.submit_s3_to_qdrant.return_value = 123
+            mock_service.submit_s3_to_vector_dbs.return_value = 123
             mock_service_cls.return_value = mock_service
 
             with patch("api.routes.get_settings") as mock_settings:
@@ -869,7 +869,7 @@ class TestDatabricksJobEndpoints:
         """Test that submit returns 500 on Databricks service error."""
         with patch("api.routes.DatabricksRayService") as mock_service_cls:
             mock_service = MagicMock()
-            mock_service.submit_s3_to_qdrant.side_effect = Exception("boom")
+            mock_service.submit_s3_to_vector_dbs.side_effect = Exception("boom")
             mock_service_cls.return_value = mock_service
 
             response = test_client.post(

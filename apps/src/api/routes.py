@@ -411,7 +411,7 @@ async def submit_ray_job(req: models.RayJobRequest) -> models.RayJobResponse:
         ray_service = RayService()
         minio_cfg = MinIOConfig.from_env(namespace)
         embed_cfg = EmbeddingConfig.from_env(namespace)
-        job_id = ray_service.submit_s3_to_qdrant(
+        job_id = ray_service.submit_s3_to_vector_dbs(
             namespace=namespace,
             s3_endpoint=minio_cfg.endpoint_url,
             s3_access_key_id=minio_cfg.access_key_id,
@@ -541,7 +541,7 @@ async def submit_databricks_job(req: models.DatabricksJobRequest) -> models.Data
         databricks_service = DatabricksRayService()
         minio_cfg = MinIOConfig.from_env(namespace)
         embed_cfg = EmbeddingConfig.from_env(namespace)
-        run_id = databricks_service.submit_s3_to_qdrant(
+        run_id = databricks_service.submit_s3_to_vector_dbs(
             namespace=namespace,
             s3_endpoint=minio_cfg.endpoint_url,
             s3_access_key_id=minio_cfg.access_key_id,

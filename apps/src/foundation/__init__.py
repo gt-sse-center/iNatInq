@@ -6,4 +6,6 @@ This package provides shared utilities including:
 - Retry decorators
 - Rate limiting utilities
 - Circuit breaker patterns
+- Checkpoint management for batch jobs
+- Image preprocessing utilities
 """

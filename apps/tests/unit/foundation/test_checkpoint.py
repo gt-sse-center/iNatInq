@@ -1,4 +1,4 @@
-"""Unit tests for core.ingestion.checkpoint module.
+"""Unit tests for foundation.checkpoint module.
 
 This file tests checkpoint management utilities for tracking processed items,
 enabling job recovery and avoiding reprocessing.
@@ -18,7 +18,7 @@ Local filesystem tests use temporary directories.
 
 # Running Tests
 
-Run with: pytest tests/unit/core/test_checkpoint.py
+Run with: pytest tests/unit/foundation/test_checkpoint.py
 """
 
 import json
@@ -29,7 +29,7 @@ import attrs.exceptions
 import pytest
 from botocore.exceptions import ClientError
 
-from src.core.ingestion.checkpoint import CheckpointManager, is_s3_path
+from foundation.checkpoint import CheckpointManager, is_s3_path
 
 # =============================================================================
 # Utility Function Tests

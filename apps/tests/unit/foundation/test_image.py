@@ -1,4 +1,4 @@
-"""Unit tests for core.ingestion.image_utils module.
+"""Unit tests for foundation.image module.
 
 This file tests image preprocessing utilities for embedding pipelines.
 
@@ -18,7 +18,7 @@ test images using PIL.
 
 # Running Tests
 
-Run with: pytest tests/unit/core/ingestion/test_image_utils.py
+Run with: pytest tests/unit/foundation/test_image.py
 """
 
 import io
@@ -26,7 +26,7 @@ import io
 import pytest
 from PIL import Image
 
-from core.ingestion.image_utils import resize_for_embedding, validate_image
+from foundation.image import resize_for_embedding, validate_image
 
 
 # =============================================================================

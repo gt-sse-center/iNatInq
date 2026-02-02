@@ -41,7 +41,7 @@ from core.ingestion.interfaces import (
     VectorDBUpserter,
     VectorPointFactory,
 )
-from core.ingestion.ray.processing import (
+from core.ingestion.tasks.text_processing import (
     RayProcessingConfig,
     RayProcessingPipeline,
 )

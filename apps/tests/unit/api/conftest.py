@@ -140,7 +140,7 @@ def mock_ray_service() -> MagicMock:
         MagicMock: A mock Ray service with job management methods.
     """
     service = MagicMock()
-    service.submit_s3_to_qdrant = MagicMock(return_value="raysubmit_1234567890")
+    service.submit_s3_to_vector_dbs = MagicMock(return_value="raysubmit_1234567890")
     service.submit_image_job = MagicMock(return_value="raysubmit_1234567890")
     service.get_job_status = MagicMock(return_value={"status": "RUNNING", "message": None})
     service.get_job_logs = MagicMock(return_value="Processing 1000 documents...\nCompleted successfully.")

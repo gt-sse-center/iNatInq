@@ -205,7 +205,7 @@ from config import EmbeddingConfig
 service = RayService()
 
 # Submit job
-job_id = service.submit_s3_to_qdrant(
+job_id = service.submit_s3_to_vector_dbs(
     namespace="ml-system",
     s3_endpoint="http://minio.ml-system:9000",
     s3_access_key_id="minioadmin",

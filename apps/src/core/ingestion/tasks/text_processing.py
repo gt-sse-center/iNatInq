@@ -7,9 +7,7 @@ with Spark implementation.
 """
 
 import asyncio
-import logging
 import os
-from logging.config import dictConfig
 from typing import Any
 
 import attrs
@@ -27,34 +25,8 @@ from core.ingestion.interfaces import (
     VectorDBUpserter,
     VectorPointFactory,
 )
-from foundation.logger import LOGGING_CONFIG
+from core.ingestion.shared import RayActorRateLimiter, get_ray_logger
 from foundation.rate_limiter import RateLimiter
-
-
-dictConfig(LOGGING_CONFIG)
-
-
-def get_ray_logger(name: str = "ray.task") -> logging.Logger:
-    """Get a logger configured for Ray workers.
-
-    Uses Ray's recommended logging pattern that works across all deployments:
-    - Local development
-    - Docker Compose
-    - Kubernetes
-    - Ray clusters (Anyscale, etc.)
-
-    Ray automatically captures logs from workers and makes them accessible
-    via the dashboard and log files. Using the 'ray.*' logger namespace
-    ensures proper integration with Ray's logging infrastructure.
-
-    Args:
-        name: Logger name. Defaults to "ray.task".
-
-    Returns:
-        Configured logger instance.
-    """
-    return logging.getLogger(name)
-
 
 # Main logger for Ray tasks
 logger = get_ray_logger("ray.pipeline")
@@ -373,7 +345,7 @@ def process_s3_batch_ray(
 
     local_rate_limiter = None
     if rate_limiter is not None:
-        local_rate_limiter = _RayActorRateLimiter(rate_limiter)
+        local_rate_limiter = RayActorRateLimiter(rate_limiter)
 
     pipeline = RayProcessingPipeline(config, local_rate_limiter)
     results = pipeline.process_keys_sync(s3_keys)
@@ -406,27 +378,3 @@ def process_s3_batch_ray(
             task_logger.warning("UPSTREAM_ERROR: %s - %s", r.s3_key, error_message)
 
     return [r.to_tuple() for r in results]
-
-
-class _RayActorRateLimiter:
-    """Adapter that wraps a Ray rate limiter actor as a local RateLimiter.
-
-    This allows the RayProcessingPipeline to use a distributed rate limiter
-    actor transparently.
-    """
-
-    def __init__(self, actor: Any) -> None:
-        """Initialize with a Ray rate limiter actor.
-
-        Args:
-            actor: Ray actor with an `acquire` remote method.
-        """
-        self._actor = actor
-
-    async def acquire(self) -> None:
-        """Acquire permission from the distributed rate limiter."""
-        await self._actor.acquire.remote()
-
-    def get_rate(self) -> float:
-        """Get the rate limit (not used, but required by interface)."""
-        return 0.0

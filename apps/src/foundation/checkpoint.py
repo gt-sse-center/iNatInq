@@ -65,7 +65,7 @@ class CheckpointManager:
     Example:
         ```python
         from pathlib import Path
-        from core.ingestion.checkpoint import CheckpointManager
+        from foundation.checkpoint import CheckpointManager
         from clients import create_s3_client
 
         # Local filesystem only
@@ -100,7 +100,7 @@ class CheckpointManager:
         Example:
             ```python
             from pathlib import Path
-            from core.ingestion.checkpoint import CheckpointManager
+            from foundation.checkpoint import CheckpointManager
 
             manager = CheckpointManager()
             processed = manager.load(Path("/tmp/checkpoint.json"))
@@ -172,7 +172,7 @@ class CheckpointManager:
         Example:
             ```python
             from pathlib import Path
-            from core.ingestion.checkpoint import CheckpointManager
+            from foundation.checkpoint import CheckpointManager
 
             manager = CheckpointManager()
             processed = {"inputs/file1.txt", "inputs/file2.txt"}

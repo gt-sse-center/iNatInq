@@ -22,14 +22,14 @@ from clients.interfaces.vector_db import VectorDBProvider  # noqa: TC001
 from clients.s3 import S3ClientWrapper
 from clients.weaviate import WeaviateClientWrapper, WeaviateDataObject
 from config import ImageEmbeddingConfig  # noqa: TC001
-from core.ingestion.image_utils import resize_for_embedding
+from foundation.image import resize_for_embedding
 from core.ingestion.interfaces.factories import VectorDBConfigFactory, create_vector_db_provider
 from core.ingestion.interfaces.operations import ImageContentFetcher
 from core.ingestion.interfaces.types import ImageContentResult, ProcessingResult
 from foundation.http import create_retry_session
 from foundation.rate_limiter import RateLimiter  # noqa: TC001
 
-from .processing import _RayActorRateLimiter, get_ray_logger
+from core.ingestion.shared import RayActorRateLimiter, get_ray_logger
 
 logger = get_ray_logger("ray.image_pipeline")
 
@@ -361,7 +361,7 @@ def process_image_batch_ray(
 
     local_rate_limiter = None
     if rate_limiter is not None:
-        local_rate_limiter = _RayActorRateLimiter(rate_limiter)
+        local_rate_limiter = RayActorRateLimiter(rate_limiter)
 
     pipeline = ImageProcessingPipeline(config, local_rate_limiter)
     results = pipeline.process_keys_sync(s3_keys)
