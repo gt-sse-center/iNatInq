@@ -32,4 +32,4 @@ data/
 .env.local
 
 # Documentation directory
-apps/docs/
+/docs/
