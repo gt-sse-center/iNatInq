@@ -16,6 +16,7 @@ This allows the API to return immediately while Ray cluster manages job executio
 """
 
 import logging
+import os
 from typing import Any
 
 import attrs
