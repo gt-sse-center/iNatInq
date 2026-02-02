@@ -1,4 +1,4 @@
-"""Databricks Ray job: S3 → embeddings → vector DB.
+"""Databricks Ray job: S3 → embeddings → vector databases.
 
 This entrypoint initializes Ray on a Databricks cluster (via ray.util.spark),
 then runs a Databricks-specific ingestion pipeline with batch-level progress
@@ -21,8 +21,8 @@ from botocore.exceptions import ClientError
 
 from clients.s3 import S3ClientWrapper
 from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
-from core.ingestion.checkpoint import CheckpointManager, is_s3_path
-from core.ingestion.ray.processing import process_s3_batch_ray
+from foundation.checkpoint import CheckpointManager, is_s3_path
+from core.ingestion.tasks import process_s3_batch_ray
 from core.ingestion.ray.rate_limiter import RateLimiterActor
 from foundation.logger import LOGGING_CONFIG
 

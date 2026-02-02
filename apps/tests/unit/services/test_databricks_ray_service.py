@@ -34,7 +34,7 @@ from core.services.databricks_ray_service import DatabricksRayService
 
 
 class TestDatabricksRayServiceSubmitJob:
-    """Test suite for DatabricksRayService.submit_s3_to_qdrant."""
+    """Test suite for DatabricksRayService.submit_s3_to_vector_dbs."""
 
     @patch("core.services.databricks_ray_service.DatabricksRayJobConfig.from_env")
     @patch("core.services.databricks_ray_service.WorkspaceClient")
@@ -44,7 +44,7 @@ class TestDatabricksRayServiceSubmitJob:
         mock_config: MagicMock,
         embedding_config: EmbeddingConfig,
     ) -> None:
-        """Test that submit_s3_to_qdrant submits a job successfully."""
+        """Test that submit_s3_to_vector_dbs submits a job successfully."""
         mock_databricks_config = MagicMock()
         mock_databricks_config.host = "https://dbc.example.cloud"
         mock_databricks_config.token = "databricks-token"
@@ -58,7 +58,7 @@ class TestDatabricksRayServiceSubmitJob:
         mock_client_cls.return_value = mock_client
 
         service = DatabricksRayService()
-        run_id = service.submit_s3_to_qdrant(
+        run_id = service.submit_s3_to_vector_dbs(
             namespace="test-namespace",
             s3_endpoint="http://minio.test:9000",
             s3_access_key_id="test-key",
@@ -123,7 +123,7 @@ class TestDatabricksRayServiceSubmitJob:
             vector_size=768,
         )
         service = DatabricksRayService()
-        service.submit_s3_to_qdrant(
+        service.submit_s3_to_vector_dbs(
             namespace="test-namespace",
             s3_endpoint="http://minio.test:9000",
             s3_access_key_id="test-key",
@@ -155,7 +155,7 @@ class TestDatabricksRayServiceSubmitJob:
         service = DatabricksRayService()
 
         with pytest.raises(ValueError, match="Missing required Databricks config"):
-            service.submit_s3_to_qdrant(
+            service.submit_s3_to_vector_dbs(
                 namespace="test-namespace",
                 s3_endpoint="http://minio.test:9000",
                 s3_access_key_id="test-key",
@@ -344,7 +344,7 @@ class TestDatabricksRayServiceStatusLogs:
 
         service = DatabricksRayService()
         with pytest.raises(UpstreamError, match="Failed to submit Databricks job"):
-            service.submit_s3_to_qdrant(
+            service.submit_s3_to_vector_dbs(
                 namespace="test-namespace",
                 s3_endpoint="http://minio.test:9000",
                 s3_access_key_id="test-key",

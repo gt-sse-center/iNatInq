@@ -1,9 +1,8 @@
-"""Ray job: S3 images → CLIP embeddings → Qdrant/Weaviate image collections.
+"""Databricks Ray job: S3 images → CLIP embeddings → vector DB image collections.
 
-This script processes S3 image objects using Ray for parallel execution.
-It lists objects under the given prefix, filters by image extensions
-(.jpg, .jpeg, .png, .webp, .gif), batches keys, and runs the image
-processing pipeline on Ray workers.
+This entrypoint initializes Ray on a Databricks cluster (via ray.util.spark),
+then runs a Databricks-specific image ingestion pipeline. Mirrors the structure
+of ray/process_s3_images.py but uses Databricks cluster initialization.
 """
 
 from __future__ import annotations
@@ -20,26 +19,39 @@ from botocore.exceptions import ClientError
 from clients.s3 import S3ClientWrapper
 from config import ImageEmbeddingConfig, MinIOConfig, RayJobConfig
 from core.ingestion.interfaces.operations import ImageContentFetcher
-from core.ingestion.strategies import LocalRayStrategy
-from foundation.logger import LOGGING_CONFIG
-
 from core.ingestion.tasks import process_image_batch_ray
+from core.ingestion.strategies import DatabricksStrategy
+from foundation.logger import LOGGING_CONFIG
 
 dictConfig(LOGGING_CONFIG)
 
-logger = logging.getLogger("pipeline.ray")
+logger = logging.getLogger("pipeline.ray.databricks")
+
+
+def _apply_python_params(args: list[str]) -> None:
+    """Apply KEY=VALUE args (Databricks python_params) to the environment."""
+    for arg in args:
+        if "=" not in arg:
+            continue
+        key, value = arg.split("=", 1)
+        if not key or not key.isupper() or not key.replace("_", "").isalnum():
+            continue
+        os.environ[key] = value
 
 
 def main() -> None:
-    """Process S3 image objects and store embeddings in vector DB image collections.
+    """Process S3 image objects using Ray on Databricks.
 
     Reads S3_BUCKET, S3_PREFIX, VECTOR_DB_COLLECTION from environment (set by
-    the job submission API). Lists S3 keys under the prefix, filters by image
-    extensions, and runs the image pipeline on Ray workers.
+    job submission or Databricks python_params). Lists S3 keys, filters by image
+    extensions, and runs the image pipeline on Databricks Ray workers.
     """
     job_logger = logging.getLogger("pipeline.ray.job")
-    job_logger.info("Ray image job started", extra={"pid": os.getpid()})
+    job_logger.info("Databricks Ray image job started", extra={"pid": os.getpid()})
     start = time.time()
+
+    _apply_python_params(sys.argv[1:])
+
     namespace = os.environ.get("K8S_NAMESPACE", "ml-system")
     s3_prefix = os.environ.get("S3_PREFIX") or (
         sys.argv[1] if len(sys.argv) > 1 and not sys.argv[0].endswith("uvicorn") else "images/"
@@ -63,18 +75,9 @@ def main() -> None:
         },
     )
 
-    if ray is None:
-        job_logger.error("Ray is not installed. Install with: pip install ray[default]")
-        sys.exit(1)
-
-    # Use LocalRayStrategy for cluster initialization
-    strategy = LocalRayStrategy.from_env(namespace)
-    try:
-        strategy.init()
-        job_logger.info("Ray cluster initialized")
-    except (ImportError, RuntimeError, ValueError) as e:
-        job_logger.error("Failed to initialize Ray cluster", extra={"error": str(e)}, exc_info=True)
-        sys.exit(1)
+    # Use DatabricksStrategy for cluster initialization
+    strategy = DatabricksStrategy.from_env(namespace)
+    strategy.init()
 
     try:
         s3 = S3ClientWrapper(
@@ -168,7 +171,7 @@ def main() -> None:
         elapsed = round(time.time() - start, 2)
         rate = round(len(results) / elapsed, 2) if elapsed > 0 else 0
         job_logger.info(
-            "Ray image job complete: %d successful, %d failed in %.2fs (%.2f images/s)",
+            "Databricks Ray image job complete: %d successful, %d failed in %.2fs (%.2f images/s)",
             success,
             failed,
             elapsed,
@@ -183,7 +186,12 @@ def main() -> None:
         )
 
     except Exception as e:
-        job_logger.error("Unexpected error in Ray image job: %s", e, extra={"error": str(e)}, exc_info=True)
+        job_logger.error(
+            "Unexpected error in Databricks Ray image job: %s",
+            e,
+            extra={"error": str(e)},
+            exc_info=True,
+        )
         raise
     finally:
         strategy.shutdown()

@@ -44,7 +44,7 @@ class RayService:
 
         service = RayService()
 
-        job_name = service.submit_s3_to_qdrant(
+        job_name = service.submit_s3_to_vector_dbs(
             namespace="ml-system",
             s3_endpoint="http://minio.ml-system:9000",
             s3_access_key_id="minioadmin",
@@ -57,7 +57,7 @@ class RayService:
         ```
     """
 
-    def submit_s3_to_qdrant(
+    def submit_s3_to_vector_dbs(
         self,
         *,
         namespace: str,
@@ -93,7 +93,7 @@ class RayService:
         Example:
             ```python
             service = RayService()
-            job_id = service.submit_s3_to_qdrant(
+            job_id = service.submit_s3_to_vector_dbs(
                 namespace="ml-system",
                 s3_endpoint="http://minio.ml-system:9000",
                 s3_access_key_id="minioadmin",
@@ -137,7 +137,7 @@ class RayService:
             # Submit the job with runtime environment
             # Dependencies are installed on Ray workers; code is mounted at /app/src
             job_id = client.submit_job(
-                entrypoint="python -m core.ingestion.ray.process_s3_to_qdrant",
+                entrypoint="python -m core.ingestion.ray.process_s3_to_vector_dbs",
                 runtime_env={
                     "env_vars": {
                         **env_vars,
@@ -272,7 +272,7 @@ class RayService:
         """Get the status of a Ray job.
 
         Args:
-            job_id: Ray job ID returned from submit_s3_to_qdrant.
+            job_id: Ray job ID returned from submit_s3_to_vector_dbs.
             namespace: Kubernetes namespace (used for config resolution).
 
         Returns:

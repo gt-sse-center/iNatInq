@@ -37,7 +37,7 @@ from core.services.ray_service import RayService
 
 
 class TestRayServiceSubmitJob:
-    """Test suite for RayService.submit_s3_to_qdrant method."""
+    """Test suite for RayService.submit_s3_to_vector_dbs method."""
 
     @patch("core.services.ray_service.RayJobConfig.from_env")
     @patch("core.services.ray_service.JobSubmissionClient")
@@ -48,7 +48,7 @@ class TestRayServiceSubmitJob:
         ray_service: RayService,
         embedding_config: EmbeddingConfig,
     ) -> None:
-        """Test that submit_s3_to_qdrant submits job successfully.
+        """Test that submit_s3_to_vector_dbs submits job successfully.
 
         **Why this test is important:**
           - Job submission is the core functionality
@@ -72,7 +72,7 @@ class TestRayServiceSubmitJob:
         mock_client.submit_job.return_value = "raysubmit_test123"
         mock_client_cls.return_value = mock_client
 
-        job_id = ray_service.submit_s3_to_qdrant(
+        job_id = ray_service.submit_s3_to_vector_dbs(
             namespace="test-namespace",
             s3_endpoint="http://minio.test:9000",
             s3_access_key_id="test-key",
@@ -91,7 +91,7 @@ class TestRayServiceSubmitJob:
         # Verify job was submitted with correct entrypoint
         mock_client.submit_job.assert_called_once()
         call_kwargs = mock_client.submit_job.call_args[1]
-        assert call_kwargs["entrypoint"] == "python -m core.ingestion.ray.process_s3_to_qdrant"
+        assert call_kwargs["entrypoint"] == "python -m core.ingestion.ray.process_s3_to_vector_dbs"
 
         # Verify environment variables
         env_vars = call_kwargs["runtime_env"]["env_vars"]
@@ -148,7 +148,7 @@ class TestRayServiceSubmitJob:
             ollama_model="nomic-embed-text",
             vector_size=768,
         )
-        ray_service.submit_s3_to_qdrant(
+        ray_service.submit_s3_to_vector_dbs(
             namespace="test-namespace",
             s3_endpoint="http://minio.test:9000",
             s3_access_key_id="test-key",
@@ -206,7 +206,7 @@ class TestRayServiceSubmitJob:
             ollama_model="nomic-embed-text",
             vector_size=768,
         )
-        ray_service.submit_s3_to_qdrant(
+        ray_service.submit_s3_to_vector_dbs(
             namespace="test-namespace",
             s3_endpoint="http://minio.test:9000",
             s3_access_key_id="test-key",
@@ -251,7 +251,7 @@ class TestRayServiceSubmitJob:
         mock_config.return_value = mock_ray_config
 
         with pytest.raises(UpstreamError, match="RAY_DASHBOARD_ADDRESS not configured"):
-            ray_service.submit_s3_to_qdrant(
+            ray_service.submit_s3_to_vector_dbs(
                 namespace="test-namespace",
                 s3_endpoint="http://minio.test:9000",
                 s3_access_key_id="test-key",
@@ -294,7 +294,7 @@ class TestRayServiceSubmitJob:
         mock_client_cls.return_value = mock_client
 
         with pytest.raises(UpstreamError, match="Failed to submit Ray job"):
-            ray_service.submit_s3_to_qdrant(
+            ray_service.submit_s3_to_vector_dbs(
                 namespace="test-namespace",
                 s3_endpoint="http://minio.test:9000",
                 s3_access_key_id="test-key",
@@ -809,7 +809,7 @@ class TestRayServiceDashboardAddress:
         mock_client.submit_job.return_value = "raysubmit_test123"
         mock_client_cls.return_value = mock_client
 
-        ray_service.submit_s3_to_qdrant(
+        ray_service.submit_s3_to_vector_dbs(
             namespace="custom-namespace",
             s3_endpoint="http://minio.test:9000",
             s3_access_key_id="test-key",
@@ -853,7 +853,7 @@ class TestRayServiceDashboardAddress:
         mock_client.submit_job.return_value = "raysubmit_docker123"
         mock_client_cls.return_value = mock_client
 
-        job_id = ray_service.submit_s3_to_qdrant(
+        job_id = ray_service.submit_s3_to_vector_dbs(
             namespace="ml-system",
             s3_endpoint="http://minio:9000",
             s3_access_key_id="minioadmin",

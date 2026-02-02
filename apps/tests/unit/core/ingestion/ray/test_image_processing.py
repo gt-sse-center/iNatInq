@@ -1,4 +1,4 @@
-"""Unit tests for core.ingestion.ray.image_processing module.
+"""Unit tests for core.ingestion.tasks.image_processing module.
 
 Tests the image processing pipeline: S3 → Preprocessing → CLIP → Vector DBs.
 """
@@ -9,7 +9,7 @@ import pytest
 from config import ImageEmbeddingConfig
 
 from core.ingestion.interfaces.types import ImageContentResult, ProcessingResult
-from core.ingestion.ray.image_processing import (
+from core.ingestion.tasks.image_processing import (
     DEFAULT_IMAGE_PREPROCESS_MAX_SIZE,
     ImageProcessingPipeline,
     RayImageProcessingConfig,
@@ -114,14 +114,14 @@ class TestImageProcessingPipeline:
         pipeline = ImageProcessingPipeline(config)
 
         with (
-            patch("core.ingestion.ray.image_processing.S3ClientWrapper"),
-            patch("core.ingestion.ray.image_processing.create_retry_session"),
-            patch("core.ingestion.ray.image_processing.CLIPClient"),
+            patch("core.ingestion.tasks.image_processing.S3ClientWrapper"),
+            patch("core.ingestion.tasks.image_processing.create_retry_session"),
+            patch("core.ingestion.tasks.image_processing.CLIPClient"),
             patch(
-                "core.ingestion.ray.image_processing.create_vector_db_provider",
+                "core.ingestion.tasks.image_processing.create_vector_db_provider",
                 side_effect=[MagicMock(), MagicMock()],
             ),
-            patch("core.ingestion.ray.image_processing.VectorDBConfigFactory") as mock_factory,
+            patch("core.ingestion.tasks.image_processing.VectorDBConfigFactory") as mock_factory,
         ):
             mock_factory.return_value.create_both.return_value = (
                 MagicMock(),
@@ -135,7 +135,7 @@ class TestImageProcessingPipeline:
                 ],
             )
             with patch(
-                "core.ingestion.ray.image_processing.ImageContentFetcher",
+                "core.ingestion.tasks.image_processing.ImageContentFetcher",
                 return_value=mock_fetcher,
             ):
                 result = pipeline.process_keys_sync(["a.jpg"])
