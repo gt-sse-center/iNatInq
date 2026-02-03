@@ -11,7 +11,7 @@ processes them through the embedding pipeline, and stores results in the vector 
 # Running Tests
 
 ```bash
-pytest tests/unit/core/ingestion/databricks/test_process_s3_images.py -v
+uv run pytest tests/unit/core/ingestion/databricks/test_process_s3_images.py -v
 ```
 """
 

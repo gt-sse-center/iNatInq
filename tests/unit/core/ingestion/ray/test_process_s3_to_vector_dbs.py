@@ -15,7 +15,7 @@ checkpoint functionality.
 
 # Running Tests
 
-    pytest tests/unit/core/ingestion/ray/test_process_s3_to_vector_dbs.py -v
+    uv run pytest tests/unit/core/ingestion/ray/test_process_s3_to_vector_dbs.py -v
 """
 
 import sys

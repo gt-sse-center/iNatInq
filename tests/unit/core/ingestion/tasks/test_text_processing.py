@@ -14,7 +14,7 @@ configuration, pipeline orchestration, and remote function execution.
 # Running Tests
 
 ```bash
-pytest tests/unit/core/ingestion/tasks/test_text_processing.py -v
+uv run pytest tests/unit/core/ingestion/tasks/test_text_processing.py -v
 ```
 """
 

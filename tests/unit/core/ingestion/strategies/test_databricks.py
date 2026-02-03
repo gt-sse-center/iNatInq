@@ -11,7 +11,7 @@
 # Running Tests
 
 ```bash
-pytest tests/unit/core/ingestion/strategies/test_databricks.py -v
+uv run pytest tests/unit/core/ingestion/strategies/test_databricks.py -v
 ```
 """
 

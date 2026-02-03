@@ -13,7 +13,7 @@ processing pipeline that ingests data into vector databases.
 
 # Running Tests
 
-    pytest tests/unit/core/ingestion/databricks/test_process_s3_to_vector_dbs.py -v
+    uv run pytest tests/unit/core/ingestion/databricks/test_process_s3_to_vector_dbs.py -v
 """
 
 import os

@@ -13,7 +13,7 @@ connections for distributed data ingestion.
 
 # Running Tests
 
-    pytest tests/unit/core/ingestion/strategies/test_local_ray.py -v
+    uv run pytest tests/unit/core/ingestion/strategies/test_local_ray.py -v
 """
 
 import resource

@@ -16,7 +16,7 @@ The tests cover:
 
 # Running Tests
 
-Run with: pytest tests/unit/core/ingestion/ray/test_process_s3_images.py
+Run with: uv run pytest tests/unit/core/ingestion/ray/test_process_s3_images.py
 """
 
 import os

@@ -17,7 +17,7 @@ for distributed processing.
 
 # Running Tests
 
-    pytest tests/unit/core/ingestion/test_pipeline.py -v
+    uv run pytest tests/unit/core/ingestion/test_pipeline.py -v
 """
 
 from unittest.mock import MagicMock, patch

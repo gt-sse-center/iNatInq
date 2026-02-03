@@ -13,7 +13,7 @@ and the Ray distributed processing function.
 
 # Running Tests
 
-    pytest tests/unit/core/ingestion/tasks/test_image_processing.py -v
+    uv run pytest tests/unit/core/ingestion/tasks/test_image_processing.py -v
 """
 
 import asyncio

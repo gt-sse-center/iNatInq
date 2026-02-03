@@ -13,7 +13,7 @@ application to safely close async resources in various event loop states.
 
 # Running Tests
 
-    pytest tests/unit/foundation/test_async_utils.py -v
+    uv run pytest tests/unit/foundation/test_async_utils.py -v
 """
 
 import asyncio
