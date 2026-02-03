@@ -3,6 +3,8 @@
 This file tests the Information Retrieval metrics for benchmark evaluation:
 - PrecisionAtK: Fraction of top-K results that are relevant
 - RecallAtK: Fraction of relevant documents in top-K results
+- MeanAveragePrecision: Average precision at each relevant hit
+- MRR: Reciprocal rank of the first relevant result
 
 # Test Coverage
 
@@ -12,6 +14,8 @@ The tests cover:
   - Auto-registration with MetricRegistry
   - Default k value (10)
   - Custom k values
+  - MAP calculation with multiple relevant documents
+  - MRR calculation for first relevant result
 
 # Running Tests
 
@@ -21,7 +25,7 @@ Run with: uv run pytest tests/unit/core/benchmark/metrics/test_ir.py -v
 import pytest
 
 from core.benchmark.metrics.base import MetricRegistry
-from core.benchmark.metrics.ir import PrecisionAtK, RecallAtK
+from core.benchmark.metrics.ir import MRR, MeanAveragePrecision, PrecisionAtK, RecallAtK
 
 
 class TestPrecisionAtK:
@@ -353,6 +357,379 @@ class TestRecallAtK:
         assert result == pytest.approx(0.5)
 
 
+class TestMeanAveragePrecision:
+    """Test suite for MeanAveragePrecision (MAP) metric."""
+
+    def test_map_basic_computation(self):
+        """Test basic MAP calculation with known inputs.
+
+        **Why this test is important:**
+          - Validates core MAP calculation logic
+          - Ensures precision is calculated at each relevant hit
+          - Verifies averaging over all relevant documents
+
+        **What it tests:**
+          - Retrieved: [rel, non, rel, non, non] with 3 total relevant
+          - At position 1: precision = 1/1, at position 3: precision = 2/3
+          - MAP = (1/1 + 2/3) / 3 = 5/9 ≈ 0.556
+        """
+        map_metric = MeanAveragePrecision()
+        retrieved = ["doc1", "doc2", "doc3", "doc4", "doc5"]
+        relevant = {"doc1", "doc3", "doc7"}  # doc7 not in retrieved
+
+        result = map_metric.compute(retrieved, relevant)
+
+        # Precision at doc1 (rank 1) = 1/1 = 1.0
+        # Precision at doc3 (rank 3) = 2/3 ≈ 0.667
+        # MAP = (1.0 + 0.667) / 3 ≈ 0.556
+        expected = (1.0 + 2 / 3) / 3
+        assert result == pytest.approx(expected)
+
+    def test_map_perfect_ranking(self):
+        """Test MAP when all relevant docs are ranked first.
+
+        **Why this test is important:**
+          - Validates perfect ranking scenario
+          - MAP should be 1.0 when ranking is optimal
+
+        **What it tests:**
+          - All 3 relevant docs in positions 1, 2, 3
+          - MAP = (1/1 + 2/2 + 3/3) / 3 = 1.0
+        """
+        map_metric = MeanAveragePrecision()
+        retrieved = ["doc1", "doc2", "doc3", "doc4", "doc5"]
+        relevant = {"doc1", "doc2", "doc3"}
+
+        result = map_metric.compute(retrieved, relevant)
+
+        # Precision at each position: 1/1, 2/2, 3/3 = 1.0, 1.0, 1.0
+        # MAP = (1.0 + 1.0 + 1.0) / 3 = 1.0
+        assert result == pytest.approx(1.0)
+
+    def test_map_worst_ranking(self):
+        """Test MAP when relevant docs are ranked last.
+
+        **Why this test is important:**
+          - Validates worst-case ranking scenario
+          - MAP should be low but non-zero
+
+        **What it tests:**
+          - Relevant docs at positions 4 and 5
+        """
+        map_metric = MeanAveragePrecision()
+        retrieved = ["doc1", "doc2", "doc3", "doc4", "doc5"]
+        relevant = {"doc4", "doc5"}
+
+        result = map_metric.compute(retrieved, relevant)
+
+        # Precision at doc4 (rank 4) = 1/4 = 0.25
+        # Precision at doc5 (rank 5) = 2/5 = 0.4
+        # MAP = (0.25 + 0.4) / 2 = 0.325
+        expected = (1 / 4 + 2 / 5) / 2
+        assert result == pytest.approx(expected)
+
+    def test_map_no_relevant_docs_found(self):
+        """Test MAP returns 0.0 when no relevant docs in results.
+
+        **Why this test is important:**
+          - Validates zero-score scenario
+          - No relevant documents should yield 0.0
+
+        **What it tests:**
+          - No overlap between retrieved and relevant
+        """
+        map_metric = MeanAveragePrecision()
+        retrieved = ["doc1", "doc2", "doc3"]
+        relevant = {"doc4", "doc5", "doc6"}
+
+        result = map_metric.compute(retrieved, relevant)
+
+        assert result == pytest.approx(0.0)
+
+    def test_map_empty_relevant_returns_zero(self):
+        """Test MAP returns 0.0 when relevant set is empty.
+
+        **Why this test is important:**
+          - Division by zero edge case
+          - Must return 0.0 not raise exception
+
+        **What it tests:**
+          - Empty relevant set → returns 0.0
+        """
+        map_metric = MeanAveragePrecision()
+        retrieved = ["doc1", "doc2", "doc3"]
+        relevant: set[str] = set()
+
+        result = map_metric.compute(retrieved, relevant)
+
+        assert result == 0.0
+
+    def test_map_single_relevant_at_first_position(self):
+        """Test MAP with single relevant doc at position 1.
+
+        **Why this test is important:**
+          - Simple case for validation
+          - Single relevant doc at top = perfect score
+
+        **What it tests:**
+          - One relevant doc at rank 1 → MAP = 1.0
+        """
+        map_metric = MeanAveragePrecision()
+        retrieved = ["doc1", "doc2", "doc3"]
+        relevant = {"doc1"}
+
+        result = map_metric.compute(retrieved, relevant)
+
+        # Precision at doc1 (rank 1) = 1/1 = 1.0
+        # MAP = 1.0 / 1 = 1.0
+        assert result == pytest.approx(1.0)
+
+    def test_map_single_relevant_at_last_position(self):
+        """Test MAP with single relevant doc at last position.
+
+        **Why this test is important:**
+          - Validates late-position calculation
+          - Single relevant doc at bottom = low score
+
+        **What it tests:**
+          - One relevant doc at rank 5 → MAP = 0.2
+        """
+        map_metric = MeanAveragePrecision()
+        retrieved = ["doc1", "doc2", "doc3", "doc4", "doc5"]
+        relevant = {"doc5"}
+
+        result = map_metric.compute(retrieved, relevant)
+
+        # Precision at doc5 (rank 5) = 1/5 = 0.2
+        # MAP = 0.2 / 1 = 0.2
+        assert result == pytest.approx(0.2)
+
+    def test_map_auto_registers_with_registry(self):
+        """Test MeanAveragePrecision auto-registers with MetricRegistry.
+
+        **Why this test is important:**
+          - Metrics must be discoverable by name
+          - Enables dynamic metric selection
+
+        **What it tests:**
+          - MetricRegistry.get("map") returns MeanAveragePrecision class
+        """
+        metric_cls = MetricRegistry.get("map")
+
+        assert metric_cls is not None
+        assert metric_cls.__name__ == "MeanAveragePrecision"
+        # Verify it can be instantiated and compute
+        instance = metric_cls()
+        assert instance.compute(["a", "b"], {"a"}) == pytest.approx(1.0)
+
+    def test_map_graded_parameter_ignored(self):
+        """Test that graded parameter doesn't affect MAP.
+
+        **Why this test is important:**
+          - MAP is binary, not graded
+          - graded param exists for interface compatibility
+
+        **What it tests:**
+          - Same result with or without graded parameter
+        """
+        map_metric = MeanAveragePrecision()
+        retrieved = ["doc1", "doc2", "doc3", "doc4", "doc5"]
+        relevant = {"doc1", "doc3"}
+        graded = {"doc1": 3, "doc3": 2, "doc7": 1}
+
+        result_with_graded = map_metric.compute(retrieved, relevant, graded)
+        result_without_graded = map_metric.compute(retrieved, relevant)
+
+        assert result_with_graded == result_without_graded
+
+
+class TestMRR:
+    """Test suite for MRR (Mean Reciprocal Rank) metric."""
+
+    def test_mrr_relevant_at_first_position(self):
+        """Test MRR when first relevant doc is at position 1.
+
+        **Why this test is important:**
+          - Best case scenario for MRR
+          - Validates 1/1 = 1.0
+
+        **What it tests:**
+          - Relevant doc at rank 1 → MRR = 1.0
+        """
+        mrr = MRR()
+        retrieved = ["doc1", "doc2", "doc3"]
+        relevant = {"doc1", "doc3"}
+
+        result = mrr.compute(retrieved, relevant)
+
+        assert result == pytest.approx(1.0)
+
+    def test_mrr_relevant_at_second_position(self):
+        """Test MRR when first relevant doc is at position 2.
+
+        **Why this test is important:**
+          - Common scenario validation
+          - Validates 1/2 = 0.5
+
+        **What it tests:**
+          - First relevant doc at rank 2 → MRR = 0.5
+        """
+        mrr = MRR()
+        retrieved = ["doc1", "doc2", "doc3"]
+        relevant = {"doc2", "doc3"}
+
+        result = mrr.compute(retrieved, relevant)
+
+        assert result == pytest.approx(0.5)
+
+    def test_mrr_relevant_at_third_position(self):
+        """Test MRR when first relevant doc is at position 3.
+
+        **Why this test is important:**
+          - Validates reciprocal calculation
+          - 1/3 ≈ 0.333
+
+        **What it tests:**
+          - First relevant doc at rank 3 → MRR = 1/3
+        """
+        mrr = MRR()
+        retrieved = ["doc1", "doc2", "doc3", "doc4", "doc5"]
+        relevant = {"doc3"}
+
+        result = mrr.compute(retrieved, relevant)
+
+        assert result == pytest.approx(1 / 3)
+
+    def test_mrr_relevant_at_tenth_position(self):
+        """Test MRR when first relevant doc is at position 10.
+
+        **Why this test is important:**
+          - Tests deeper ranking positions
+          - Validates 1/10 = 0.1
+
+        **What it tests:**
+          - First relevant doc at rank 10 → MRR = 0.1
+        """
+        mrr = MRR()
+        retrieved = [f"doc{i}" for i in range(1, 11)]
+        relevant = {"doc10"}
+
+        result = mrr.compute(retrieved, relevant)
+
+        assert result == pytest.approx(0.1)
+
+    def test_mrr_no_relevant_docs_returns_zero(self):
+        """Test MRR returns 0.0 when no relevant docs in results.
+
+        **Why this test is important:**
+          - Validates zero-score scenario
+          - No relevant documents should yield 0.0
+
+        **What it tests:**
+          - No overlap between retrieved and relevant → MRR = 0.0
+        """
+        mrr = MRR()
+        retrieved = ["doc1", "doc2", "doc3"]
+        relevant = {"doc4", "doc5", "doc6"}
+
+        result = mrr.compute(retrieved, relevant)
+
+        assert result == pytest.approx(0.0)
+
+    def test_mrr_empty_relevant_returns_zero(self):
+        """Test MRR returns 0.0 when relevant set is empty.
+
+        **Why this test is important:**
+          - Edge case with no relevant documents defined
+          - Should return 0.0, not error
+
+        **What it tests:**
+          - Empty relevant set → MRR = 0.0
+        """
+        mrr = MRR()
+        retrieved = ["doc1", "doc2", "doc3"]
+        relevant: set[str] = set()
+
+        result = mrr.compute(retrieved, relevant)
+
+        assert result == 0.0
+
+    def test_mrr_empty_retrieved_returns_zero(self):
+        """Test MRR returns 0.0 when retrieved list is empty.
+
+        **Why this test is important:**
+          - Edge case with no results
+          - Should return 0.0, not error
+
+        **What it tests:**
+          - Empty retrieved list → MRR = 0.0
+        """
+        mrr = MRR()
+        retrieved: list[str] = []
+        relevant = {"doc1", "doc2"}
+
+        result = mrr.compute(retrieved, relevant)
+
+        assert result == 0.0
+
+    def test_mrr_only_considers_first_relevant(self):
+        """Test MRR only considers the first relevant document.
+
+        **Why this test is important:**
+          - MRR is about first relevant, not all relevant
+          - Multiple relevant docs should not change score
+
+        **What it tests:**
+          - First relevant at rank 2, others later → MRR = 0.5
+        """
+        mrr = MRR()
+        retrieved = ["doc1", "doc2", "doc3", "doc4", "doc5"]
+        relevant = {"doc2", "doc4", "doc5"}  # Multiple relevant
+
+        result = mrr.compute(retrieved, relevant)
+
+        # Only doc2 at rank 2 matters
+        assert result == pytest.approx(0.5)
+
+    def test_mrr_auto_registers_with_registry(self):
+        """Test MRR auto-registers with MetricRegistry.
+
+        **Why this test is important:**
+          - Metrics must be discoverable by name
+          - Enables dynamic metric selection
+
+        **What it tests:**
+          - MetricRegistry.get("mrr") returns MRR class
+        """
+        metric_cls = MetricRegistry.get("mrr")
+
+        assert metric_cls is not None
+        assert metric_cls.__name__ == "MRR"
+        # Verify it can be instantiated and compute
+        instance = metric_cls()
+        assert instance.compute(["a", "b"], {"b"}) == pytest.approx(0.5)
+
+    def test_mrr_graded_parameter_ignored(self):
+        """Test that graded parameter doesn't affect MRR.
+
+        **Why this test is important:**
+          - MRR is binary, not graded
+          - graded param exists for interface compatibility
+
+        **What it tests:**
+          - Same result with or without graded parameter
+        """
+        mrr = MRR()
+        retrieved = ["doc1", "doc2", "doc3", "doc4", "doc5"]
+        relevant = {"doc2", "doc4"}
+        graded = {"doc2": 3, "doc4": 2}
+
+        result_with_graded = mrr.compute(retrieved, relevant, graded)
+        result_without_graded = mrr.compute(retrieved, relevant)
+
+        assert result_with_graded == result_without_graded
+
+
 class TestMetricRegistryIntegration:
     """Test MetricRegistry integration with IR metrics."""
 
@@ -364,12 +741,14 @@ class TestMetricRegistryIntegration:
           - Validates auto-registration works
 
         **What it tests:**
-          - Both precision@k and recall@k are in registry
+          - All four IR metrics are in registry
         """
         all_metrics = MetricRegistry.all_metrics()
 
         assert "precision@k" in all_metrics
         assert "recall@k" in all_metrics
+        assert "map" in all_metrics
+        assert "mrr" in all_metrics
 
     def test_registry_returns_correct_classes(self):
         """Test that registry returns correct metric classes.
@@ -383,14 +762,26 @@ class TestMetricRegistryIntegration:
         """
         precision_cls = MetricRegistry.get("precision@k")
         recall_cls = MetricRegistry.get("recall@k")
+        map_cls = MetricRegistry.get("map")
+        mrr_cls = MetricRegistry.get("mrr")
 
         assert precision_cls is not None
         assert recall_cls is not None
+        assert map_cls is not None
+        assert mrr_cls is not None
+
         assert precision_cls.__name__ == "PrecisionAtK"
         assert recall_cls.__name__ == "RecallAtK"
+        assert map_cls.__name__ == "MeanAveragePrecision"
+        assert mrr_cls.__name__ == "MRR"
 
-        # Verify both can be instantiated
+        # Verify all can be instantiated
         p = precision_cls(k=5)
         r = recall_cls(k=5)
+        m = map_cls()
+        mrr = mrr_cls()
+
         assert hasattr(p, "compute")
         assert hasattr(r, "compute")
+        assert hasattr(m, "compute")
+        assert hasattr(mrr, "compute")
