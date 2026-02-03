@@ -17,9 +17,9 @@ from logging.config import dictConfig
 import attrs
 from databricks.sdk import WorkspaceClient
 
-from config import DatabricksRayJobConfig, EmbeddingConfig
+from config import DatabricksRayJobConfig, EmbeddingConfig, ImageEmbeddingConfig
 from core.exceptions import UpstreamError
-from core.services.ingestion_params import add_ray_tuning_env, build_ingestion_env
+from core.services.ingestion_params import add_ray_tuning_env, build_image_ingestion_env, build_ingestion_env
 from foundation.logger import LOGGING_CONFIG
 
 dictConfig(LOGGING_CONFIG)
@@ -113,6 +113,69 @@ class DatabricksRayService:
         except Exception as e:
             logger.exception("Failed to submit Databricks job", extra={"error": str(e)})
             raise UpstreamError(f"Failed to submit Databricks job: {e}") from e
+
+    def submit_image_job(
+        self,
+        *,
+        namespace: str,
+        s3_endpoint: str,
+        s3_access_key_id: str,
+        s3_secret_access_key: str,
+        s3_bucket: str,
+        s3_prefix: str = "images/",
+        image_embedding_config: ImageEmbeddingConfig,
+        collection: str,
+    ) -> int:
+        """Submit a Databricks job to process S3 images and store embeddings.
+
+        Parameters are passed as env-style `KEY=VALUE` strings so the Databricks
+        entrypoint can reuse the same configuration logic as Ray workers.
+
+        Args:
+            namespace: Kubernetes namespace (used for service discovery).
+            s3_endpoint: S3 service endpoint URL.
+            s3_access_key_id: S3 access key.
+            s3_secret_access_key: S3 secret key.
+            s3_bucket: S3 bucket name to read from.
+            s3_prefix: S3 prefix to filter objects (default: `images/`).
+            image_embedding_config: Image embedding provider configuration.
+            collection: Vector DB base collection name.
+
+        Returns:
+            Databricks run ID for the submitted job.
+
+        Raises:
+            UpstreamError: If submission fails.
+        """
+        databricks_config = DatabricksRayJobConfig.from_env()
+        env_vars = build_image_ingestion_env(
+            namespace=namespace,
+            s3_endpoint=s3_endpoint,
+            s3_access_key_id=s3_access_key_id,
+            s3_secret_access_key=s3_secret_access_key,
+            s3_bucket=s3_bucket,
+            s3_prefix=s3_prefix,
+            image_embedding_config=image_embedding_config,
+            collection=collection,
+            extra_env_keys=("INATINQ_SRC_DIR",),
+        )
+        add_ray_tuning_env(env_vars)
+        python_params = [f"{key}={value}" for key, value in env_vars.items()]
+
+        try:
+            client = WorkspaceClient(host=databricks_config.host, token=databricks_config.token)
+            logger.info(
+                "Submitting Databricks image job",
+                extra={"job_id": databricks_config.job_id, "s3_prefix": s3_prefix},
+            )
+            response = client.jobs.run_now(
+                job_id=databricks_config.job_id,
+                python_params=python_params,
+            )
+            return int(response.run_id)
+        except Exception as e:
+            logger.exception("Failed to submit Databricks image job", extra={"error": str(e)})
+            raise UpstreamError(f"Failed to submit Databricks image job: {e}") from e
 
     def stop_run(self, run_id: int | str) -> None:
         """Stop a running Databricks job run.

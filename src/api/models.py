@@ -389,6 +389,26 @@ class DatabricksJobRequest(BaseModel):
     collection: str = Field(..., example="documents", description="Vector DB collection")
 
 
+class DatabricksImageJobRequest(BaseModel):
+    """Request to submit a Databricks image processing job.
+
+    Attributes:
+        s3_prefix: S3 prefix to process (e.g., "images/").
+        collection: Vector DB base collection name.
+
+    Example:
+        ```json
+        {
+            "s3_prefix": "images/",
+            "collection": "documents"
+        }
+        ```
+    """
+
+    s3_prefix: str = Field(..., example="images/", description="S3 prefix to process")
+    collection: str = Field(..., example="documents", description="Vector DB base collection name")
+
+
 class DatabricksJobResponse(BaseModel):
     """Response after submitting a Databricks job.
 
@@ -407,6 +427,38 @@ class DatabricksJobResponse(BaseModel):
             "status": "submitted",
             "namespace": "ml-system",
             "s3_prefix": "inputs/",
+            "collection": "documents",
+            "submitted_at": "2026-01-12T15:30:45.123456Z"
+        }
+        ```
+    """
+
+    run_id: str
+    status: str
+    namespace: str
+    s3_prefix: str
+    collection: str
+    submitted_at: str
+
+
+class DatabricksImageJobResponse(BaseModel):
+    """Response after submitting a Databricks image job.
+
+    Attributes:
+        run_id: Databricks run ID.
+        status: Job status (always "submitted" on success).
+        namespace: Kubernetes namespace used for config resolution.
+        s3_prefix: S3 prefix being processed.
+        collection: Target vector DB base collection.
+        submitted_at: ISO 8601 timestamp when job was submitted.
+
+    Example:
+        ```json
+        {
+            "run_id": "123456789",
+            "status": "submitted",
+            "namespace": "ml-system",
+            "s3_prefix": "images/",
             "collection": "documents",
             "submitted_at": "2026-01-12T15:30:45.123456Z"
         }

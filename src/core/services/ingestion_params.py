@@ -14,7 +14,7 @@ Design goals:
 import os
 from collections.abc import Iterable
 
-from config import EmbeddingConfig
+from config import EmbeddingConfig, ImageEmbeddingConfig
 
 
 _VECTOR_ENV_KEYS = (
@@ -23,6 +23,21 @@ _VECTOR_ENV_KEYS = (
     "WEAVIATE_URL",
     "WEAVIATE_API_KEY",
     "WEAVIATE_GRPC_HOST",
+)
+
+_IMAGE_OPTIONAL_ENV_KEYS = (
+    "CLIP_URL",
+    "CLIP_MODEL",
+    "CLIP_BACKEND",
+    "CLIP_TIMEOUT",
+    "CLIP_CIRCUIT_BREAKER_THRESHOLD",
+    "CLIP_CIRCUIT_BREAKER_TIMEOUT",
+    "CLIP_MAX_BATCH_SIZE",
+    "CLIP_VECTOR_SIZE",
+    "IMAGE_EMBEDDING_PROVIDER",
+    "IMAGE_BATCH_SIZE",
+    "IMAGE_MAX_SIZE_MB",
+    "IMAGE_TARGET_SIZE",
 )
 
 
@@ -107,3 +122,81 @@ def add_ray_tuning_env(env_vars: dict[str, str]) -> None:
     for key, value in os.environ.items():
         if key.startswith("RAY_") and value:
             env_vars[key] = value
+
+
+def build_image_ingestion_env(
+    *,
+    namespace: str,
+    s3_endpoint: str,
+    s3_access_key_id: str,
+    s3_secret_access_key: str,
+    s3_bucket: str,
+    s3_prefix: str,
+    image_embedding_config: ImageEmbeddingConfig,
+    collection: str,
+    extra_env_keys: Iterable[str] | None = None,
+) -> dict[str, str]:
+    """Build env-style params for image ingestion jobs (Ray/Databricks).
+
+    This mirrors build_ingestion_env() but includes image embedding configuration
+    and CLIP/image processing settings.
+
+    Args:
+        namespace: Kubernetes namespace (used for service discovery).
+        s3_endpoint: S3/MinIO endpoint URL.
+        s3_access_key_id: S3 access key.
+        s3_secret_access_key: S3 secret key.
+        s3_bucket: S3 bucket name.
+        s3_prefix: S3 prefix to filter objects.
+        image_embedding_config: Image embedding provider configuration.
+        collection: Vector DB base collection name.
+        extra_env_keys: Optional iterable of env var names to pass through
+            from the current process if set.
+
+    Returns:
+        Dictionary of environment variables suitable for Ray runtime_env or
+        Databricks python_params conversion.
+    """
+    env_vars = {
+        "K8S_NAMESPACE": namespace,
+        "S3_PREFIX": s3_prefix,
+        "S3_ENDPOINT": s3_endpoint,
+        "S3_ACCESS_KEY_ID": s3_access_key_id,
+        "S3_SECRET_ACCESS_KEY": s3_secret_access_key,
+        "S3_BUCKET": s3_bucket,
+        "VECTOR_DB_COLLECTION": collection,
+        "IMAGE_EMBEDDING_PROVIDER": image_embedding_config.provider_type,
+        "CLIP_BACKEND": image_embedding_config.clip_backend,
+        "CLIP_TIMEOUT": str(image_embedding_config.clip_timeout),
+        "CLIP_CIRCUIT_BREAKER_THRESHOLD": str(image_embedding_config.clip_circuit_breaker_threshold),
+        "CLIP_CIRCUIT_BREAKER_TIMEOUT": str(image_embedding_config.clip_circuit_breaker_timeout),
+        "CLIP_MAX_BATCH_SIZE": str(image_embedding_config.clip_max_batch_size),
+        "IMAGE_BATCH_SIZE": str(image_embedding_config.image_batch_size),
+        "IMAGE_MAX_SIZE_MB": str(image_embedding_config.image_max_size_mb),
+        "IMAGE_TARGET_SIZE": str(image_embedding_config.image_target_size),
+    }
+
+    if image_embedding_config.clip_url:
+        env_vars["CLIP_URL"] = image_embedding_config.clip_url
+    if image_embedding_config.clip_model:
+        env_vars["CLIP_MODEL"] = image_embedding_config.clip_model
+    if image_embedding_config.clip_vector_size is not None:
+        env_vars["CLIP_VECTOR_SIZE"] = str(image_embedding_config.clip_vector_size)
+
+    for key in _VECTOR_ENV_KEYS:
+        value = os.getenv(key)
+        if value:
+            env_vars[key] = value
+
+    for key in _IMAGE_OPTIONAL_ENV_KEYS:
+        value = os.getenv(key)
+        if value and key not in env_vars:
+            env_vars[key] = value
+
+    if extra_env_keys:
+        for key in extra_env_keys:
+            value = os.getenv(key)
+            if value:
+                env_vars[key] = value
+
+    return env_vars

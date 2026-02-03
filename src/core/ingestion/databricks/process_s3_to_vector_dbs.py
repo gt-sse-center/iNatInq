@@ -101,6 +101,18 @@ def _init_ray(config: RayJobConfig, ray_cluster: object | None) -> None:
         "OLLAMA_RETRY_MAX_WAIT",
         "OLLAMA_CIRCUIT_BREAKER_THRESHOLD",
         "OLLAMA_CIRCUIT_BREAKER_TIMEOUT",
+        "IMAGE_EMBEDDING_PROVIDER",
+        "CLIP_URL",
+        "CLIP_MODEL",
+        "CLIP_BACKEND",
+        "CLIP_TIMEOUT",
+        "CLIP_CIRCUIT_BREAKER_THRESHOLD",
+        "CLIP_CIRCUIT_BREAKER_TIMEOUT",
+        "CLIP_MAX_BATCH_SIZE",
+        "CLIP_VECTOR_SIZE",
+        "IMAGE_BATCH_SIZE",
+        "IMAGE_MAX_SIZE_MB",
+        "IMAGE_TARGET_SIZE",
         "INATINQ_SRC_DIR",
     )
     for key in passthrough_keys:
