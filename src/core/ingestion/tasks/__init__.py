@@ -7,7 +7,11 @@ local Ray and Databricks environments for batch processing.
 from .image_processing import process_image_batch_ray
 from .text_processing import process_s3_batch_ray
 
+# Aliases for consistency with pipeline imports
+process_s3_image_batch_ray = process_image_batch_ray
+
 __all__ = [
     "process_image_batch_ray",
     "process_s3_batch_ray",
+    "process_s3_image_batch_ray",
 ]
