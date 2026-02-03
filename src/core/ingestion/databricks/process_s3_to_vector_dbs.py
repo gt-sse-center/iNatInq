@@ -23,7 +23,7 @@ from clients.s3 import S3ClientWrapper
 from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
 from foundation.checkpoint import CheckpointManager, is_s3_path
 from core.ingestion.tasks import process_s3_batch_ray
-from core.ingestion.ray.rate_limiter import RateLimiterActor
+from core.ingestion.shared import RateLimiterActor
 from foundation.logger import LOGGING_CONFIG
 
 from ray.util.spark import setup_ray_cluster
