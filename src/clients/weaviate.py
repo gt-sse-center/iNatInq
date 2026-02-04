@@ -322,7 +322,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             Weaviate class name in PascalCase (e.g., 'DocumentsImages', 'MyPhotos').
         """
         parts = collection.replace("-", "_").split("_")
-        return "".join(part.capitalize() for part in parts)
+        return "".join(part[:1].upper() + part[1:] for part in parts if part)
 
     async def ensure_image_collection_async(
         self,
@@ -491,8 +491,8 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             objects_to_insert = [
                 DataObject(
                     properties=obj.properties,
-                    vector=obj.vector if obj.vector else None,
-                    uuid=obj.uuid if obj.uuid else None,
+                    vector=obj.vector or None,
+                    uuid=obj.uuid or None,
                 )
                 for obj in points
             ]

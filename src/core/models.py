@@ -95,3 +95,11 @@ class SearchResults:
 
     items: list[SearchResultItem]
     total: int
+
+    def __len__(self) -> int:
+        """Return number of items in the results list."""
+        return len(self.items)
+
+    def __getitem__(self, index: int) -> SearchResultItem:
+        """Allow indexing into results like a list."""
+        return self.items[index]
