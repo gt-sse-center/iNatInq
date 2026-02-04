@@ -82,41 +82,31 @@ class TestPrecisionAtK:
 
         assert result == pytest.approx(0.0)
 
-    def test_precision_k_zero_returns_zero(self):
-        """Test Precision@K returns 0.0 when k=0.
+    def test_precision_k_zero_raises_value_error(self):
+        """Test Precision@K raises ValueError when k=0.
 
         **Why this test is important:**
-          - Division by zero edge case
-          - Must return 0.0 not raise exception
+          - k=0 is semantically invalid for Precision@K
+          - Fail fast with clear error
 
         **What it tests:**
-          - k=0 → returns 0.0
+          - k=0 → raises ValueError
         """
-        precision = PrecisionAtK(k=0)
-        retrieved = ["doc1", "doc2"]
-        relevant = {"doc1"}
+        with pytest.raises(ValueError, match="k must be at least 1"):
+            PrecisionAtK(k=0)
 
-        result = precision.compute(retrieved, relevant)
-
-        assert result == 0.0
-
-    def test_precision_k_negative_returns_zero(self):
-        """Test Precision@K returns 0.0 when k is negative.
+    def test_precision_k_negative_raises_value_error(self):
+        """Test Precision@K raises ValueError when k is negative.
 
         **Why this test is important:**
-          - Invalid k value edge case
-          - Must handle gracefully
+          - Negative k is semantically invalid
+          - Fail fast with clear error
 
         **What it tests:**
-          - k=-5 → returns 0.0
+          - k=-5 → raises ValueError
         """
-        precision = PrecisionAtK(k=-5)
-        retrieved = ["doc1", "doc2"]
-        relevant = {"doc1"}
-
-        result = precision.compute(retrieved, relevant)
-
-        assert result == 0.0
+        with pytest.raises(ValueError, match="k must be at least 1"):
+            PrecisionAtK(k=-5)
 
     def test_precision_default_k_is_ten(self):
         """Test PrecisionAtK uses k=10 by default.
@@ -266,41 +256,31 @@ class TestRecallAtK:
 
         assert result == 0.0
 
-    def test_recall_k_zero_returns_zero(self):
-        """Test Recall@K returns 0.0 when k=0.
+    def test_recall_k_zero_raises_value_error(self):
+        """Test Recall@K raises ValueError when k=0.
 
         **Why this test is important:**
-          - Edge case with k=0
-          - Must return 0.0
+          - k=0 is semantically invalid for Recall@K
+          - Fail fast with clear error
 
         **What it tests:**
-          - k=0 → returns 0.0
+          - k=0 → raises ValueError
         """
-        recall = RecallAtK(k=0)
-        retrieved = ["doc1", "doc2"]
-        relevant = {"doc1"}
+        with pytest.raises(ValueError, match="k must be at least 1"):
+            RecallAtK(k=0)
 
-        result = recall.compute(retrieved, relevant)
-
-        assert result == 0.0
-
-    def test_recall_k_negative_returns_zero(self):
-        """Test Recall@K returns 0.0 when k is negative.
+    def test_recall_k_negative_raises_value_error(self):
+        """Test Recall@K raises ValueError when k is negative.
 
         **Why this test is important:**
-          - Invalid k value edge case
-          - Must handle gracefully
+          - Negative k is semantically invalid
+          - Fail fast with clear error
 
         **What it tests:**
-          - k=-5 → returns 0.0
+          - k=-5 → raises ValueError
         """
-        recall = RecallAtK(k=-5)
-        retrieved = ["doc1", "doc2"]
-        relevant = {"doc1"}
-
-        result = recall.compute(retrieved, relevant)
-
-        assert result == 0.0
+        with pytest.raises(ValueError, match="k must be at least 1"):
+            RecallAtK(k=-5)
 
     def test_recall_default_k_is_ten(self):
         """Test RecallAtK uses k=10 by default.

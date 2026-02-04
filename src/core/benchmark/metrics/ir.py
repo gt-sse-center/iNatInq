@@ -45,7 +45,12 @@ class PrecisionAtK(Metric):
 
         Args:
             k: Number of top results to consider (default: 10).
+
+        Raises:
+            ValueError: If k < 1.
         """
+        if k < 1:
+            raise ValueError(f"k must be at least 1, got {k}")
         self.k = k
 
     def compute(
@@ -63,11 +68,7 @@ class PrecisionAtK(Metric):
 
         Returns:
             Precision@K score between 0.0 and 1.0.
-            Returns 0.0 if k <= 0.
         """
-        if self.k <= 0:
-            return 0.0
-
         top_k = list(retrieved)[: self.k]
         relevant_in_top_k = len(set(top_k) & relevant)
         return relevant_in_top_k / self.k
@@ -92,7 +93,12 @@ class RecallAtK(Metric):
 
         Args:
             k: Number of top results to consider (default: 10).
+
+        Raises:
+            ValueError: If k < 1.
         """
+        if k < 1:
+            raise ValueError(f"k must be at least 1, got {k}")
         self.k = k
 
     def compute(
@@ -110,9 +116,9 @@ class RecallAtK(Metric):
 
         Returns:
             Recall@K score between 0.0 and 1.0.
-            Returns 0.0 if relevant set is empty or k <= 0.
+            Returns 0.0 if relevant set is empty.
         """
-        if self.k <= 0 or len(relevant) == 0:
+        if len(relevant) == 0:
             return 0.0
 
         top_k = list(retrieved)[: self.k]
