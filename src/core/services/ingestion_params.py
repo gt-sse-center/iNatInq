@@ -18,11 +18,44 @@ from config import EmbeddingConfig, ImageEmbeddingConfig
 
 
 _VECTOR_ENV_KEYS = (
+    "VECTOR_DB_PROVIDER",
     "QDRANT_URL",
     "QDRANT_API_KEY",
     "WEAVIATE_URL",
     "WEAVIATE_API_KEY",
     "WEAVIATE_GRPC_HOST",
+)
+
+_VECTOR_TIMEOUT_ENV_KEYS = (
+    "QDRANT_TIMEOUT",
+    "QDRANT_CIRCUIT_BREAKER_THRESHOLD",
+    "QDRANT_CIRCUIT_BREAKER_TIMEOUT",
+    "WEAVIATE_GRPC_PORT",
+    "WEAVIATE_TIMEOUT",
+    "WEAVIATE_CIRCUIT_BREAKER_THRESHOLD",
+    "WEAVIATE_CIRCUIT_BREAKER_TIMEOUT",
+)
+
+_S3_TUNING_ENV_KEYS = (
+    "S3_REGION",
+    "S3_USE_SSL",
+    "S3_PATH_STYLE",
+    "S3_TIMEOUT",
+    "S3_MAX_RETRIES",
+    "S3_RETRY_MIN_WAIT",
+    "S3_RETRY_MAX_WAIT",
+    "S3_CIRCUIT_BREAKER_THRESHOLD",
+    "S3_CIRCUIT_BREAKER_TIMEOUT",
+)
+
+_OLLAMA_TIMEOUT_ENV_KEYS = (
+    "OLLAMA_TIMEOUT",
+    "OLLAMA_CIRCUIT_BREAKER_THRESHOLD",
+    "OLLAMA_CIRCUIT_BREAKER_TIMEOUT",
+    "OLLAMA_BATCH_TIMEOUT_MULTIPLIER",
+    "OLLAMA_MAX_BATCH_SIZE",
+    "OLLAMA_RETRY_MIN_WAIT",
+    "OLLAMA_RETRY_MAX_WAIT",
 )
 
 _IMAGE_OPTIONAL_ENV_KEYS = (
@@ -97,6 +130,18 @@ def build_ingestion_env(
         env_vars["OLLAMA_MODEL"] = embedding_config.ollama_model
 
     for key in _VECTOR_ENV_KEYS:
+        value = os.getenv(key)
+        if value:
+            env_vars[key] = value
+    for key in _VECTOR_TIMEOUT_ENV_KEYS:
+        value = os.getenv(key)
+        if value:
+            env_vars[key] = value
+    for key in _S3_TUNING_ENV_KEYS:
+        value = os.getenv(key)
+        if value:
+            env_vars[key] = value
+    for key in _OLLAMA_TIMEOUT_ENV_KEYS:
         value = os.getenv(key)
         if value:
             env_vars[key] = value
@@ -184,6 +229,18 @@ def build_image_ingestion_env(
         env_vars["CLIP_VECTOR_SIZE"] = str(image_embedding_config.clip_vector_size)
 
     for key in _VECTOR_ENV_KEYS:
+        value = os.getenv(key)
+        if value:
+            env_vars[key] = value
+    for key in _VECTOR_TIMEOUT_ENV_KEYS:
+        value = os.getenv(key)
+        if value:
+            env_vars[key] = value
+    for key in _S3_TUNING_ENV_KEYS:
+        value = os.getenv(key)
+        if value:
+            env_vars[key] = value
+    for key in _OLLAMA_TIMEOUT_ENV_KEYS:
         value = os.getenv(key)
         if value:
             env_vars[key] = value
