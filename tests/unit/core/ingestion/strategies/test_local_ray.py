@@ -155,8 +155,8 @@ class TestLocalRayStrategyConnection:
 
         mock_ray.init.assert_not_called()
 
-    def test_init_raises_when_no_ray_address(self, mock_ray: MagicMock):
-        """init() raises ValueError when RAY_ADDRESS is not set.
+    def test_init_starts_local_when_no_ray_address(self, mock_ray: MagicMock):
+        """init() starts a local cluster when RAY_ADDRESS is not set.
 
         **Why this test is important:**
 
@@ -165,15 +165,17 @@ class TestLocalRayStrategyConnection:
 
         **What it tests:**
 
-        - ValueError is raised when ray_address is None
-        - Error message indicates RAY_ADDRESS is required
+        - Ray is initialized locally when ray_address is None
         """
         config = RayJobConfig(ray_address=None)
         strategy = LocalRayStrategy(config=config)
         mock_ray.is_initialized.return_value = False
 
-        with pytest.raises(ValueError, match="RAY_ADDRESS is required"):
-            strategy.init()
+        strategy.init()
+
+        mock_ray.init.assert_called_once()
+        call_kwargs = mock_ray.init.call_args[1]
+        assert "address" not in call_kwargs or call_kwargs["address"] is None
 
     def test_init_connects_to_ray_cluster(self, ray_job_config: RayJobConfig, mock_ray: MagicMock):
         """init() connects to Ray cluster with correct parameters.

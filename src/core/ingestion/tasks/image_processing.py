@@ -144,7 +144,7 @@ class ImageProcessingPipeline:
             weaviate_db.close()
             session.close()
 
-    async def _process_images_async(
+    async def _process_images_async(  # noqa: PLR0912
         self,
         images: list[ImageContentResult],
         clip_client: CLIPClient,
@@ -154,6 +154,24 @@ class ImageProcessingPipeline:
         """Preprocess, embed, and upsert images to vector DBs."""
         if not images:
             return []
+
+        provider = os.getenv("VECTOR_DB_PROVIDER", "").strip().lower()
+        if provider in ("", "both"):
+            use_qdrant = True
+            use_weaviate = True
+        elif provider == "qdrant":
+            use_qdrant = True
+            use_weaviate = False
+        elif provider == "weaviate":
+            use_qdrant = False
+            use_weaviate = True
+        else:
+            logger.warning(
+                "Invalid VECTOR_DB_PROVIDER; defaulting to both",
+                extra={"vector_db_provider": provider},
+            )
+            use_qdrant = True
+            use_weaviate = True
 
         max_size = self._config.image_preprocess_max_size
         batch_size = self._config.image_embed_batch_size
@@ -204,9 +222,9 @@ class ImageProcessingPipeline:
         # Ensure image collections exist
         ensure_qdrant = getattr(qdrant_db, "ensure_image_collection_async", None)
         ensure_weaviate = getattr(weaviate_db, "ensure_image_collection_async", None)
-        if callable(ensure_qdrant):
+        if use_qdrant and callable(ensure_qdrant):
             await ensure_qdrant(collection=collection, vector_size=vector_size)
-        if callable(ensure_weaviate):
+        if use_weaviate and callable(ensure_weaviate):
             await ensure_weaviate(collection=collection, vector_size=vector_size)
 
         # Build Qdrant points and Weaviate objects
@@ -227,48 +245,52 @@ class ImageProcessingPipeline:
                 "height": img.height if img.height is not None else 0,
                 "thumbnail_key": "",  # optional, leave empty if not set
             }
-            qdrant_points.append(PointStruct(id=point_id, vector=vec, payload=payload))
-            weaviate_objects.append(WeaviateDataObject(uuid=point_id, properties=payload, vector=vec))
+            if use_qdrant:
+                qdrant_points.append(PointStruct(id=point_id, vector=vec, payload=payload))
+            if use_weaviate:
+                weaviate_objects.append(WeaviateDataObject(uuid=point_id, properties=payload, vector=vec))
             valid_indices.append(idx)
 
-        if not qdrant_points:
+        if (use_qdrant and not qdrant_points) or (use_weaviate and not weaviate_objects):
             return [
                 ProcessingResult.failure_result(images[i].s3_key, "Embedding or point build failed")
                 for i in range(len(images))
             ]
 
         # Upsert to both DBs
-        try:
-            await qdrant_db.batch_upsert_async(
-                collection=qdrant_image_collection,
-                points=qdrant_points,
-                vector_size=vector_size,
-            )
-        except Exception as e:
-            logger.exception(
-                "Qdrant image batch upsert failed",
-                extra={"error": str(e), "collection": qdrant_image_collection},
-            )
-            return [
-                ProcessingResult.failure_result(images[i].s3_key, f"Qdrant upsert: {e}")
-                for i in range(len(images))
-            ]
+        if use_qdrant:
+            try:
+                await qdrant_db.batch_upsert_async(
+                    collection=qdrant_image_collection,
+                    points=qdrant_points,
+                    vector_size=vector_size,
+                )
+            except Exception as e:
+                logger.exception(
+                    "Qdrant image batch upsert failed",
+                    extra={"error": str(e), "collection": qdrant_image_collection},
+                )
+                return [
+                    ProcessingResult.failure_result(images[i].s3_key, f"Qdrant upsert: {e}")
+                    for i in range(len(images))
+                ]
 
-        try:
-            await weaviate_db.batch_upsert_async(
-                collection=weaviate_image_class,
-                points=weaviate_objects,
-                vector_size=vector_size,
-            )
-        except Exception as e:
-            logger.exception(
-                "Weaviate image batch upsert failed",
-                extra={"error": str(e), "class": weaviate_image_class},
-            )
-            return [
-                ProcessingResult.failure_result(images[i].s3_key, f"Weaviate upsert: {e}")
-                for i in range(len(images))
-            ]
+        if use_weaviate:
+            try:
+                await weaviate_db.batch_upsert_async(
+                    collection=weaviate_image_class,
+                    points=weaviate_objects,
+                    vector_size=vector_size,
+                )
+            except Exception as e:
+                logger.exception(
+                    "Weaviate image batch upsert failed",
+                    extra={"error": str(e), "class": weaviate_image_class},
+                )
+                return [
+                    ProcessingResult.failure_result(images[i].s3_key, f"Weaviate upsert: {e}")
+                    for i in range(len(images))
+                ]
 
         # Success for all processed images
         success_keys = {images[i].s3_key for i in valid_indices}

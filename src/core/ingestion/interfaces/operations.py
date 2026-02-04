@@ -7,6 +7,7 @@ These classes are shared between Ray and Spark implementations.
 
 import asyncio
 import logging
+import os
 from typing import TYPE_CHECKING
 
 from botocore.exceptions import ClientError
@@ -542,20 +543,59 @@ class VectorDBUpserter:
         # Convert VectorPoint to Qdrant PointStruct
         qdrant_point_structs = [point.to_qdrant() for point in embedding_result.qdrant_points]
 
-        # Upsert to both databases in parallel
-        upsert_results = await asyncio.gather(
-            self.qdrant_db.batch_upsert_async(
-                collection=collection,
-                points=qdrant_point_structs,  # type: ignore[arg-type]
-                vector_size=vector_size,
-            ),
-            self.weaviate_db.batch_upsert_async(
-                collection=collection,
-                points=embedding_result.weaviate_objects,  # type: ignore[arg-type]
-                vector_size=vector_size,
-            ),
-            return_exceptions=True,
-        )
+        provider = os.getenv("VECTOR_DB_PROVIDER", "").strip().lower()
+        if provider in ("", "both"):
+            use_qdrant = True
+            use_weaviate = True
+        elif provider == "qdrant":
+            use_qdrant = True
+            use_weaviate = False
+        elif provider == "weaviate":
+            use_qdrant = False
+            use_weaviate = True
+        else:
+            logger.warning(
+                "Invalid VECTOR_DB_PROVIDER; defaulting to both",
+                extra={"vector_db_provider": provider},
+            )
+            use_qdrant = True
+            use_weaviate = True
+
+        upsert_results: list[object | Exception | None] = [None, None]
+        if use_qdrant and use_weaviate:
+            upsert_results = await asyncio.gather(
+                self.qdrant_db.batch_upsert_async(
+                    collection=collection,
+                    points=qdrant_point_structs,  # type: ignore[arg-type]
+                    vector_size=vector_size,
+                ),
+                self.weaviate_db.batch_upsert_async(
+                    collection=collection,
+                    points=embedding_result.weaviate_objects,  # type: ignore[arg-type]
+                    vector_size=vector_size,
+                ),
+                return_exceptions=True,
+            )
+        elif use_qdrant:
+            try:
+                upsert_results[0] = await self.qdrant_db.batch_upsert_async(
+                    collection=collection,
+                    points=qdrant_point_structs,  # type: ignore[arg-type]
+                    vector_size=vector_size,
+                )
+            except Exception as e:
+                upsert_results[0] = e
+        elif use_weaviate:
+            try:
+                upsert_results[1] = await self.weaviate_db.batch_upsert_async(
+                    collection=collection,
+                    points=embedding_result.weaviate_objects,  # type: ignore[arg-type]
+                    vector_size=vector_size,
+                )
+            except Exception as e:
+                upsert_results[1] = e
+        else:
+            return UpsertResult.empty()
 
         # Track per-database success/failure
         qdrant_success = True
@@ -597,6 +637,8 @@ class VectorDBUpserter:
             qdrant_error=qdrant_error,
             weaviate_error=weaviate_error,
             batch_size=batch_size,
+            qdrant_enabled=use_qdrant,
+            weaviate_enabled=use_weaviate,
         )
 
 
@@ -681,9 +723,9 @@ class BatchProcessor:
         # Log per-DB status for observability
         if not upsert_result.all_success:
             failed_dbs = []
-            if not upsert_result.qdrant_success:
+            if upsert_result.qdrant_enabled and not upsert_result.qdrant_success:
                 failed_dbs.append(f"Qdrant: {upsert_result.qdrant_error}")
-            if not upsert_result.weaviate_success:
+            if upsert_result.weaviate_enabled and not upsert_result.weaviate_success:
                 failed_dbs.append(f"Weaviate: {upsert_result.weaviate_error}")
             logger.warning(
                 "Partial upsert failure: %s",
@@ -692,6 +734,8 @@ class BatchProcessor:
                     "batch_size": upsert_result.batch_size,
                     "qdrant_success": upsert_result.qdrant_success,
                     "weaviate_success": upsert_result.weaviate_success,
+                    "qdrant_enabled": upsert_result.qdrant_enabled,
+                    "weaviate_enabled": upsert_result.weaviate_enabled,
                 },
             )
 
