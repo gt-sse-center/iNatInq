@@ -247,13 +247,14 @@ class DatabricksStrategy:
     def _init_ray_client(self) -> None:
         """Initialize Ray client connection to Databricks cluster."""
         address = getattr(self._cluster, "address", None) if self._cluster else None
-        runtime_env = self.get_runtime_env()
-
         if ray.is_initialized():
-            raise RuntimeError(
-                "Ray is already initialized; runtime_env cannot be applied. "
+            logger.warning(
+                "Ray already initialized; runtime_env cannot be applied. "
                 "Restart the job/cluster to apply VECTOR_DB_PROVIDER to workers."
             )
+            return
+
+        runtime_env = self.get_runtime_env()
 
         ray.init(
             address=address or "auto",
