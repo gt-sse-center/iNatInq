@@ -74,6 +74,9 @@ jobs:
       - name: Install the project
         run: uv sync --locked --all-packages --dev
 
+      - name: Run pre-commit scripts
+        run: uv run pre-commit run --verbose
+        
       - name: Validate Tests
         run: uv run pytest ${{ inputs.tests_path }}
         env:
