@@ -3,24 +3,24 @@
 repos:
 - repo: local
   hooks:
-  - id: uv sync --frozen --all-packages --all-groups
-    name: uv sync --frozen --all-packages --all-groups
-    entry: uv sync --frozen --all-packages --all-groups
+  - id: uv sync --frozen --all-packages -- --all-groups
+    name: uv sync --frozen --all-packages -- --all-groups
+    entry: uv sync --frozen --all-packages -- --all-groups
     language: system
     pass_filenames: false
     require_serial: true
     always_run: true
 
-  - id: uv run ruff format --check --all-groups
-    name: uv run ruff format --check --all-groups
-    entry: uv run ruff format --check --all-groups
+  - id: uv run ruff format --check -- --all-groups
+    name: uv run ruff format --check -- --all-groups
+    entry: uv run ruff format --check -- --all-groups
     language: system
     pass_filenames: false
     always_run: true
 
-  - id: uv run ruff check --all-groups
-    name: uv run ruff check --all-groups
-    entry: uv run ruff check --all-groups
+  - id: uv run ruff check -- --all-groups
+    name: uv run ruff check -- --all-groups
+    entry: uv run ruff check -- --all-groups
     language: system
     pass_filenames: false
     always_run: true
