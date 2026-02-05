@@ -7,7 +7,7 @@ authors = [
     { name = "Varun Agrawal", email = "varunagrawal@gatech.edu" },
     { name = "Ketan Bhardwaj", email = "ketanbj@cc.gatech.edu" },
 ]
-requires-python = ">= 3.11, < 3.13"
+requires-python = ">= 3.11"
 
 dependencies = [
     "aiobreaker>=1.2.0",
