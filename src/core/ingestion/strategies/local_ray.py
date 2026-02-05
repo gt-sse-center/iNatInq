@@ -94,7 +94,7 @@ class LocalRayStrategy:
             ray.init(
                 address=self._config.ray_address,
                 namespace=self._config.ray_namespace,
-                runtime_env=runtime_env if runtime_env else None,
+                runtime_env=runtime_env or None,
                 ignore_reinit_error=True,
                 logging_level=logging.WARNING,
                 log_to_driver=False,

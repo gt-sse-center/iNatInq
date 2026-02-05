@@ -491,8 +491,8 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             objects_to_insert = [
                 DataObject(
                     properties=obj.properties,
-                    vector=obj.vector if obj.vector else None,
-                    uuid=obj.uuid if obj.uuid else None,
+                    vector=obj.vector or None,
+                    uuid=obj.uuid or None,
                 )
                 for obj in points
             ]
