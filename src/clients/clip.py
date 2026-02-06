@@ -247,18 +247,78 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
         return b64_data
 
-    def _parse_hosted_clip_response(self, data: object, *, kind: str) -> list[float]:
-        if not isinstance(data, list) or not data:
-            msg = f"Unexpected response format from hosted CLIP: {data}"
-            raise UpstreamError(msg)
-        record = data[0]
-        if not isinstance(record, dict):
-            msg = f"Unexpected response format from hosted CLIP: {data}"
-            raise UpstreamError(msg)
+    def _rows_to_dicts(self, columns: object, rows: object) -> list[dict[str, object]]:
+        if not isinstance(columns, list) or not isinstance(rows, list):
+            return []
+        records: list[dict[str, object]] = []
+        for row in rows:
+            if isinstance(row, list):
+                if len(columns) == 1:
+                    records.append({str(columns[0]): row or []})
+                elif len(row) == len(columns):
+                    records.append({str(columns[i]): row[i] for i in range(len(columns))})
+                else:
+                    records.append({"vector": row})
+            elif len(columns) == 1:
+                records.append({str(columns[0]): row})
+            else:
+                records.append({"vector": row})
+        return records
+
+    def _unwrap_hosted_clip_records(self, data: object) -> list[object]:
+        if isinstance(data, dict):
+            if "columns" in data and "data" in data:
+                records = self._rows_to_dicts(data.get("columns"), data.get("data"))
+                if records:
+                    return records
+            for key in ("output_data", "outputs", "predictions", "result", "data"):
+                if key in data:
+                    return self._unwrap_hosted_clip_records(data[key])
+        if isinstance(data, list):
+            return data
+        msg = f"Unexpected response format from hosted CLIP: {data}"
+        raise UpstreamError(msg)
+
+    def _coerce_vector(self, value: object) -> list[float] | None:
+        if isinstance(value, list):
+            if not value:
+                return []
+            if all(isinstance(x, (int, float)) for x in value):
+                return value
+            if (
+                len(value) == 1
+                and isinstance(value[0], list)
+                and all(isinstance(x, (int, float)) for x in value[0])
+            ):
+                return value[0]
+        return None
+
+    def _extract_hosted_clip_vector(self, record: object, *, kind: str) -> list[float]:
         key_candidates = ("text_features", "image_features", "vector")
-        for key in key_candidates:
-            if key in record:
-                vector = record[key]
+        vector: list[float] | None = None
+        if isinstance(record, dict):
+            for key in key_candidates:
+                if key in record:
+                    vector = self._coerce_vector(record[key])
+                    if vector is None:
+                        vector = self._coerce_vector(record.get("vector"))
+                    if vector is not None:
+                        if not vector:
+                            logger.warning(
+                                "Empty embedding returned from hosted CLIP",
+                                extra={
+                                    "backend": self.backend,
+                                    "model": self.model,
+                                    "base_url": self.base_url,
+                                    "kind": kind,
+                                    "key": key,
+                                },
+                            )
+                        return vector
+                    break
+        else:
+            vector = self._coerce_vector(record)
+            if vector is not None:
                 if not vector:
                     logger.warning(
                         "Empty embedding returned from hosted CLIP",
@@ -267,47 +327,26 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                             "model": self.model,
                             "base_url": self.base_url,
                             "kind": kind,
-                            "key": key,
+                            "key": "vector",
                         },
                     )
                 return vector
-        msg = f"Unexpected response format from hosted CLIP: {data}"
+        msg = f"Unexpected response format from hosted CLIP: {record}"
         raise UpstreamError(msg)
 
-    def _parse_hosted_clip_batch_response(self, data: object, *, kind: str, count: int) -> list[list[float]]:
-        if not isinstance(data, list):
+    def _parse_hosted_clip_response(self, data: object, *, kind: str) -> list[float]:
+        records = self._unwrap_hosted_clip_records(data)
+        if not records:
             msg = f"Unexpected response format from hosted CLIP: {data}"
             raise UpstreamError(msg)
-        if len(data) != count:
-            msg = f"Hosted CLIP response length {len(data)} != request length {count}"
+        return self._extract_hosted_clip_vector(records[0], kind=kind)
+
+    def _parse_hosted_clip_batch_response(self, data: object, *, kind: str, count: int) -> list[list[float]]:
+        records = self._unwrap_hosted_clip_records(data)
+        if len(records) != count:
+            msg = f"Hosted CLIP response length {len(records)} != request length {count}"
             raise UpstreamError(msg)
-        vectors: list[list[float]] = []
-        key_candidates = ("text_features", "image_features", "vector")
-        for record in data:
-            if not isinstance(record, dict):
-                msg = f"Unexpected response format from hosted CLIP: {data}"
-                raise UpstreamError(msg)
-            vector = None
-            for key in key_candidates:
-                if key in record:
-                    vector = record[key]
-                    if not vector:
-                        logger.warning(
-                            "Empty embedding returned from hosted CLIP",
-                            extra={
-                                "backend": self.backend,
-                                "model": self.model,
-                                "base_url": self.base_url,
-                                "kind": kind,
-                                "key": key,
-                            },
-                        )
-                    break
-            if vector is None:
-                msg = f"Unexpected response format from hosted CLIP: {data}"
-                raise UpstreamError(msg)
-            vectors.append(vector)
-        return vectors
+        return [self._extract_hosted_clip_vector(record, kind=kind) for record in records]
 
     def _build_request_headers(self, *, accept_json: bool = False) -> dict[str, str] | None:
         headers: dict[str, str] = {}
@@ -464,7 +503,11 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                     # Note: clip backend doesn't support text alongside images
                     url = f"{self.base_url}/embedding/image"
                     payload = {"images": [image_b64]}
-                    response = await client.post(url, json=payload, headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"))
+                    response = await client.post(
+                        url,
+                        json=payload,
+                        headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
+                    )
                     response.raise_for_status()
                     data = response.json()
 
@@ -473,7 +516,11 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                         if not vector:
                             logger.warning(
                                 "Empty embedding returned from CLIP backend",
-                                extra={"backend": self.backend, "model": self.model, "base_url": self.base_url},
+                                extra={
+                                    "backend": self.backend,
+                                    "model": self.model,
+                                    "base_url": self.base_url,
+                                },
                             )
                         return vector
                     msg = f"Unexpected response format from CLIP server: {data}"
@@ -504,7 +551,11 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                     "prompt": "embeddings",
                     "images": [image_b64],
                 }
-                response = await client.post(url, json=payload, headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"))
+                response = await client.post(
+                    url,
+                    json=payload,
+                    headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
+                )
                 response.raise_for_status()
                 data = response.json()
 
@@ -612,11 +663,12 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         if self.backend == "hosted_clip":
             encoded_images = [self._encode_image(img) for img in images]
             rows = [
-                [encoded_images[i], texts[i] if texts is not None else ""]
-                for i in range(len(encoded_images))
+                [encoded_images[i], texts[i] if texts is not None else ""] for i in range(len(encoded_images))
             ]
             url = f"{self.base_url}"
-            payload = {"input_data": {"columns": ["image", "text"], "index": list(range(len(rows))), "data": rows}}
+            payload = {
+                "input_data": {"columns": ["image", "text"], "index": list(range(len(rows))), "data": rows}
+            }
             response = self.session.post(
                 url,
                 json=payload,
@@ -682,13 +734,18 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
         if self.backend == "hosted_clip":
             rows = [
-                [encoded_images[i], texts[i] if texts is not None else ""]
-                for i in range(len(encoded_images))
+                [encoded_images[i], texts[i] if texts is not None else ""] for i in range(len(encoded_images))
             ]
             url = f"{self.base_url}"
-            payload = {"input_data": {"columns": ["image", "text"], "index": list(range(len(rows))), "data": rows}}
+            payload = {
+                "input_data": {"columns": ["image", "text"], "index": list(range(len(rows))), "data": rows}
+            }
             async with httpx.AsyncClient(timeout=self.timeout_s) as client:
-                response = await client.post(url, json=payload, headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"))
+                response = await client.post(
+                    url,
+                    json=payload,
+                    headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
+                )
                 response.raise_for_status()
                 data = response.json()
                 return self._parse_hosted_clip_batch_response(data, kind="image", count=len(rows))
@@ -821,7 +878,11 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                     # Returns: list of {text, vector} objects
                     url = f"{self.base_url}/embedding/text"
                     payload = {"texts": [text]}
-                    response = await client.post(url, json=payload, headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"))
+                    response = await client.post(
+                        url,
+                        json=payload,
+                        headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
+                    )
                     response.raise_for_status()
                     data = response.json()
 
@@ -830,7 +891,11 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                         if not vector:
                             logger.warning(
                                 "Empty text embedding returned from CLIP backend",
-                                extra={"backend": self.backend, "model": self.model, "base_url": self.base_url},
+                                extra={
+                                    "backend": self.backend,
+                                    "model": self.model,
+                                    "base_url": self.base_url,
+                                },
                             )
                         return vector
                     msg = f"Unexpected response format from CLIP server: {data}"
@@ -860,7 +925,11 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                     "model": self.model,
                     "prompt": "embeddings",
                 }
-                response = await client.post(url, json=payload, headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"))
+                response = await client.post(
+                    url,
+                    json=payload,
+                    headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
+                )
                 response.raise_for_status()
                 data = response.json()
 
@@ -953,7 +1022,9 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         if self.backend == "hosted_clip":
             rows = [["", text] for text in texts]
             url = f"{self.base_url}"
-            payload = {"input_data": {"columns": ["image", "text"], "index": list(range(len(rows))), "data": rows}}
+            payload = {
+                "input_data": {"columns": ["image", "text"], "index": list(range(len(rows))), "data": rows}
+            }
             response = self.session.post(
                 url,
                 json=payload,
@@ -1011,9 +1082,15 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         if self.backend == "hosted_clip":
             rows = [["", text] for text in texts]
             url = f"{self.base_url}"
-            payload = {"input_data": {"columns": ["image", "text"], "index": list(range(len(rows))), "data": rows}}
+            payload = {
+                "input_data": {"columns": ["image", "text"], "index": list(range(len(rows))), "data": rows}
+            }
             async with httpx.AsyncClient(timeout=self.timeout_s) as client:
-                response = await client.post(url, json=payload, headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"))
+                response = await client.post(
+                    url,
+                    json=payload,
+                    headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
+                )
                 response.raise_for_status()
                 data = response.json()
                 return self._parse_hosted_clip_batch_response(data, kind="text", count=len(rows))

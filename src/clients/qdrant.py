@@ -249,6 +249,10 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         except UnexpectedResponse as e:
             status_code = getattr(e, "status_code", None)
             if status_code == 409:
+                self._logger.warning(  # type: ignore[attr-defined]
+                    "Qdrant image collection already exists; skipping create",
+                    extra={"collection": image_collection},
+                )
                 return
             raise
 

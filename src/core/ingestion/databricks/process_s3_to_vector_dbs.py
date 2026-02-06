@@ -92,7 +92,7 @@ def _init_ray(config: RayJobConfig, ray_cluster: object | None) -> None:
         "WEAVIATE_TIMEOUT",
         "WEAVIATE_CIRCUIT_BREAKER_THRESHOLD",
         "WEAVIATE_CIRCUIT_BREAKER_TIMEOUT",
-        "EMBEDDING_PROVIDER_TYPE",
+        "EMBEDDING_PROVIDER",
         "OLLAMA_BASE_URL",
         "OLLAMA_MODEL",
         "OLLAMA_TIMEOUT",
@@ -120,6 +120,14 @@ def _init_ray(config: RayJobConfig, ray_cluster: object | None) -> None:
         value = os.environ.get(key)
         if value is not None and value != "":
             env_vars[key] = value
+
+    vector_db_provider = (os.environ.get("VECTOR_DB_PROVIDER") or "").strip().lower()
+    if not vector_db_provider:
+        env_vars["VECTOR_DB_PROVIDER"] = "qdrant"
+        logger.warning(
+            "VECTOR_DB_PROVIDER not set; defaulting to qdrant for Ray workers",
+            extra={"vector_db_provider": "qdrant"},
+        )
 
     if env_vars:
         runtime_env["env_vars"] = env_vars

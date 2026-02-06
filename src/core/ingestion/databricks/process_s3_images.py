@@ -55,6 +55,10 @@ def main() -> None:
     vector_db_provider = (os.environ.get("VECTOR_DB_PROVIDER") or "").strip().lower()
     if not vector_db_provider:
         os.environ["VECTOR_DB_PROVIDER"] = "qdrant"
+        job_logger.warning(
+            "VECTOR_DB_PROVIDER not set; defaulting to qdrant",
+            extra={"vector_db_provider": "qdrant"},
+        )
 
     namespace = os.environ.get("K8S_NAMESPACE", "ml-system")
     s3_prefix = os.environ.get("S3_PREFIX") or (

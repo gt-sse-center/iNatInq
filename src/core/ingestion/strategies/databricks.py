@@ -151,6 +151,10 @@ class DatabricksStrategy:
         vector_db_provider = (os.environ.get("VECTOR_DB_PROVIDER") or "").strip().lower()
         if not vector_db_provider:
             env_vars["VECTOR_DB_PROVIDER"] = "qdrant"
+            logger.warning(
+                "VECTOR_DB_PROVIDER not set; defaulting to qdrant for Ray workers",
+                extra={"vector_db_provider": "qdrant"},
+            )
 
         # Set working directory from INATINQ_SRC_DIR
         workspace_src = os.environ.get("INATINQ_SRC_DIR")
@@ -249,10 +253,11 @@ class DatabricksStrategy:
         runtime_env = self.get_runtime_env()
 
         if ray.is_initialized():
-            raise RuntimeError(
-                "Ray is already initialized; runtime_env cannot be applied. "
+            logger.warning(
+                "Ray already initialized; skipping runtime_env updates. "
                 "Restart the job/cluster to apply VECTOR_DB_PROVIDER to workers."
             )
+            return
 
         ray.init(
             address=address or "auto",

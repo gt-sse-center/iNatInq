@@ -268,7 +268,7 @@ class TestCLIPClientEmbedImage:
         call_args = mock_clip_session.post.call_args
         assert "api/embeddings" in call_args[0][0]
         assert call_args[1]["json"]["model"] == "llava"
-        assert call_args[1]["json"]["prompt"] == ""
+        assert call_args[1]["json"]["prompt"] == "embeddings"
         assert len(call_args[1]["json"]["images"]) == 1
 
     def test_embed_image_returns_embedding(
@@ -369,6 +369,37 @@ class TestCLIPClientEmbedImageBatch:
 
         assert len(results) == 3
         assert mock_clip_session.post.call_count == 3
+
+    def test_embed_image_batch_hosted_clip_single_request(self, mock_clip_session: MagicMock) -> None:
+        """Test hosted_clip batch uses single request and parses response."""
+        client = CLIPClient(
+            base_url="http://hosted-clip/score",
+            model="clip-vit-base-patch32",
+            backend="hosted_clip",
+            api_key="secret",
+        )
+        client.set_session(mock_clip_session)
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "output_data": {"columns": ["image_features"], "data": [[0.1, 0.2], [0.3, 0.4]]}
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_clip_session.post.return_value = mock_response
+
+        images = [b"img1", b"img2"]
+        results = client.embed_image_batch(images)
+
+        assert results == [[0.1, 0.2], [0.3, 0.4]]
+        mock_clip_session.post.assert_called_once()
+        call_args = mock_clip_session.post.call_args
+        payload = call_args[1]["json"]
+        expected_b64_1 = base64.b64encode(b"img1").decode("utf-8")
+        expected_b64_2 = base64.b64encode(b"img2").decode("utf-8")
+        assert payload["input_data"]["data"] == [[expected_b64_1, ""], [expected_b64_2, ""]]
+        headers = call_args[1]["headers"]
+        assert headers["Accept"] == "application/json"
+        assert headers["Authorization"] == "Bearer secret"
 
 
 class TestCLIPClientAsync:
@@ -770,6 +801,25 @@ class TestCLIPClientFromConfig:
         with pytest.raises(ValueError, match="clip_model is required"):
             CLIPClient.from_config(config)
 
+    def test_hosted_clip_requires_api_key(self) -> None:
+        """Test that hosted_clip backend requires CLIP_API_KEY.
+
+        **Why this test is important:**
+          - Hosted endpoints typically require auth
+          - Missing API key should fail fast
+
+        **What it tests:**
+          - ValueError raised when CLIP_API_KEY is missing
+        """
+        config = ImageEmbeddingConfig(
+            clip_url="http://hosted-clip/score",
+            clip_model="clip-vit-base-patch32",
+            clip_backend="hosted_clip",
+        )
+
+        with pytest.raises(ValueError, match="CLIP_API_KEY is required"):
+            CLIPClient.from_config(config)
+
     def test_accepts_custom_session(self) -> None:
         """Test that from_config accepts custom HTTP session.
 
@@ -900,6 +950,25 @@ class TestImageEmbeddingConfigFromEnv:
 
             assert config.clip_url == "http://ollama:11434"
 
+    def test_hosted_clip_defaults_to_clip_url_and_model(self) -> None:
+        """Test that hosted_clip uses clip defaults.
+
+        **Why this test is important:**
+          - hosted_clip endpoints typically serve CLIP models (not LLaVA)
+          - Defaulting to ViT-B/32 prevents 4096-dim mismatches
+
+        **What it tests:**
+          - hosted_clip defaults to clip URL and ViT-B/32 model
+        """
+        env = {"CLIP_BACKEND": "hosted_clip"}
+
+        with patch.dict("os.environ", env, clear=True):
+            config = ImageEmbeddingConfig.from_env()
+
+            assert config.clip_backend == "hosted_clip"
+            assert config.clip_url == "http://localhost:8000"
+            assert config.clip_model == "ViT-B/32"
+
 
 # =============================================================================
 # Text Embedding Tests
@@ -986,7 +1055,7 @@ class TestCLIPClientEmbedText:
         # Check the payload has prompt (not images)
         payload = call_args[1]["json"]
         assert payload["model"] == "llava"
-        assert payload["prompt"] == "test query"
+        assert payload["prompt"] == "embeddings"
         assert "images" not in payload
 
     def test_embed_text_makes_correct_request_clip_backend(self, mock_clip_session: MagicMock) -> None:
@@ -1022,6 +1091,35 @@ class TestCLIPClientEmbedText:
         payload = call_args[1]["json"]
         # ai4all/clip expects {"texts": [...]} format
         assert payload["texts"] == ["test query"]
+
+    def test_embed_text_makes_correct_request_hosted_clip(self, mock_clip_session: MagicMock) -> None:
+        """Test that embed_text makes correct request to hosted_clip backend."""
+        client = CLIPClient(
+            base_url="http://hosted-clip/score",
+            model="clip-vit-base-patch32",
+            backend="hosted_clip",
+            api_key="secret",
+        )
+        client.set_session(mock_clip_session)
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "output_data": {"columns": ["text_features"], "data": [[0.1, 0.2, 0.3]]}
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_clip_session.post.return_value = mock_response
+
+        result = client.embed_text("sample text")
+
+        assert result == [0.1, 0.2, 0.3]
+        call_args = mock_clip_session.post.call_args
+        assert call_args[0][0] == "http://hosted-clip/score"
+        payload = call_args[1]["json"]
+        assert payload["input_data"]["columns"] == ["image", "text"]
+        assert payload["input_data"]["data"] == [["", "sample text"]]
+        headers = call_args[1]["headers"]
+        assert headers["Accept"] == "application/json"
+        assert headers["Authorization"] == "Bearer secret"
 
 
 class TestCLIPClientEmbedTextAsync:
@@ -1252,7 +1350,7 @@ class TestCLIPClientCrossModalSearch:
 
         **What it tests:**
           - Text payload has prompt, no images
-          - Image payload has images, empty prompt
+          - Image payload has images
         """
         mock_response = MagicMock()
         mock_response.json.return_value = {"embedding": [0.1] * 512}
@@ -1271,9 +1369,9 @@ class TestCLIPClientCrossModalSearch:
 
         # Text request has prompt, no images
         assert "prompt" in text_payload
-        assert text_payload["prompt"] == "a cat"
+        assert text_payload["prompt"] == "embeddings"
         assert "images" not in text_payload
 
-        # Image request has images, empty prompt
+        # Image request has images
         assert "images" in image_payload
-        assert image_payload["prompt"] == ""
+        assert image_payload["prompt"] == "embeddings"

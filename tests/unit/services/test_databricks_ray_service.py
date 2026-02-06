@@ -83,7 +83,7 @@ class TestDatabricksRayServiceSubmitJob:
         assert "S3_SECRET_ACCESS_KEY=test-secret" in params
         assert "S3_BUCKET=test-bucket" in params
         assert "VECTOR_DB_COLLECTION=test-collection" in params
-        assert "EMBEDDING_PROVIDER_TYPE=ollama" in params
+        assert "EMBEDDING_PROVIDER=ollama" in params
 
     @patch.dict(
         "os.environ",

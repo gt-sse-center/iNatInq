@@ -43,7 +43,7 @@ def test_build_ingestion_env_includes_required_and_optional(monkeypatch) -> None
     assert env_vars["S3_SECRET_ACCESS_KEY"] == "secret-key"
     assert env_vars["S3_BUCKET"] == "bucket"
     assert env_vars["VECTOR_DB_COLLECTION"] == "documents"
-    assert env_vars["EMBEDDING_PROVIDER_TYPE"] == "ollama"
+    assert env_vars["EMBEDDING_PROVIDER"] == "ollama"
     assert env_vars["EMBEDDING_VECTOR_SIZE"] == "768"
     assert env_vars["OLLAMA_BASE_URL"] == "http://ollama.test:11434"
     assert env_vars["OLLAMA_MODEL"] == "nomic-embed-text"

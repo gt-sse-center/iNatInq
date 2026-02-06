@@ -219,6 +219,16 @@ class ImageProcessingPipeline:
         weaviate_image_class = WeaviateClientWrapper._collection_to_image_class_name(collection)
         vector_size = clip_client.vector_size
 
+        logger.info(
+            "CLIP config for image batch",
+            extra={
+                "backend": getattr(clip_client, "backend", None),
+                "model": getattr(clip_client, "model", None),
+                "vector_size": vector_size,
+                "base_url": getattr(clip_client, "base_url", None),
+            },
+        )
+
         # Ensure image collections exist
         ensure_qdrant = getattr(qdrant_db, "ensure_image_collection_async", None)
         ensure_weaviate = getattr(weaviate_db, "ensure_image_collection_async", None)
