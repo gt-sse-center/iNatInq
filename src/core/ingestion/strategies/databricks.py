@@ -50,7 +50,7 @@ _PASSTHROUGH_ENV_VARS = (
     "WEAVIATE_TIMEOUT",
     "WEAVIATE_CIRCUIT_BREAKER_THRESHOLD",
     "WEAVIATE_CIRCUIT_BREAKER_TIMEOUT",
-    "EMBEDDING_PROVIDER_TYPE",
+    "EMBEDDING_PROVIDER",
     "OLLAMA_BASE_URL",
     "OLLAMA_MODEL",
     "OLLAMA_TIMEOUT",
@@ -146,12 +146,10 @@ class DatabricksStrategy:
         if env_vars:
             runtime_env["env_vars"] = env_vars
 
-        # Require VECTOR_DB_PROVIDER so workers don't default to both DBs.
-        if not os.environ.get("VECTOR_DB_PROVIDER"):
-            raise RuntimeError(
-                "VECTOR_DB_PROVIDER is not set. Please export VECTOR_DB_PROVIDER "
-                "(e.g. qdrant or weaviate) before running this job."
-            )
+        # Align with VectorDBConfig default (qdrant) instead of erroring.
+        vector_db_provider = (os.environ.get("VECTOR_DB_PROVIDER") or "").strip().lower()
+        if not vector_db_provider:
+            env_vars["VECTOR_DB_PROVIDER"] = "qdrant"
 
         # Set working directory from INATINQ_SRC_DIR
         workspace_src = os.environ.get("INATINQ_SRC_DIR")
@@ -247,14 +245,13 @@ class DatabricksStrategy:
     def _init_ray_client(self) -> None:
         """Initialize Ray client connection to Databricks cluster."""
         address = getattr(self._cluster, "address", None) if self._cluster else None
+        runtime_env = self.get_runtime_env()
+
         if ray.is_initialized():
-            logger.warning(
-                "Ray already initialized; runtime_env cannot be applied. "
+            raise RuntimeError(
+                "Ray is already initialized; runtime_env cannot be applied. "
                 "Restart the job/cluster to apply VECTOR_DB_PROVIDER to workers."
             )
-            return
-
-        runtime_env = self.get_runtime_env()
 
         ray.init(
             address=address or "auto",
@@ -262,7 +259,7 @@ class DatabricksStrategy:
             ignore_reinit_error=True,
             logging_level=logging.WARNING,
             log_to_driver=False,
-            runtime_env=runtime_env or None,
+            runtime_env=runtime_env,
         )
 
         logger.info(

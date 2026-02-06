@@ -138,7 +138,7 @@ def _init_ray(config: RayJobConfig, ray_cluster: object | None) -> None:
         ray.init(
             address=address or "auto",
             namespace=config.ray_namespace,
-            ignore_reinit_error=True,
+            ignore_reinit_error=False,
             logging_level=logging.WARNING,
             log_to_driver=False,
             runtime_env=runtime_env,

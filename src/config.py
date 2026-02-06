@@ -473,6 +473,7 @@ class ImageEmbeddingConfig(BaseModel):
     clip_url: str | None = None
     clip_model: str | None = None
     clip_backend: Literal["ollama", "clip"] = "ollama"
+    clip_api_key: str | None = None
     clip_timeout: int = 120
     clip_circuit_breaker_threshold: int = 5
     clip_circuit_breaker_timeout: int = 30
@@ -495,6 +496,7 @@ class ImageEmbeddingConfig(BaseModel):
         - CLIP_URL or OLLAMA_BASE_URL: Service URL
         - CLIP_MODEL: Model name (default depends on backend)
         - CLIP_BACKEND: API backend type ("ollama" or "clip", default: "ollama")
+        - CLIP_API_KEY: Optional API key for authenticated CLIP/Ollama endpoints
         - CLIP_TIMEOUT: Request timeout in seconds
         - CLIP_CIRCUIT_BREAKER_THRESHOLD: Failures before circuit opens
         - CLIP_CIRCUIT_BREAKER_TIMEOUT: Circuit recovery timeout
@@ -544,6 +546,7 @@ class ImageEmbeddingConfig(BaseModel):
             clip_url=clip_url,
             clip_model=clip_model,
             clip_backend=clip_backend,  # type: ignore[arg-type]
+            clip_api_key=os.getenv("CLIP_API_KEY"),
             clip_timeout=int(os.getenv("CLIP_TIMEOUT", "120")),
             clip_circuit_breaker_threshold=int(os.getenv("CLIP_CIRCUIT_BREAKER_THRESHOLD", "5")),
             clip_circuit_breaker_timeout=int(os.getenv("CLIP_CIRCUIT_BREAKER_TIMEOUT", "30")),

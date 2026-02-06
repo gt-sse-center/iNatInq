@@ -298,7 +298,13 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
                 # ai4all/clip returns a list of {image, vector} objects
                 if isinstance(data, list) and len(data) > 0 and "vector" in data[0]:
-                    return data[0]["vector"]
+                    vector = data[0]["vector"]
+                    if not vector:
+                        logger.warning(
+                            "Empty embedding returned from CLIP backend",
+                            extra={"backend": self.backend, "model": self.model, "base_url": self.base_url},
+                        )
+                    return vector
                 msg = f"Unexpected response format from CLIP server: {data}"
                 raise UpstreamError(msg)
 
@@ -306,7 +312,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             url = f"{self.base_url}/api/embeddings"
             payload = {
                 "model": self.model,
-                "prompt": text or "",  # Use text if provided, otherwise empty
+                "prompt": "embeddings",
                 "images": [image_b64],
             }
             response = self.session.post(url, json=payload, timeout=self.timeout_s)
@@ -317,7 +323,13 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                 msg = f"Unexpected response format from Ollama: {data}"
                 raise UpstreamError(msg)
 
-            return data["embedding"]
+            embedding = data["embedding"]
+            if not embedding:
+                logger.warning(
+                    "Empty embedding returned from Ollama",
+                    extra={"backend": self.backend, "model": self.model, "base_url": self.base_url},
+                )
+            return embedding
 
         except requests.RequestException as e:
             msg = f"CLIP embedding request failed: {e}"
@@ -354,7 +366,13 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                     data = response.json()
 
                     if isinstance(data, list) and len(data) > 0 and "vector" in data[0]:
-                        return data[0]["vector"]
+                        vector = data[0]["vector"]
+                        if not vector:
+                            logger.warning(
+                                "Empty embedding returned from CLIP backend",
+                                extra={"backend": self.backend, "model": self.model, "base_url": self.base_url},
+                            )
+                        return vector
                     msg = f"Unexpected response format from CLIP server: {data}"
                     raise UpstreamError(msg)
 
@@ -362,7 +380,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                 url = f"{self.base_url}/api/embeddings"
                 payload = {
                     "model": self.model,
-                    "prompt": text or "",  # Use text if provided, otherwise empty
+                    "prompt": "embeddings",
                     "images": [image_b64],
                 }
                 response = await client.post(url, json=payload)
@@ -373,7 +391,13 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                     msg = f"Unexpected response format from Ollama: {data}"
                     raise UpstreamError(msg)
 
-                return data["embedding"]
+                embedding = data["embedding"]
+                if not embedding:
+                    logger.warning(
+                        "Empty embedding returned from Ollama",
+                        extra={"backend": self.backend, "model": self.model, "base_url": self.base_url},
+                    )
+                return embedding
 
         except httpx.HTTPError as e:
             msg = f"CLIP embedding request failed: {e}"
@@ -557,7 +581,13 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                 data = response.json()
 
                 if isinstance(data, list) and len(data) > 0 and "vector" in data[0]:
-                    return data[0]["vector"]
+                    vector = data[0]["vector"]
+                    if not vector:
+                        logger.warning(
+                            "Empty text embedding returned from CLIP backend",
+                            extra={"backend": self.backend, "model": self.model, "base_url": self.base_url},
+                        )
+                    return vector
                 msg = f"Unexpected response format from CLIP server: {data}"
                 raise UpstreamError(msg)
 
@@ -565,7 +595,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             url = f"{self.base_url}/api/embeddings"
             payload = {
                 "model": self.model,
-                "prompt": text,
+                "prompt": "embeddings",
             }
             response = self.session.post(url, json=payload, timeout=self.timeout_s)
             response.raise_for_status()
@@ -575,7 +605,13 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                 msg = f"Unexpected response format from Ollama: {data}"
                 raise UpstreamError(msg)
 
-            return data["embedding"]
+            embedding = data["embedding"]
+            if not embedding:
+                logger.warning(
+                    "Empty text embedding returned from Ollama",
+                    extra={"backend": self.backend, "model": self.model, "base_url": self.base_url},
+                )
+            return embedding
 
         except requests.RequestException as e:
             msg = f"CLIP text embedding request failed: {e}"
@@ -609,7 +645,13 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                     data = response.json()
 
                     if isinstance(data, list) and len(data) > 0 and "vector" in data[0]:
-                        return data[0]["vector"]
+                        vector = data[0]["vector"]
+                        if not vector:
+                            logger.warning(
+                                "Empty text embedding returned from CLIP backend",
+                                extra={"backend": self.backend, "model": self.model, "base_url": self.base_url},
+                            )
+                        return vector
                     msg = f"Unexpected response format from CLIP server: {data}"
                     raise UpstreamError(msg)
 
@@ -617,7 +659,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                 url = f"{self.base_url}/api/embeddings"
                 payload = {
                     "model": self.model,
-                    "prompt": text,
+                    "prompt": "embeddings",
                 }
                 response = await client.post(url, json=payload)
                 response.raise_for_status()
@@ -627,7 +669,13 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                     msg = f"Unexpected response format from Ollama: {data}"
                     raise UpstreamError(msg)
 
-                return data["embedding"]
+                embedding = data["embedding"]
+                if not embedding:
+                    logger.warning(
+                        "Empty text embedding returned from Ollama",
+                        extra={"backend": self.backend, "model": self.model, "base_url": self.base_url},
+                    )
+                return embedding
 
         except httpx.HTTPError as e:
             msg = f"CLIP text embedding request failed: {e}"

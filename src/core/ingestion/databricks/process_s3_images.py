@@ -52,6 +52,10 @@ def main() -> None:
 
     _apply_python_params(sys.argv[1:])
 
+    vector_db_provider = (os.environ.get("VECTOR_DB_PROVIDER") or "").strip().lower()
+    if not vector_db_provider:
+        os.environ["VECTOR_DB_PROVIDER"] = "qdrant"
+
     namespace = os.environ.get("K8S_NAMESPACE", "ml-system")
     s3_prefix = os.environ.get("S3_PREFIX") or (
         sys.argv[1] if len(sys.argv) > 1 and not sys.argv[0].endswith("uvicorn") else "images/"
@@ -165,6 +169,23 @@ def main() -> None:
             for batch_result in batch_results:
                 results.extend(batch_result)
                 completed_keys += len(batch_result)
+            if batch_results:
+                success_so_far = sum(1 for _, ok, _ in results if ok)
+                failed_so_far = len(results) - success_so_far
+                job_logger.info(
+                    "Image batch progress: %d/%d completed (%d ok, %d failed)",
+                    completed_keys,
+                    len(keys),
+                    success_so_far,
+                    failed_so_far,
+                    extra={
+                        "completed_keys": completed_keys,
+                        "total_keys": len(keys),
+                        "successful": success_so_far,
+                        "failed": failed_so_far,
+                        "remaining_keys": len(keys) - completed_keys,
+                    },
+                )
 
         success = sum(1 for _, ok, _ in results if ok)
         failed = len(results) - success

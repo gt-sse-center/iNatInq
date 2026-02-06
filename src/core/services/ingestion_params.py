@@ -119,7 +119,7 @@ def build_ingestion_env(
         "S3_SECRET_ACCESS_KEY": s3_secret_access_key,
         "S3_BUCKET": s3_bucket,
         "VECTOR_DB_COLLECTION": collection,
-        "EMBEDDING_PROVIDER_TYPE": embedding_config.provider_type,
+        "EMBEDDING_PROVIDER": embedding_config.provider_type,
     }
 
     if embedding_config.vector_size is not None:

@@ -36,6 +36,7 @@ import attrs
 import pybreaker
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as qmodels
+from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import PointStruct  # Qdrant's native point type
 
 from config import VectorDBConfig
@@ -238,12 +239,18 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         existing = {c.name for c in existing_collections.collections}
         if image_collection in existing:
             return
-        await self._client.create_collection(
-            collection_name=image_collection,
-            vectors_config=qmodels.VectorParams(
-                size=vector_size, distance=_DISTANCE_METRIC_MAP[distance_metric]
-            ),
-        )
+        try:
+            await self._client.create_collection(
+                collection_name=image_collection,
+                vectors_config=qmodels.VectorParams(
+                    size=vector_size, distance=_DISTANCE_METRIC_MAP[distance_metric]
+                ),
+            )
+        except UnexpectedResponse as e:
+            status_code = getattr(e, "status_code", None)
+            if status_code == 409:
+                return
+            raise
 
     @with_circuit_breaker_async("qdrant")
     async def search_async(
