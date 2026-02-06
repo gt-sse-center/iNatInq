@@ -101,19 +101,7 @@ def _init_ray(config: RayJobConfig, ray_cluster: object | None) -> None:
         "OLLAMA_RETRY_MAX_WAIT",
         "OLLAMA_CIRCUIT_BREAKER_THRESHOLD",
         "OLLAMA_CIRCUIT_BREAKER_TIMEOUT",
-        "IMAGE_EMBEDDING_PROVIDER",
-        "CLIP_URL",
-        "CLIP_MODEL",
-        "CLIP_BACKEND",
-        "CLIP_API_KEY",
-        "CLIP_TIMEOUT",
-        "CLIP_CIRCUIT_BREAKER_THRESHOLD",
-        "CLIP_CIRCUIT_BREAKER_TIMEOUT",
-        "CLIP_MAX_BATCH_SIZE",
-        "CLIP_VECTOR_SIZE",
-        "IMAGE_BATCH_SIZE",
-        "IMAGE_MAX_SIZE_MB",
-        "IMAGE_TARGET_SIZE",
+        "VECTOR_DB_TARGETS",
         "INATINQ_SRC_DIR",
     )
     for key in passthrough_keys:
@@ -185,12 +173,14 @@ def main() -> None:
     vector_cfg = VectorDBConfig.from_env(namespace)
     embed_cfg = EmbeddingConfig.from_env(namespace)
 
+    ingestion_targets = vector_cfg.ingestion_targets
     job_logger.info(
         "Configuration loaded",
         extra={
             "namespace": namespace,
             "s3_prefix": s3_prefix,
             "num_workers": ray_cfg.num_workers,
+            "ingestion_targets": sorted(ingestion_targets),
         },
     )
 
@@ -278,6 +268,7 @@ def main() -> None:
                 retry_max_attempts=ray_cfg.retry_max_attempts,
                 retry_min_wait=ray_cfg.retry_min_wait,
                 retry_max_wait=ray_cfg.retry_max_wait,
+                ingestion_targets=ingestion_targets,
             )
             for batch_index, batch in enumerate(key_batches)
         ]

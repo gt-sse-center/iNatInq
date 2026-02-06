@@ -1,0 +1,196 @@
+# =============================================================================
+# Azure Deployment Example
+# =============================================================================
+# Copy to configs/environments/prod.yaml and customize for your Azure environment
+#
+# Prerequisites:
+#   - Azure Blob Storage account created
+#   - AKS cluster (for Ray and services)
+#   - Qdrant Cloud or self-hosted on AKS
+#   - Azure OpenAI (optional, for embeddings)
+# =============================================================================
+
+storage:
+  # Azure Blob Storage with S3-compatible API (via Azurite or S3 proxy)
+  # Or use native Azure SDK by setting endpoint to blob endpoint
+  endpoint: "https://${STORAGE_ACCOUNT}.blob.core.windows.net"
+  bucket: "${STORAGE_CONTAINER}"
+  region: "${AZURE_REGION}"
+  use_ssl: true
+  path_style: false
+  timeout_seconds: 60
+
+  retry:
+    max_attempts: 5
+    min_wait_seconds: 1.0
+    max_wait_seconds: 30.0
+
+  circuit_breaker:
+    failure_threshold: 5
+    recovery_timeout: 60
+
+vector_databases:
+  provider: "qdrant"
+  collection: "documents_prod"
+
+  qdrant:
+    # Option 1: Qdrant Cloud
+    url: "${QDRANT_CLOUD_URL}"
+
+    # Option 2: Self-hosted on AKS
+    # url: "http://qdrant.qdrant.svc.cluster.local:6333"
+
+    timeout_seconds: 30
+
+    index:
+      distance_metric: "cosine"
+      hnsw_m: 32
+      hnsw_ef_construct: 200
+      indexing_threshold: 50000
+
+    sharding:
+      enabled: true
+      shard_count: 3
+      replication_factor: 2
+
+    circuit_breaker:
+      failure_threshold: 3
+      recovery_timeout: 30
+
+  # Alternative: Weaviate on AKS
+  # provider: "weaviate"
+  # weaviate:
+  #   url: "http://weaviate.weaviate.svc.cluster.local:8080"
+  #   grpc_host: "weaviate.weaviate.svc.cluster.local"
+  #   grpc_port: 50051
+
+embeddings:
+  provider: "openai"            # Azure OpenAI
+  vector_size: 1536             # text-embedding-ada-002
+
+  openai:
+    # Azure OpenAI uses different endpoint format
+    # Set OPENAI_API_BASE to your Azure OpenAI endpoint
+    model: "text-embedding-ada-002"
+
+  # Alternative: Ollama on AKS
+  # provider: "ollama"
+  # ollama:
+  #   url: "http://ollama.ollama.svc.cluster.local:11434"
+  #   model: "nomic-embed-text"
+  #   max_batch_size: 16
+
+image_embeddings:
+  provider: "clip"
+  backend: "ollama"
+  url: "http://ollama.ollama.svc.cluster.local:11434"
+  model: "clip"
+  max_batch_size: 12
+  timeout_seconds: 60
+
+  preprocessing:
+    target_size: 224
+    max_size_mb: 10.0
+
+  circuit_breaker:
+    failure_threshold: 3
+    recovery_timeout: 30
+
+processing:
+  workers: 16
+  batch_size: 100
+  image_batch_size: 50
+  embed_batch_size: 32
+  upsert_batch_size: 500
+
+  checkpoint:
+    enabled: true
+    directory: "https://${STORAGE_ACCOUNT}.blob.core.windows.net/${STORAGE_CONTAINER}/checkpoints"
+
+ray:
+  # Connect to Ray cluster on AKS
+  address: "ray://ray-head.ray.svc.cluster.local:10001"
+  dashboard_url: "http://ray-dashboard.ray.svc.cluster.local:8265"
+  namespace: "inatinq"
+
+  cluster:
+    num_workers: 8
+    worker_cpus: 2.0
+    worker_memory_bytes: 4000000000  # 4GB
+    head_cpus: 2.0
+    head_memory_bytes: 4000000000
+
+  tasks:
+    num_cpus: 1
+    max_retries: 3
+    pipeline_concurrency: 20
+    progress_log_interval: 100
+
+  rate_limits:
+    ollama_max_concurrency: 20
+    ollama_requests_per_second: 10
+
+  timeouts:
+    embedding_seconds: 60
+    upsert_seconds: 30
+    wait_seconds: 0.1
+
+  circuit_breaker:
+    failure_threshold: 5
+    recovery_timeout: 60
+
+api:
+  host: "0.0.0.0"
+  port: 8080
+  default_limit: 10
+  max_limit: 100
+
+benchmark:
+  metrics: ["precision@k", "recall@k", "map", "mrr", "ndcg"]
+  k_values: [1, 5, 10, 20]
+  warmup_queries: 10
+  cooldown_seconds: 1.0
+  output_format: "json"
+  output_path: "https://${STORAGE_ACCOUNT}.blob.core.windows.net/${STORAGE_CONTAINER}/benchmarks/"
+
+logging:
+  level: "info"
+  format: "json"              # JSON for Azure Monitor
+
+environment:
+  mode: "cluster"
+  k8s_namespace: "inatinq"
+
+
+# =============================================================================
+# Azure-Specific Notes
+# =============================================================================
+#
+# Azure Resources Required:
+#   - Storage Account with Blob container
+#   - AKS cluster
+#   - Azure OpenAI resource (optional)
+#   - Azure Key Vault for secrets
+#
+# Environment Variables (set in AKS deployment):
+#   AZURE_REGION=eastus
+#   STORAGE_ACCOUNT=your-storage-account
+#   STORAGE_CONTAINER=your-container
+#   AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;...
+#   QDRANT_CLOUD_URL=https://xxx.cloud.qdrant.io:6333
+#   QDRANT_API_KEY=your-api-key  (from Azure Key Vault)
+#   OPENAI_API_KEY=your-azure-openai-key
+#   OPENAI_API_BASE=https://your-resource.openai.azure.com/
+#
+# Recommended VM Sizes:
+#   - Ray workers: Standard_D4s_v3 or Standard_F4s_v2
+#   - Qdrant: Standard_E4s_v3 (memory optimized)
+#   - API: Standard_B2s
+#
+# Azure OpenAI Setup:
+#   1. Create Azure OpenAI resource in Azure Portal
+#   2. Deploy text-embedding-ada-002 model
+#   3. Set OPENAI_API_BASE to your endpoint
+#   4. Set OPENAI_API_KEY to your API key
+#
+# =============================================================================

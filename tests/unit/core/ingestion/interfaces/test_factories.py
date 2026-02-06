@@ -159,6 +159,29 @@ class TestVectorDBConfigFactory:
         assert config.weaviate_api_key == "cloud-key"
         assert config.weaviate_grpc_host == "grpc-my-cluster.weaviate.cloud"
 
+    def test_create_for_targets_qdrant_only(self) -> None:
+        """Test create_for_targets with qdrant only."""
+        factory = VectorDBConfigFactory(namespace="ml-system")
+        configs = factory.create_for_targets(frozenset({"qdrant"}))
+        assert "qdrant" in configs
+        assert "weaviate" not in configs
+        assert configs["qdrant"].provider_type == "qdrant"
+
+    def test_create_for_targets_weaviate_only(self) -> None:
+        """Test create_for_targets with weaviate only."""
+        factory = VectorDBConfigFactory(namespace="ml-system")
+        configs = factory.create_for_targets(frozenset({"weaviate"}))
+        assert "weaviate" in configs
+        assert "qdrant" not in configs
+        assert configs["weaviate"].provider_type == "weaviate"
+
+    def test_create_for_targets_both(self) -> None:
+        """Test create_for_targets with both databases."""
+        factory = VectorDBConfigFactory(namespace="ml-system")
+        configs = factory.create_for_targets(frozenset({"qdrant", "weaviate"}))
+        assert "qdrant" in configs
+        assert "weaviate" in configs
+
     @patch.dict("os.environ", {"VECTOR_DB_COLLECTION": "my-docs"}, clear=False)
     def test_uses_env_var_for_collection(self) -> None:
         """Test that factory uses VECTOR_DB_COLLECTION env var.
@@ -317,6 +340,41 @@ class TestVectorPointFactory:
         assert batch.qdrant_points[0].payload["s3_key"] == "doc1.txt"
         assert batch.qdrant_points[1].payload["s3_key"] == "doc2.txt"
 
+    def test_batch_qdrant_only_target(self) -> None:
+        """Test batch creation with qdrant-only target."""
+        factory = VectorPointFactory(s3_bucket="pipeline", targets=frozenset({"qdrant"}))
+        contents = [ContentResult(s3_key="doc1.txt", content="Hello")]
+        vectors = [[0.1, 0.2]]
+
+        batch = factory.create_batch(contents, vectors)
+        assert len(batch.qdrant_points) == 1
+        assert len(batch.weaviate_objects) == 0
+
+    def test_batch_weaviate_only_target(self) -> None:
+        """Test batch creation with weaviate-only target."""
+        factory = VectorPointFactory(s3_bucket="pipeline", targets=frozenset({"weaviate"}))
+        contents = [ContentResult(s3_key="doc1.txt", content="Hello")]
+        vectors = [[0.1, 0.2]]
+
+        batch = factory.create_batch(contents, vectors)
+        assert len(batch.qdrant_points) == 0
+        assert len(batch.weaviate_objects) == 1
+
+    def test_batch_both_targets(self) -> None:
+        """Test batch creation with both targets (default behavior)."""
+        factory = VectorPointFactory(s3_bucket="pipeline", targets=frozenset({"qdrant", "weaviate"}))
+        contents = [ContentResult(s3_key="doc1.txt", content="Hello")]
+        vectors = [[0.1, 0.2]]
+
+        batch = factory.create_batch(contents, vectors)
+        assert len(batch.qdrant_points) == 1
+        assert len(batch.weaviate_objects) == 1
+
+    def test_batch_default_targets_both(self) -> None:
+        """Test that default targets include both databases."""
+        factory = VectorPointFactory(s3_bucket="pipeline")
+        assert factory.targets == frozenset({"qdrant", "weaviate"})
+
     def test_batch_raises_on_length_mismatch(self) -> None:
         """Test that batch creation fails on length mismatch.
 
@@ -410,6 +468,47 @@ class TestProcessingClientsFactory:
         mock_embedding_factory.assert_called_once()
         # Vector DB factory called twice (qdrant + weaviate)
         assert mock_vector_db_factory.call_count == 2
+
+    @patch("core.ingestion.interfaces.factories.S3ClientWrapper")
+    @patch("core.ingestion.interfaces.factories.create_retry_session")
+    @patch("core.ingestion.interfaces.factories.create_embedding_provider")
+    @patch("core.ingestion.interfaces.factories.create_vector_db_provider")
+    def test_creates_only_targeted_clients(
+        self,
+        mock_vector_db_factory,
+        mock_embedding_factory,
+        mock_session_factory,
+        mock_s3_class,
+    ) -> None:
+        """Test that factory only creates clients for targeted DBs."""
+        mock_s3_class.return_value = MagicMock()
+        mock_session_factory.return_value = MagicMock()
+        mock_embedding_factory.return_value = MagicMock()
+        mock_vector_db_factory.return_value = MagicMock()
+
+        embed_config = EmbeddingConfig(
+            provider_type="ollama",
+            ollama_model="nomic-embed-text",
+            ollama_url="http://localhost:11434",
+        )
+
+        config = ProcessingConfig(
+            s3_endpoint="http://localhost:9000",
+            s3_access_key="minioadmin",
+            s3_secret_key="minioadmin",
+            s3_bucket="documents",
+            embedding_config=embed_config,
+            collection="test-collection",
+            ingestion_targets=frozenset({"qdrant"}),
+        )
+
+        factory = ProcessingClientsFactory()
+        clients = factory.create(config)
+
+        assert clients.qdrant_db is not None
+        assert clients.weaviate_db is None
+        # Only one vector DB provider created (qdrant only)
+        assert mock_vector_db_factory.call_count == 1
 
     @patch("core.ingestion.interfaces.factories.S3ClientWrapper")
     @patch("core.ingestion.interfaces.factories.create_retry_session")

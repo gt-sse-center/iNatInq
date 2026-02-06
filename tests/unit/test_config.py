@@ -22,13 +22,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from config import (
-    DatabricksRayJobConfig,
-    MinIOConfig,
-    RayJobConfig,
-    resolve_vector_db_provider,
-    resolve_vector_db_targets,
-)
+from config import DatabricksRayJobConfig, MinIOConfig, RayJobConfig, VectorDBConfig
 
 
 # =============================================================================
@@ -665,3 +659,88 @@ class TestEmbeddingConfigOllamaResilience:
         assert config.ollama_circuit_breaker_timeout == 30
         assert config.ollama_batch_timeout_multiplier == 1.0
         assert config.ollama_max_batch_size == 12
+
+
+# =============================================================================
+# VectorDBConfig Ingestion Targets Tests
+# =============================================================================
+
+
+class TestVectorDBConfigIngestionTargets:
+    """Test suite for VectorDBConfig.parse_targets_from_env() and ingestion_targets."""
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_default_targets_both(self):
+        """Default targets include both qdrant and weaviate."""
+        targets = VectorDBConfig.parse_targets_from_env()
+        assert targets == frozenset({"qdrant", "weaviate"})
+
+    @patch.dict(os.environ, {"VECTOR_DB_TARGETS": "qdrant"}, clear=True)
+    def test_qdrant_only(self):
+        """Single target: qdrant."""
+        targets = VectorDBConfig.parse_targets_from_env()
+        assert targets == frozenset({"qdrant"})
+
+    @patch.dict(os.environ, {"VECTOR_DB_TARGETS": "weaviate"}, clear=True)
+    def test_weaviate_only(self):
+        """Single target: weaviate."""
+        targets = VectorDBConfig.parse_targets_from_env()
+        assert targets == frozenset({"weaviate"})
+
+    @patch.dict(os.environ, {"VECTOR_DB_TARGETS": "qdrant,weaviate"}, clear=True)
+    def test_both_targets(self):
+        """Comma-separated targets."""
+        targets = VectorDBConfig.parse_targets_from_env()
+        assert targets == frozenset({"qdrant", "weaviate"})
+
+    @patch.dict(os.environ, {"VECTOR_DB_TARGETS": " qdrant , weaviate "}, clear=True)
+    def test_whitespace_handling(self):
+        """Whitespace around entries is stripped."""
+        targets = VectorDBConfig.parse_targets_from_env()
+        assert targets == frozenset({"qdrant", "weaviate"})
+
+    @patch.dict(os.environ, {"VECTOR_DB_TARGETS": "QDRANT"}, clear=True)
+    def test_case_insensitive(self):
+        """Targets are lowercased."""
+        targets = VectorDBConfig.parse_targets_from_env()
+        assert targets == frozenset({"qdrant"})
+
+    @patch.dict(os.environ, {"VECTOR_DB_TARGETS": "invalid"}, clear=True)
+    def test_invalid_target_raises(self):
+        """Invalid target names raise ValueError."""
+        with pytest.raises(ValueError, match="Invalid VECTOR_DB_TARGETS"):
+            VectorDBConfig.parse_targets_from_env()
+
+    @patch.dict(os.environ, {"VECTOR_DB_TARGETS": "qdrant,invalid"}, clear=True)
+    def test_mixed_valid_invalid_raises(self):
+        """Mix of valid and invalid targets raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid VECTOR_DB_TARGETS"):
+            VectorDBConfig.parse_targets_from_env()
+
+    @patch.dict(os.environ, {"VECTOR_DB_TARGETS": ""}, clear=True)
+    def test_empty_string_uses_default(self):
+        """Empty string falls back to default (both)."""
+        targets = VectorDBConfig.parse_targets_from_env()
+        assert targets == frozenset({"qdrant", "weaviate"})
+
+    @patch.dict(
+        os.environ,
+        {"VECTOR_DB_PROVIDER": "qdrant", "VECTOR_DB_TARGETS": "qdrant"},
+        clear=False,
+    )
+    @patch("config._is_in_cluster", return_value=False)
+    def test_from_env_includes_targets(self, mock_cluster):
+        """VectorDBConfig.from_env() populates ingestion_targets."""
+        config = VectorDBConfig.from_env()
+        assert config.ingestion_targets == frozenset({"qdrant"})
+
+    @patch.dict(
+        os.environ,
+        {"VECTOR_DB_PROVIDER": "qdrant"},
+        clear=False,
+    )
+    @patch("config._is_in_cluster", return_value=False)
+    def test_from_env_default_targets(self, mock_cluster):
+        """VectorDBConfig.from_env() defaults to both targets."""
+        config = VectorDBConfig.from_env()
+        assert config.ingestion_targets == frozenset({"qdrant", "weaviate"})

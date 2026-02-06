@@ -1039,6 +1039,56 @@ class TestVectorDBUpserter:
         assert not result.qdrant_success
         assert not result.weaviate_success
 
+    @pytest.mark.asyncio
+    async def test_upsert_qdrant_only(self) -> None:
+        """Test upsert with only Qdrant targeted (weaviate_db=None)."""
+        mock_qdrant = MagicMock()
+        mock_qdrant.batch_upsert_async = AsyncMock(return_value=None)
+
+        upserter = VectorDBUpserter(mock_qdrant, weaviate_db=None)
+
+        mock_point = MagicMock(spec=VectorPoint)
+        mock_point.to_qdrant.return_value = MagicMock()
+        batch = BatchEmbeddingResult(
+            qdrant_points=[mock_point],
+            weaviate_objects=[],
+        )
+
+        result = await upserter.upsert_batch_async(batch, "documents", 768)
+
+        assert result.qdrant_success
+        assert result.weaviate_success  # Defaulted to success (not targeted)
+        mock_qdrant.batch_upsert_async.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_upsert_weaviate_only(self) -> None:
+        """Test upsert with only Weaviate targeted (qdrant_db=None)."""
+        mock_weaviate = MagicMock()
+        mock_weaviate.batch_upsert_async = AsyncMock(return_value=None)
+
+        upserter = VectorDBUpserter(qdrant_db=None, weaviate_db=mock_weaviate)
+
+        batch = BatchEmbeddingResult(
+            qdrant_points=[],
+            weaviate_objects=[MagicMock()],
+        )
+
+        result = await upserter.upsert_batch_async(batch, "documents", 768)
+
+        assert result.qdrant_success  # Defaulted to success (not targeted)
+        assert result.weaviate_success
+        mock_weaviate.batch_upsert_async.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_upsert_both_none_empty_batch(self) -> None:
+        """Test upsert with both providers None and empty batch points."""
+        upserter = VectorDBUpserter(qdrant_db=None, weaviate_db=None)
+        batch = BatchEmbeddingResult(qdrant_points=[], weaviate_objects=[])
+
+        result = await upserter.upsert_batch_async(batch, "documents", 768)
+
+        assert result.all_success  # Empty batch is success
+
 
 # =============================================================================
 # BatchProcessor Tests

@@ -497,8 +497,9 @@ class EmbeddingGenerator:
 class VectorDBUpserter:
     """Upserts vectors to Qdrant and Weaviate databases.
 
-    Handles parallel upserts to both databases with error handling
-    and partial failure support.
+    Handles parallel upserts to targeted databases with error handling
+    and partial failure support. Non-targeted databases (None) are treated
+    as successful no-ops.
 
     Example:
         >>> upserter = VectorDBUpserter(qdrant_db, weaviate_db)
@@ -507,14 +508,14 @@ class VectorDBUpserter:
 
     def __init__(
         self,
-        qdrant_db: VectorDBProvider,
-        weaviate_db: VectorDBProvider,
+        qdrant_db: VectorDBProvider | None,
+        weaviate_db: VectorDBProvider | None,
     ) -> None:
         """Initialize the upserter.
 
         Args:
-            qdrant_db: Qdrant vector database provider.
-            weaviate_db: Weaviate vector database provider.
+            qdrant_db: Qdrant vector database provider (None if not targeted).
+            weaviate_db: Weaviate vector database provider (None if not targeted).
         """
         self.qdrant_db = qdrant_db
         self.weaviate_db = weaviate_db
@@ -525,7 +526,10 @@ class VectorDBUpserter:
         collection: str,
         vector_size: int,
     ) -> UpsertResult:
-        """Upsert vectors to both Qdrant and Weaviate in parallel.
+        """Upsert vectors to targeted databases in parallel.
+
+        Non-targeted databases (provider is None) default to success in the
+        result without performing any I/O.
 
         Args:
             embedding_result: Batch of points to upsert.
@@ -540,80 +544,69 @@ class VectorDBUpserter:
 
         batch_size = len(embedding_result)
 
-        # Convert VectorPoint to Qdrant PointStruct
-        qdrant_point_structs = [point.to_qdrant() for point in embedding_result.qdrant_points]
-
-        use_qdrant, use_weaviate = resolve_vector_db_targets(logger=logger)
-
-        upsert_results: list[object | Exception | None] = [None, None]
-        if use_qdrant and use_weaviate:
-            upsert_results = await asyncio.gather(
-                self.qdrant_db.batch_upsert_async(
-                    collection=collection,
-                    points=qdrant_point_structs,  # type: ignore[arg-type]
-                    vector_size=vector_size,
-                ),
-                self.weaviate_db.batch_upsert_async(
-                    collection=collection,
-                    points=embedding_result.weaviate_objects,  # type: ignore[arg-type]
-                    vector_size=vector_size,
-                ),
-                return_exceptions=True,
-            )
-        elif use_qdrant:
-            try:
-                upsert_results[0] = await self.qdrant_db.batch_upsert_async(
-                    collection=collection,
-                    points=qdrant_point_structs,  # type: ignore[arg-type]
-                    vector_size=vector_size,
-                )
-            except Exception as e:
-                upsert_results[0] = e
-        elif use_weaviate:
-            try:
-                upsert_results[1] = await self.weaviate_db.batch_upsert_async(
-                    collection=collection,
-                    points=embedding_result.weaviate_objects,  # type: ignore[arg-type]
-                    vector_size=vector_size,
-                )
-            except Exception as e:
-                upsert_results[1] = e
-        else:
-            return UpsertResult.noop()
-
-        # Track per-database success/failure
         qdrant_success = True
         weaviate_success = True
         qdrant_error = ""
         weaviate_error = ""
 
-        # Check Qdrant result
-        if isinstance(upsert_results[0], Exception):
-            qdrant_success = False
-            qdrant_error = f"{type(upsert_results[0]).__name__}: {upsert_results[0]}"
-            logger.error(
-                "Qdrant batch upsert failed",
-                extra={
-                    "error": str(upsert_results[0]),
-                    "error_type": type(upsert_results[0]).__name__,
-                    "batch_size": batch_size,
-                },
-                exc_info=upsert_results[0],
-            )
+        # Build tasks only for targeted databases
+        tasks: list[asyncio.Task] = []
+        task_labels: list[str] = []
 
-        # Check Weaviate result
-        if isinstance(upsert_results[1], Exception):
-            weaviate_success = False
-            weaviate_error = f"{type(upsert_results[1]).__name__}: {upsert_results[1]}"
-            logger.error(
-                "Weaviate batch upsert failed",
-                extra={
-                    "error": str(upsert_results[1]),
-                    "error_type": type(upsert_results[1]).__name__,
-                    "batch_size": batch_size,
-                },
-                exc_info=upsert_results[1],
+        if self.qdrant_db is not None and embedding_result.qdrant_points:
+            qdrant_point_structs = [point.to_qdrant() for point in embedding_result.qdrant_points]
+            tasks.append(
+                asyncio.ensure_future(
+                    self.qdrant_db.batch_upsert_async(
+                        collection=collection,
+                        points=qdrant_point_structs,  # type: ignore[arg-type]
+                        vector_size=vector_size,
+                    )
+                )
             )
+            task_labels.append("qdrant")
+
+        if self.weaviate_db is not None and embedding_result.weaviate_objects:
+            tasks.append(
+                asyncio.ensure_future(
+                    self.weaviate_db.batch_upsert_async(
+                        collection=collection,
+                        points=embedding_result.weaviate_objects,  # type: ignore[arg-type]
+                        vector_size=vector_size,
+                    )
+                )
+            )
+            task_labels.append("weaviate")
+
+        if tasks:
+            upsert_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for label, result in zip(task_labels, upsert_results, strict=True):
+                if isinstance(result, Exception):
+                    if label == "qdrant":
+                        qdrant_success = False
+                        qdrant_error = f"{type(result).__name__}: {result}"
+                        logger.error(
+                            "Qdrant batch upsert failed",
+                            extra={
+                                "error": str(result),
+                                "error_type": type(result).__name__,
+                                "batch_size": batch_size,
+                            },
+                            exc_info=result,
+                        )
+                    elif label == "weaviate":
+                        weaviate_success = False
+                        weaviate_error = f"{type(result).__name__}: {result}"
+                        logger.error(
+                            "Weaviate batch upsert failed",
+                            extra={
+                                "error": str(result),
+                                "error_type": type(result).__name__,
+                                "batch_size": batch_size,
+                            },
+                            exc_info=result,
+                        )
 
         return UpsertResult(
             qdrant_success=qdrant_success,

@@ -1,0 +1,81 @@
+# =============================================================================
+# Production Environment
+# =============================================================================
+# Use with: ENV=prod make run
+#
+# Full production configuration with performance tuning
+# =============================================================================
+
+storage:
+  endpoint: "${STORAGE_ENDPOINT}"
+  bucket: "inatinq-prod-data"
+  region: "${AWS_REGION}"
+  use_ssl: true
+  path_style: false           # AWS S3 style
+  timeout_seconds: 60
+
+  retry:
+    max_attempts: 5
+    max_wait_seconds: 30.0
+
+vector_databases:
+  provider: "qdrant"
+  collection: "documents_prod"
+
+  qdrant:
+    url: "${QDRANT_URL}"
+
+    # Production index settings (optimized for recall)
+    index:
+      distance_metric: "cosine"
+      hnsw_m: 32              # Higher for better recall
+      hnsw_ef_construct: 200
+      indexing_threshold: 50000
+
+    # Enable sharding for large datasets
+    sharding:
+      enabled: true
+      shard_count: 3
+      replication_factor: 2
+
+embeddings:
+  provider: "ollama"
+
+  ollama:
+    url: "${OLLAMA_URL}"
+    max_batch_size: 16
+
+image_embeddings:
+  url: "${CLIP_URL}"
+  max_batch_size: 12
+
+logging:
+  level: "info"
+  format: "json"              # Required for log aggregation
+
+processing:
+  workers: 16
+  batch_size: 100
+  image_batch_size: 50
+  upsert_batch_size: 500
+
+  checkpoint:
+    enabled: true
+    directory: "s3://inatinq-prod-data/checkpoints"
+
+ray:
+  cluster:
+    num_workers: 8
+    worker_cpus: 2.0
+    worker_memory_bytes: 2000000000  # 2GB
+
+  tasks:
+    pipeline_concurrency: 20
+
+  rate_limits:
+    ollama_max_concurrency: 20
+    ollama_requests_per_second: 10
+
+benchmark:
+  output_format: "json"
+  output_path: "s3://inatinq-prod-data/benchmarks/"

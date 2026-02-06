@@ -1,0 +1,37 @@
+# =============================================================================
+# Staging Environment
+# =============================================================================
+# Use with: ENV=staging make run
+#
+# Production-like environment for final testing
+# =============================================================================
+
+storage:
+  endpoint: "${STORAGE_ENDPOINT}"
+  bucket: "inatinq-staging-data"
+  use_ssl: true
+  path_style: false           # AWS S3 style
+
+vector_databases:
+  collection: "documents_staging"
+
+  qdrant:
+    url: "${QDRANT_URL}"
+
+    # Staging index settings (balanced)
+    index:
+      hnsw_m: 16
+      indexing_threshold: 20000
+
+logging:
+  level: "info"
+  format: "json"
+
+processing:
+  workers: 8
+  batch_size: 50
+
+ray:
+  cluster:
+    num_workers: 4
+    worker_memory_bytes: 1000000000  # 1GB

@@ -1,0 +1,382 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://inatinq.example.com/config.schema.json",
+  "title": "iNatInq Configuration",
+  "description": "Configuration schema for iNatInq vector search system",
+  "type": "object",
+  "properties": {
+    "storage": {
+      "type": "object",
+      "description": "S3-compatible storage configuration",
+      "properties": {
+        "endpoint": {
+          "type": "string",
+          "format": "uri",
+          "description": "S3-compatible endpoint URL"
+        },
+        "bucket": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Bucket name"
+        },
+        "region": {
+          "type": "string",
+          "description": "AWS region"
+        },
+        "input_prefix": {
+          "type": "string",
+          "description": "Prefix for input files"
+        },
+        "use_ssl": {
+          "type": "boolean",
+          "description": "Use HTTPS"
+        },
+        "path_style": {
+          "type": "boolean",
+          "description": "Use path-style URLs (true for MinIO)"
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300
+        },
+        "retry": {
+          "type": "object",
+          "properties": {
+            "max_attempts": { "type": "integer", "minimum": 1, "maximum": 10 },
+            "min_wait_seconds": { "type": "number", "minimum": 0 },
+            "max_wait_seconds": { "type": "number", "minimum": 0 }
+          }
+        },
+        "circuit_breaker": {
+          "$ref": "#/$defs/circuit_breaker"
+        }
+      },
+      "required": ["endpoint", "bucket"]
+    },
+    "vector_databases": {
+      "type": "object",
+      "description": "Vector database configuration",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["qdrant", "weaviate"],
+          "description": "Vector database provider"
+        },
+        "collection": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Collection/class name"
+        },
+        "ingestion_targets": {
+          "type": "string",
+          "pattern": "^(qdrant|weaviate)(,(qdrant|weaviate))*$",
+          "description": "Comma-separated list of vector DBs to index during ingestion"
+        },
+        "qdrant": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string", "format": "uri" },
+            "api_key": { "type": "string" },
+            "timeout_seconds": { "type": "integer", "minimum": 1 },
+            "circuit_breaker": { "$ref": "#/$defs/circuit_breaker" },
+            "index": {
+              "type": "object",
+              "properties": {
+                "distance_metric": {
+                  "type": "string",
+                  "enum": ["cosine", "euclidean", "dot"],
+                  "description": "Distance metric for similarity"
+                },
+                "hnsw_m": {
+                  "type": "integer",
+                  "minimum": 4,
+                  "maximum": 128,
+                  "description": "HNSW M parameter (connections per node)"
+                },
+                "hnsw_ef_construct": {
+                  "type": "integer",
+                  "minimum": 10,
+                  "maximum": 500,
+                  "description": "HNSW ef_construct parameter"
+                },
+                "indexing_threshold": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Points before indexing starts"
+                }
+              }
+            },
+            "sharding": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "shard_count": { "type": "integer", "minimum": 1 },
+                "replication_factor": { "type": "integer", "minimum": 1 }
+              }
+            }
+          }
+        },
+        "weaviate": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string", "format": "uri" },
+            "api_key": { "type": "string" },
+            "grpc_host": { "type": "string" },
+            "grpc_port": { "type": "integer" },
+            "timeout_seconds": { "type": "integer", "minimum": 1 },
+            "circuit_breaker": { "$ref": "#/$defs/circuit_breaker" },
+            "index": {
+              "type": "object",
+              "properties": {
+                "distance_metric": {
+                  "type": "string",
+                  "enum": ["cosine", "euclidean", "dot"]
+                },
+                "index_type": {
+                  "type": "string",
+                  "enum": ["hnsw", "flat"]
+                },
+                "hnsw_ef": { "type": "integer", "minimum": 1 },
+                "hnsw_max_connections": { "type": "integer", "minimum": 1 },
+                "hnsw_ef_construction": { "type": "integer", "minimum": 1 }
+              }
+            }
+          }
+        }
+      },
+      "required": ["provider", "collection"]
+    },
+    "embeddings": {
+      "type": "object",
+      "description": "Text embedding configuration",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["ollama", "openai", "huggingface", "sagemaker"]
+        },
+        "vector_size": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "Vector dimensions (null for auto-detect)"
+        },
+        "ollama": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string", "format": "uri" },
+            "model": { "type": "string" },
+            "timeout_seconds": { "type": "integer", "minimum": 1 },
+            "max_batch_size": { "type": "integer", "minimum": 1 },
+            "circuit_breaker": { "$ref": "#/$defs/circuit_breaker" }
+          }
+        },
+        "openai": {
+          "type": "object",
+          "properties": {
+            "model": { "type": "string" }
+          }
+        },
+        "huggingface": {
+          "type": "object",
+          "properties": {
+            "model": { "type": "string" },
+            "device": { "type": "string", "enum": ["cpu", "cuda"] }
+          }
+        },
+        "sagemaker": {
+          "type": "object",
+          "properties": {
+            "endpoint": { "type": "string" },
+            "region": { "type": "string" }
+          }
+        }
+      },
+      "required": ["provider"]
+    },
+    "image_embeddings": {
+      "type": "object",
+      "description": "Image embedding configuration",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["clip", "llava"]
+        },
+        "backend": {
+          "type": "string",
+          "enum": ["ollama", "clip"]
+        },
+        "model": { "type": "string" },
+        "vector_size": { "type": ["integer", "null"] },
+        "url": { "type": "string", "format": "uri" },
+        "timeout_seconds": { "type": "integer", "minimum": 1 },
+        "max_batch_size": { "type": "integer", "minimum": 1 },
+        "preprocessing": {
+          "type": "object",
+          "properties": {
+            "target_size": { "type": "integer", "minimum": 32, "maximum": 1024 },
+            "max_size_mb": { "type": "number", "minimum": 0.1 }
+          }
+        },
+        "circuit_breaker": { "$ref": "#/$defs/circuit_breaker" }
+      }
+    },
+    "processing": {
+      "type": "object",
+      "description": "Batch processing settings",
+      "properties": {
+        "workers": { "type": "integer", "minimum": 1, "maximum": 128 },
+        "batch_size": { "type": "integer", "minimum": 1 },
+        "image_batch_size": { "type": "integer", "minimum": 1 },
+        "embed_batch_size": { "type": "integer", "minimum": 1 },
+        "upsert_batch_size": { "type": "integer", "minimum": 1 },
+        "checkpoint": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "directory": { "type": "string" }
+          }
+        }
+      }
+    },
+    "ray": {
+      "type": "object",
+      "description": "Ray distributed processing configuration",
+      "properties": {
+        "address": { "type": ["string", "null"] },
+        "dashboard_url": { "type": ["string", "null"] },
+        "namespace": { "type": "string" },
+        "cluster": {
+          "type": "object",
+          "properties": {
+            "num_workers": { "type": "integer", "minimum": 0 },
+            "worker_cpus": { "type": "number", "minimum": 0.1 },
+            "worker_memory_bytes": { "type": "integer", "minimum": 100000000 },
+            "head_cpus": { "type": "number", "minimum": 0.1 },
+            "head_memory_bytes": { "type": "integer", "minimum": 100000000 }
+          }
+        },
+        "tasks": {
+          "type": "object",
+          "properties": {
+            "num_cpus": { "type": "integer", "minimum": 1 },
+            "max_retries": { "type": "integer", "minimum": 0 },
+            "pipeline_concurrency": { "type": "integer", "minimum": 1 },
+            "progress_log_interval": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "rate_limits": {
+          "type": "object",
+          "properties": {
+            "ollama_max_concurrency": { "type": "integer", "minimum": 1 },
+            "ollama_requests_per_second": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "timeouts": {
+          "type": "object",
+          "properties": {
+            "embedding_seconds": { "type": "integer", "minimum": 1 },
+            "upsert_seconds": { "type": "integer", "minimum": 1 },
+            "wait_seconds": { "type": "number", "minimum": 0 }
+          }
+        },
+        "retry": {
+          "type": "object",
+          "properties": {
+            "max_attempts": { "type": "integer", "minimum": 1 },
+            "min_wait_seconds": { "type": "number", "minimum": 0 },
+            "max_wait_seconds": { "type": "number", "minimum": 0 }
+          }
+        },
+        "circuit_breaker": { "$ref": "#/$defs/circuit_breaker" }
+      }
+    },
+    "databricks": {
+      "type": "object",
+      "description": "Databricks job configuration",
+      "properties": {
+        "host": { "type": "string" },
+        "job_id": { "type": ["integer", "null"] },
+        "task_type": { "type": "string", "enum": ["python"] },
+        "workspace_path": { "type": "string" }
+      }
+    },
+    "api": {
+      "type": "object",
+      "description": "Search API configuration",
+      "properties": {
+        "host": { "type": "string" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "default_limit": { "type": "integer", "minimum": 1 },
+        "max_limit": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "benchmark": {
+      "type": "object",
+      "description": "Benchmarking configuration",
+      "properties": {
+        "metrics": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["precision@k", "recall@k", "map", "mrr", "ndcg"]
+          }
+        },
+        "k_values": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 }
+        },
+        "warmup_queries": { "type": "integer", "minimum": 0 },
+        "cooldown_seconds": { "type": "number", "minimum": 0 },
+        "output_format": {
+          "type": "string",
+          "enum": ["console", "json", "both"]
+        },
+        "output_path": { "type": ["string", "null"] }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "description": "Logging configuration",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["debug", "info", "warning", "error"]
+        },
+        "format": {
+          "type": "string",
+          "enum": ["text", "json"]
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "description": "Environment settings",
+      "properties": {
+        "mode": {
+          "type": ["string", "null"],
+          "enum": ["local", "cluster", null]
+        },
+        "k8s_namespace": { "type": "string" }
+      }
+    }
+  },
+  "$defs": {
+    "circuit_breaker": {
+      "type": "object",
+      "description": "Circuit breaker configuration",
+      "properties": {
+        "failure_threshold": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Failures before circuit opens"
+        },
+        "recovery_timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Seconds before retrying after circuit opens"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,177 @@
+# =============================================================================
+# AWS Deployment Example
+# =============================================================================
+# Copy to configs/environments/prod.yaml and customize for your AWS environment
+#
+# Prerequisites:
+#   - S3 bucket created
+#   - IAM roles/policies configured
+#   - EKS cluster (optional, for Ray)
+#   - Qdrant Cloud or self-hosted on EKS
+# =============================================================================
+
+storage:
+  endpoint: "https://s3.${AWS_REGION}.amazonaws.com"
+  bucket: "${S3_BUCKET}"
+  region: "${AWS_REGION}"
+  use_ssl: true
+  path_style: false           # AWS S3 uses virtual-hosted style
+  timeout_seconds: 60
+
+  retry:
+    max_attempts: 5
+    min_wait_seconds: 1.0
+    max_wait_seconds: 30.0
+
+  circuit_breaker:
+    failure_threshold: 5
+    recovery_timeout: 60
+
+vector_databases:
+  provider: "qdrant"
+  collection: "documents_prod"
+
+  qdrant:
+    # Option 1: Qdrant Cloud
+    url: "${QDRANT_CLOUD_URL}"    # e.g., https://xxx.us-east-1.aws.cloud.qdrant.io:6333
+
+    # Option 2: Self-hosted on EKS
+    # url: "http://qdrant.qdrant.svc.cluster.local:6333"
+
+    timeout_seconds: 30
+
+    index:
+      distance_metric: "cosine"
+      hnsw_m: 32                 # Higher for better recall in production
+      hnsw_ef_construct: 200
+      indexing_threshold: 50000
+
+    sharding:
+      enabled: true
+      shard_count: 3
+      replication_factor: 2
+
+    circuit_breaker:
+      failure_threshold: 3
+      recovery_timeout: 30
+
+embeddings:
+  provider: "sagemaker"         # Or "ollama" on EKS
+  vector_size: null
+
+  # SageMaker endpoint for embeddings
+  sagemaker:
+    endpoint: "${SAGEMAKER_ENDPOINT}"
+    region: "${AWS_REGION}"
+
+  # Alternative: Ollama on EKS
+  # provider: "ollama"
+  # ollama:
+  #   url: "http://ollama.ollama.svc.cluster.local:11434"
+  #   model: "nomic-embed-text"
+  #   max_batch_size: 16
+
+image_embeddings:
+  provider: "clip"
+  backend: "ollama"
+  url: "http://ollama.ollama.svc.cluster.local:11434"
+  model: "clip"
+  max_batch_size: 12
+  timeout_seconds: 60
+
+  preprocessing:
+    target_size: 224
+    max_size_mb: 10.0
+
+  circuit_breaker:
+    failure_threshold: 3
+    recovery_timeout: 30
+
+processing:
+  workers: 16
+  batch_size: 100
+  image_batch_size: 50
+  embed_batch_size: 32
+  upsert_batch_size: 500
+
+  checkpoint:
+    enabled: true
+    directory: "s3://${S3_BUCKET}/checkpoints"
+
+ray:
+  # Connect to Ray cluster on EKS
+  address: "ray://ray-head.ray.svc.cluster.local:10001"
+  dashboard_url: "http://ray-dashboard.ray.svc.cluster.local:8265"
+  namespace: "inatinq"
+
+  cluster:
+    num_workers: 8
+    worker_cpus: 2.0
+    worker_memory_bytes: 4000000000  # 4GB
+    head_cpus: 2.0
+    head_memory_bytes: 4000000000
+
+  tasks:
+    num_cpus: 1
+    max_retries: 3
+    pipeline_concurrency: 20
+    progress_log_interval: 100
+
+  rate_limits:
+    ollama_max_concurrency: 20
+    ollama_requests_per_second: 10
+
+  timeouts:
+    embedding_seconds: 60
+    upsert_seconds: 30
+    wait_seconds: 0.1
+
+  circuit_breaker:
+    failure_threshold: 5
+    recovery_timeout: 60
+
+api:
+  host: "0.0.0.0"
+  port: 8080
+  default_limit: 10
+  max_limit: 100
+
+benchmark:
+  metrics: ["precision@k", "recall@k", "map", "mrr", "ndcg"]
+  k_values: [1, 5, 10, 20]
+  warmup_queries: 10
+  cooldown_seconds: 1.0
+  output_format: "json"
+  output_path: "s3://${S3_BUCKET}/benchmarks/"
+
+logging:
+  level: "info"
+  format: "json"              # JSON for CloudWatch Logs
+
+environment:
+  mode: "cluster"
+  k8s_namespace: "inatinq"
+
+
+# =============================================================================
+# AWS-Specific Notes
+# =============================================================================
+#
+# IAM Permissions Required:
+#   - s3:GetObject, s3:PutObject, s3:ListBucket on your bucket
+#   - sagemaker:InvokeEndpoint (if using SageMaker)
+#   - secretsmanager:GetSecretValue (for secrets)
+#
+# Environment Variables (set in EKS deployment):
+#   AWS_REGION=us-east-1
+#   S3_BUCKET=your-bucket-name
+#   QDRANT_CLOUD_URL=https://xxx.cloud.qdrant.io:6333
+#   QDRANT_API_KEY=your-api-key  (from AWS Secrets Manager)
+#   SAGEMAKER_ENDPOINT=your-embedding-endpoint
+#
+# Recommended Instance Types:
+#   - Ray workers: m5.xlarge or c5.xlarge
+#   - Qdrant: r5.xlarge (memory optimized)
+#   - API: t3.medium
+#
+# =============================================================================
