@@ -105,6 +105,7 @@ def _init_ray(config: RayJobConfig, ray_cluster: object | None) -> None:
         "CLIP_URL",
         "CLIP_MODEL",
         "CLIP_BACKEND",
+        "CLIP_API_KEY",
         "CLIP_TIMEOUT",
         "CLIP_CIRCUIT_BREAKER_THRESHOLD",
         "CLIP_CIRCUIT_BREAKER_TIMEOUT",

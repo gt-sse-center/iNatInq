@@ -183,8 +183,9 @@ defaults):
   environment and backend)
 - `CLIP_MODEL`: Model name for image embedding (default: `ViT-B/32`
   for clip backend, `llava` for ollama backend)
-- `CLIP_BACKEND`: API backend type - `ollama` or `clip`
+- `CLIP_BACKEND`: API backend type - `ollama`, `clip`, or `hosted_clip`
   (default: `ollama`)
+- `CLIP_API_KEY`: Optional API key for hosted CLIP endpoints
 - `CLIP_TIMEOUT`: Request timeout in seconds (default: `120`)
 - `CLIP_CIRCUIT_BREAKER_THRESHOLD`: Failures before circuit opens
   (default: `5`)
@@ -450,9 +451,11 @@ class ImageEmbeddingConfig(BaseModel):
             Auto-detected based on environment if not set.
         clip_model: Model name for image embedding (e.g., "llava", "ViT-B/32").
             Default: "llava".
-        clip_backend: API backend type. One of "ollama" or "clip". Default: "ollama".
+        clip_backend: API backend type. One of "ollama", "clip", or "hosted_clip".
+            Default: "ollama".
             - "ollama": Uses Ollama's /api/embeddings endpoint with LLaVA
             - "clip": Uses ai4all/clip's /embed/image endpoint
+            - "hosted_clip": Uses hosted CLIP endpoints (Azure ML-style /score)
         clip_timeout: Request timeout in seconds. Default: 120 (higher for images).
         clip_circuit_breaker_threshold: Failures before circuit opens. Default: 5.
         clip_circuit_breaker_timeout: Circuit recovery timeout in seconds. Default: 30.
@@ -472,7 +475,7 @@ class ImageEmbeddingConfig(BaseModel):
     # CLIP settings
     clip_url: str | None = None
     clip_model: str | None = None
-    clip_backend: Literal["ollama", "clip"] = "ollama"
+    clip_backend: Literal["ollama", "clip", "hosted_clip"] = "ollama"
     clip_api_key: str | None = None
     clip_timeout: int = 120
     clip_circuit_breaker_threshold: int = 5
@@ -495,7 +498,7 @@ class ImageEmbeddingConfig(BaseModel):
         - IMAGE_EMBEDDING_PROVIDER: Provider type ("clip" or "llava", default: "clip")
         - CLIP_URL or OLLAMA_BASE_URL: Service URL
         - CLIP_MODEL: Model name (default depends on backend)
-        - CLIP_BACKEND: API backend type ("ollama" or "clip", default: "ollama")
+        - CLIP_BACKEND: API backend type ("ollama", "clip", or "hosted_clip", default: "ollama")
         - CLIP_API_KEY: Optional API key for authenticated CLIP/Ollama endpoints
         - CLIP_TIMEOUT: Request timeout in seconds
         - CLIP_CIRCUIT_BREAKER_THRESHOLD: Failures before circuit opens
@@ -519,13 +522,13 @@ class ImageEmbeddingConfig(BaseModel):
         if provider_type not in ("clip", "llava"):
             provider_type = "clip"
 
-        # Get backend type (ollama or clip)
+        # Get backend type (ollama, clip, or hosted_clip)
         clip_backend = os.getenv("CLIP_BACKEND", "ollama").lower()
-        if clip_backend not in ("ollama", "clip"):
+        if clip_backend not in ("ollama", "clip", "hosted_clip"):
             clip_backend = "ollama"
 
         # Resolve URL based on backend
-        if clip_backend == "clip":
+        if clip_backend in ("clip", "hosted_clip"):
             default_url = f"http://clip.{namespace}:8000" if in_cluster else "http://localhost:8000"
             default_model = "ViT-B/32"
         else:
