@@ -671,55 +671,127 @@ class TestVectorDBConfigIngestionTargets:
 
     @patch.dict(os.environ, {}, clear=True)
     def test_default_targets_both(self):
-        """Default targets include both qdrant and weaviate."""
+        """Test that default targets include both qdrant and weaviate.
+
+        **Why this test is important:**
+          - Default behavior must be backward compatible (dual-write)
+          - Missing VECTOR_DB_TARGETS should not break existing deployments
+
+        **What it tests:**
+          - Returns frozenset with both "qdrant" and "weaviate"
+        """
         targets = VectorDBConfig.parse_targets_from_env()
         assert targets == frozenset({"qdrant", "weaviate"})
 
     @patch.dict(os.environ, {"VECTOR_DB_TARGETS": "qdrant"}, clear=True)
     def test_qdrant_only(self):
-        """Single target: qdrant."""
+        """Test that single target 'qdrant' is parsed correctly.
+
+        **Why this test is important:**
+          - Operators may want to index only to Qdrant
+          - Must parse a single-value string without errors
+
+        **What it tests:**
+          - Returns frozenset with only "qdrant"
+        """
         targets = VectorDBConfig.parse_targets_from_env()
         assert targets == frozenset({"qdrant"})
 
     @patch.dict(os.environ, {"VECTOR_DB_TARGETS": "weaviate"}, clear=True)
     def test_weaviate_only(self):
-        """Single target: weaviate."""
+        """Test that single target 'weaviate' is parsed correctly.
+
+        **Why this test is important:**
+          - Operators may want to index only to Weaviate
+          - Must parse a single-value string without errors
+
+        **What it tests:**
+          - Returns frozenset with only "weaviate"
+        """
         targets = VectorDBConfig.parse_targets_from_env()
         assert targets == frozenset({"weaviate"})
 
     @patch.dict(os.environ, {"VECTOR_DB_TARGETS": "qdrant,weaviate"}, clear=True)
     def test_both_targets(self):
-        """Comma-separated targets."""
+        """Test that comma-separated targets are parsed correctly.
+
+        **Why this test is important:**
+          - Explicit dual-write configuration must work
+          - Comma is the documented separator
+
+        **What it tests:**
+          - Returns frozenset with both "qdrant" and "weaviate"
+        """
         targets = VectorDBConfig.parse_targets_from_env()
         assert targets == frozenset({"qdrant", "weaviate"})
 
     @patch.dict(os.environ, {"VECTOR_DB_TARGETS": " qdrant , weaviate "}, clear=True)
     def test_whitespace_handling(self):
-        """Whitespace around entries is stripped."""
+        """Test that whitespace around target entries is stripped.
+
+        **Why this test is important:**
+          - Users may add spaces in env var values
+          - Must not fail or produce invalid target names
+
+        **What it tests:**
+          - Leading and trailing whitespace is stripped from each entry
+        """
         targets = VectorDBConfig.parse_targets_from_env()
         assert targets == frozenset({"qdrant", "weaviate"})
 
     @patch.dict(os.environ, {"VECTOR_DB_TARGETS": "QDRANT"}, clear=True)
     def test_case_insensitive(self):
-        """Targets are lowercased."""
+        """Test that target names are case-insensitive.
+
+        **Why this test is important:**
+          - Users may use uppercase in env var values
+          - Must normalize to lowercase for consistent matching
+
+        **What it tests:**
+          - "QDRANT" is normalized to "qdrant"
+        """
         targets = VectorDBConfig.parse_targets_from_env()
         assert targets == frozenset({"qdrant"})
 
     @patch.dict(os.environ, {"VECTOR_DB_TARGETS": "invalid"}, clear=True)
     def test_invalid_target_raises(self):
-        """Invalid target names raise ValueError."""
+        """Test that invalid target names raise ValueError.
+
+        **Why this test is important:**
+          - Typos in VECTOR_DB_TARGETS must be caught early
+          - Prevents silent misconfiguration
+
+        **What it tests:**
+          - ValueError raised with descriptive message
+        """
         with pytest.raises(ValueError, match="Invalid VECTOR_DB_TARGETS"):
             VectorDBConfig.parse_targets_from_env()
 
     @patch.dict(os.environ, {"VECTOR_DB_TARGETS": "qdrant,invalid"}, clear=True)
     def test_mixed_valid_invalid_raises(self):
-        """Mix of valid and invalid targets raises ValueError."""
+        """Test that a mix of valid and invalid targets raises ValueError.
+
+        **Why this test is important:**
+          - Even one invalid entry should fail the whole parse
+          - Prevents partial misconfiguration
+
+        **What it tests:**
+          - ValueError raised when any target name is invalid
+        """
         with pytest.raises(ValueError, match="Invalid VECTOR_DB_TARGETS"):
             VectorDBConfig.parse_targets_from_env()
 
     @patch.dict(os.environ, {"VECTOR_DB_TARGETS": ""}, clear=True)
     def test_empty_string_uses_default(self):
-        """Empty string falls back to default (both)."""
+        """Test that empty string falls back to default (both databases).
+
+        **Why this test is important:**
+          - Empty VECTOR_DB_TARGETS should behave like unset
+          - Prevents accidental "no targets" configuration
+
+        **What it tests:**
+          - Returns default frozenset with both databases
+        """
         targets = VectorDBConfig.parse_targets_from_env()
         assert targets == frozenset({"qdrant", "weaviate"})
 
@@ -730,7 +802,15 @@ class TestVectorDBConfigIngestionTargets:
     )
     @patch("config._is_in_cluster", return_value=False)
     def test_from_env_includes_targets(self, mock_cluster):
-        """VectorDBConfig.from_env() populates ingestion_targets."""
+        """Test that VectorDBConfig.from_env() populates ingestion_targets.
+
+        **Why this test is important:**
+          - ingestion_targets must be wired through the full config chain
+          - from_env() is the primary constructor used in production
+
+        **What it tests:**
+          - ingestion_targets on the config object matches VECTOR_DB_TARGETS
+        """
         config = VectorDBConfig.from_env()
         assert config.ingestion_targets == frozenset({"qdrant"})
 
@@ -741,6 +821,14 @@ class TestVectorDBConfigIngestionTargets:
     )
     @patch("config._is_in_cluster", return_value=False)
     def test_from_env_default_targets(self, mock_cluster):
-        """VectorDBConfig.from_env() defaults to both targets."""
+        """Test that VectorDBConfig.from_env() defaults to both targets.
+
+        **Why this test is important:**
+          - Backward compatibility requires dual-write by default
+          - Existing deployments without VECTOR_DB_TARGETS must keep working
+
+        **What it tests:**
+          - ingestion_targets defaults to frozenset with both databases
+        """
         config = VectorDBConfig.from_env()
         assert config.ingestion_targets == frozenset({"qdrant", "weaviate"})

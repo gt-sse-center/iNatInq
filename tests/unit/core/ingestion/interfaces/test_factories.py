@@ -160,7 +160,17 @@ class TestVectorDBConfigFactory:
         assert config.weaviate_grpc_host == "grpc-my-cluster.weaviate.cloud"
 
     def test_create_for_targets_qdrant_only(self) -> None:
-        """Test create_for_targets with qdrant only."""
+        """Test that create_for_targets returns only Qdrant config when targeted.
+
+        **Why this test is important:**
+          - Single-target mode must not create unnecessary configs
+          - Validates the target filtering logic
+
+        **What it tests:**
+          - Only "qdrant" key present in returned dict
+          - "weaviate" key is absent
+          - Config has correct provider_type
+        """
         factory = VectorDBConfigFactory(namespace="ml-system")
         configs = factory.create_for_targets(frozenset({"qdrant"}))
         assert "qdrant" in configs
@@ -168,7 +178,17 @@ class TestVectorDBConfigFactory:
         assert configs["qdrant"].provider_type == "qdrant"
 
     def test_create_for_targets_weaviate_only(self) -> None:
-        """Test create_for_targets with weaviate only."""
+        """Test that create_for_targets returns only Weaviate config when targeted.
+
+        **Why this test is important:**
+          - Single-target mode must not create unnecessary configs
+          - Validates the target filtering logic for Weaviate
+
+        **What it tests:**
+          - Only "weaviate" key present in returned dict
+          - "qdrant" key is absent
+          - Config has correct provider_type
+        """
         factory = VectorDBConfigFactory(namespace="ml-system")
         configs = factory.create_for_targets(frozenset({"weaviate"}))
         assert "weaviate" in configs
@@ -176,7 +196,15 @@ class TestVectorDBConfigFactory:
         assert configs["weaviate"].provider_type == "weaviate"
 
     def test_create_for_targets_both(self) -> None:
-        """Test create_for_targets with both databases."""
+        """Test that create_for_targets returns both configs when both targeted.
+
+        **Why this test is important:**
+          - Dual-write mode is the default and most common case
+          - Must create configs for both databases
+
+        **What it tests:**
+          - Both "qdrant" and "weaviate" keys present in returned dict
+        """
         factory = VectorDBConfigFactory(namespace="ml-system")
         configs = factory.create_for_targets(frozenset({"qdrant", "weaviate"}))
         assert "qdrant" in configs
@@ -341,7 +369,16 @@ class TestVectorPointFactory:
         assert batch.qdrant_points[1].payload["s3_key"] == "doc2.txt"
 
     def test_batch_qdrant_only_target(self) -> None:
-        """Test batch creation with qdrant-only target."""
+        """Test that batch creation builds only Qdrant points when targeted.
+
+        **Why this test is important:**
+          - Single-target mode must skip Weaviate point creation
+          - Prevents unnecessary work and potential errors
+
+        **What it tests:**
+          - Qdrant points list has expected length
+          - Weaviate objects list is empty
+        """
         factory = VectorPointFactory(s3_bucket="pipeline", targets=frozenset({"qdrant"}))
         contents = [ContentResult(s3_key="doc1.txt", content="Hello")]
         vectors = [[0.1, 0.2]]
@@ -351,7 +388,16 @@ class TestVectorPointFactory:
         assert len(batch.weaviate_objects) == 0
 
     def test_batch_weaviate_only_target(self) -> None:
-        """Test batch creation with weaviate-only target."""
+        """Test that batch creation builds only Weaviate objects when targeted.
+
+        **Why this test is important:**
+          - Single-target mode must skip Qdrant point creation
+          - Prevents unnecessary work and potential errors
+
+        **What it tests:**
+          - Qdrant points list is empty
+          - Weaviate objects list has expected length
+        """
         factory = VectorPointFactory(s3_bucket="pipeline", targets=frozenset({"weaviate"}))
         contents = [ContentResult(s3_key="doc1.txt", content="Hello")]
         vectors = [[0.1, 0.2]]
@@ -361,7 +407,15 @@ class TestVectorPointFactory:
         assert len(batch.weaviate_objects) == 1
 
     def test_batch_both_targets(self) -> None:
-        """Test batch creation with both targets (default behavior)."""
+        """Test that batch creation builds points for both databases when targeted.
+
+        **Why this test is important:**
+          - Dual-write is the default and most common case
+          - Must create points for both databases
+
+        **What it tests:**
+          - Both Qdrant points and Weaviate objects have expected lengths
+        """
         factory = VectorPointFactory(s3_bucket="pipeline", targets=frozenset({"qdrant", "weaviate"}))
         contents = [ContentResult(s3_key="doc1.txt", content="Hello")]
         vectors = [[0.1, 0.2]]
@@ -371,7 +425,15 @@ class TestVectorPointFactory:
         assert len(batch.weaviate_objects) == 1
 
     def test_batch_default_targets_both(self) -> None:
-        """Test that default targets include both databases."""
+        """Test that VectorPointFactory defaults to both database targets.
+
+        **Why this test is important:**
+          - Backward compatibility requires dual-write by default
+          - Existing code that doesn't pass targets must still work
+
+        **What it tests:**
+          - Factory targets attribute defaults to frozenset with both databases
+        """
         factory = VectorPointFactory(s3_bucket="pipeline")
         assert factory.targets == frozenset({"qdrant", "weaviate"})
 
@@ -480,7 +542,17 @@ class TestProcessingClientsFactory:
         mock_session_factory,
         mock_s3_class,
     ) -> None:
-        """Test that factory only creates clients for targeted DBs."""
+        """Test that factory only creates clients for targeted databases.
+
+        **Why this test is important:**
+          - Single-target mode must not create unused DB clients
+          - Avoids connection overhead and potential errors for disabled targets
+
+        **What it tests:**
+          - Only one vector DB provider created for qdrant-only target
+          - Qdrant client is not None
+          - Weaviate client is None
+        """
         mock_s3_class.return_value = MagicMock()
         mock_session_factory.return_value = MagicMock()
         mock_embedding_factory.return_value = MagicMock()

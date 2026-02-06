@@ -76,7 +76,16 @@ def test_add_ray_tuning_env(monkeypatch) -> None:
 
 
 def test_build_ingestion_env_with_ingestion_targets(monkeypatch) -> None:
-    """VECTOR_DB_TARGETS is set when ingestion_targets is provided."""
+    """Test that VECTOR_DB_TARGETS is set when ingestion_targets is provided.
+
+    **Why this test is important:**
+      - Explicit ingestion_targets parameter must be serialized to env var
+      - Ray workers read VECTOR_DB_TARGETS to configure single-target mode
+
+    **What it tests:**
+      - VECTOR_DB_TARGETS key is present in returned env dict
+      - Value matches the provided target
+    """
     monkeypatch.delenv("VECTOR_DB_TARGETS", raising=False)
     embedding_config = EmbeddingConfig(provider_type="ollama")
 
@@ -96,7 +105,15 @@ def test_build_ingestion_env_with_ingestion_targets(monkeypatch) -> None:
 
 
 def test_build_ingestion_env_targets_sorted(monkeypatch) -> None:
-    """VECTOR_DB_TARGETS value is sorted for deterministic output."""
+    """Test that VECTOR_DB_TARGETS value is sorted for deterministic output.
+
+    **Why this test is important:**
+      - frozenset iteration order is not guaranteed
+      - Sorted output makes logging and debugging predictable
+
+    **What it tests:**
+      - VECTOR_DB_TARGETS is "qdrant,weaviate" (alphabetical order)
+    """
     monkeypatch.delenv("VECTOR_DB_TARGETS", raising=False)
     embedding_config = EmbeddingConfig(provider_type="ollama")
 
@@ -116,7 +133,15 @@ def test_build_ingestion_env_targets_sorted(monkeypatch) -> None:
 
 
 def test_build_ingestion_env_no_targets_omits_key(monkeypatch) -> None:
-    """VECTOR_DB_TARGETS is absent when ingestion_targets is None."""
+    """Test that VECTOR_DB_TARGETS is absent when ingestion_targets is None.
+
+    **Why this test is important:**
+      - None means "use default" - env var should not be set
+      - Prevents overriding the worker's own default behavior
+
+    **What it tests:**
+      - VECTOR_DB_TARGETS key is not in returned env dict
+    """
     # Ensure env doesn't leak a value in
     monkeypatch.delenv("VECTOR_DB_TARGETS", raising=False)
 
@@ -138,7 +163,15 @@ def test_build_ingestion_env_no_targets_omits_key(monkeypatch) -> None:
 
 
 def test_build_ingestion_env_targets_from_env_passthrough(monkeypatch) -> None:
-    """VECTOR_DB_TARGETS from os.environ is passed through via _VECTOR_ENV_KEYS."""
+    """Test that VECTOR_DB_TARGETS from os.environ is passed through.
+
+    **Why this test is important:**
+      - VECTOR_DB_TARGETS is in _VECTOR_ENV_KEYS passthrough list
+      - Operators can set it globally and have it forwarded to workers
+
+    **What it tests:**
+      - VECTOR_DB_TARGETS from os.environ appears in returned env dict
+    """
     monkeypatch.setenv("VECTOR_DB_TARGETS", "weaviate")
 
     embedding_config = EmbeddingConfig(provider_type="ollama")

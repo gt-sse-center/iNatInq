@@ -1041,7 +1041,17 @@ class TestVectorDBUpserter:
 
     @pytest.mark.asyncio
     async def test_upsert_qdrant_only(self) -> None:
-        """Test upsert with only Qdrant targeted (weaviate_db=None)."""
+        """Test upsert with only Qdrant targeted and weaviate_db=None.
+
+        **Why this test is important:**
+          - Single-target mode passes None for the disabled database
+          - Non-targeted DB must default to success without being called
+
+        **What it tests:**
+          - Qdrant upsert succeeds
+          - Weaviate defaults to success (not targeted)
+          - Qdrant batch_upsert_async is called exactly once
+        """
         mock_qdrant = MagicMock()
         mock_qdrant.batch_upsert_async = AsyncMock(return_value=None)
 
@@ -1062,7 +1072,17 @@ class TestVectorDBUpserter:
 
     @pytest.mark.asyncio
     async def test_upsert_weaviate_only(self) -> None:
-        """Test upsert with only Weaviate targeted (qdrant_db=None)."""
+        """Test upsert with only Weaviate targeted and qdrant_db=None.
+
+        **Why this test is important:**
+          - Single-target mode passes None for the disabled database
+          - Non-targeted DB must default to success without being called
+
+        **What it tests:**
+          - Weaviate upsert succeeds
+          - Qdrant defaults to success (not targeted)
+          - Weaviate batch_upsert_async is called exactly once
+        """
         mock_weaviate = MagicMock()
         mock_weaviate.batch_upsert_async = AsyncMock(return_value=None)
 
@@ -1081,7 +1101,15 @@ class TestVectorDBUpserter:
 
     @pytest.mark.asyncio
     async def test_upsert_both_none_empty_batch(self) -> None:
-        """Test upsert with both providers None and empty batch points."""
+        """Test upsert with both providers None and empty batch.
+
+        **Why this test is important:**
+          - Edge case: no targeted DBs with no data to upsert
+          - Must not crash when both providers are None
+
+        **What it tests:**
+          - Returns all_success for empty batch with no providers
+        """
         upserter = VectorDBUpserter(qdrant_db=None, weaviate_db=None)
         batch = BatchEmbeddingResult(qdrant_points=[], weaviate_objects=[])
 
