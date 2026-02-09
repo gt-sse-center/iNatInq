@@ -121,6 +121,7 @@ class LocalRayStrategy:
                 )
                 raise RuntimeError(f"Failed to connect to Ray cluster: {e}") from e
 
+<<<<<<< HEAD
         init_kwargs: dict[str, Any] = {
             "namespace": config.ray_namespace,
             "ignore_reinit_error": True,
@@ -150,6 +151,34 @@ class LocalRayStrategy:
     def initialize(self) -> None:
         """Initialize Ray cluster connection (alias for init)."""
         self.init()
+=======
+        try:
+            ray.init(
+                address=self._config.ray_address,
+                namespace=self._config.ray_namespace,
+                runtime_env=runtime_env or None,
+                ignore_reinit_error=True,
+                logging_level=logging.WARNING,
+                log_to_driver=False,
+            )
+            logger.info(
+                "Connected to Ray cluster",
+                extra={
+                    "ray_address": self._config.ray_address,
+                    "namespace": self._config.ray_namespace,
+                },
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to connect to Ray cluster",
+                extra={
+                    "ray_address": self._config.ray_address,
+                    "error": str(e),
+                },
+                exc_info=True,
+            )
+            raise RuntimeError(f"Failed to connect to Ray cluster: {e}") from e
+>>>>>>> 28cf002 (feat(benchmark): add NDCG metric, LatencyStats, and gitignore configs)
 
     def shutdown(self) -> None:
         """Shutdown Ray client connection.

@@ -257,7 +257,11 @@ class DatabricksStrategy:
             ignore_reinit_error=True,
             logging_level=logging.WARNING,
             log_to_driver=False,
+<<<<<<< HEAD
             runtime_env=runtime_env,
+=======
+            runtime_env=runtime_env or None,
+>>>>>>> 28cf002 (feat(benchmark): add NDCG metric, LatencyStats, and gitignore configs)
         )
 
         logger.info(
