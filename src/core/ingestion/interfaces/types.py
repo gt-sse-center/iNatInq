@@ -211,9 +211,20 @@ class UpsertResult:
         return cls(qdrant_success=True, weaviate_success=True, batch_size=batch_size)
 
     @classmethod
-    def empty(cls) -> "UpsertResult":
-        """Create result for empty batch (no-op, counts as success)."""
-        return cls(qdrant_success=True, weaviate_success=True, batch_size=0)
+    def noop(cls) -> "UpsertResult":
+        """Create no-op result when no database was targeted.
+
+        This is treated as successful for control flow (`any_success` and
+        `all_success` remain True), but both database enablement flags are False
+        so downstream logs/metrics reflect that nothing was attempted.
+        """
+        return cls(
+            qdrant_success=True,
+            weaviate_success=True,
+            batch_size=0,
+            qdrant_enabled=False,
+            weaviate_enabled=False,
+        )
 
 
 # =============================================================================

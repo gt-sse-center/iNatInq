@@ -36,6 +36,7 @@ from core.ingestion.interfaces.types import (
     ProcessingConfig,
     ProcessingResult,
     RateLimitConfig,
+    UpsertResult,
 )
 from core.models import VectorPoint
 
@@ -494,6 +495,34 @@ class TestBatchEmbeddingResult:
 
         with pytest.raises(attrs.exceptions.FrozenInstanceError):
             batch.qdrant_points = []
+
+
+# =============================================================================
+# UpsertResult Tests
+# =============================================================================
+
+
+class TestUpsertResult:
+    """Test suite for UpsertResult helper factories and properties."""
+
+    def test_noop_factory_disables_all_backends(self) -> None:
+        """noop() should report a successful no-op with no targets enabled."""
+        result = UpsertResult.noop()
+
+        assert result.qdrant_enabled is False
+        assert result.weaviate_enabled is False
+        assert result.any_success is True
+        assert result.all_success is True
+
+    def test_noop_factory_defaults_batch_size_to_zero(self) -> None:
+        """noop() should report a zero-sized batch."""
+        result = UpsertResult.noop()
+
+        assert result.batch_size == 0
+        assert result.qdrant_enabled is False
+        assert result.weaviate_enabled is False
+        assert result.any_success is True
+        assert result.all_success is True
 
 
 # =============================================================================

@@ -279,6 +279,22 @@ def _is_in_cluster() -> bool:
     return bool(os.getenv("KUBERNETES_SERVICE_HOST"))
 
 
+def resolve_vector_db_provider(provider: str | None = None, default: str = "qdrant") -> str:
+    """Normalize vector DB provider and apply a fallback default.
+
+    Args:
+        provider: Optional provider override. If None, reads VECTOR_DB_PROVIDER
+            from the environment.
+        default: Provider to use when no value is configured.
+
+    Returns:
+        Normalized provider string.
+    """
+    raw_value = provider if provider is not None else os.getenv("VECTOR_DB_PROVIDER")
+    normalized = (raw_value or "").strip().lower()
+    return normalized or default
+
+
 class EmbeddingConfig(BaseModel):
     """Configuration for embedding provider.
 
@@ -719,7 +735,7 @@ class VectorDBConfig(BaseModel):
             Configured VectorDBConfig instance.
         """
         # Determine provider type
-        provider_type = os.getenv("VECTOR_DB_PROVIDER", "qdrant").lower()
+        provider_type = resolve_vector_db_provider()
 
         # Validate provider type
         valid_providers = ("qdrant", "weaviate")

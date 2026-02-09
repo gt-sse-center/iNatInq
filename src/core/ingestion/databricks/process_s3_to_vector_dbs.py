@@ -20,7 +20,7 @@ import ray
 from botocore.exceptions import ClientError
 
 from clients.s3 import S3ClientWrapper
-from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
+from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig, resolve_vector_db_provider
 from foundation.checkpoint import CheckpointManager, is_s3_path
 from core.ingestion.tasks import process_s3_batch_ray
 from core.ingestion.shared import RateLimiterActor
@@ -120,14 +120,7 @@ def _init_ray(config: RayJobConfig, ray_cluster: object | None) -> None:
         value = os.environ.get(key)
         if value is not None and value != "":
             env_vars[key] = value
-
-    vector_db_provider = (os.environ.get("VECTOR_DB_PROVIDER") or "").strip().lower()
-    if not vector_db_provider:
-        env_vars["VECTOR_DB_PROVIDER"] = "qdrant"
-        logger.warning(
-            "VECTOR_DB_PROVIDER not set; defaulting to qdrant for Ray workers",
-            extra={"vector_db_provider": "qdrant"},
-        )
+    env_vars["VECTOR_DB_PROVIDER"] = resolve_vector_db_provider()
 
     if env_vars:
         runtime_env["env_vars"] = env_vars
@@ -147,7 +140,7 @@ def _init_ray(config: RayJobConfig, ray_cluster: object | None) -> None:
         ray.init(
             address=address or "auto",
             namespace=config.ray_namespace,
-            ignore_reinit_error=False,
+            ignore_reinit_error=True,
             logging_level=logging.WARNING,
             log_to_driver=False,
             runtime_env=runtime_env,

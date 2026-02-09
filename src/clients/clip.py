@@ -359,6 +359,27 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                 headers["Authorization"] = f"Bearer {self.api_key}"
         return headers or None
 
+    def _build_hosted_clip_payload(
+        self,
+        *,
+        images: list[str],
+        texts: list[str] | None = None,
+    ) -> dict[str, object]:
+        if texts is None:
+            texts = [""] * len(images)
+        elif len(texts) != len(images):
+            msg = f"Texts list length ({len(texts)}) must match images list length ({len(images)})"
+            raise ValueError(msg)
+
+        rows = [[images[i], texts[i]] for i in range(len(images))]
+        return {
+            "input_data": {
+                "columns": ["image", "text"],
+                "index": list(range(len(rows))),
+                "data": rows,
+            }
+        }
+
     def _detect_image_mime_type(self, image_bytes: bytes) -> str:
         """Detect MIME type from image magic bytes.
 
@@ -409,7 +430,6 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                     url,
                     json=payload,
                     timeout=self.timeout_s,
-                    headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -428,18 +448,12 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
             if self.backend == "hosted_clip":
                 url = f"{self.base_url}"
-                payload = {
-                    "input_data": {
-                        "columns": ["image", "text"],
-                        "index": [0],
-                        "data": [[image_b64, text or ""]],
-                    }
-                }
+                payload = self._build_hosted_clip_payload(images=[image_b64], texts=[text or ""])
                 response = self.session.post(
                     url,
                     json=payload,
                     timeout=self.timeout_s,
-                    headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
+                    headers=self._build_request_headers(accept_json=True),
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -456,7 +470,6 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                 url,
                 json=payload,
                 timeout=self.timeout_s,
-                headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
             )
             response.raise_for_status()
             data = response.json()
@@ -506,7 +519,6 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                     response = await client.post(
                         url,
                         json=payload,
-                        headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
                     )
                     response.raise_for_status()
                     data = response.json()
@@ -528,17 +540,11 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
                 if self.backend == "hosted_clip":
                     url = f"{self.base_url}"
-                    payload = {
-                        "input_data": {
-                            "columns": ["image", "text"],
-                            "index": [0],
-                            "data": [[image_b64, text or ""]],
-                        }
-                    }
+                    payload = self._build_hosted_clip_payload(images=[image_b64], texts=[text or ""])
                     response = await client.post(
                         url,
                         json=payload,
-                        headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
+                        headers=self._build_request_headers(accept_json=True),
                     )
                     response.raise_for_status()
                     data = response.json()
@@ -554,7 +560,6 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                 response = await client.post(
                     url,
                     json=payload,
-                    headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -662,22 +667,17 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
         if self.backend == "hosted_clip":
             encoded_images = [self._encode_image(img) for img in images]
-            rows = [
-                [encoded_images[i], texts[i] if texts is not None else ""] for i in range(len(encoded_images))
-            ]
             url = f"{self.base_url}"
-            payload = {
-                "input_data": {"columns": ["image", "text"], "index": list(range(len(rows))), "data": rows}
-            }
+            payload = self._build_hosted_clip_payload(images=encoded_images, texts=texts)
             response = self.session.post(
                 url,
                 json=payload,
                 timeout=self.timeout_s,
-                headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
+                headers=self._build_request_headers(accept_json=True),
             )
             response.raise_for_status()
             data = response.json()
-            return self._parse_hosted_clip_batch_response(data, kind="image", count=len(rows))
+            return self._parse_hosted_clip_batch_response(data, kind="image", count=len(encoded_images))
 
         results = []
         for i, image_bytes in enumerate(images):
@@ -733,22 +733,17 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         encoded_images = [self._encode_image(img) for img in images]
 
         if self.backend == "hosted_clip":
-            rows = [
-                [encoded_images[i], texts[i] if texts is not None else ""] for i in range(len(encoded_images))
-            ]
             url = f"{self.base_url}"
-            payload = {
-                "input_data": {"columns": ["image", "text"], "index": list(range(len(rows))), "data": rows}
-            }
+            payload = self._build_hosted_clip_payload(images=encoded_images, texts=texts)
             async with httpx.AsyncClient(timeout=self.timeout_s) as client:
                 response = await client.post(
                     url,
                     json=payload,
-                    headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
+                    headers=self._build_request_headers(accept_json=True),
                 )
                 response.raise_for_status()
                 data = response.json()
-                return self._parse_hosted_clip_batch_response(data, kind="image", count=len(rows))
+                return self._parse_hosted_clip_batch_response(data, kind="image", count=len(encoded_images))
 
         # Make concurrent requests with optional text
         tasks = [
@@ -789,7 +784,6 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                     url,
                     json=payload,
                     timeout=self.timeout_s,
-                    headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -807,18 +801,12 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
             if self.backend == "hosted_clip":
                 url = f"{self.base_url}"
-                payload = {
-                    "input_data": {
-                        "columns": ["image", "text"],
-                        "index": [0],
-                        "data": [["", text]],
-                    }
-                }
+                payload = self._build_hosted_clip_payload(images=[""], texts=[text])
                 response = self.session.post(
                     url,
                     json=payload,
                     timeout=self.timeout_s,
-                    headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
+                    headers=self._build_request_headers(accept_json=True),
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -834,7 +822,6 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                 url,
                 json=payload,
                 timeout=self.timeout_s,
-                headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
             )
             response.raise_for_status()
             data = response.json()
@@ -881,7 +868,6 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                     response = await client.post(
                         url,
                         json=payload,
-                        headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
                     )
                     response.raise_for_status()
                     data = response.json()
@@ -903,17 +889,11 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
                 if self.backend == "hosted_clip":
                     url = f"{self.base_url}"
-                    payload = {
-                        "input_data": {
-                            "columns": ["image", "text"],
-                            "index": [0],
-                            "data": [["", text]],
-                        }
-                    }
+                    payload = self._build_hosted_clip_payload(images=[""], texts=[text])
                     response = await client.post(
                         url,
                         json=payload,
-                        headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
+                        headers=self._build_request_headers(accept_json=True),
                     )
                     response.raise_for_status()
                     data = response.json()
@@ -928,7 +908,6 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                 response = await client.post(
                     url,
                     json=payload,
-                    headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -1020,20 +999,17 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             raise ValueError(msg)
 
         if self.backend == "hosted_clip":
-            rows = [["", text] for text in texts]
             url = f"{self.base_url}"
-            payload = {
-                "input_data": {"columns": ["image", "text"], "index": list(range(len(rows))), "data": rows}
-            }
+            payload = self._build_hosted_clip_payload(images=[""] * len(texts), texts=texts)
             response = self.session.post(
                 url,
                 json=payload,
                 timeout=self.timeout_s,
-                headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
+                headers=self._build_request_headers(accept_json=True),
             )
             response.raise_for_status()
             data = response.json()
-            return self._parse_hosted_clip_batch_response(data, kind="text", count=len(rows))
+            return self._parse_hosted_clip_batch_response(data, kind="text", count=len(texts))
 
         results = []
         for text in texts:
@@ -1080,20 +1056,17 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                 raise ValueError(msg)
 
         if self.backend == "hosted_clip":
-            rows = [["", text] for text in texts]
             url = f"{self.base_url}"
-            payload = {
-                "input_data": {"columns": ["image", "text"], "index": list(range(len(rows))), "data": rows}
-            }
+            payload = self._build_hosted_clip_payload(images=[""] * len(texts), texts=texts)
             async with httpx.AsyncClient(timeout=self.timeout_s) as client:
                 response = await client.post(
                     url,
                     json=payload,
-                    headers=self._build_request_headers(accept_json=self.backend == "hosted_clip"),
+                    headers=self._build_request_headers(accept_json=True),
                 )
                 response.raise_for_status()
                 data = response.json()
-                return self._parse_hosted_clip_batch_response(data, kind="text", count=len(rows))
+                return self._parse_hosted_clip_batch_response(data, kind="text", count=len(texts))
 
         # Make concurrent requests
         tasks = [self._make_text_embed_request_async(text) for text in texts]

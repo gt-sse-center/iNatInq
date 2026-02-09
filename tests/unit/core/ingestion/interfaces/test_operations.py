@@ -968,6 +968,8 @@ class TestVectorDBUpserter:
 
         assert isinstance(result, UpsertResult)
         assert result.all_success  # Empty batch is considered successful
+        assert result.qdrant_enabled is False
+        assert result.weaviate_enabled is False
         mock_qdrant.batch_upsert_async.assert_not_called()
 
     @pytest.mark.asyncio

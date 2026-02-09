@@ -165,6 +165,7 @@ class TestInitRay:
         mock_ray.init.assert_called_once()
         call_kwargs = mock_ray.init.call_args[1]
         assert call_kwargs["address"] == "ray://databricks:10001"
+        assert call_kwargs["ignore_reinit_error"] is True
 
     def test_init_ray_uses_auto_when_no_cluster(self, mock_ray):
         """Use 'auto' address when no cluster provided.

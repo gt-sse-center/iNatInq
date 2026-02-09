@@ -75,6 +75,27 @@ _IMAGE_OPTIONAL_ENV_KEYS = (
 )
 
 
+def _passthrough_env_vars(
+    env_vars: dict[str, str],
+    *key_groups: Iterable[str],
+    overwrite: bool = True,
+) -> None:
+    """Copy selected environment variables into env_vars.
+
+    Args:
+        env_vars: Target mapping to update in-place.
+        *key_groups: One or more iterables of environment variable names.
+        overwrite: Whether to overwrite existing keys in env_vars.
+    """
+    for key_group in key_groups:
+        for key in key_group:
+            value = os.getenv(key)
+            if not value:
+                continue
+            if overwrite or key not in env_vars:
+                env_vars[key] = value
+
+
 def build_ingestion_env(
     *,
     namespace: str,
@@ -130,28 +151,16 @@ def build_ingestion_env(
     if embedding_config.ollama_model:
         env_vars["OLLAMA_MODEL"] = embedding_config.ollama_model
 
-    for key in _VECTOR_ENV_KEYS:
-        value = os.getenv(key)
-        if value:
-            env_vars[key] = value
-    for key in _VECTOR_TIMEOUT_ENV_KEYS:
-        value = os.getenv(key)
-        if value:
-            env_vars[key] = value
-    for key in _S3_TUNING_ENV_KEYS:
-        value = os.getenv(key)
-        if value:
-            env_vars[key] = value
-    for key in _OLLAMA_TIMEOUT_ENV_KEYS:
-        value = os.getenv(key)
-        if value:
-            env_vars[key] = value
+    _passthrough_env_vars(
+        env_vars,
+        _VECTOR_ENV_KEYS,
+        _VECTOR_TIMEOUT_ENV_KEYS,
+        _S3_TUNING_ENV_KEYS,
+        _OLLAMA_TIMEOUT_ENV_KEYS,
+    )
 
     if extra_env_keys:
-        for key in extra_env_keys:
-            value = os.getenv(key)
-            if value:
-                env_vars[key] = value
+        _passthrough_env_vars(env_vars, extra_env_keys)
 
     return env_vars
 
@@ -229,32 +238,16 @@ def build_image_ingestion_env(
     if image_embedding_config.clip_vector_size is not None:
         env_vars["CLIP_VECTOR_SIZE"] = str(image_embedding_config.clip_vector_size)
 
-    for key in _VECTOR_ENV_KEYS:
-        value = os.getenv(key)
-        if value:
-            env_vars[key] = value
-    for key in _VECTOR_TIMEOUT_ENV_KEYS:
-        value = os.getenv(key)
-        if value:
-            env_vars[key] = value
-    for key in _S3_TUNING_ENV_KEYS:
-        value = os.getenv(key)
-        if value:
-            env_vars[key] = value
-    for key in _OLLAMA_TIMEOUT_ENV_KEYS:
-        value = os.getenv(key)
-        if value:
-            env_vars[key] = value
-
-    for key in _IMAGE_OPTIONAL_ENV_KEYS:
-        value = os.getenv(key)
-        if value and key not in env_vars:
-            env_vars[key] = value
+    _passthrough_env_vars(
+        env_vars,
+        _VECTOR_ENV_KEYS,
+        _VECTOR_TIMEOUT_ENV_KEYS,
+        _S3_TUNING_ENV_KEYS,
+        _OLLAMA_TIMEOUT_ENV_KEYS,
+    )
+    _passthrough_env_vars(env_vars, _IMAGE_OPTIONAL_ENV_KEYS, overwrite=False)
 
     if extra_env_keys:
-        for key in extra_env_keys:
-            value = os.getenv(key)
-            if value:
-                env_vars[key] = value
+        _passthrough_env_vars(env_vars, extra_env_keys)
 
     return env_vars

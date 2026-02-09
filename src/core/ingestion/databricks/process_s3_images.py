@@ -17,7 +17,7 @@ import ray
 from botocore.exceptions import ClientError
 
 from clients.s3 import S3ClientWrapper
-from config import ImageEmbeddingConfig, MinIOConfig, RayJobConfig
+from config import ImageEmbeddingConfig, MinIOConfig, RayJobConfig, resolve_vector_db_provider
 from core.ingestion.interfaces.operations import ImageContentFetcher
 from core.ingestion.tasks import process_image_batch_ray
 from core.ingestion.strategies import DatabricksStrategy
@@ -52,13 +52,7 @@ def main() -> None:
 
     _apply_python_params(sys.argv[1:])
 
-    vector_db_provider = (os.environ.get("VECTOR_DB_PROVIDER") or "").strip().lower()
-    if not vector_db_provider:
-        os.environ["VECTOR_DB_PROVIDER"] = "qdrant"
-        job_logger.warning(
-            "VECTOR_DB_PROVIDER not set; defaulting to qdrant",
-            extra={"vector_db_provider": "qdrant"},
-        )
+    vector_db_provider = resolve_vector_db_provider()
 
     namespace = os.environ.get("K8S_NAMESPACE", "ml-system")
     s3_prefix = os.environ.get("S3_PREFIX") or (
@@ -78,6 +72,7 @@ def main() -> None:
             "s3_bucket": bucket,
             "s3_prefix": s3_prefix,
             "collection": collection,
+            "vector_db_provider": vector_db_provider,
             "num_workers": ray_cfg.num_workers,
             "image_batch_size": ray_cfg.image_batch_size,
         },

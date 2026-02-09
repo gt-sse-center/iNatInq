@@ -536,7 +536,7 @@ class VectorDBUpserter:
             UpsertResult with per-database success/failure status.
         """
         if embedding_result.is_empty():
-            return UpsertResult.empty()
+            return UpsertResult.noop()
 
         batch_size = len(embedding_result)
 
@@ -595,7 +595,7 @@ class VectorDBUpserter:
             except Exception as e:
                 upsert_results[1] = e
         else:
-            return UpsertResult.empty()
+            return UpsertResult.noop()
 
         # Track per-database success/failure
         qdrant_success = True

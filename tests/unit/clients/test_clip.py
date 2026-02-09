@@ -270,6 +270,7 @@ class TestCLIPClientEmbedImage:
         assert call_args[1]["json"]["model"] == "llava"
         assert call_args[1]["json"]["prompt"] == "embeddings"
         assert len(call_args[1]["json"]["images"]) == 1
+        assert "headers" not in call_args[1]
 
     def test_embed_image_returns_embedding(
         self,
@@ -1057,6 +1058,7 @@ class TestCLIPClientEmbedText:
         assert payload["model"] == "llava"
         assert payload["prompt"] == "embeddings"
         assert "images" not in payload
+        assert "headers" not in call_args[1]
 
     def test_embed_text_makes_correct_request_clip_backend(self, mock_clip_session: MagicMock) -> None:
         """Test that embed_text makes correct request to ai4all/clip backend.
@@ -1091,6 +1093,7 @@ class TestCLIPClientEmbedText:
         payload = call_args[1]["json"]
         # ai4all/clip expects {"texts": [...]} format
         assert payload["texts"] == ["test query"]
+        assert "headers" not in call_args[1]
 
     def test_embed_text_makes_correct_request_hosted_clip(self, mock_clip_session: MagicMock) -> None:
         """Test that embed_text makes correct request to hosted_clip backend."""

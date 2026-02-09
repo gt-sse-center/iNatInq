@@ -15,7 +15,7 @@ from typing import Any
 import attrs
 import ray
 
-from config import RayJobConfig
+from config import RayJobConfig, resolve_vector_db_provider
 
 logger = logging.getLogger("pipeline.ray.strategy.databricks")
 
@@ -144,17 +144,9 @@ class DatabricksStrategy:
             if value is not None and value != "":
                 env_vars[key] = value
 
+        env_vars["VECTOR_DB_PROVIDER"] = resolve_vector_db_provider()
         if env_vars:
             runtime_env["env_vars"] = env_vars
-
-        # Align with VectorDBConfig default (qdrant) instead of erroring.
-        vector_db_provider = (os.environ.get("VECTOR_DB_PROVIDER") or "").strip().lower()
-        if not vector_db_provider:
-            env_vars["VECTOR_DB_PROVIDER"] = "qdrant"
-            logger.warning(
-                "VECTOR_DB_PROVIDER not set; defaulting to qdrant for Ray workers",
-                extra={"vector_db_provider": "qdrant"},
-            )
 
         # Set working directory from INATINQ_SRC_DIR
         workspace_src = os.environ.get("INATINQ_SRC_DIR")
