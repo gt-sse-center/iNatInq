@@ -292,13 +292,14 @@ class TestDatabricksStrategyConnection:
         with patch.dict("sys.modules", {"ray.util.spark": None}):
             # This test verifies the ImportError handling
             # The actual import will fail with our mock
-            pass  # Import error path tested by actual import failure
+            assert strategy is not None
 
 
 class TestDatabricksStrategyShutdown:
     """Tests for Databricks shutdown."""
 
-    def test_shutdown_calls_ray_shutdown(self, ray_job_config: RayJobConfig, mock_ray: MagicMock):
+    @patch("core.ingestion.strategies.databricks.ray")
+    def test_shutdown_calls_ray_shutdown(self, mock_ray_module: MagicMock, ray_job_config: RayJobConfig):
         """shutdown() calls ray.shutdown() when initialized.
 
         **Why this test is important:**
@@ -308,12 +309,12 @@ class TestDatabricksStrategyShutdown:
         **What it tests:**
         - ray.shutdown() is called when Ray is initialized
         """
-        mock_ray.is_initialized.return_value = True
+        mock_ray_module.is_initialized.return_value = True
         strategy = DatabricksStrategy(config=ray_job_config)
 
         strategy.shutdown()
 
-        mock_ray.shutdown.assert_called_once()
+        mock_ray_module.shutdown.assert_called_once()
 
     def test_shutdown_calls_cluster_shutdown(self, ray_job_config: RayJobConfig, mock_ray: MagicMock):
         """shutdown() calls cluster shutdown method.
@@ -336,7 +337,8 @@ class TestDatabricksStrategyShutdown:
         mock_cluster.shutdown.assert_called_once()
         assert strategy._cluster is None
 
-    def test_shutdown_handles_ray_error(self, ray_job_config: RayJobConfig, mock_ray: MagicMock):
+    @patch("core.ingestion.strategies.databricks.ray")
+    def test_shutdown_handles_ray_error(self, mock_ray_module: MagicMock, ray_job_config: RayJobConfig):
         """shutdown() handles ray shutdown errors gracefully.
 
         **Why this test is important:**
@@ -346,12 +348,13 @@ class TestDatabricksStrategyShutdown:
         **What it tests:**
         - No exception raised when ray.shutdown() fails
         """
-        mock_ray.is_initialized.return_value = True
-        mock_ray.shutdown.side_effect = Exception("Ray error")
+        mock_ray_module.is_initialized.return_value = True
+        mock_ray_module.shutdown.side_effect = Exception("Ray error")
         strategy = DatabricksStrategy(config=ray_job_config)
 
         # Should not raise
         strategy.shutdown()
+        mock_ray_module.shutdown.assert_called_once()
 
     def test_shutdown_handles_cluster_error(self, ray_job_config: RayJobConfig, mock_ray: MagicMock):
         """shutdown() handles cluster shutdown errors gracefully.
@@ -419,7 +422,10 @@ class TestDatabricksStrategySetupCluster:
 class TestDatabricksStrategyInitRayClient:
     """Tests for _init_ray_client."""
 
-    def test_init_ray_client_uses_cluster_address(self, ray_job_config: RayJobConfig, mock_ray: MagicMock):
+    @patch("core.ingestion.strategies.databricks.ray")
+    def test_init_ray_client_uses_cluster_address(
+        self, mock_ray_module: MagicMock, ray_job_config: RayJobConfig
+    ):
         """_init_ray_client() uses cluster address if available.
 
         **Why this test is important:**
@@ -430,7 +436,7 @@ class TestDatabricksStrategyInitRayClient:
         - ray.init() is called with cluster address
         - Address comes from _cluster.address attribute
         """
-        mock_ray.is_initialized.return_value = False
+        mock_ray_module.is_initialized.return_value = False
         strategy = DatabricksStrategy(config=ray_job_config)
         mock_cluster = MagicMock()
         mock_cluster.address = "ray://cluster:10001"
@@ -444,11 +450,12 @@ class TestDatabricksStrategyInitRayClient:
             with patch("pathlib.Path.is_dir", return_value=True):
                 strategy._init_ray_client()
 
-        mock_ray.init.assert_called_once()
-        assert mock_ray.init.call_args[1]["address"] == "ray://cluster:10001"
+        mock_ray_module.init.assert_called_once()
+        assert mock_ray_module.init.call_args[1]["address"] == "ray://cluster:10001"
 
+    @patch("core.ingestion.strategies.databricks.ray")
     def test_init_ray_client_uses_auto_when_no_cluster(
-        self, ray_job_config: RayJobConfig, mock_ray: MagicMock
+        self, mock_ray_module: MagicMock, ray_job_config: RayJobConfig
     ):
         """_init_ray_client() uses 'auto' when no cluster address.
 
@@ -459,7 +466,7 @@ class TestDatabricksStrategyInitRayClient:
         **What it tests:**
         - ray.init() uses 'auto' when _cluster is None
         """
-        mock_ray.is_initialized.return_value = False
+        mock_ray_module.is_initialized.return_value = False
         strategy = DatabricksStrategy(config=ray_job_config)
         strategy._cluster = None
 
@@ -471,9 +478,12 @@ class TestDatabricksStrategyInitRayClient:
             with patch("pathlib.Path.is_dir", return_value=True):
                 strategy._init_ray_client()
 
-        assert mock_ray.init.call_args[1]["address"] == "auto"
+        assert mock_ray_module.init.call_args[1]["address"] == "auto"
 
-    def test_init_ray_client_skips_when_initialized(self, ray_job_config: RayJobConfig, mock_ray: MagicMock):
+    @patch("core.ingestion.strategies.databricks.ray")
+    def test_init_ray_client_skips_when_initialized(
+        self, mock_ray_module: MagicMock, ray_job_config: RayJobConfig
+    ):
         """_init_ray_client() skips when Ray is already initialized.
 
         **Why this test is important:**
@@ -483,7 +493,7 @@ class TestDatabricksStrategyInitRayClient:
         **What it tests:**
         - ray.init() is not called when Ray is already initialized
         """
-        mock_ray.is_initialized.return_value = True
+        mock_ray_module.is_initialized.return_value = True
         strategy = DatabricksStrategy(config=ray_job_config)
 
         with patch.dict(
@@ -494,4 +504,4 @@ class TestDatabricksStrategyInitRayClient:
             with patch("pathlib.Path.is_dir", return_value=True):
                 strategy._init_ray_client()
 
-        mock_ray.init.assert_not_called()
+        mock_ray_module.init.assert_not_called()

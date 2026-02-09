@@ -196,24 +196,17 @@ def ray_gcs_address(ray_container: DockerContainer) -> str:
 
 
 @pytest.fixture
-def local_ray_strategy():
-    """Create a LocalRayStrategy for testing.
-
-    This fixture creates a strategy configured for local Ray execution.
-    The strategy handles cluster initialization and shutdown.
+def local_ray_strategy(ray_client_address: str):
+    """Create a LocalRayStrategy for testing against the containerized Ray cluster.
 
     Yields:
-        LocalRayStrategy: Configured strategy instance.
+        LocalRayStrategy: Configured strategy instance (requires RAY_ADDRESS set).
     """
+    from config import RayJobConfig
     from core.ingestion.strategies.local_ray import LocalRayStrategy
 
-    strategy = LocalRayStrategy(
-        num_cpus=2,
-        dashboard_host="127.0.0.1",
-        dashboard_port=8265,
-        include_dashboard=False,  # Faster startup for tests
-    )
-
+    config = RayJobConfig(ray_address=ray_client_address)
+    strategy = LocalRayStrategy(config=config)
     yield strategy
 
 

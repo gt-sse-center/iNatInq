@@ -941,3 +941,4 @@ class TestWeaviateClientWrapperAdditional:
 
             # Should not raise
             client.close()
+            assert client._client is None
