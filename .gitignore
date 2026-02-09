@@ -33,3 +33,6 @@ data/
 
 # Documentation directory
 /docs/
+
+# Configuration files (WIP - remove when ready for production)
+/configs/

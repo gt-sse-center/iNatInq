@@ -5,6 +5,7 @@ This file tests the Information Retrieval metrics for benchmark evaluation:
 - RecallAtK: Fraction of relevant documents in top-K results
 - MeanAveragePrecision: Average precision at each relevant hit
 - MRR: Reciprocal rank of the first relevant result
+- NDCG: Normalized Discounted Cumulative Gain for graded relevance
 
 # Test Coverage
 
@@ -16,16 +17,19 @@ The tests cover:
   - Custom k values
   - MAP calculation with multiple relevant documents
   - MRR calculation for first relevant result
+  - NDCG with binary and graded relevance
 
 # Running Tests
 
 Run with: uv run pytest tests/unit/core/benchmark/metrics/test_ir.py -v
 """
 
+import math
+
 import pytest
 
 from core.benchmark.metrics.base import MetricRegistry
-from core.benchmark.metrics.ir import MRR, MeanAveragePrecision, PrecisionAtK, RecallAtK
+from core.benchmark.metrics.ir import MRR, NDCG, MeanAveragePrecision, PrecisionAtK, RecallAtK
 
 
 class TestPrecisionAtK:
@@ -730,6 +734,284 @@ class TestMRR:
         assert result_with_graded == result_without_graded
 
 
+class TestNDCG:
+    """Test suite for NDCG (Normalized Discounted Cumulative Gain) metric."""
+
+    def test_ndcg_binary_relevance_perfect_ranking(self):
+        """Test NDCG with binary relevance and perfect ranking.
+
+        **Why this test is important:**
+          - Validates NDCG = 1.0 for perfect ranking
+          - Tests binary relevance fallback
+
+        **What it tests:**
+          - All relevant docs at top positions → NDCG = 1.0
+        """
+        ndcg = NDCG(k=5)
+        retrieved = ["doc1", "doc2", "doc3", "doc4", "doc5"]
+        relevant = {"doc1", "doc2", "doc3"}
+
+        result = ndcg.compute(retrieved, relevant)
+
+        assert result == pytest.approx(1.0)
+
+    def test_ndcg_binary_relevance_worst_ranking(self):
+        """Test NDCG with binary relevance and worst ranking.
+
+        **Why this test is important:**
+          - Validates NDCG calculation for poor rankings
+          - Lower positions should yield lower NDCG
+
+        **What it tests:**
+          - Relevant docs at bottom positions → NDCG < 1.0
+        """
+        ndcg = NDCG(k=5)
+        retrieved = ["doc1", "doc2", "doc3", "doc4", "doc5"]
+        relevant = {"doc4", "doc5"}
+
+        result = ndcg.compute(retrieved, relevant)
+
+        # DCG = 1/log2(5) + 1/log2(6) ≈ 0.431 + 0.387 ≈ 0.818
+        # IDCG = 1/log2(2) + 1/log2(3) ≈ 1.0 + 0.631 ≈ 1.631
+        # NDCG ≈ 0.818 / 1.631 ≈ 0.502
+        assert result < 1.0
+        assert result > 0.0
+
+    def test_ndcg_binary_relevance_partial_ranking(self):
+        """Test NDCG with binary relevance and mixed ranking.
+
+        **Why this test is important:**
+          - Common scenario: relevant docs mixed with non-relevant
+          - Validates discount factor calculation
+
+        **What it tests:**
+          - Relevant at positions 1, 3 out of 3 relevant total
+        """
+        ndcg = NDCG(k=5)
+        retrieved = ["doc1", "doc2", "doc3", "doc4", "doc5"]
+        relevant = {"doc1", "doc3", "doc6"}  # doc6 not retrieved
+
+        result = ndcg.compute(retrieved, relevant)
+
+        # DCG = 1/log2(2) + 0 + 1/log2(4) = 1.0 + 0.5 = 1.5
+        # IDCG = 1/log2(2) + 1/log2(3) + 1/log2(4) ≈ 1.0 + 0.631 + 0.5 ≈ 2.131
+        # NDCG ≈ 1.5 / 2.131 ≈ 0.704
+        dcg = 1 / math.log2(2) + 1 / math.log2(4)
+        idcg = 1 / math.log2(2) + 1 / math.log2(3) + 1 / math.log2(4)
+        expected = dcg / idcg
+        assert result == pytest.approx(expected)
+
+    def test_ndcg_graded_relevance_perfect_ranking(self):
+        """Test NDCG with graded relevance and perfect ranking.
+
+        **Why this test is important:**
+          - Core NDCG use case: graded relevance scores
+          - Perfect ordering should yield NDCG = 1.0
+
+        **What it tests:**
+          - Documents sorted by grade descending → NDCG = 1.0
+        """
+        ndcg = NDCG(k=5)
+        retrieved = ["doc1", "doc2", "doc3", "doc4", "doc5"]
+        relevant = {"doc1", "doc2", "doc3"}
+        graded = {"doc1": 3, "doc2": 2, "doc3": 1}  # Already in ideal order
+
+        result = ndcg.compute(retrieved, relevant, graded)
+
+        assert result == pytest.approx(1.0)
+
+    def test_ndcg_graded_relevance_reversed_ranking(self):
+        """Test NDCG with graded relevance in reverse order.
+
+        **Why this test is important:**
+          - Worst possible graded ordering
+          - Should yield NDCG < 1.0
+
+        **What it tests:**
+          - Documents in reverse grade order → NDCG < 1.0
+        """
+        ndcg = NDCG(k=3)
+        retrieved = ["doc3", "doc2", "doc1"]  # Reverse order
+        relevant = {"doc1", "doc2", "doc3"}
+        graded = {"doc1": 3, "doc2": 2, "doc3": 1}  # Ideal: doc1, doc2, doc3
+
+        result = ndcg.compute(retrieved, relevant, graded)
+
+        # DCG = 1/log2(2) + 2/log2(3) + 3/log2(4) = 1.0 + 1.262 + 1.5 = 3.762
+        # IDCG = 3/log2(2) + 2/log2(3) + 1/log2(4) = 3.0 + 1.262 + 0.5 = 4.762
+        # NDCG ≈ 3.762 / 4.762 ≈ 0.790
+        assert result == pytest.approx(0.790, abs=0.01)
+
+    def test_ndcg_graded_relevance_known_value(self):
+        """Test NDCG with graded relevance and known expected value.
+
+        **Why this test is important:**
+          - Validates exact NDCG calculation
+          - Hand-computed expected value for verification
+
+        **What it tests:**
+          - Specific graded scenario with known NDCG
+        """
+        ndcg = NDCG(k=4)
+        retrieved = ["doc1", "doc2", "doc3", "doc4"]
+        relevant = {"doc1", "doc2", "doc3", "doc4"}
+        # Grades: doc1=3, doc2=2, doc3=3, doc4=1
+        # Retrieved order: doc1(3), doc2(2), doc3(3), doc4(1)
+        # Ideal order: doc1(3), doc3(3), doc2(2), doc4(1)
+        graded = {"doc1": 3, "doc2": 2, "doc3": 3, "doc4": 1}
+
+        result = ndcg.compute(retrieved, relevant, graded)
+
+        # DCG = 3/log2(2) + 2/log2(3) + 3/log2(4) + 1/log2(5)
+        dcg = 3 / math.log2(2) + 2 / math.log2(3) + 3 / math.log2(4) + 1 / math.log2(5)
+        # IDCG = 3/log2(2) + 3/log2(3) + 2/log2(4) + 1/log2(5)
+        idcg = 3 / math.log2(2) + 3 / math.log2(3) + 2 / math.log2(4) + 1 / math.log2(5)
+        expected = dcg / idcg
+        assert result == pytest.approx(expected)
+
+    def test_ndcg_no_relevant_docs_returns_zero(self):
+        """Test NDCG returns 0.0 when no relevant docs in results.
+
+        **Why this test is important:**
+          - Edge case: no relevant documents
+          - IDCG = 0 should yield NDCG = 0
+
+        **What it tests:**
+          - No overlap → NDCG = 0.0
+        """
+        ndcg = NDCG(k=5)
+        retrieved = ["doc1", "doc2", "doc3"]
+        relevant = {"doc4", "doc5", "doc6"}
+
+        result = ndcg.compute(retrieved, relevant)
+
+        assert result == pytest.approx(0.0)
+
+    def test_ndcg_empty_relevant_returns_zero(self):
+        """Test NDCG returns 0.0 when relevant set is empty.
+
+        **Why this test is important:**
+          - Edge case: empty relevant set
+          - Should return 0.0, not error
+
+        **What it tests:**
+          - Empty relevant → NDCG = 0.0
+        """
+        ndcg = NDCG(k=5)
+        retrieved = ["doc1", "doc2", "doc3"]
+        relevant: set[str] = set()
+
+        result = ndcg.compute(retrieved, relevant)
+
+        assert result == 0.0
+
+    def test_ndcg_k_zero_raises_value_error(self):
+        """Test NDCG raises ValueError when k=0.
+
+        **Why this test is important:**
+          - Edge case: k=0
+          - Should raise ValueError, consistent with other metrics
+
+        **What it tests:**
+          - k=0 → raises ValueError
+        """
+        with pytest.raises(ValueError, match="k must be at least 1"):
+            NDCG(k=0)
+
+    def test_ndcg_k_negative_raises_value_error(self):
+        """Test NDCG raises ValueError when k is negative.
+
+        **Why this test is important:**
+          - Invalid k value edge case
+          - Should raise ValueError, consistent with other metrics
+
+        **What it tests:**
+          - k=-5 → raises ValueError
+        """
+        with pytest.raises(ValueError, match="k must be at least 1"):
+            NDCG(k=-5)
+
+    def test_ndcg_default_k_is_ten(self):
+        """Test NDCG uses k=10 by default.
+
+        **Why this test is important:**
+          - Validates default parameter value
+          - Common use case without specifying k
+
+        **What it tests:**
+          - Default k=10 is used when not specified
+        """
+        ndcg = NDCG()
+
+        assert ndcg.k == 10
+
+    def test_ndcg_fewer_results_than_k(self):
+        """Test NDCG when retrieved list is shorter than k.
+
+        **Why this test is important:**
+          - Retrieved list may be shorter than k
+          - Should compute correctly based on available results
+
+        **What it tests:**
+          - 3 docs retrieved, k=5
+        """
+        ndcg = NDCG(k=5)
+        retrieved = ["doc1", "doc2", "doc3"]
+        relevant = {"doc1", "doc3"}
+
+        result = ndcg.compute(retrieved, relevant)
+
+        # DCG = 1/log2(2) + 0 + 1/log2(4) = 1.0 + 0.5 = 1.5
+        # IDCG = 1/log2(2) + 1/log2(3) ≈ 1.0 + 0.631 ≈ 1.631
+        dcg = 1 / math.log2(2) + 1 / math.log2(4)
+        idcg = 1 / math.log2(2) + 1 / math.log2(3)
+        expected = dcg / idcg
+        assert result == pytest.approx(expected)
+
+    def test_ndcg_auto_registers_with_registry(self):
+        """Test NDCG auto-registers with MetricRegistry.
+
+        **Why this test is important:**
+          - Metrics must be discoverable by name
+          - Enables dynamic metric selection
+
+        **What it tests:**
+          - MetricRegistry.get("ndcg") returns NDCG class
+        """
+        metric_cls = MetricRegistry.get("ndcg")
+
+        assert metric_cls is not None
+        assert metric_cls.__name__ == "NDCG"
+        # Verify it can be instantiated and compute
+        instance = metric_cls(k=2)
+        result = instance.compute(["a", "b"], {"a", "b"})
+        assert result == pytest.approx(1.0)
+
+    def test_ndcg_graded_with_zero_scores(self):
+        """Test NDCG handles graded relevance with zero scores.
+
+        **Why this test is important:**
+          - Documents may have zero relevance in graded dict
+          - Should not contribute to DCG
+
+        **What it tests:**
+          - Graded dict with some zero-score documents
+        """
+        ndcg = NDCG(k=3)
+        retrieved = ["doc1", "doc2", "doc3"]
+        relevant = {"doc1", "doc2", "doc3"}
+        graded = {"doc1": 3, "doc2": 0, "doc3": 1}
+
+        result = ndcg.compute(retrieved, relevant, graded)
+
+        # DCG = 3/log2(2) + 0/log2(3) + 1/log2(4) = 3.0 + 0 + 0.5 = 3.5
+        # IDCG = 3/log2(2) + 1/log2(3) + 0/log2(4) = 3.0 + 0.631 + 0 = 3.631
+        dcg = 3 / math.log2(2) + 0 / math.log2(3) + 1 / math.log2(4)
+        idcg = 3 / math.log2(2) + 1 / math.log2(3) + 0 / math.log2(4)
+        expected = dcg / idcg
+        assert result == pytest.approx(expected)
+
+
 class TestMetricRegistryIntegration:
     """Test MetricRegistry integration with IR metrics."""
 
@@ -741,7 +1023,7 @@ class TestMetricRegistryIntegration:
           - Validates auto-registration works
 
         **What it tests:**
-          - All four IR metrics are in registry
+          - All five IR metrics are in registry
         """
         all_metrics = MetricRegistry.all_metrics()
 
@@ -749,6 +1031,7 @@ class TestMetricRegistryIntegration:
         assert "recall@k" in all_metrics
         assert "map" in all_metrics
         assert "mrr" in all_metrics
+        assert "ndcg" in all_metrics
 
     def test_registry_returns_correct_classes(self):
         """Test that registry returns correct metric classes.
@@ -764,24 +1047,29 @@ class TestMetricRegistryIntegration:
         recall_cls = MetricRegistry.get("recall@k")
         map_cls = MetricRegistry.get("map")
         mrr_cls = MetricRegistry.get("mrr")
+        ndcg_cls = MetricRegistry.get("ndcg")
 
         assert precision_cls is not None
         assert recall_cls is not None
         assert map_cls is not None
         assert mrr_cls is not None
+        assert ndcg_cls is not None
 
         assert precision_cls.__name__ == "PrecisionAtK"
         assert recall_cls.__name__ == "RecallAtK"
         assert map_cls.__name__ == "MeanAveragePrecision"
         assert mrr_cls.__name__ == "MRR"
+        assert ndcg_cls.__name__ == "NDCG"
 
         # Verify all can be instantiated
         p = precision_cls(k=5)
         r = recall_cls(k=5)
         m = map_cls()
         mrr = mrr_cls()
+        ndcg = ndcg_cls(k=5)
 
         assert hasattr(p, "compute")
         assert hasattr(r, "compute")
         assert hasattr(m, "compute")
         assert hasattr(mrr, "compute")
+        assert hasattr(ndcg, "compute")

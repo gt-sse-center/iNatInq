@@ -240,7 +240,7 @@ class DatabricksStrategy:
             ignore_reinit_error=True,
             logging_level=logging.WARNING,
             log_to_driver=False,
-            runtime_env=runtime_env if runtime_env else None,
+            runtime_env=runtime_env or None,
         )
 
         logger.info(
