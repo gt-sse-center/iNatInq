@@ -296,6 +296,21 @@ class TestCLIPClientEmbedImage:
         assert result == mock_response["embedding"]
         assert len(result) == 512
 
+    def test_embed_image_uses_text_prompt_for_ollama(
+        self,
+        clip_client_with_mock: CLIPClient,
+        mock_clip_session: MagicMock,
+        mock_response: dict,
+    ) -> None:
+        """Test that Ollama image embedding uses provided text as prompt when set."""
+        mock_clip_session.post.return_value.json.return_value = mock_response
+        mock_clip_session.post.return_value.raise_for_status = MagicMock()
+
+        clip_client_with_mock.embed_image(b"fake image", text="a mountain at sunset")
+
+        call_args = mock_clip_session.post.call_args
+        assert call_args[1]["json"]["prompt"] == "a mountain at sunset"
+
     def test_embed_image_empty_raises(self, clip_client_with_mock: CLIPClient) -> None:
         """Test that embed_image rejects empty image bytes.
 
@@ -1056,7 +1071,7 @@ class TestCLIPClientEmbedText:
         # Check the payload has prompt (not images)
         payload = call_args[1]["json"]
         assert payload["model"] == "llava"
-        assert payload["prompt"] == "embeddings"
+        assert payload["prompt"] == "test query"
         assert "images" not in payload
         assert "headers" not in call_args[1]
 
@@ -1372,7 +1387,7 @@ class TestCLIPClientCrossModalSearch:
 
         # Text request has prompt, no images
         assert "prompt" in text_payload
-        assert text_payload["prompt"] == "embeddings"
+        assert text_payload["prompt"] == "a cat"
         assert "images" not in text_payload
 
         # Image request has images

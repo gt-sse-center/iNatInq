@@ -380,6 +380,17 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             }
         }
 
+    def _ollama_prompt(self, text: str | None = None) -> str:
+        """Return prompt for Ollama embedding requests.
+
+        Uses caller-provided text when available, otherwise falls back to
+        a generic prompt for image-only embedding requests.
+        """
+        if text is None:
+            return "embeddings"
+        prompt = text.strip()
+        return prompt or "embeddings"
+
     def _detect_image_mime_type(self, image_bytes: bytes) -> str:
         """Detect MIME type from image magic bytes.
 
@@ -463,7 +474,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             url = f"{self.base_url}/api/embeddings"
             payload = {
                 "model": self.model,
-                "prompt": "embeddings",
+                "prompt": self._ollama_prompt(text),
                 "images": [image_b64],
             }
             response = self.session.post(
@@ -554,7 +565,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                 url = f"{self.base_url}/api/embeddings"
                 payload = {
                     "model": self.model,
-                    "prompt": "embeddings",
+                    "prompt": self._ollama_prompt(text),
                     "images": [image_b64],
                 }
                 response = await client.post(
@@ -816,7 +827,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             url = f"{self.base_url}/api/embeddings"
             payload = {
                 "model": self.model,
-                "prompt": "embeddings",
+                "prompt": self._ollama_prompt(text),
             }
             response = self.session.post(
                 url,
@@ -903,7 +914,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                 url = f"{self.base_url}/api/embeddings"
                 payload = {
                     "model": self.model,
-                    "prompt": "embeddings",
+                    "prompt": self._ollama_prompt(text),
                 }
                 response = await client.post(
                     url,
