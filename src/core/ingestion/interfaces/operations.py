@@ -7,7 +7,6 @@ These classes are shared between Ray and Spark implementations.
 
 import asyncio
 import logging
-import os
 from typing import TYPE_CHECKING
 
 from botocore.exceptions import ClientError
@@ -15,6 +14,7 @@ from botocore.exceptions import ClientError
 from clients.interfaces.embedding import EmbeddingProvider
 from clients.interfaces.vector_db import VectorDBProvider
 from clients.s3 import S3ClientWrapper
+from config import resolve_vector_db_targets
 from core.exceptions import UpstreamError
 from foundation.rate_limiter import RateLimiter
 
@@ -543,23 +543,7 @@ class VectorDBUpserter:
         # Convert VectorPoint to Qdrant PointStruct
         qdrant_point_structs = [point.to_qdrant() for point in embedding_result.qdrant_points]
 
-        provider = os.getenv("VECTOR_DB_PROVIDER", "").strip().lower()
-        if provider in ("", "both"):
-            use_qdrant = True
-            use_weaviate = True
-        elif provider == "qdrant":
-            use_qdrant = True
-            use_weaviate = False
-        elif provider == "weaviate":
-            use_qdrant = False
-            use_weaviate = True
-        else:
-            logger.warning(
-                "Invalid VECTOR_DB_PROVIDER; defaulting to both",
-                extra={"vector_db_provider": provider},
-            )
-            use_qdrant = True
-            use_weaviate = True
+        use_qdrant, use_weaviate = resolve_vector_db_targets(logger=logger)
 
         upsert_results: list[object | Exception | None] = [None, None]
         if use_qdrant and use_weaviate:

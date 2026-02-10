@@ -18,11 +18,17 @@ Run with: pytest tests/unit/test_config.py
 """
 
 import os
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from config import DatabricksRayJobConfig, MinIOConfig, RayJobConfig, resolve_vector_db_provider
+from config import (
+    DatabricksRayJobConfig,
+    MinIOConfig,
+    RayJobConfig,
+    resolve_vector_db_provider,
+    resolve_vector_db_targets,
+)
 
 
 # =============================================================================
@@ -390,6 +396,43 @@ class TestResolveVectorDBProvider:
     def test_uses_explicit_provider_override(self) -> None:
         """Resolver respects explicit provider overrides."""
         assert resolve_vector_db_provider(provider=" Qdrant ") == "qdrant"
+
+
+class TestResolveVectorDBTargets:
+    """Test suite for vector DB target mapping resolution."""
+
+    @pytest.mark.parametrize(
+        ("provider", "expected"),
+        [
+            (None, (True, True)),
+            ("", (True, True)),
+            ("both", (True, True)),
+            ("  Both ", (True, True)),
+            ("qdrant", (True, False)),
+            ("  WeAvIaTe ", (False, True)),
+        ],
+    )
+    @patch.dict(os.environ, {}, clear=True)
+    def test_resolves_known_targets(
+        self, provider: str | None, expected: tuple[bool, bool]
+    ) -> None:
+        """Known providers map to expected enabled target tuple."""
+        assert resolve_vector_db_targets(provider=provider) == expected
+
+    @patch.dict(os.environ, {"VECTOR_DB_PROVIDER": "qdrant"}, clear=True)
+    def test_reads_provider_from_env_when_omitted(self) -> None:
+        """Resolver uses env provider when explicit provider is omitted."""
+        assert resolve_vector_db_targets() == (True, False)
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_invalid_provider_warns_and_defaults_to_both(self) -> None:
+        """Invalid provider values should warn and default to both targets."""
+        mock_logger = MagicMock()
+        assert resolve_vector_db_targets(provider="invalid", logger=mock_logger) == (True, True)
+        mock_logger.warning.assert_called_once_with(
+            "Invalid VECTOR_DB_PROVIDER; defaulting to both",
+            extra={"vector_db_provider": "invalid"},
+        )
 
 
 class TestVectorDBConfigQdrantResilience:

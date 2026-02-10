@@ -248,6 +248,7 @@ This module uses Pydantic Settings for configuration management, providing:
 """
 
 import os
+import logging
 from functools import lru_cache
 from typing import Any, Literal
 
@@ -293,6 +294,37 @@ def resolve_vector_db_provider(provider: str | None = None, default: str = "qdra
     raw_value = provider if provider is not None else os.getenv("VECTOR_DB_PROVIDER")
     normalized = (raw_value or "").strip().lower()
     return normalized or default
+
+
+def resolve_vector_db_targets(
+    provider: str | None = None, *, logger: logging.Logger | None = None
+) -> tuple[bool, bool]:
+    """Resolve which vector DB targets should be enabled.
+
+    Args:
+        provider: Optional provider override. If None, reads
+            ``VECTOR_DB_PROVIDER`` from the environment.
+        logger: Optional logger used for invalid provider warnings.
+
+    Returns:
+        Tuple of ``(use_qdrant, use_weaviate)``.
+    """
+    normalized_provider = resolve_vector_db_provider(provider=provider, default="both")
+    target_mapping: dict[str, tuple[bool, bool]] = {
+        "both": (True, True),
+        "qdrant": (True, False),
+        "weaviate": (False, True),
+    }
+    targets = target_mapping.get(normalized_provider)
+    if targets is not None:
+        return targets
+
+    if logger is not None:
+        logger.warning(
+            "Invalid VECTOR_DB_PROVIDER; defaulting to both",
+            extra={"vector_db_provider": normalized_provider},
+        )
+    return target_mapping["both"]
 
 
 class EmbeddingConfig(BaseModel):
