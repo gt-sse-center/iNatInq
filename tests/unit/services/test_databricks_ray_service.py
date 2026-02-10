@@ -23,7 +23,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from config import EmbeddingConfig
+from config import EmbeddingConfig, ImageEmbeddingConfig
 from core.exceptions import UpstreamError
 from core.services.databricks_ray_service import DatabricksRayService
 
@@ -83,7 +83,7 @@ class TestDatabricksRayServiceSubmitJob:
         assert "S3_SECRET_ACCESS_KEY=test-secret" in params
         assert "S3_BUCKET=test-bucket" in params
         assert "VECTOR_DB_COLLECTION=test-collection" in params
-        assert "EMBEDDING_PROVIDER_TYPE=ollama" in params
+        assert "EMBEDDING_PROVIDER=ollama" in params
 
     @patch.dict(
         "os.environ",
@@ -164,6 +164,137 @@ class TestDatabricksRayServiceSubmitJob:
                 s3_prefix="inputs/",
                 embedding_config=embedding_config,
                 collection="test-collection",
+            )
+
+
+# =============================================================================
+# Image Job Submission Tests
+# =============================================================================
+
+
+class TestDatabricksRayServiceSubmitImageJob:
+    """Test suite for DatabricksRayService.submit_image_job."""
+
+    @patch.dict(
+        "os.environ",
+        {
+            "CLIP_API_KEY": "clip-key",
+            "INATINQ_SRC_DIR": "/Workspace/Users/test/iNatInq/src",
+            "VECTOR_DB_PROVIDER": "qdrant",
+        },
+        clear=False,
+    )
+    @patch("core.services.databricks_ray_service.DatabricksRayJobConfig.from_env")
+    @patch("core.services.databricks_ray_service.WorkspaceClient")
+    def test_submit_image_job_success(
+        self,
+        mock_client_cls: MagicMock,
+        mock_config: MagicMock,
+    ) -> None:
+        """Test that submit_image_job submits a Databricks run with image params."""
+        mock_databricks_config = MagicMock()
+        mock_databricks_config.host = "https://dbc.example.cloud"
+        mock_databricks_config.token = "databricks-token"
+        mock_databricks_config.job_id = 123
+        mock_config.return_value = mock_databricks_config
+
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.run_id = 789
+        mock_client.jobs.run_now.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        image_embedding_config = ImageEmbeddingConfig(
+            provider_type="clip",
+            clip_url="http://clip.test:8000",
+            clip_model="ViT-B/32",
+            clip_backend="hosted_clip",
+            clip_timeout=90,
+            clip_circuit_breaker_threshold=7,
+            clip_circuit_breaker_timeout=45,
+            clip_max_batch_size=16,
+            clip_vector_size=512,
+            image_batch_size=12,
+            image_max_size_mb=8.5,
+            image_target_size=336,
+        )
+
+        service = DatabricksRayService()
+        run_id = service.submit_image_job(
+            namespace="test-namespace",
+            s3_endpoint="http://minio.test:9000",
+            s3_access_key_id="test-key",
+            s3_secret_access_key="test-secret",
+            s3_bucket="test-bucket",
+            s3_prefix="images/",
+            image_embedding_config=image_embedding_config,
+            collection="test-image-collection",
+        )
+
+        assert run_id == 789
+        mock_client_cls.assert_called_once_with(host="https://dbc.example.cloud", token="databricks-token")
+
+        call_kwargs = mock_client.jobs.run_now.call_args.kwargs
+        assert call_kwargs["job_id"] == 123
+        params = call_kwargs["python_params"]
+        assert "K8S_NAMESPACE=test-namespace" in params
+        assert "S3_PREFIX=images/" in params
+        assert "S3_ENDPOINT=http://minio.test:9000" in params
+        assert "S3_ACCESS_KEY_ID=test-key" in params
+        assert "S3_SECRET_ACCESS_KEY=test-secret" in params
+        assert "S3_BUCKET=test-bucket" in params
+        assert "VECTOR_DB_COLLECTION=test-image-collection" in params
+        assert "IMAGE_EMBEDDING_PROVIDER=clip" in params
+        assert "CLIP_URL=http://clip.test:8000" in params
+        assert "CLIP_MODEL=ViT-B/32" in params
+        assert "CLIP_BACKEND=hosted_clip" in params
+        assert "CLIP_TIMEOUT=90" in params
+        assert "CLIP_CIRCUIT_BREAKER_THRESHOLD=7" in params
+        assert "CLIP_CIRCUIT_BREAKER_TIMEOUT=45" in params
+        assert "CLIP_MAX_BATCH_SIZE=16" in params
+        assert "CLIP_VECTOR_SIZE=512" in params
+        assert "IMAGE_BATCH_SIZE=12" in params
+        assert "IMAGE_MAX_SIZE_MB=8.5" in params
+        assert "IMAGE_TARGET_SIZE=336" in params
+        assert "CLIP_API_KEY=clip-key" in params
+        assert "INATINQ_SRC_DIR=/Workspace/Users/test/iNatInq/src" in params
+        assert "VECTOR_DB_PROVIDER=qdrant" in params
+
+    @patch("core.services.databricks_ray_service.DatabricksRayJobConfig.from_env")
+    @patch("core.services.databricks_ray_service.WorkspaceClient")
+    def test_submit_image_job_raises_on_client_error(
+        self,
+        mock_client_cls: MagicMock,
+        mock_config: MagicMock,
+    ) -> None:
+        """Test that submit_image_job wraps Databricks SDK errors in UpstreamError."""
+        mock_databricks_config = MagicMock()
+        mock_databricks_config.host = "https://dbc.example.cloud"
+        mock_databricks_config.token = "databricks-token"
+        mock_databricks_config.job_id = 123
+        mock_config.return_value = mock_databricks_config
+
+        mock_client = MagicMock()
+        mock_client.jobs.run_now.side_effect = Exception("boom")
+        mock_client_cls.return_value = mock_client
+
+        image_embedding_config = ImageEmbeddingConfig(
+            provider_type="clip",
+            clip_url="http://clip.test:8000",
+            clip_model="ViT-B/32",
+        )
+
+        service = DatabricksRayService()
+        with pytest.raises(UpstreamError, match="Failed to submit Databricks image job"):
+            service.submit_image_job(
+                namespace="test-namespace",
+                s3_endpoint="http://minio.test:9000",
+                s3_access_key_id="test-key",
+                s3_secret_access_key="test-secret",
+                s3_bucket="test-bucket",
+                s3_prefix="images/",
+                image_embedding_config=image_embedding_config,
+                collection="test-image-collection",
             )
 
 

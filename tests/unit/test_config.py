@@ -18,11 +18,17 @@ Run with: pytest tests/unit/test_config.py
 """
 
 import os
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from config import DatabricksRayJobConfig, MinIOConfig, RayJobConfig
+from config import (
+    DatabricksRayJobConfig,
+    MinIOConfig,
+    RayJobConfig,
+    resolve_vector_db_provider,
+    resolve_vector_db_targets,
+)
 
 
 # =============================================================================
@@ -374,6 +380,61 @@ class TestMinIOConfigResilience:
 # =============================================================================
 
 
+class TestResolveVectorDBProvider:
+    """Test suite for vector DB provider resolution."""
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_defaults_to_qdrant_when_unset(self) -> None:
+        """Resolver returns qdrant when provider is not configured."""
+        assert resolve_vector_db_provider() == "qdrant"
+
+    @patch.dict(os.environ, {"VECTOR_DB_PROVIDER": "  WeAvIaTe  "}, clear=True)
+    def test_normalizes_provider_from_env(self) -> None:
+        """Resolver normalizes casing and whitespace from env values."""
+        assert resolve_vector_db_provider() == "weaviate"
+
+    def test_uses_explicit_provider_override(self) -> None:
+        """Resolver respects explicit provider overrides."""
+        assert resolve_vector_db_provider(provider=" Qdrant ") == "qdrant"
+
+
+class TestResolveVectorDBTargets:
+    """Test suite for vector DB target mapping resolution."""
+
+    @pytest.mark.parametrize(
+        ("provider", "expected"),
+        [
+            (None, (True, True)),
+            ("", (True, True)),
+            ("both", (True, True)),
+            ("  Both ", (True, True)),
+            ("qdrant", (True, False)),
+            ("  WeAvIaTe ", (False, True)),
+        ],
+    )
+    @patch.dict(os.environ, {}, clear=True)
+    def test_resolves_known_targets(
+        self, provider: str | None, expected: tuple[bool, bool]
+    ) -> None:
+        """Known providers map to expected enabled target tuple."""
+        assert resolve_vector_db_targets(provider=provider) == expected
+
+    @patch.dict(os.environ, {"VECTOR_DB_PROVIDER": "qdrant"}, clear=True)
+    def test_reads_provider_from_env_when_omitted(self) -> None:
+        """Resolver uses env provider when explicit provider is omitted."""
+        assert resolve_vector_db_targets() == (True, False)
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_invalid_provider_warns_and_defaults_to_both(self) -> None:
+        """Invalid provider values should warn and default to both targets."""
+        mock_logger = MagicMock()
+        assert resolve_vector_db_targets(provider="invalid", logger=mock_logger) == (True, True)
+        mock_logger.warning.assert_called_once_with(
+            "Invalid VECTOR_DB_PROVIDER; defaulting to both",
+            extra={"vector_db_provider": "invalid"},
+        )
+
+
 class TestVectorDBConfigQdrantResilience:
     """Test suite for VectorDBConfig Qdrant resilience settings."""
 
@@ -439,6 +500,21 @@ class TestVectorDBConfigQdrantResilience:
         assert config.qdrant_timeout == 300
         assert config.qdrant_circuit_breaker_threshold == 3
         assert config.qdrant_circuit_breaker_timeout == 60
+
+    @patch.dict(
+        os.environ,
+        {
+            "VECTOR_DB_PROVIDER": "   ",
+        },
+        clear=False,
+    )
+    @patch("config._is_in_cluster", return_value=False)
+    def test_blank_provider_defaults_to_qdrant(self, mock_cluster: patch) -> None:
+        """Test that blank provider values fall back to qdrant default."""
+        from config import VectorDBConfig
+
+        config = VectorDBConfig.from_env()
+        assert config.provider_type == "qdrant"
 
 
 class TestVectorDBConfigWeaviateResilience:

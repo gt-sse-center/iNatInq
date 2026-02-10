@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import resource
-from typing import Any
+from typing import Any, Self
 
 import attrs
 import ray
@@ -20,26 +20,33 @@ logger = logging.getLogger("pipeline.ray.strategy.local")
 
 @attrs.define
 class LocalRayStrategy:
-    """Strategy for connecting to external Ray clusters.
+    """Strategy for connecting to Ray clusters.
 
-    This strategy requires RAY_ADDRESS to be set and connects to an
-    existing Ray cluster. It does not manage cluster lifecycle - only
-    the client connection.
+    If RAY_ADDRESS is set, connects to an external Ray cluster.
+    Otherwise, starts a local Ray cluster in-process.
 
     Attributes:
-        _config: Ray job configuration.
+        config: Ray job configuration.
 
     Example:
         ```python
         config = RayJobConfig.from_env()
-        strategy = LocalRayStrategy(config)
+        strategy = LocalRayStrategy(config=config)
         strategy.init()
         # ... use Ray ...
         strategy.shutdown()
         ```
     """
 
-    _config: RayJobConfig
+    config: RayJobConfig | None = None
+    num_cpus: int | None = None
+    include_dashboard: bool = True
+    dashboard_host: str | None = None
+    dashboard_port: int | None = None
+
+    def __attrs_post_init__(self) -> None:
+        if self.config is None:
+            self.config = RayJobConfig.from_env()
 
     @classmethod
     def from_env(cls, namespace: str = "ml-system") -> LocalRayStrategy:
@@ -54,9 +61,9 @@ class LocalRayStrategy:
         return cls(config=RayJobConfig.from_env(namespace))
 
     @property
-    def config(self) -> RayJobConfig:
-        """Return the Ray job configuration."""
-        return self._config
+    def is_active(self) -> bool:
+        """Return True if Ray is initialized."""
+        return ray.is_initialized()
 
     def get_runtime_env(self) -> dict[str, Any]:
         """Return runtime environment for Ray workers.
@@ -64,7 +71,8 @@ class LocalRayStrategy:
         Returns:
             Runtime env dict from config, or empty dict if not set.
         """
-        return self._config.runtime_env.copy() if self._config.runtime_env else {}
+        config = self.config
+        return config.runtime_env.copy() if config.runtime_env else {}
 
     def init(self) -> None:
         """Initialize connection to external Ray cluster.
@@ -73,22 +81,45 @@ class LocalRayStrategy:
         to increase the process thread limit to prevent Ray failures.
 
         Raises:
-            ValueError: If RAY_ADDRESS is not configured.
-            RuntimeError: If connection to Ray cluster fails.
+            RuntimeError: If connection to external Ray cluster fails.
         """
         if ray.is_initialized():
             logger.debug("Ray already initialized, skipping")
             return
 
-        if not self._config.ray_address:
-            raise ValueError(
-                "RAY_ADDRESS is required. Local Ray execution is not supported. "
-                "Set RAY_ADDRESS environment variable to connect to external Ray cluster."
-            )
+        config = self.config
+        runtime_env = self.get_runtime_env()
 
         self._increase_thread_limit()
 
-        runtime_env = self.get_runtime_env()
+        if config.ray_address:
+            try:
+                ray.init(
+                    address=config.ray_address,
+                    namespace=config.ray_namespace,
+                    runtime_env=runtime_env or None,
+                    ignore_reinit_error=True,
+                    logging_level=logging.WARNING,
+                    log_to_driver=False,
+                )
+                logger.info(
+                    "Connected to Ray cluster",
+                    extra={
+                        "ray_address": config.ray_address,
+                        "namespace": config.ray_namespace,
+                    },
+                )
+                return
+            except Exception as e:
+                logger.error(
+                    "Failed to connect to Ray cluster",
+                    extra={
+                        "ray_address": config.ray_address,
+                        "error": str(e),
+                    },
+                    exc_info=True,
+                )
+                raise RuntimeError(f"Failed to connect to Ray cluster: {e}") from e
 
         try:
             ray.init(
@@ -129,6 +160,13 @@ class LocalRayStrategy:
                 logger.debug("Ray client shutdown complete")
         except Exception as e:
             logger.warning("Error during Ray shutdown", extra={"error": str(e)})
+
+    def __enter__(self) -> Self:
+        self.initialize()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.shutdown()
 
     def _increase_thread_limit(self) -> None:
         """Attempt to increase process thread limit for Ray.

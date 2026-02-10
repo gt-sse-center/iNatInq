@@ -105,6 +105,7 @@ class TestDatabricksStrategyRuntimeEnv:
             os.environ,
             {
                 "INATINQ_SRC_DIR": "/workspace/src",
+                "VECTOR_DB_PROVIDER": "qdrant",
                 "S3_ENDPOINT": "http://minio:9000",
                 "QDRANT_URL": "http://qdrant:6333",
             },
@@ -131,13 +132,27 @@ class TestDatabricksStrategyRuntimeEnv:
 
         with patch.dict(
             os.environ,
-            {"INATINQ_SRC_DIR": "/workspace/src", "PYTHONPATH": "/custom/path"},
+            {
+                "INATINQ_SRC_DIR": "/workspace/src",
+                "VECTOR_DB_PROVIDER": "qdrant",
+                "PYTHONPATH": "/custom/path",
+            },
             clear=False,
         ):
             with patch("pathlib.Path.is_dir", return_value=True):
                 env = strategy.get_runtime_env()
 
         assert env["env_vars"]["PYTHONPATH"] == "/custom/path"
+
+    def test_get_runtime_env_defaults_vector_provider_when_missing(self, ray_job_config: RayJobConfig):
+        """get_runtime_env() sets default VECTOR_DB_PROVIDER when missing."""
+        strategy = DatabricksStrategy(config=ray_job_config)
+
+        with patch.dict(os.environ, {"INATINQ_SRC_DIR": "/workspace/src"}, clear=True):
+            with patch("pathlib.Path.is_dir", return_value=True):
+                env = strategy.get_runtime_env()
+
+        assert env["env_vars"]["VECTOR_DB_PROVIDER"] == "qdrant"
 
     def test_get_runtime_env_raises_without_src_dir(self, ray_job_config: RayJobConfig):
         """get_runtime_env() raises RuntimeError without INATINQ_SRC_DIR.
@@ -152,7 +167,7 @@ class TestDatabricksStrategyRuntimeEnv:
         """
         strategy = DatabricksStrategy(config=ray_job_config)
 
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {"VECTOR_DB_PROVIDER": "qdrant"}, clear=True):
             # Remove INATINQ_SRC_DIR if present
             os.environ.pop("INATINQ_SRC_DIR", None)
             with pytest.raises(RuntimeError, match="INATINQ_SRC_DIR is not set"):
@@ -170,7 +185,11 @@ class TestDatabricksStrategyRuntimeEnv:
         """
         strategy = DatabricksStrategy(config=ray_job_config)
 
-        with patch.dict(os.environ, {"INATINQ_SRC_DIR": "/workspace/iNatInq/src"}, clear=False):
+        with patch.dict(
+            os.environ,
+            {"INATINQ_SRC_DIR": "/workspace/iNatInq/src", "VECTOR_DB_PROVIDER": "qdrant"},
+            clear=False,
+        ):
             with patch("pathlib.Path.is_dir", return_value=True):
                 env = strategy.get_runtime_env()
 
@@ -189,7 +208,11 @@ class TestDatabricksStrategyRuntimeEnv:
         """
         strategy = DatabricksStrategy(config=ray_job_config)
 
-        with patch.dict(os.environ, {"INATINQ_SRC_DIR": "/nonexistent/path"}, clear=False):
+        with patch.dict(
+            os.environ,
+            {"INATINQ_SRC_DIR": "/nonexistent/path", "VECTOR_DB_PROVIDER": "qdrant"},
+            clear=False,
+        ):
             with patch("pathlib.Path.is_dir", return_value=False):
                 with patch("core.ingestion.strategies.databricks.logger") as mock_logger:
                     env = strategy.get_runtime_env()
@@ -413,7 +436,11 @@ class TestDatabricksStrategyInitRayClient:
         mock_cluster.address = "ray://cluster:10001"
         strategy._cluster = mock_cluster
 
-        with patch.dict(os.environ, {"INATINQ_SRC_DIR": "/workspace/src"}, clear=False):
+        with patch.dict(
+            os.environ,
+            {"INATINQ_SRC_DIR": "/workspace/src", "VECTOR_DB_PROVIDER": "qdrant"},
+            clear=False,
+        ):
             with patch("pathlib.Path.is_dir", return_value=True):
                 strategy._init_ray_client()
 
@@ -436,7 +463,11 @@ class TestDatabricksStrategyInitRayClient:
         strategy = DatabricksStrategy(config=ray_job_config)
         strategy._cluster = None
 
-        with patch.dict(os.environ, {"INATINQ_SRC_DIR": "/workspace/src"}, clear=False):
+        with patch.dict(
+            os.environ,
+            {"INATINQ_SRC_DIR": "/workspace/src", "VECTOR_DB_PROVIDER": "qdrant"},
+            clear=False,
+        ):
             with patch("pathlib.Path.is_dir", return_value=True):
                 strategy._init_ray_client()
 
@@ -455,7 +486,11 @@ class TestDatabricksStrategyInitRayClient:
         mock_ray.is_initialized.return_value = True
         strategy = DatabricksStrategy(config=ray_job_config)
 
-        with patch.dict(os.environ, {"INATINQ_SRC_DIR": "/workspace/src"}, clear=False):
+        with patch.dict(
+            os.environ,
+            {"INATINQ_SRC_DIR": "/workspace/src", "VECTOR_DB_PROVIDER": "qdrant"},
+            clear=False,
+        ):
             with patch("pathlib.Path.is_dir", return_value=True):
                 strategy._init_ray_client()
 

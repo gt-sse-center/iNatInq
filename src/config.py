@@ -183,8 +183,9 @@ defaults):
   environment and backend)
 - `CLIP_MODEL`: Model name for image embedding (default: `ViT-B/32`
   for clip backend, `llava` for ollama backend)
-- `CLIP_BACKEND`: API backend type - `ollama` or `clip`
+- `CLIP_BACKEND`: API backend type - `ollama`, `clip`, or `hosted_clip`
   (default: `ollama`)
+- `CLIP_API_KEY`: Optional API key for hosted CLIP endpoints
 - `CLIP_TIMEOUT`: Request timeout in seconds (default: `120`)
 - `CLIP_CIRCUIT_BREAKER_THRESHOLD`: Failures before circuit opens
   (default: `5`)
@@ -247,6 +248,7 @@ This module uses Pydantic Settings for configuration management, providing:
 """
 
 import os
+import logging
 from functools import lru_cache
 from typing import Any, Literal
 
@@ -276,6 +278,53 @@ def _is_in_cluster() -> bool:
 
     # Check for Kubernetes service host
     return bool(os.getenv("KUBERNETES_SERVICE_HOST"))
+
+
+def resolve_vector_db_provider(provider: str | None = None, default: str = "qdrant") -> str:
+    """Normalize vector DB provider and apply a fallback default.
+
+    Args:
+        provider: Optional provider override. If None, reads VECTOR_DB_PROVIDER
+            from the environment.
+        default: Provider to use when no value is configured.
+
+    Returns:
+        Normalized provider string.
+    """
+    raw_value = provider if provider is not None else os.getenv("VECTOR_DB_PROVIDER")
+    normalized = (raw_value or "").strip().lower()
+    return normalized or default
+
+
+def resolve_vector_db_targets(
+    provider: str | None = None, *, logger: logging.Logger | None = None
+) -> tuple[bool, bool]:
+    """Resolve which vector DB targets should be enabled.
+
+    Args:
+        provider: Optional provider override. If None, reads
+            ``VECTOR_DB_PROVIDER`` from the environment.
+        logger: Optional logger used for invalid provider warnings.
+
+    Returns:
+        Tuple of ``(use_qdrant, use_weaviate)``.
+    """
+    normalized_provider = resolve_vector_db_provider(provider=provider, default="both")
+    target_mapping: dict[str, tuple[bool, bool]] = {
+        "both": (True, True),
+        "qdrant": (True, False),
+        "weaviate": (False, True),
+    }
+    targets = target_mapping.get(normalized_provider)
+    if targets is not None:
+        return targets
+
+    if logger is not None:
+        logger.warning(
+            "Invalid VECTOR_DB_PROVIDER; defaulting to both",
+            extra={"vector_db_provider": normalized_provider},
+        )
+    return target_mapping["both"]
 
 
 class EmbeddingConfig(BaseModel):
@@ -450,9 +499,11 @@ class ImageEmbeddingConfig(BaseModel):
             Auto-detected based on environment if not set.
         clip_model: Model name for image embedding (e.g., "llava", "ViT-B/32").
             Default: "llava".
-        clip_backend: API backend type. One of "ollama" or "clip". Default: "ollama".
+        clip_backend: API backend type. One of "ollama", "clip", or "hosted_clip".
+            Default: "ollama".
             - "ollama": Uses Ollama's /api/embeddings endpoint with LLaVA
             - "clip": Uses ai4all/clip's /embed/image endpoint
+            - "hosted_clip": Uses hosted CLIP endpoints (Azure ML-style /score)
         clip_timeout: Request timeout in seconds. Default: 120 (higher for images).
         clip_circuit_breaker_threshold: Failures before circuit opens. Default: 5.
         clip_circuit_breaker_timeout: Circuit recovery timeout in seconds. Default: 30.
@@ -472,7 +523,8 @@ class ImageEmbeddingConfig(BaseModel):
     # CLIP settings
     clip_url: str | None = None
     clip_model: str | None = None
-    clip_backend: Literal["ollama", "clip"] = "ollama"
+    clip_backend: Literal["ollama", "clip", "hosted_clip"] = "ollama"
+    clip_api_key: str | None = None
     clip_timeout: int = 120
     clip_circuit_breaker_threshold: int = 5
     clip_circuit_breaker_timeout: int = 30
@@ -494,7 +546,8 @@ class ImageEmbeddingConfig(BaseModel):
         - IMAGE_EMBEDDING_PROVIDER: Provider type ("clip" or "llava", default: "clip")
         - CLIP_URL or OLLAMA_BASE_URL: Service URL
         - CLIP_MODEL: Model name (default depends on backend)
-        - CLIP_BACKEND: API backend type ("ollama" or "clip", default: "ollama")
+        - CLIP_BACKEND: API backend type ("ollama", "clip", or "hosted_clip", default: "ollama")
+        - CLIP_API_KEY: Optional API key for authenticated CLIP/Ollama endpoints
         - CLIP_TIMEOUT: Request timeout in seconds
         - CLIP_CIRCUIT_BREAKER_THRESHOLD: Failures before circuit opens
         - CLIP_CIRCUIT_BREAKER_TIMEOUT: Circuit recovery timeout
@@ -517,13 +570,13 @@ class ImageEmbeddingConfig(BaseModel):
         if provider_type not in ("clip", "llava"):
             provider_type = "clip"
 
-        # Get backend type (ollama or clip)
+        # Get backend type (ollama, clip, or hosted_clip)
         clip_backend = os.getenv("CLIP_BACKEND", "ollama").lower()
-        if clip_backend not in ("ollama", "clip"):
+        if clip_backend not in ("ollama", "clip", "hosted_clip"):
             clip_backend = "ollama"
 
         # Resolve URL based on backend
-        if clip_backend == "clip":
+        if clip_backend in ("clip", "hosted_clip"):
             default_url = f"http://clip.{namespace}:8000" if in_cluster else "http://localhost:8000"
             default_model = "ViT-B/32"
         else:
@@ -544,6 +597,7 @@ class ImageEmbeddingConfig(BaseModel):
             clip_url=clip_url,
             clip_model=clip_model,
             clip_backend=clip_backend,  # type: ignore[arg-type]
+            clip_api_key=os.getenv("CLIP_API_KEY"),
             clip_timeout=int(os.getenv("CLIP_TIMEOUT", "120")),
             clip_circuit_breaker_threshold=int(os.getenv("CLIP_CIRCUIT_BREAKER_THRESHOLD", "5")),
             clip_circuit_breaker_timeout=int(os.getenv("CLIP_CIRCUIT_BREAKER_TIMEOUT", "30")),
@@ -713,7 +767,7 @@ class VectorDBConfig(BaseModel):
             Configured VectorDBConfig instance.
         """
         # Determine provider type
-        provider_type = os.getenv("VECTOR_DB_PROVIDER", "qdrant").lower()
+        provider_type = resolve_vector_db_provider()
 
         # Validate provider type
         valid_providers = ("qdrant", "weaviate")

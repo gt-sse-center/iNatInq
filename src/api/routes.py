@@ -14,6 +14,8 @@ This module defines all HTTP endpoints for the pipeline service. It handles:
 in vector database
 - `POST /ray/jobs/images`: Submit Ray job to process S3 images and store
 image embeddings in vector DB image collections
+- `POST /databricks/jobs`: Submit Databricks job to process S3 data
+- `POST /databricks/jobs/images`: Submit Databricks job to process S3 images
 - `GET /ray/jobs/{job_id}`: Check status of a submitted job
 
 ## Error Handling
@@ -562,6 +564,58 @@ async def submit_databricks_job(req: models.DatabricksJobRequest) -> models.Data
         )
     except Exception as e:
         raise PipelineError(f"Failed to submit Databricks job: {e!s}") from e
+
+
+@router.post(
+    "/databricks/jobs/images",
+    response_model=models.DatabricksImageJobResponse,
+    status_code=202,
+    tags=["databricks-jobs"],
+)
+async def submit_databricks_image_job(
+    req: models.DatabricksImageJobRequest,
+) -> models.DatabricksImageJobResponse:
+    """Submit a new Databricks job to process S3 images.
+
+    This submits a run for a preconfigured Databricks Job and returns immediately.
+
+    Args:
+        req: Request containing s3_prefix and collection.
+
+    Returns:
+        Job metadata including Databricks run ID and submission timestamp.
+
+    Raises:
+        HTTPException(500): If job submission fails.
+    """
+    try:
+        settings = get_settings()
+        namespace = settings.k8s_namespace
+
+        databricks_service = DatabricksRayService()
+        minio_cfg = MinIOConfig.from_env(namespace)
+        image_embed_cfg = ImageEmbeddingConfig.from_env(namespace)
+        run_id = databricks_service.submit_image_job(
+            namespace=namespace,
+            s3_endpoint=minio_cfg.endpoint_url,
+            s3_access_key_id=minio_cfg.access_key_id,
+            s3_secret_access_key=minio_cfg.secret_access_key,
+            s3_bucket=minio_cfg.bucket,
+            s3_prefix=req.s3_prefix,
+            image_embedding_config=image_embed_cfg,
+            collection=req.collection,
+        )
+
+        return models.DatabricksImageJobResponse(
+            run_id=str(run_id),
+            status="submitted",
+            namespace=namespace,
+            s3_prefix=req.s3_prefix,
+            collection=req.collection,
+            submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+        )
+    except Exception as e:
+        raise PipelineError(f"Failed to submit Databricks image job: {e!s}") from e
 
 
 @router.delete(

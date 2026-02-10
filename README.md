@@ -117,9 +117,20 @@ export DATABRICKS_TASK_TYPE=python
 
 # Image Embedding (CLIP) - for image search
 export IMAGE_EMBEDDING_PROVIDER=clip  # or "llava" for Ollama LLaVA
+# ai4all/clip server:
+export CLIP_BACKEND=clip
 export CLIP_URL=http://your-clip-host:8000
 export CLIP_MODEL=ViT-B/32
-export CLIP_BACKEND=clip  # "clip" for ai4all/clip, "ollama" for Ollama LLaVA
+# Hosted CLIP (Azure ML-style /score endpoint):
+# export CLIP_BACKEND=hosted_clip
+# export CLIP_URL=https://<your-endpoint>/score
+# export CLIP_API_KEY=your-api-key
+# export CLIP_MODEL=clip-vit-base-patch32
+# export CLIP_VECTOR_SIZE=512
+# Ollama LLaVA:
+# export CLIP_BACKEND=ollama
+# export CLIP_URL=http://your-ollama-host:11434
+# export CLIP_MODEL=llava
 
 # Image Processing Settings
 export IMAGE_BATCH_SIZE=10       # Images per processing batch

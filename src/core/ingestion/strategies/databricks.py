@@ -15,7 +15,7 @@ from typing import Any
 import attrs
 import ray
 
-from config import RayJobConfig
+from config import RayJobConfig, resolve_vector_db_provider
 
 logger = logging.getLogger("pipeline.ray.strategy.databricks")
 
@@ -50,7 +50,7 @@ _PASSTHROUGH_ENV_VARS = (
     "WEAVIATE_TIMEOUT",
     "WEAVIATE_CIRCUIT_BREAKER_THRESHOLD",
     "WEAVIATE_CIRCUIT_BREAKER_TIMEOUT",
-    "EMBEDDING_PROVIDER_TYPE",
+    "EMBEDDING_PROVIDER",
     "OLLAMA_BASE_URL",
     "OLLAMA_MODEL",
     "OLLAMA_TIMEOUT",
@@ -59,6 +59,19 @@ _PASSTHROUGH_ENV_VARS = (
     "OLLAMA_RETRY_MAX_WAIT",
     "OLLAMA_CIRCUIT_BREAKER_THRESHOLD",
     "OLLAMA_CIRCUIT_BREAKER_TIMEOUT",
+    "IMAGE_EMBEDDING_PROVIDER",
+    "CLIP_URL",
+    "CLIP_MODEL",
+    "CLIP_BACKEND",
+    "CLIP_API_KEY",
+    "CLIP_TIMEOUT",
+    "CLIP_CIRCUIT_BREAKER_THRESHOLD",
+    "CLIP_CIRCUIT_BREAKER_TIMEOUT",
+    "CLIP_MAX_BATCH_SIZE",
+    "CLIP_VECTOR_SIZE",
+    "IMAGE_BATCH_SIZE",
+    "IMAGE_MAX_SIZE_MB",
+    "IMAGE_TARGET_SIZE",
     "INATINQ_SRC_DIR",
 )
 
@@ -131,6 +144,7 @@ class DatabricksStrategy:
             if value is not None and value != "":
                 env_vars[key] = value
 
+        env_vars["VECTOR_DB_PROVIDER"] = resolve_vector_db_provider()
         if env_vars:
             runtime_env["env_vars"] = env_vars
 
@@ -231,7 +245,10 @@ class DatabricksStrategy:
         runtime_env = self.get_runtime_env()
 
         if ray.is_initialized():
-            logger.debug("Ray already initialized, skipping")
+            logger.warning(
+                "Ray already initialized; skipping runtime_env updates. "
+                "Restart the job/cluster to apply VECTOR_DB_PROVIDER to workers."
+            )
             return
 
         ray.init(

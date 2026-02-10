@@ -102,7 +102,7 @@ class TestRayServiceSubmitJob:
         assert env_vars["S3_SECRET_ACCESS_KEY"] == "test-secret"
         assert env_vars["S3_BUCKET"] == "test-bucket"
         assert env_vars["VECTOR_DB_COLLECTION"] == "test-collection"
-        assert env_vars["EMBEDDING_PROVIDER_TYPE"] == "ollama"
+        assert env_vars["EMBEDDING_PROVIDER"] == "ollama"
 
     @patch.dict(
         "os.environ",

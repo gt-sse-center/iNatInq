@@ -163,6 +163,8 @@ class UpsertResult:
         qdrant_error: Error message if Qdrant failed, empty string otherwise.
         weaviate_error: Error message if Weaviate failed, empty string otherwise.
         batch_size: Number of points in the batch.
+        qdrant_enabled: True if Qdrant was targeted for this upsert.
+        weaviate_enabled: True if Weaviate was targeted for this upsert.
 
     Example:
         >>> result = UpsertResult(qdrant_success=True, weaviate_success=False,
@@ -176,16 +178,32 @@ class UpsertResult:
     qdrant_error: str = ""
     weaviate_error: str = ""
     batch_size: int = 0
+    qdrant_enabled: bool = True
+    weaviate_enabled: bool = True
 
     @property
     def any_success(self) -> bool:
         """Return True if at least one database succeeded."""
-        return self.qdrant_success or self.weaviate_success
+        enabled = []
+        if self.qdrant_enabled:
+            enabled.append(self.qdrant_success)
+        if self.weaviate_enabled:
+            enabled.append(self.weaviate_success)
+        if not enabled:
+            return True
+        return any(enabled)
 
     @property
     def all_success(self) -> bool:
         """Return True if both databases succeeded."""
-        return self.qdrant_success and self.weaviate_success
+        enabled = []
+        if self.qdrant_enabled:
+            enabled.append(self.qdrant_success)
+        if self.weaviate_enabled:
+            enabled.append(self.weaviate_success)
+        if not enabled:
+            return True
+        return all(enabled)
 
     @classmethod
     def both_success(cls, batch_size: int) -> "UpsertResult":
@@ -193,9 +211,20 @@ class UpsertResult:
         return cls(qdrant_success=True, weaviate_success=True, batch_size=batch_size)
 
     @classmethod
-    def empty(cls) -> "UpsertResult":
-        """Create result for empty batch (no-op, counts as success)."""
-        return cls(qdrant_success=True, weaviate_success=True, batch_size=0)
+    def noop(cls) -> "UpsertResult":
+        """Create no-op result when no database was targeted.
+
+        This is treated as successful for control flow (`any_success` and
+        `all_success` remain True), but both database enablement flags are False
+        so downstream logs/metrics reflect that nothing was attempted.
+        """
+        return cls(
+            qdrant_success=True,
+            weaviate_success=True,
+            batch_size=0,
+            qdrant_enabled=False,
+            weaviate_enabled=False,
+        )
 
 
 # =============================================================================

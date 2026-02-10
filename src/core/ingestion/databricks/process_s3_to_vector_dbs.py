@@ -20,7 +20,7 @@ import ray
 from botocore.exceptions import ClientError
 
 from clients.s3 import S3ClientWrapper
-from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
+from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig, resolve_vector_db_provider
 from foundation.checkpoint import CheckpointManager, is_s3_path
 from core.ingestion.tasks import process_s3_batch_ray
 from core.ingestion.shared import RateLimiterActor
@@ -92,7 +92,7 @@ def _init_ray(config: RayJobConfig, ray_cluster: object | None) -> None:
         "WEAVIATE_TIMEOUT",
         "WEAVIATE_CIRCUIT_BREAKER_THRESHOLD",
         "WEAVIATE_CIRCUIT_BREAKER_TIMEOUT",
-        "EMBEDDING_PROVIDER_TYPE",
+        "EMBEDDING_PROVIDER",
         "OLLAMA_BASE_URL",
         "OLLAMA_MODEL",
         "OLLAMA_TIMEOUT",
@@ -101,12 +101,26 @@ def _init_ray(config: RayJobConfig, ray_cluster: object | None) -> None:
         "OLLAMA_RETRY_MAX_WAIT",
         "OLLAMA_CIRCUIT_BREAKER_THRESHOLD",
         "OLLAMA_CIRCUIT_BREAKER_TIMEOUT",
+        "IMAGE_EMBEDDING_PROVIDER",
+        "CLIP_URL",
+        "CLIP_MODEL",
+        "CLIP_BACKEND",
+        "CLIP_API_KEY",
+        "CLIP_TIMEOUT",
+        "CLIP_CIRCUIT_BREAKER_THRESHOLD",
+        "CLIP_CIRCUIT_BREAKER_TIMEOUT",
+        "CLIP_MAX_BATCH_SIZE",
+        "CLIP_VECTOR_SIZE",
+        "IMAGE_BATCH_SIZE",
+        "IMAGE_MAX_SIZE_MB",
+        "IMAGE_TARGET_SIZE",
         "INATINQ_SRC_DIR",
     )
     for key in passthrough_keys:
         value = os.environ.get(key)
         if value is not None and value != "":
             env_vars[key] = value
+    env_vars["VECTOR_DB_PROVIDER"] = resolve_vector_db_provider()
 
     if env_vars:
         runtime_env["env_vars"] = env_vars
