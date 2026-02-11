@@ -345,7 +345,8 @@ class TestRayProcessingPipelineAsync:
 class TestProcessS3ObjectRay:
     """Tests for process_s3_object_ray remote function."""
 
-    def test_process_single_object_calls_pipeline(self, mock_ray):
+    @patch("core.ingestion.tasks.text_processing.ray")
+    def test_process_single_object_calls_pipeline(self, mock_ray_module: MagicMock):
         """Verify process_s3_object_ray processes a single S3 object.
 
         **Why this test is important:**
@@ -369,11 +370,15 @@ class TestProcessS3ObjectRay:
         mock_pipeline = MagicMock()
         mock_pipeline.process_keys_sync.return_value = [ProcessingResult.success_result("doc.txt")]
 
+        # Get the unwrapped function from the ray.remote decorator
         with patch(
             "core.ingestion.tasks.text_processing.RayProcessingPipeline",
             return_value=mock_pipeline,
         ):
-            result = process_s3_object_ray(
+            # Access the underlying function via _function attribute
+            import core.ingestion.tasks.text_processing as text_module
+
+            result = text_module.process_s3_object_ray._function(
                 s3_key="doc.txt",
                 s3_endpoint="http://minio:9000",
                 s3_access_key="access",
@@ -385,7 +390,8 @@ class TestProcessS3ObjectRay:
 
         assert result == ("doc.txt", True, "")
 
-    def test_process_single_object_returns_failure_on_no_result(self, mock_ray):
+    @patch("core.ingestion.tasks.text_processing.ray")
+    def test_process_single_object_returns_failure_on_no_result(self, mock_ray_module: MagicMock):
         """Verify process_s3_object_ray returns failure when no result.
 
         **Why this test is important:**
@@ -413,7 +419,9 @@ class TestProcessS3ObjectRay:
             "core.ingestion.tasks.text_processing.RayProcessingPipeline",
             return_value=mock_pipeline,
         ):
-            result = process_s3_object_ray(
+            import core.ingestion.tasks.text_processing as text_module
+
+            result = text_module.process_s3_object_ray._function(
                 s3_key="doc.txt",
                 s3_endpoint="http://minio:9000",
                 s3_access_key="access",
@@ -431,7 +439,8 @@ class TestProcessS3ObjectRay:
 class TestProcessS3BatchRay:
     """Tests for process_s3_batch_ray remote function."""
 
-    def test_process_batch_returns_results(self, mock_ray):
+    @patch("core.ingestion.tasks.text_processing.ray")
+    def test_process_batch_returns_results(self, mock_ray_module: MagicMock):
         """Verify process_s3_batch_ray processes a batch of S3 objects.
 
         **Why this test is important:**
@@ -462,7 +471,9 @@ class TestProcessS3BatchRay:
             "core.ingestion.tasks.text_processing.RayProcessingPipeline",
             return_value=mock_pipeline,
         ):
-            results = process_s3_batch_ray(
+            import core.ingestion.tasks.text_processing as text_module
+
+            results = text_module.process_s3_batch_ray._function(
                 s3_keys=["doc1.txt", "doc2.txt"],
                 s3_endpoint="http://minio:9000",
                 s3_access_key="access",
@@ -477,7 +488,8 @@ class TestProcessS3BatchRay:
         assert results[1][0] == "doc2.txt"
         assert results[1][1] is False
 
-    def test_process_batch_with_rate_limiter(self, mock_ray):
+    @patch("core.ingestion.tasks.text_processing.ray")
+    def test_process_batch_with_rate_limiter(self, mock_ray_module: MagicMock):
         """Verify process_s3_batch_ray uses rate limiter when provided.
 
         **Why this test is important:**
@@ -510,7 +522,9 @@ class TestProcessS3BatchRay:
             mock_pipeline_class,
         ):
             with patch("core.ingestion.tasks.text_processing.RayActorRateLimiter") as mock_limiter:
-                results = process_s3_batch_ray(
+                import core.ingestion.tasks.text_processing as text_module
+
+                results = text_module.process_s3_batch_ray._function(
                     s3_keys=["doc.txt"],
                     s3_endpoint="http://minio:9000",
                     s3_access_key="access",
@@ -524,7 +538,8 @@ class TestProcessS3BatchRay:
         mock_limiter.assert_called_once_with(mock_rate_actor)
         assert len(results) == 1
 
-    def test_process_batch_logs_batch_info(self, mock_ray):
+    @patch("core.ingestion.tasks.text_processing.ray")
+    def test_process_batch_logs_batch_info(self, mock_ray_module: MagicMock):
         """Verify process_s3_batch_ray logs batch information.
 
         **Why this test is important:**
@@ -556,7 +571,9 @@ class TestProcessS3BatchRay:
                 mock_log = MagicMock()
                 mock_logger.return_value = mock_log
 
-                process_s3_batch_ray(
+                import core.ingestion.tasks.text_processing as text_module
+
+                text_module.process_s3_batch_ray._function(
                     s3_keys=["doc.txt"],
                     s3_endpoint="http://minio:9000",
                     s3_access_key="access",
@@ -571,7 +588,8 @@ class TestProcessS3BatchRay:
         # Logger should be called with batch info
         assert mock_log.info.called
 
-    def test_process_batch_logs_circuit_breaker_warnings(self, mock_ray):
+    @patch("core.ingestion.tasks.text_processing.ray")
+    def test_process_batch_logs_circuit_breaker_warnings(self, mock_ray_module: MagicMock):
         """Verify process_s3_batch_ray logs circuit breaker errors.
 
         **Why this test is important:**
@@ -605,7 +623,9 @@ class TestProcessS3BatchRay:
                 mock_log = MagicMock()
                 mock_logger.return_value = mock_log
 
-                process_s3_batch_ray(
+                import core.ingestion.tasks.text_processing as text_module
+
+                text_module.process_s3_batch_ray._function(
                     s3_keys=["doc.txt"],
                     s3_endpoint="http://minio:9000",
                     s3_access_key="access",
@@ -617,7 +637,8 @@ class TestProcessS3BatchRay:
 
         mock_log.warning.assert_called()
 
-    def test_process_batch_uses_configurable_parameters(self, mock_ray):
+    @patch("core.ingestion.tasks.text_processing.ray")
+    def test_process_batch_uses_configurable_parameters(self, mock_ray_module: MagicMock):
         """Verify process_s3_batch_ray passes configurable parameters to pipeline.
 
         **Why this test is important:**
@@ -649,7 +670,9 @@ class TestProcessS3BatchRay:
                 "core.ingestion.tasks.text_processing.RayProcessingPipeline",
                 return_value=mock_pipeline,
             ):
-                process_s3_batch_ray(
+                import core.ingestion.tasks.text_processing as text_module
+
+                text_module.process_s3_batch_ray._function(
                     s3_keys=["doc.txt"],
                     s3_endpoint="http://minio:9000",
                     s3_access_key="access",

@@ -324,6 +324,7 @@ class TestShutdownRayCluster:
         mock_ray.is_initialized.return_value = False
         # Should not raise
         _shutdown_ray_cluster(None)
+        assert True  # no exception when cluster is None
 
 
 class TestDatabricksMain:

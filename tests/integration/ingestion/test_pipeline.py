@@ -169,9 +169,9 @@ class TestTextPipelineIntegration:
         )
 
         # Should return fox-related documents first
-        assert len(results) == 2
+        assert len(results.items) == 2
         # First result should be about foxes
-        first_text = results[0].payload.get("text", "")
+        first_text = results.items[0].payload.get("text", "")
         assert "fox" in first_text.lower()
 
 
@@ -459,7 +459,7 @@ class TestFullPipelineIntegration:
             )
         )
 
-        assert len(results) > 0
+        assert len(results.items) > 0
         # First result should be AI-related
-        first_text = results[0].payload.get("text", "")
+        first_text = results.items[0].payload.get("text", "")
         assert "artificial" in first_text.lower() or "neural" in first_text.lower()

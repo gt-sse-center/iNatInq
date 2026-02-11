@@ -717,6 +717,7 @@ class TestOllamaClientClose:
 
         # Should not raise
         client.close()
+        assert client._session is None
 
 
 # =============================================================================
