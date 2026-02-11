@@ -4,6 +4,7 @@ This wrapper converts Databricks python_params (KEY=VALUE) into environment
 variables before invoking the Ray ingestion entrypoint.
 """
 
+import os
 import sys
 
 try:
@@ -17,8 +18,16 @@ def _load_params(params: list[str]) -> None:
     apply_python_params(params)
 
 
+def _entrypoint_file() -> str:
+    """Resolve entrypoint path for script and notebook exec contexts."""
+    explicit_path = os.getenv("DATABRICKS_ENTRYPOINT_FILE")
+    if explicit_path:
+        return explicit_path
+    return globals().get("__file__") or (sys.argv[0] if sys.argv else "run_ingest.py")
+
+
 if __name__ == "__main__":
-    bootstrap_runtime(sys.argv[1:], entrypoint_file=__file__)
+    bootstrap_runtime(sys.argv[1:], entrypoint_file=_entrypoint_file())
     # Deferred import: only valid after sys.path is set from INATINQ_SRC_DIR.
     from core.ingestion.databricks.process_s3_to_vector_dbs import main
 
