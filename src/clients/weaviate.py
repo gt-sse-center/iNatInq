@@ -313,10 +313,13 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
         """Convert any collection name to Weaviate class name (PascalCase).
 
         Weaviate requires class names to be PascalCase. This method converts
-        snake_case or kebab-case names to PascalCase.
+        snake_case or kebab-case names to PascalCase. If the name is already
+        a single PascalCase token (e.g. from _collection_to_image_class_name),
+        it is returned as-is so that casing is preserved.
 
         Args:
-            collection: Collection name (e.g., 'documents_images', 'my-photos').
+            collection: Collection name (e.g., 'documents_images', 'my-photos',
+                or already 'DocumentsImages').
 
         Returns:
             Weaviate class name in PascalCase (e.g., 'DocumentsImages', 'MyPhotos').

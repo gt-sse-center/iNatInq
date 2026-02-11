@@ -454,7 +454,8 @@ class TestImageProcessingPipelineAsync:
 class TestProcessImageBatchRay:
     """Tests for process_image_batch_ray remote function."""
 
-    def test_process_batch_returns_results(self, mock_ray):
+    @patch("core.ingestion.tasks.image_processing.ray")
+    def test_process_batch_returns_results(self, mock_ray_module: MagicMock):
         """Verify process_image_batch_ray processes a batch of images.
 
         **Why this test is important:**
@@ -482,7 +483,9 @@ class TestProcessImageBatchRay:
             "core.ingestion.tasks.image_processing.ImageProcessingPipeline",
             return_value=mock_pipeline,
         ):
-            results = process_image_batch_ray(
+            import core.ingestion.tasks.image_processing as image_module
+
+            results = image_module.process_image_batch_ray._function(
                 s3_keys=["img1.jpg", "img2.jpg"],
                 s3_endpoint="http://minio:9000",
                 s3_access_key="access",
@@ -497,7 +500,8 @@ class TestProcessImageBatchRay:
         assert results[1][0] == "img2.jpg"
         assert results[1][1] is False
 
-    def test_process_batch_with_rate_limiter(self, mock_ray):
+    @patch("core.ingestion.tasks.image_processing.ray")
+    def test_process_batch_with_rate_limiter(self, mock_ray_module: MagicMock):
         """Verify process_image_batch_ray uses rate limiter when provided.
 
         **Why this test is important:**
@@ -527,7 +531,9 @@ class TestProcessImageBatchRay:
             mock_pipeline_class,
         ):
             with patch("core.ingestion.tasks.image_processing.RayActorRateLimiter") as mock_limiter:
-                results = process_image_batch_ray(
+                import core.ingestion.tasks.image_processing as image_module
+
+                results = image_module.process_image_batch_ray._function(
                     s3_keys=["img.jpg"],
                     s3_endpoint="http://minio:9000",
                     s3_access_key="access",
@@ -541,7 +547,8 @@ class TestProcessImageBatchRay:
         mock_limiter.assert_called_once_with(mock_rate_actor)
         assert len(results) == 1
 
-    def test_process_batch_logs_info(self, mock_ray):
+    @patch("core.ingestion.tasks.image_processing.ray")
+    def test_process_batch_logs_info(self, mock_ray_module: MagicMock):
         """Verify process_image_batch_ray logs batch information.
 
         **Why this test is important:**
@@ -569,7 +576,9 @@ class TestProcessImageBatchRay:
                 mock_log = MagicMock()
                 mock_logger.return_value = mock_log
 
-                process_image_batch_ray(
+                import core.ingestion.tasks.image_processing as image_module
+
+                image_module.process_image_batch_ray._function(
                     s3_keys=["img.jpg"],
                     s3_endpoint="http://minio:9000",
                     s3_access_key="access",
@@ -581,7 +590,8 @@ class TestProcessImageBatchRay:
 
         assert mock_log.info.called
 
-    def test_process_batch_uses_configurable_parameters(self, mock_ray):
+    @patch("core.ingestion.tasks.image_processing.ray")
+    def test_process_batch_uses_configurable_parameters(self, mock_ray_module: MagicMock):
         """Verify process_image_batch_ray passes configurable parameters to pipeline.
 
         **Why this test is important:**
@@ -610,7 +620,9 @@ class TestProcessImageBatchRay:
                 "core.ingestion.tasks.image_processing.ImageProcessingPipeline",
                 return_value=mock_pipeline,
             ):
-                process_image_batch_ray(
+                import core.ingestion.tasks.image_processing as image_module
+
+                image_module.process_image_batch_ray._function(
                     s3_keys=["img.jpg"],
                     s3_endpoint="http://minio:9000",
                     s3_access_key="access",

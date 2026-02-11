@@ -9,6 +9,34 @@ import logging
 from typing import Any
 
 
+class MockSafeJSONEncoder(json.JSONEncoder):
+    """JSON encoder that safely handles mock objects in tests.
+
+    This encoder converts unittest.mock.MagicMock objects to strings
+    to prevent "Object of type MagicMock is not JSON serializable" errors
+    during testing.
+    """
+
+    def default(self, obj: Any) -> Any:
+        """Handle objects that aren't JSON serializable by default.
+
+        Args:
+            obj: Object to serialize.
+
+        Returns:
+            Serializable representation of the object.
+        """
+        # Check if it's a Mock object (works for MagicMock, Mock, AsyncMock, etc.)
+        if hasattr(obj, "_mock_name") or type(obj).__name__.endswith("Mock"):
+            return f"<Mock: {type(obj).__name__}>"
+
+        # For any other non-serializable object, convert to string
+        try:
+            return super().default(obj)
+        except TypeError:
+            return str(obj)
+
+
 class CustomJSONFormatter(logging.Formatter):
     """Custom JSON formatter for structured logging.
 
@@ -38,7 +66,7 @@ class CustomJSONFormatter(logging.Formatter):
             JSON string representation of the log record.
         """
         logging.Formatter.format(self, record)
-        return json.dumps(self.get_log(record), indent=None)
+        return json.dumps(self.get_log(record), indent=None, cls=MockSafeJSONEncoder)
 
     def get_log(self, record: logging.LogRecord) -> dict[str, Any]:
         """Extract log data from record into a dictionary.
