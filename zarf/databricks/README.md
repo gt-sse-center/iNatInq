@@ -37,6 +37,7 @@ Databricks job/CLI settings:
 - `DATABRICKS_HOST`
 - `DATABRICKS_TOKEN`
 - `DATABRICKS_JOB_ID`
+- `DATABRICKS_INAT_JOB_ID` (required for dedicated iNaturalist image job submission)
 - `DATABRICKS_TASK_TYPE` (default: `python`)
 - `DATABRICKS_CLUSTER_ID` (optional override for cluster start/stop)
 - `INATINQ_SRC_DIR` (optional; override the workspace src path)
@@ -46,7 +47,12 @@ Databricks job/CLI settings:
 - `RAY_NUM_WORKERS`
 - `RAY_WORKER_CPUS`
 
-### iNaturalist image job (`run_ingest_image.py` -> `process_inat_images.py`)
+### Databricks image entrypoints
+
+- S3 image job: `run_ingest_image.py` -> `process_s3_images.py`
+- iNaturalist image job: `run_ingest_inat_image.py` -> `process_inat_images.py`
+
+### iNaturalist image job (`run_ingest_inat_image.py` -> `process_inat_images.py`)
 
 Required:
 

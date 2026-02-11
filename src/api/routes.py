@@ -595,21 +595,34 @@ async def submit_databricks_image_job(
         databricks_service = DatabricksRayService()
         minio_cfg = MinIOConfig.from_env(namespace)
         image_embed_cfg = ImageEmbeddingConfig.from_env(namespace)
-        run_id = databricks_service.submit_image_job(
-            namespace=namespace,
-            s3_endpoint=minio_cfg.endpoint_url,
-            s3_access_key_id=minio_cfg.access_key_id,
-            s3_secret_access_key=minio_cfg.secret_access_key,
-            s3_bucket=minio_cfg.bucket,
-            s3_prefix=req.s3_prefix,
-            image_embedding_config=image_embed_cfg,
-            collection=req.collection,
-        )
+        if req.source == "inat":
+            run_id = databricks_service.submit_inat_image_job(
+                namespace=namespace,
+                s3_endpoint=minio_cfg.endpoint_url,
+                s3_access_key_id=minio_cfg.access_key_id,
+                s3_secret_access_key=minio_cfg.secret_access_key,
+                s3_bucket=minio_cfg.bucket,
+                s3_prefix=req.s3_prefix,
+                image_embedding_config=image_embed_cfg,
+                collection=req.collection,
+            )
+        else:
+            run_id = databricks_service.submit_image_job(
+                namespace=namespace,
+                s3_endpoint=minio_cfg.endpoint_url,
+                s3_access_key_id=minio_cfg.access_key_id,
+                s3_secret_access_key=minio_cfg.secret_access_key,
+                s3_bucket=minio_cfg.bucket,
+                s3_prefix=req.s3_prefix,
+                image_embedding_config=image_embed_cfg,
+                collection=req.collection,
+            )
 
         return models.DatabricksImageJobResponse(
             run_id=str(run_id),
             status="submitted",
             namespace=namespace,
+            source=req.source,
             s3_prefix=req.s3_prefix,
             collection=req.collection,
             submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017

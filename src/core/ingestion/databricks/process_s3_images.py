@@ -12,12 +12,14 @@ import os
 import sys
 import time
 from logging.config import dictConfig
+from typing import Any
 
-import ray
 from botocore.exceptions import ClientError
 
 from clients.s3 import S3ClientWrapper
-from config import ImageEmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
+from config import ImageEmbeddingConfig, MinIOConfig, RayJobConfig, resolve_vector_db_provider
+from core.ingestion.databricks.batch_runner import run_ray_batch_processing
+from core.ingestion.databricks.runtime import apply_python_params as _apply_python_params
 from core.ingestion.interfaces.operations import ImageContentFetcher
 from core.ingestion.tasks import process_image_batch_ray
 from core.ingestion.strategies import DatabricksStrategy
@@ -26,17 +28,6 @@ from foundation.logger import LOGGING_CONFIG
 dictConfig(LOGGING_CONFIG)
 
 logger = logging.getLogger("pipeline.ray.databricks")
-
-
-def _apply_python_params(args: list[str]) -> None:
-    """Apply KEY=VALUE args (Databricks python_params) to the environment."""
-    for arg in args:
-        if "=" not in arg:
-            continue
-        key, value = arg.split("=", 1)
-        if not key or not key.isupper() or not key.replace("_", "").isalnum():
-            continue
-        os.environ[key] = value
 
 
 def main() -> None:
@@ -110,6 +101,7 @@ def main() -> None:
         image_embed_batch_size = ray_cfg.image_embed_batch_size
         key_batches = [keys[i : i + image_batch_size] for i in range(0, len(keys), image_batch_size)]
         num_batches = len(key_batches)
+        max_inflight_batches = max(1, ray_cfg.num_workers)
 
         job_logger.info(
             "Starting image batch processing: %d images in %d batches",
@@ -120,6 +112,7 @@ def main() -> None:
                 "num_batches": num_batches,
                 "image_batch_size": image_batch_size,
                 "image_embed_batch_size": image_embed_batch_size,
+                "max_inflight_batches": max_inflight_batches,
             },
         )
 
@@ -128,8 +121,8 @@ def main() -> None:
             max_retries=ray_cfg.task_max_retries,
         )
 
-        futures = [
-            task_fn.remote(
+        def _submit_batch(batch: list[Any]) -> Any:
+            return task_fn.remote(
                 s3_keys=batch,
                 s3_endpoint=minio_cfg.endpoint_url,
                 s3_access_key=minio_cfg.access_key_id,
@@ -150,47 +143,22 @@ def main() -> None:
                 retry_max_wait=ray_cfg.retry_max_wait,
                 ingestion_targets=ingestion_targets,
             )
-            for batch in key_batches
-        ]
 
-        results: list[tuple[str, bool, str]] = []
-        completed_keys = 0
-        wait_batch = ray_cfg.wait_batch_size
-        wait_timeout = ray_cfg.wait_timeout
+        stats = run_ray_batch_processing(
+            batches=key_batches,
+            submit_batch=_submit_batch,
+            wait_batch_size=ray_cfg.wait_batch_size,
+            wait_timeout=ray_cfg.wait_timeout,
+            max_inflight_batches=max_inflight_batches,
+            job_logger=job_logger,
+            progress_label="Image batch progress",
+            total_expected_records=len(keys),
+        )
 
-        while futures:
-            ready, not_ready = ray.wait(
-                futures,
-                num_returns=min(wait_batch, len(futures)),
-                timeout=wait_timeout,
-            )
-            futures = not_ready
-            batch_results = ray.get(ready)
-            for batch_result in batch_results:
-                results.extend(batch_result)
-                completed_keys += len(batch_result)
-            if batch_results:
-                success_so_far = sum(1 for _, ok, _ in results if ok)
-                failed_so_far = len(results) - success_so_far
-                job_logger.info(
-                    "Image batch progress: %d/%d completed (%d ok, %d failed)",
-                    completed_keys,
-                    len(keys),
-                    success_so_far,
-                    failed_so_far,
-                    extra={
-                        "completed_keys": completed_keys,
-                        "total_keys": len(keys),
-                        "successful": success_so_far,
-                        "failed": failed_so_far,
-                        "remaining_keys": len(keys) - completed_keys,
-                    },
-                )
-
-        success = sum(1 for _, ok, _ in results if ok)
-        failed = len(results) - success
+        success = stats.successful
+        failed = stats.failed
         elapsed = round(time.time() - start, 2)
-        rate = round(len(results) / elapsed, 2) if elapsed > 0 else 0
+        rate = round(stats.completed_records / elapsed, 2) if elapsed > 0 else 0
         job_logger.info(
             "Databricks Ray image job complete: %d successful, %d failed in %.2fs (%.2f images/s)",
             success,
@@ -200,7 +168,9 @@ def main() -> None:
             extra={
                 "successful": success,
                 "failed": failed,
-                "total": len(results),
+                "total": stats.completed_records,
+                "submitted_records": stats.submitted_records,
+                "num_batches": stats.num_batches,
                 "elapsed_seconds": elapsed,
                 "rate_per_sec": rate,
             },

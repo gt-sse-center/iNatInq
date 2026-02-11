@@ -20,8 +20,10 @@ import ray
 from botocore.exceptions import ClientError
 
 from clients.s3 import S3ClientWrapper
-from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
+from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig, resolve_vector_db_provider
+from core.ingestion.databricks.runtime import apply_python_params as _apply_python_params
 from foundation.checkpoint import CheckpointManager, is_s3_path
+from core.ingestion.shared.env_keys import DATABRICKS_RUNTIME_PASSTHROUGH_ENV_VARS
 from core.ingestion.tasks import process_s3_batch_ray
 from core.ingestion.shared import RateLimiterActor
 from foundation.logger import LOGGING_CONFIG
@@ -65,49 +67,7 @@ def _init_ray(config: RayJobConfig, ray_cluster: object | None) -> None:
     if pythonpath:
         env_vars["PYTHONPATH"] = pythonpath
 
-    passthrough_keys = (
-        "K8S_NAMESPACE",
-        "S3_PREFIX",
-        "S3_ENDPOINT",
-        "S3_ACCESS_KEY_ID",
-        "S3_SECRET_ACCESS_KEY",
-        "S3_BUCKET",
-        "S3_REGION",
-        "S3_USE_SSL",
-        "S3_PATH_STYLE",
-        "S3_TIMEOUT",
-        "S3_MAX_RETRIES",
-        "S3_RETRY_MIN_WAIT",
-        "S3_RETRY_MAX_WAIT",
-        "S3_CIRCUIT_BREAKER_THRESHOLD",
-        "S3_CIRCUIT_BREAKER_TIMEOUT",
-        "VECTOR_DB_PROVIDER",
-        "VECTOR_DB_COLLECTION",
-        "QDRANT_URL",
-        "QDRANT_API_KEY",
-        "QDRANT_TIMEOUT",
-        "QDRANT_CIRCUIT_BREAKER_THRESHOLD",
-        "QDRANT_CIRCUIT_BREAKER_TIMEOUT",
-        "WEAVIATE_URL",
-        "WEAVIATE_API_KEY",
-        "WEAVIATE_GRPC_HOST",
-        "WEAVIATE_GRPC_PORT",
-        "WEAVIATE_TIMEOUT",
-        "WEAVIATE_CIRCUIT_BREAKER_THRESHOLD",
-        "WEAVIATE_CIRCUIT_BREAKER_TIMEOUT",
-        "EMBEDDING_PROVIDER",
-        "OLLAMA_BASE_URL",
-        "OLLAMA_MODEL",
-        "OLLAMA_TIMEOUT",
-        "OLLAMA_MAX_RETRIES",
-        "OLLAMA_RETRY_MIN_WAIT",
-        "OLLAMA_RETRY_MAX_WAIT",
-        "OLLAMA_CIRCUIT_BREAKER_THRESHOLD",
-        "OLLAMA_CIRCUIT_BREAKER_TIMEOUT",
-        "VECTOR_DB_TARGETS",
-        "INATINQ_SRC_DIR",
-    )
-    for key in passthrough_keys:
+    for key in DATABRICKS_RUNTIME_PASSTHROUGH_ENV_VARS:
         value = os.environ.get(key)
         if value is not None and value != "":
             env_vars[key] = value
@@ -148,17 +108,6 @@ def _shutdown_ray_cluster(ray_cluster: object | None) -> None:
     shutdown = getattr(ray_cluster, "shutdown", None)
     if callable(shutdown):
         shutdown()
-
-
-def _apply_python_params(args: list[str]) -> None:
-    """Apply KEY=VALUE args (Databricks python_params) to the environment."""
-    for arg in args:
-        if "=" not in arg:
-            continue
-        key, value = arg.split("=", 1)
-        if not key or not key.isupper() or not key.replace("_", "").isalnum():
-            continue
-        os.environ[key] = value
 
 
 def main() -> None:

@@ -50,6 +50,22 @@ class DatabricksRayService:
         ```
     """
 
+    @staticmethod
+    def _submit_python_job(
+        *,
+        host: str,
+        token: str,
+        job_id: int,
+        python_params: list[str],
+    ) -> int:
+        """Submit a Databricks python task and return run_id."""
+        client = WorkspaceClient(host=host, token=token)
+        response = client.jobs.run_now(
+            job_id=job_id,
+            python_params=python_params,
+        )
+        return int(response.run_id)
+
     def submit_s3_to_vector_dbs(
         self,
         *,
@@ -100,16 +116,16 @@ class DatabricksRayService:
         python_params = [f"{key}={value}" for key, value in env_vars.items()]
 
         try:
-            client = WorkspaceClient(host=databricks_config.host, token=databricks_config.token)
             logger.info(
                 "Submitting Databricks job",
                 extra={"job_id": databricks_config.job_id, "s3_prefix": s3_prefix},
             )
-            response = client.jobs.run_now(
+            return self._submit_python_job(
+                host=databricks_config.host,
+                token=databricks_config.token,
                 job_id=databricks_config.job_id,
                 python_params=python_params,
             )
-            return int(response.run_id)
         except Exception as e:
             logger.exception("Failed to submit Databricks job", extra={"error": str(e)})
             raise UpstreamError(f"Failed to submit Databricks job: {e}") from e
@@ -163,19 +179,68 @@ class DatabricksRayService:
         python_params = [f"{key}={value}" for key, value in env_vars.items()]
 
         try:
-            client = WorkspaceClient(host=databricks_config.host, token=databricks_config.token)
             logger.info(
                 "Submitting Databricks image job",
                 extra={"job_id": databricks_config.job_id, "s3_prefix": s3_prefix},
             )
-            response = client.jobs.run_now(
+            return self._submit_python_job(
+                host=databricks_config.host,
+                token=databricks_config.token,
                 job_id=databricks_config.job_id,
                 python_params=python_params,
             )
-            return int(response.run_id)
         except Exception as e:
             logger.exception("Failed to submit Databricks image job", extra={"error": str(e)})
             raise UpstreamError(f"Failed to submit Databricks image job: {e}") from e
+
+    def submit_inat_image_job(
+        self,
+        *,
+        namespace: str,
+        s3_endpoint: str,
+        s3_access_key_id: str,
+        s3_secret_access_key: str,
+        s3_bucket: str,
+        s3_prefix: str = "images/",
+        image_embedding_config: ImageEmbeddingConfig,
+        collection: str,
+    ) -> int:
+        """Submit a Databricks job to process iNaturalist images.
+
+        Uses `DATABRICKS_INAT_JOB_ID` as the first-class job selector.
+        """
+        databricks_config = DatabricksRayJobConfig.from_env()
+        if databricks_config.inat_job_id is None:
+            raise ValueError("Missing required Databricks config: DATABRICKS_INAT_JOB_ID")
+
+        env_vars = build_image_ingestion_env(
+            namespace=namespace,
+            s3_endpoint=s3_endpoint,
+            s3_access_key_id=s3_access_key_id,
+            s3_secret_access_key=s3_secret_access_key,
+            s3_bucket=s3_bucket,
+            s3_prefix=s3_prefix,
+            image_embedding_config=image_embedding_config,
+            collection=collection,
+            extra_env_keys=("INATINQ_SRC_DIR",),
+        )
+        add_ray_tuning_env(env_vars)
+        python_params = [f"{key}={value}" for key, value in env_vars.items()]
+
+        try:
+            logger.info(
+                "Submitting Databricks iNaturalist image job",
+                extra={"job_id": databricks_config.inat_job_id, "s3_prefix": s3_prefix},
+            )
+            return self._submit_python_job(
+                host=databricks_config.host,
+                token=databricks_config.token,
+                job_id=databricks_config.inat_job_id,
+                python_params=python_params,
+            )
+        except Exception as e:
+            logger.exception("Failed to submit Databricks iNaturalist image job", extra={"error": str(e)})
+            raise UpstreamError(f"Failed to submit Databricks iNaturalist image job: {e}") from e
 
     def stop_run(self, run_id: int | str) -> None:
         """Stop a running Databricks job run.

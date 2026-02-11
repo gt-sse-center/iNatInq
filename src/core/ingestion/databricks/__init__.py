@@ -16,6 +16,7 @@ _SUBMODULES = frozenset(
         "process_inat_images",
         "run_ingest",
         "run_ingest_image",
+        "run_ingest_inat_image",
     }
 )
 
@@ -35,4 +36,5 @@ __all__ = [
     "process_s3_to_vector_dbs",
     "run_ingest",
     "run_ingest_image",
+    "run_ingest_inat_image",
 ]

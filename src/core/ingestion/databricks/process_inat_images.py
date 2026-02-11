@@ -20,6 +20,8 @@ import ray
 from clients.clip import CLIPClient
 from clients.inaturalist_open_data import INaturalistOpenDataClient
 from config import ImageEmbeddingConfig, RayJobConfig
+from core.ingestion.databricks.batch_runner import run_ray_batch_processing
+from core.ingestion.databricks.runtime import apply_python_params as _apply_python_params
 from core.ingestion.interfaces.factories import VectorDBConfigFactory, create_vector_db_provider
 from core.ingestion.interfaces.operations import detect_image_format
 from core.ingestion.interfaces.types import ImageContentResult, ProcessingResult
@@ -31,17 +33,6 @@ from foundation.logger import LOGGING_CONFIG
 dictConfig(LOGGING_CONFIG)
 
 logger = logging.getLogger("pipeline.ray.databricks")
-
-
-def _apply_python_params(args: list[str]) -> None:
-    """Apply KEY=VALUE args (Databricks python_params) to the environment."""
-    for arg in args:
-        if "=" not in arg:
-            continue
-        key, value = arg.split("=", 1)
-        if not key or not key.isupper() or not key.replace("_", "").isalnum():
-            continue
-        os.environ[key] = value
 
 
 def _parse_required_positive_int_env(name: str) -> int:
@@ -71,6 +62,24 @@ def _record_to_task_payload(record: Any, image_size: str) -> dict[str, str]:
         "photo_url": photo_url,
         "s3_key": parsed_path or fallback_key,
     }
+
+
+def _iter_task_payload_batches(
+    records: Any,
+    *,
+    image_size: str,
+    batch_size: int,
+) -> Any:
+    """Yield serialized task payload batches from a streaming record iterator."""
+    resolved_batch_size = max(1, batch_size)
+    batch: list[dict[str, str]] = []
+    for record in records:
+        batch.append(_record_to_task_payload(record, image_size))
+        if len(batch) >= resolved_batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
 
 
 @ray.remote(num_cpus=1, max_retries=3)
@@ -234,35 +243,23 @@ def main() -> None:
     strategy.init()
 
     try:
-        records = inat_client.read_photo_records(
+        records = inat_client.iter_photo_records(
             metadata_url=metadata_url,
             size=image_size,
             max_rows=max_rows,
         )
-        task_records = [_record_to_task_payload(record, image_size) for record in records]
-        job_logger.info(
-            "Loaded iNaturalist records from metadata",
-            extra={"records": len(task_records), "metadata_url": metadata_url},
-        )
 
-        if not task_records:
-            job_logger.info("No iNaturalist image records to process")
-            return
-
-        image_batch_size = ray_cfg.image_batch_size
-        image_embed_batch_size = ray_cfg.image_embed_batch_size
-        record_batches = [task_records[i : i + image_batch_size] for i in range(0, len(task_records), image_batch_size)]
-        num_batches = len(record_batches)
+        image_batch_size = max(1, ray_cfg.image_batch_size)
+        image_embed_batch_size = max(1, ray_cfg.image_embed_batch_size)
+        max_inflight_batches = max(1, ray_cfg.num_workers)
 
         job_logger.info(
-            "Starting iNaturalist image batch processing: %d records in %d batches",
-            len(task_records),
-            num_batches,
+            "Starting iNaturalist streaming image batch processing",
             extra={
-                "total_records": len(task_records),
-                "num_batches": num_batches,
+                "metadata_url": metadata_url,
                 "image_batch_size": image_batch_size,
                 "image_embed_batch_size": image_embed_batch_size,
+                "max_inflight_batches": max_inflight_batches,
             },
         )
 
@@ -271,8 +268,8 @@ def main() -> None:
             max_retries=ray_cfg.task_max_retries,
         )
 
-        futures = [
-            task_fn.remote(
+        def _submit_batch(batch: list[dict[str, str]]) -> Any:
+            return task_fn.remote(
                 records=batch,
                 image_embedding_config=embed_cfg,
                 collection=collection,
@@ -292,57 +289,36 @@ def main() -> None:
                 inat_cb_failure_threshold=inat_cb_failure_threshold,
                 inat_cb_recovery_timeout_s=inat_cb_recovery_timeout_s,
             )
-            for batch in record_batches
-        ]
 
-        results: list[tuple[str, bool, str]] = []
-        completed_records = 0
-        wait_batch = ray_cfg.wait_batch_size
-        wait_timeout = ray_cfg.wait_timeout
+        stats = run_ray_batch_processing(
+            batches=_iter_task_payload_batches(records, image_size=image_size, batch_size=image_batch_size),
+            submit_batch=_submit_batch,
+            wait_batch_size=ray_cfg.wait_batch_size,
+            wait_timeout=ray_cfg.wait_timeout,
+            max_inflight_batches=max_inflight_batches,
+            job_logger=job_logger,
+            progress_label="iNaturalist image batch progress",
+            total_expected_records=None,
+        )
 
-        while futures:
-            ready, not_ready = ray.wait(
-                futures,
-                num_returns=min(wait_batch, len(futures)),
-                timeout=wait_timeout,
-            )
-            futures = not_ready
-            batch_results = ray.get(ready)
-            for batch_result in batch_results:
-                results.extend(batch_result)
-                completed_records += len(batch_result)
-            if batch_results:
-                success_so_far = sum(1 for _, ok, _ in results if ok)
-                failed_so_far = len(results) - success_so_far
-                job_logger.info(
-                    "iNaturalist image batch progress: %d/%d completed (%d ok, %d failed)",
-                    completed_records,
-                    len(task_records),
-                    success_so_far,
-                    failed_so_far,
-                    extra={
-                        "completed_records": completed_records,
-                        "total_records": len(task_records),
-                        "successful": success_so_far,
-                        "failed": failed_so_far,
-                        "remaining_records": len(task_records) - completed_records,
-                    },
-                )
+        if stats.submitted_records == 0:
+            job_logger.info("No iNaturalist image records to process")
+            return
 
-        success = sum(1 for _, ok, _ in results if ok)
-        failed = len(results) - success
         elapsed = round(time.time() - start, 2)
-        rate = round(len(results) / elapsed, 2) if elapsed > 0 else 0
+        rate = round(stats.completed_records / elapsed, 2) if elapsed > 0 else 0
         job_logger.info(
             "Databricks iNaturalist image job complete: %d successful, %d failed in %.2fs (%.2f images/s)",
-            success,
-            failed,
+            stats.successful,
+            stats.failed,
             elapsed,
             rate,
             extra={
-                "successful": success,
-                "failed": failed,
-                "total": len(results),
+                "successful": stats.successful,
+                "failed": stats.failed,
+                "total": stats.completed_records,
+                "submitted_records": stats.submitted_records,
+                "num_batches": stats.num_batches,
                 "elapsed_seconds": elapsed,
                 "rate_per_sec": rate,
             },
