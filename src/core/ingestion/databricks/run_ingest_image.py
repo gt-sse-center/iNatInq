@@ -40,6 +40,6 @@ def _bootstrap_runtime(params: list[str]) -> None:
 if __name__ == "__main__":
     _bootstrap_runtime(sys.argv[1:])
     # Deferred import: only valid after sys.path is set from INATINQ_SRC_DIR.
-    from core.ingestion.databricks.process_s3_images import main
+    from core.ingestion.databricks.process_inat_images import main
 
     main()

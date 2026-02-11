@@ -11,9 +11,11 @@ import pytest
 import requests
 
 from clients.inaturalist_open_data import (
+    INAT_OPEN_DATA_DOCS_URL,
     INaturalistOpenDataClient,
     INaturalistPhotoRecord,
     SUPPORTED_IMAGE_SIZES,
+    SUPPORTED_METADATA_DATASETS,
 )
 from core.exceptions import UpstreamError
 
@@ -70,6 +72,45 @@ class TestINaturalistOpenDataClientPhotoUrl:
 
         with pytest.raises(ValueError, match="photo_id cannot be empty"):
             client.build_photo_url(photo_id=" ", extension="jpg")
+
+
+class TestINaturalistOpenDataClientMetadataUrl:
+    """Test suite for metadata URL construction helpers."""
+
+    def test_build_metadata_url_defaults_to_photos_csv_gz(self) -> None:
+        client = INaturalistOpenDataClient()
+
+        assert client.build_metadata_url() == "https://inaturalist-open-data.s3.amazonaws.com/photos.csv.gz"
+
+    def test_build_metadata_url_supports_uncompressed(self) -> None:
+        client = INaturalistOpenDataClient()
+
+        assert (
+            client.build_metadata_url(dataset="observations", compressed=False)
+            == "https://inaturalist-open-data.s3.amazonaws.com/observations.csv"
+        )
+
+    def test_build_metadata_url_raises_for_unknown_dataset(self) -> None:
+        client = INaturalistOpenDataClient()
+
+        with pytest.raises(ValueError, match="Unsupported dataset"):
+            client.build_metadata_url(dataset="foo")
+
+        assert "photos" in SUPPORTED_METADATA_DATASETS
+
+    def test_build_metadata_s3_uri_defaults_to_photos_csv_gz(self) -> None:
+        client = INaturalistOpenDataClient()
+
+        assert client.build_metadata_s3_uri() == "s3://inaturalist-open-data/photos.csv.gz"
+
+    def test_latest_metadata_archive_url(self) -> None:
+        client = INaturalistOpenDataClient()
+
+        assert (
+            client.latest_metadata_archive_url()
+            == "https://inaturalist-open-data.s3.amazonaws.com/metadata/inaturalist-open-data-latest.tar.gz"
+        )
+        assert "github.com/inaturalist/inaturalist-open-data" in INAT_OPEN_DATA_DOCS_URL
 
 
 class TestINaturalistOpenDataClientMetadataParsing:
@@ -130,6 +171,24 @@ class TestINaturalistOpenDataClientMetadataParsing:
         assert len(records) == 1
         assert records[0].photo_id == "444"
         assert records[0].photo_url.endswith("/444/medium.gif")
+
+    def test_read_photo_records_parses_gzip_metadata_from_s3_uri(self) -> None:
+        client = INaturalistOpenDataClient()
+        mock_session = MagicMock(spec=requests.Session)
+        client.set_session(mock_session)
+
+        compressed = gzip.compress("photo_id\textension\n445\tgif\n".encode("utf-8"))
+        mock_session.get.return_value = _make_metadata_response(compressed)
+
+        records = client.read_photo_records(metadata_url="s3://inaturalist-open-data/photos.csv.gz")
+
+        assert len(records) == 1
+        assert records[0].photo_id == "445"
+        mock_session.get.assert_called_once_with(
+            "https://inaturalist-open-data.s3.amazonaws.com/photos.csv.gz",
+            timeout=120,
+            stream=True,
+        )
 
     def test_read_photo_records_skips_rows_missing_required_fields(self) -> None:
         client = INaturalistOpenDataClient()

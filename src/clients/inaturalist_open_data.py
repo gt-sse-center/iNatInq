@@ -12,6 +12,7 @@ import csv
 import gzip
 import io
 import itertools
+from urllib.parse import urlparse
 from typing import TYPE_CHECKING
 
 import attrs
@@ -27,6 +28,10 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 SUPPORTED_IMAGE_SIZES = frozenset({"square", "small", "medium", "large", "original"})
+SUPPORTED_METADATA_DATASETS = frozenset(
+    {"observations", "photos", "taxa", "taxon_names", "identifications", "observers"}
+)
+INAT_OPEN_DATA_DOCS_URL = "https://github.com/inaturalist/inaturalist-open-data/tree/documentation"
 
 
 @attrs.define(frozen=True, slots=True)
@@ -44,6 +49,7 @@ class INaturalistOpenDataClient(CircuitBreakerMixin, LoggerMixin):
     """Client for iNaturalist open-data photo metadata and image downloads."""
 
     photo_base_url: str = attrs.field(default="https://inaturalist-open-data.s3.amazonaws.com/photos")
+    metadata_base_url: str = attrs.field(default="https://inaturalist-open-data.s3.amazonaws.com")
     timeout_s: int = attrs.field(default=120)
     circuit_breaker_failure_threshold: int = attrs.field(default=5)
     circuit_breaker_recovery_timeout_s: int = attrs.field(default=30)
@@ -105,6 +111,64 @@ class INaturalistOpenDataClient(CircuitBreakerMixin, LoggerMixin):
 
         return f"{self.photo_base_url}/{resolved_photo_id}/{resolved_size}.{resolved_extension}"
 
+    def build_metadata_url(self, *, dataset: str = "photos", compressed: bool = True) -> str:
+        """Build metadata file URL from dataset name.
+
+        Example:
+            https://inaturalist-open-data.s3.amazonaws.com/photos.csv.gz
+        """
+        resolved_dataset = dataset.strip().lower()
+        if resolved_dataset not in SUPPORTED_METADATA_DATASETS:
+            msg = (
+                f"Unsupported dataset '{dataset}'. Supported: {sorted(SUPPORTED_METADATA_DATASETS)}"
+            )
+            raise ValueError(msg)
+
+        extension = "csv.gz" if compressed else "csv"
+        return f"{self.metadata_base_url.rstrip('/')}/{resolved_dataset}.{extension}"
+
+    def build_metadata_s3_uri(self, *, dataset: str = "photos", compressed: bool = True) -> str:
+        """Build metadata S3 URI from dataset name.
+
+        Example:
+            s3://inaturalist-open-data/photos.csv.gz
+        """
+        resolved_dataset = dataset.strip().lower()
+        if resolved_dataset not in SUPPORTED_METADATA_DATASETS:
+            msg = (
+                f"Unsupported dataset '{dataset}'. Supported: {sorted(SUPPORTED_METADATA_DATASETS)}"
+            )
+            raise ValueError(msg)
+
+        extension = "csv.gz" if compressed else "csv"
+        return f"s3://inaturalist-open-data/{resolved_dataset}.{extension}"
+
+    def latest_metadata_archive_url(self) -> str:
+        """Return URL for the latest metadata tar.gz archive."""
+        return f"{self.metadata_base_url.rstrip('/')}/metadata/inaturalist-open-data-latest.tar.gz"
+
+    @staticmethod
+    def _resolve_metadata_source_url(metadata_url: str) -> str:
+        """Resolve metadata source URL to an HTTP(S) streamable endpoint.
+
+        Accepts:
+          - https://... / http://...
+          - s3://bucket/key (converted to https://bucket.s3.amazonaws.com/key)
+        """
+        resolved = metadata_url.strip()
+        if not resolved:
+            raise ValueError("metadata_url cannot be empty")
+
+        if resolved.startswith("s3://"):
+            parsed = urlparse(resolved)
+            bucket = parsed.netloc.strip()
+            key = parsed.path.lstrip("/")
+            if not bucket or not key:
+                raise ValueError(f"Invalid S3 metadata URI: {metadata_url}")
+            return f"https://{bucket}.s3.amazonaws.com/{key}"
+
+        return resolved
+
     @with_circuit_breaker("inaturalist_open_data")
     def download_image(self, photo_url: str) -> bytes:
         """Download image bytes from a photo URL."""
@@ -123,11 +187,12 @@ class INaturalistOpenDataClient(CircuitBreakerMixin, LoggerMixin):
     @with_circuit_breaker("inaturalist_open_data")
     def _fetch_metadata_response(self, metadata_url: str) -> requests.Response:
         """Fetch metadata file response in streaming mode."""
+        resolved_url = self._resolve_metadata_source_url(metadata_url)
         try:
-            response = self.session.get(metadata_url, timeout=self.timeout_s, stream=True)
+            response = self.session.get(resolved_url, timeout=self.timeout_s, stream=True)
             response.raise_for_status()
             return response
-        except requests.RequestException as e:
+        except (requests.RequestException, ValueError) as e:
             msg = f"Failed to fetch iNaturalist metadata from {metadata_url}: {e}"
             raise UpstreamError(msg) from e
 
