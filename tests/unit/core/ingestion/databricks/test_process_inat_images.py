@@ -35,7 +35,9 @@ class TestDatabricksINatImageJobMain:
 
         with (
             patch("core.ingestion.databricks.process_inat_images.RayJobConfig.from_env") as mock_ray_cfg,
-            patch("core.ingestion.databricks.process_inat_images.ImageEmbeddingConfig.from_env") as mock_embed_cfg,
+            patch(
+                "core.ingestion.databricks.process_inat_images.ImageEmbeddingConfig.from_env"
+            ) as mock_embed_cfg,
             patch("core.ingestion.databricks.process_inat_images.DatabricksStrategy") as mock_strat_cls,
             patch("core.ingestion.databricks.process_inat_images.INaturalistOpenDataClient") as mock_inat_cls,
         ):
@@ -82,8 +84,12 @@ class TestDatabricksINatImageJobMain:
         """main() reads iNat records and submits batch processing tasks."""
         from core.ingestion.databricks.process_inat_images import main
 
-        record1 = MagicMock(photo_id="1", extension="jpg", photo_url="https://example.com/photos/1/medium.jpg")
-        record2 = MagicMock(photo_id="2", extension="png", photo_url="https://example.com/photos/2/medium.png")
+        record1 = MagicMock(
+            photo_id="1", extension="jpg", photo_url="https://example.com/photos/1/medium.jpg"
+        )
+        record2 = MagicMock(
+            photo_id="2", extension="png", photo_url="https://example.com/photos/2/medium.png"
+        )
         mock_dependencies["inat_client"].iter_photo_records.return_value = iter([record1, record2])
 
         future_mock = MagicMock()
@@ -129,9 +135,9 @@ class TestDatabricksINatImageJobMain:
         """main() should use client default metadata URL when env var is missing."""
         from core.ingestion.databricks.process_inat_images import main
 
-        mock_dependencies["inat_client"].build_metadata_s3_uri.return_value = (
-            "s3://inaturalist-open-data/photos.csv.gz"
-        )
+        mock_dependencies[
+            "inat_client"
+        ].build_metadata_s3_uri.return_value = "s3://inaturalist-open-data/photos.csv.gz"
         mock_dependencies["inat_client"].iter_photo_records.return_value = iter(())
 
         with patch.dict("os.environ", {"INAT_MAX_ROWS": "15"}, clear=False):

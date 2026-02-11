@@ -4,7 +4,6 @@ This wrapper converts Databricks python_params (KEY=VALUE) into environment
 variables before invoking the Ray ingestion entrypoint.
 """
 
-import os
 import sys
 
 try:

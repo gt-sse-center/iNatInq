@@ -485,7 +485,10 @@ class TestImageProcessingPipelineAsync:
         assert results[0].success is True
         call_kwargs = mock_qdrant.batch_upsert_async.await_args.kwargs
         points = call_kwargs["points"]
-        assert points[0].payload["s3_uri"] == "https://inaturalist-open-data.s3.amazonaws.com/photos/21213/medium.jpg"
+        assert (
+            points[0].payload["s3_uri"]
+            == "https://inaturalist-open-data.s3.amazonaws.com/photos/21213/medium.jpg"
+        )
 
 
 class TestProcessImageBatchRay:

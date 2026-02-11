@@ -119,9 +119,7 @@ class INaturalistOpenDataClient(CircuitBreakerMixin, LoggerMixin):
         """
         resolved_dataset = dataset.strip().lower()
         if resolved_dataset not in SUPPORTED_METADATA_DATASETS:
-            msg = (
-                f"Unsupported dataset '{dataset}'. Supported: {sorted(SUPPORTED_METADATA_DATASETS)}"
-            )
+            msg = f"Unsupported dataset '{dataset}'. Supported: {sorted(SUPPORTED_METADATA_DATASETS)}"
             raise ValueError(msg)
 
         extension = "csv.gz" if compressed else "csv"
@@ -135,9 +133,7 @@ class INaturalistOpenDataClient(CircuitBreakerMixin, LoggerMixin):
         """
         resolved_dataset = dataset.strip().lower()
         if resolved_dataset not in SUPPORTED_METADATA_DATASETS:
-            msg = (
-                f"Unsupported dataset '{dataset}'. Supported: {sorted(SUPPORTED_METADATA_DATASETS)}"
-            )
+            msg = f"Unsupported dataset '{dataset}'. Supported: {sorted(SUPPORTED_METADATA_DATASETS)}"
             raise ValueError(msg)
 
         extension = "csv.gz" if compressed else "csv"

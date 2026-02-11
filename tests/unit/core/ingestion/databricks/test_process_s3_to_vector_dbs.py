@@ -56,10 +56,18 @@ class TestDatabricksMain:
 
         with (
             patch("core.ingestion.databricks.process_s3_to_vector_dbs.RayJobConfig.from_env") as mock_ray_cfg,
-            patch("core.ingestion.databricks.process_s3_to_vector_dbs.MinIOConfig.from_env") as mock_minio_cfg,
-            patch("core.ingestion.databricks.process_s3_to_vector_dbs.VectorDBConfig.from_env") as mock_vector_cfg,
-            patch("core.ingestion.databricks.process_s3_to_vector_dbs.EmbeddingConfig.from_env") as mock_embed_cfg,
-            patch("core.ingestion.databricks.process_s3_to_vector_dbs.DatabricksStrategy") as mock_strategy_cls,
+            patch(
+                "core.ingestion.databricks.process_s3_to_vector_dbs.MinIOConfig.from_env"
+            ) as mock_minio_cfg,
+            patch(
+                "core.ingestion.databricks.process_s3_to_vector_dbs.VectorDBConfig.from_env"
+            ) as mock_vector_cfg,
+            patch(
+                "core.ingestion.databricks.process_s3_to_vector_dbs.EmbeddingConfig.from_env"
+            ) as mock_embed_cfg,
+            patch(
+                "core.ingestion.databricks.process_s3_to_vector_dbs.DatabricksStrategy"
+            ) as mock_strategy_cls,
             patch("core.ingestion.databricks.process_s3_to_vector_dbs.S3ClientWrapper", return_value=mock_s3),
         ):
             mock_ray_cfg.return_value = MagicMock(
@@ -128,7 +136,9 @@ class TestDatabricksMain:
         with patch.dict("os.environ", {"S3_PREFIX": "inputs/"}, clear=False):
             with patch("core.ingestion.databricks.process_s3_to_vector_dbs.RateLimiterActor") as mock_rate:
                 mock_rate.remote.return_value = MagicMock()
-                with patch("core.ingestion.databricks.process_s3_to_vector_dbs.process_s3_batch_ray") as mock_task:
+                with patch(
+                    "core.ingestion.databricks.process_s3_to_vector_dbs.process_s3_batch_ray"
+                ) as mock_task:
                     mock_task.options.return_value.remote.return_value = MagicMock()
                     main()
 

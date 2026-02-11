@@ -121,11 +121,7 @@ class TestINaturalistOpenDataClientMetadataParsing:
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
 
-        payload = (
-            "photo_id\textension\tlicense\n"
-            "111\tjpg\tcc-by\n"
-            "222\tjpeg\tcc0\n"
-        ).encode("utf-8")
+        payload = ("photo_id\textension\tlicense\n111\tjpg\tcc-by\n222\tjpeg\tcc0\n").encode("utf-8")
         mock_session.get.return_value = _make_metadata_response(payload)
 
         records = client.read_photo_records(
@@ -195,13 +191,7 @@ class TestINaturalistOpenDataClientMetadataParsing:
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
 
-        payload = (
-            "photo_id\textension\n"
-            "555\tjpg\n"
-            "\tjpg\n"
-            "666\t\n"
-            "777\twebp\n"
-        ).encode("utf-8")
+        payload = ("photo_id\textension\n555\tjpg\n\tjpg\n666\t\n777\twebp\n").encode("utf-8")
         mock_session.get.return_value = _make_metadata_response(payload)
 
         records = client.read_photo_records(metadata_url="https://example.com/photos.tsv")
@@ -213,12 +203,7 @@ class TestINaturalistOpenDataClientMetadataParsing:
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
 
-        payload = (
-            "photo_id\textension\n"
-            "101\tjpg\n"
-            "102\tjpg\n"
-            "103\tjpg\n"
-        ).encode("utf-8")
+        payload = ("photo_id\textension\n101\tjpg\n102\tjpg\n103\tjpg\n").encode("utf-8")
         mock_session.get.return_value = _make_metadata_response(payload)
 
         records = client.read_photo_records(metadata_url="https://example.com/photos.tsv", max_rows=2)

@@ -38,4 +38,3 @@ def bootstrap_runtime(params: list[str], *, entrypoint_file: str) -> None:
     from foundation.logger import LOGGING_CONFIG
 
     dictConfig(LOGGING_CONFIG)
-
