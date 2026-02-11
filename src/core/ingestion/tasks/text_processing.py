@@ -152,7 +152,7 @@ class RayProcessingPipeline:
 
         # Create operation instances
         generator = EmbeddingGenerator(clients.embedder, self._rate_limiter)
-        point_factory = VectorPointFactory(self._config.s3_bucket)
+        point_factory = VectorPointFactory(self._config.s3_bucket, targets=self._config.ingestion_targets)
         upserter = VectorDBUpserter(clients.qdrant_db, clients.weaviate_db)
 
         processor = BatchProcessor(
@@ -214,6 +214,7 @@ def process_s3_object_ray(
     collection: str,
     embed_batch_size: int = 8,
     qdrant_batch_size: int = 200,
+    ingestion_targets: frozenset[str] | None = None,
 ) -> tuple[str, bool, str]:
     """Process a single S3 object using Ray remote execution.
 
@@ -232,6 +233,7 @@ def process_s3_object_ray(
         collection: Vector database collection name.
         embed_batch_size: Batch size for embeddings.
         qdrant_batch_size: Batch size for Qdrant upserts.
+        ingestion_targets: Set of vector DBs to index (default: both).
 
     Returns:
         Tuple of (s3_key, success, error_message).
@@ -245,6 +247,7 @@ def process_s3_object_ray(
         collection=collection,
         embed_batch_size=embed_batch_size,
         upsert_batch_size=qdrant_batch_size,
+        ingestion_targets=ingestion_targets or frozenset({"qdrant", "weaviate"}),
     )
 
     pipeline = RayProcessingPipeline(config)
@@ -278,6 +281,7 @@ def process_s3_batch_ray(
     retry_max_attempts: int = 3,
     retry_min_wait: float = 1.0,
     retry_max_wait: float = 10.0,
+    ingestion_targets: frozenset[str] | None = None,
 ) -> list[tuple[str, bool, str]]:
     """Process a batch of S3 objects using Ray remote execution.
 
@@ -333,6 +337,7 @@ def process_s3_batch_ray(
         embed_batch_size=embed_batch_size,
         upsert_batch_size=qdrant_batch_size,
         namespace=namespace,
+        ingestion_targets=ingestion_targets or frozenset({"qdrant", "weaviate"}),
         max_concurrency=pipeline_concurrency,
         circuit_breaker_threshold=circuit_breaker_threshold,
         circuit_breaker_timeout=circuit_breaker_timeout,

@@ -63,6 +63,36 @@ The ingestion engine processes documents from S3 into vector databases using dis
 
 ---
 
+## Configuration
+
+iNatInq uses a layered YAML configuration system with environment variable overrides.
+
+**Layering order** (later wins):
+
+```
+config.yaml (base) → environments/{ENV}.yaml → secrets.yaml → environment variables
+```
+
+**Quick usage:**
+
+```bash
+# Local development: defaults work out of the box
+make up
+
+# Select an environment overlay
+ENV=dev make up
+
+# Override any setting via env var (always wins)
+S3_BUCKET=my-bucket ENV=dev make up
+
+# Choose which vector DBs to index (default: both)
+VECTOR_DB_TARGETS=qdrant make up
+```
+
+See [`configs/README.md`](configs/README.md) for full configuration reference and [`src/README.md`](src/README.md) for application-level details.
+
+---
+
 ## Quick Start
 
 ```bash
@@ -90,7 +120,8 @@ make down
 
 ### Using External Services (Optional)
 
-To use external/cloud-hosted services instead of local Docker containers:
+External services can be configured via environment variables **or** YAML config files
+in `configs/`. Environment variables always take priority over YAML values.
 
 ```bash
 # External Ollama (embedding service)
@@ -108,6 +139,11 @@ export VECTOR_DB_PROVIDER=weaviate
 export WEAVIATE_URL=https://your-cluster.region.weaviate.cloud
 export WEAVIATE_API_KEY=your-api-key
 make docker-up
+
+# Ingestion targets: choose which vector DBs to index (default: both)
+export VECTOR_DB_TARGETS=qdrant          # qdrant-only
+export VECTOR_DB_TARGETS=weaviate        # weaviate-only
+export VECTOR_DB_TARGETS=qdrant,weaviate # both (default)
 
 # Azure Databricks (optional - for Databricks job execution/integration tests)
 export DATABRICKS_HOST=https://adb-<workspace-id>.<region>.azuredatabricks.net
@@ -145,6 +181,14 @@ cp zarf/databricks/dev/env.local.example zarf/databricks/dev/.env.local
 make azure-databricks-build
 make azure-databricks-up
 make azure-databricks-down
+```
+
+Or equivalently, set these values in YAML (see `configs/README.md`):
+
+```bash
+cp configs/secrets.example.yaml configs/secrets.yaml
+# Edit secrets.yaml with your credentials, then:
+ENV=dev make docker-up
 ```
 
 For full Databricks setup details, see `zarf/databricks/README.md`.
@@ -261,7 +305,12 @@ iNatInq/
 │   │   ├── ingestion/    # Ray & Spark processing pipelines
 │   │   └── services/     # Business logic (search, job orchestration)
 │   ├── foundation/       # Utilities (retry, circuit breaker, logging)
-│   └── config.py         # Pydantic settings
+│   ├── config.py         # Pydantic settings (reads env vars)
+│   └── config_loader.py  # YAML config → env var bridging
+├── configs/              # YAML configuration files
+│   ├── config.yaml       # Base defaults
+│   ├── environments/     # Per-environment overrides (dev, staging, prod)
+│   └── schemas/          # JSON Schema for validation
 ├── tests/unit/           # Unit tests
 ├── syntheticdata/        # Test data generation & S3 upload tools
 ├── charts/               # Architecture diagrams
@@ -274,6 +323,8 @@ iNatInq/
 
 | Module | Description |
 |--------|-------------|
+| [src/](src/README.md) | Application source and configuration guide |
+| [configs/](configs/README.md) | YAML configuration files and layering |
 | [api/](src/api/README.md) | HTTP endpoints and middleware |
 | [clients/](src/clients/README.md) | Service client abstractions |
 | [core/](src/core/README.md) | Domain models and exceptions |
@@ -287,6 +338,6 @@ iNatInq/
 
 ## Test Coverage
 
-- **458 tests** across foundation, clients, core, and API
+- **960+ tests** across foundation, clients, core, and API
 - **>90% code coverage**
 - Uses pytest with async support and comprehensive mocking

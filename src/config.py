@@ -707,6 +707,8 @@ class VectorDBConfig(BaseModel):
             "qdrant" or "weaviate".
         collection: Default collection name to use for storing and
             querying vectors.
+        ingestion_targets: Set of vector DBs to index during ingestion.
+            Defaults to both ("qdrant", "weaviate"). At least one required.
         qdrant_url: Qdrant service URL. Required if
             provider_type="qdrant". Auto-detected based on environment
             if not set.
@@ -730,6 +732,7 @@ class VectorDBConfig(BaseModel):
 
     provider_type: Literal["qdrant", "weaviate"]
     collection: str
+    ingestion_targets: frozenset[str] = frozenset({"qdrant", "weaviate"})
 
     # Qdrant settings
     qdrant_url: str | None = None
@@ -749,6 +752,36 @@ class VectorDBConfig(BaseModel):
 
     model_config = SettingsConfigDict(frozen=True)
 
+    @staticmethod
+    def parse_targets_from_env() -> frozenset[str]:
+        """Parse VECTOR_DB_TARGETS from environment.
+
+        Reads a comma-separated list of target database names. Each entry
+        must be one of {"qdrant", "weaviate"}. At least one is required.
+
+        Returns:
+            Frozenset of validated target names.
+
+        Raises:
+            ValueError: If targets are empty or contain invalid names.
+        """
+        raw = os.getenv("VECTOR_DB_TARGETS")
+        if not raw:
+            return frozenset({"qdrant", "weaviate"})
+
+        valid = {"qdrant", "weaviate"}
+        targets = frozenset(t.strip().lower() for t in raw.split(",") if t.strip())
+
+        if not targets:
+            raise ValueError("VECTOR_DB_TARGETS must contain at least one target")
+
+        invalid = targets - valid
+        if invalid:
+            msg = f"Invalid VECTOR_DB_TARGETS: {', '.join(sorted(invalid))}. Must be subset of: {valid}"
+            raise ValueError(msg)
+
+        return targets
+
     @classmethod
     def from_env(cls, namespace: str = "ml-system") -> "VectorDBConfig":
         """Create VectorDBConfig from environment variables.
@@ -756,6 +789,7 @@ class VectorDBConfig(BaseModel):
         Supports:
         - VECTOR_DB_PROVIDER: Provider type (qdrant, weaviate, etc.)
         - VECTOR_DB_COLLECTION: Collection name (default: "documents")
+        - VECTOR_DB_TARGETS: Comma-separated ingestion targets (default: "qdrant,weaviate")
         - QDRANT_URL: Qdrant service URL (backward compatible)
         - WEAVIATE_URL: Weaviate service URL
         - WEAVIATE_API_KEY: Weaviate API key (optional)
@@ -776,6 +810,7 @@ class VectorDBConfig(BaseModel):
             raise ValueError(msg)
 
         in_cluster = _is_in_cluster()
+        ingestion_targets = cls.parse_targets_from_env()
 
         # Build config based on provider type
         collection = os.getenv("VECTOR_DB_COLLECTION", "documents")
@@ -786,6 +821,7 @@ class VectorDBConfig(BaseModel):
             return cls(
                 provider_type="qdrant",
                 collection=collection,
+                ingestion_targets=ingestion_targets,
                 qdrant_url=os.getenv("QDRANT_URL", default_url),
                 qdrant_api_key=os.getenv("QDRANT_API_KEY"),
                 qdrant_timeout=int(os.getenv("QDRANT_TIMEOUT", "300")),
@@ -798,6 +834,7 @@ class VectorDBConfig(BaseModel):
         return cls(
             provider_type="weaviate",
             collection=collection,
+            ingestion_targets=ingestion_targets,
             weaviate_url=os.getenv("WEAVIATE_URL", default_url),
             weaviate_api_key=os.getenv("WEAVIATE_API_KEY"),
             weaviate_grpc_host=os.getenv("WEAVIATE_GRPC_HOST"),
@@ -831,12 +868,14 @@ class VectorDBConfig(BaseModel):
 
         in_cluster = _is_in_cluster()
         collection = os.getenv("VECTOR_DB_COLLECTION", "documents")
+        ingestion_targets = cls.parse_targets_from_env()
 
         if provider_type == "qdrant":
             default_url = f"http://qdrant.{namespace}:6333" if in_cluster else "http://localhost:6333"
             return cls(
                 provider_type="qdrant",
                 collection=collection,
+                ingestion_targets=ingestion_targets,
                 qdrant_url=os.getenv("QDRANT_URL", default_url),
                 qdrant_api_key=os.getenv("QDRANT_API_KEY"),
             )
@@ -846,6 +885,7 @@ class VectorDBConfig(BaseModel):
         return cls(
             provider_type="weaviate",
             collection=collection,
+            ingestion_targets=ingestion_targets,
             weaviate_url=os.getenv("WEAVIATE_URL", default_url),
             weaviate_api_key=os.getenv("WEAVIATE_API_KEY"),
             weaviate_grpc_host=os.getenv("WEAVIATE_GRPC_HOST"),
@@ -1190,6 +1230,10 @@ def get_settings() -> "Settings":
     `Settings` instance. The result is cached using `@lru_cache` to
     avoid re-reading env vars on every call.
 
+    YAML configuration files are loaded first (if available) and applied
+    as env var defaults before building Settings. Environment variables
+    always take precedence over YAML values.
+
     Returns:
         A frozen `Settings` instance with all configuration values.
 
@@ -1200,4 +1244,7 @@ def get_settings() -> "Settings":
         development with dynamic env changes, restart the service to
         pick up new values.
     """
+    from config_loader import initialize_config
+
+    initialize_config()
     return Settings.from_env()
