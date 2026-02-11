@@ -15,7 +15,7 @@ from typing import Any
 import attrs
 import ray
 
-from config import RayJobConfig, resolve_vector_db_provider
+from config import RayJobConfig, VectorDBConfig
 from core.ingestion.shared.env_keys import DATABRICKS_RUNTIME_PASSTHROUGH_ENV_VARS
 
 logger = logging.getLogger("pipeline.ray.strategy.databricks")

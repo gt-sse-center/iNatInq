@@ -88,59 +88,31 @@ def test_build_image_ingestion_env_includes_required_and_optional(monkeypatch) -
     monkeypatch.setenv("INAT_IMAGE_SIZE", "large")
     monkeypatch.setenv("EXTRA_ENV", "extra-value")
 
-
-def test_build_ingestion_env_with_ingestion_targets(monkeypatch) -> None:
-    """Test that VECTOR_DB_TARGETS is set when ingestion_targets is provided.
-
-    **Why this test is important:**
-      - Explicit ingestion_targets parameter must be serialized to env var
-      - Ray workers read VECTOR_DB_TARGETS to configure single-target mode
-
-    **What it tests:**
-      - VECTOR_DB_TARGETS key is present in returned env dict
-      - Value matches the provided target
-    """
-    monkeypatch.delenv("VECTOR_DB_TARGETS", raising=False)
-    embedding_config = EmbeddingConfig(provider_type="ollama")
-
-    env_vars = build_ingestion_env(
-        namespace="ns",
-        s3_endpoint="http://minio:9000",
-        s3_access_key_id="ak",
-        s3_secret_access_key="sk",
-        s3_bucket="b",
-        s3_prefix="p/",
-        embedding_config=embedding_config,
-        collection="col",
-        ingestion_targets=frozenset({"qdrant"}),
+    image_embedding_config = ImageEmbeddingConfig(
+        provider_type="clip",
+        clip_url="http://clip.test:8000",
+        clip_model="ViT-B/32",
+        clip_backend="hosted_clip",
+        clip_timeout=90,
+        clip_circuit_breaker_threshold=7,
+        clip_circuit_breaker_timeout=45,
+        clip_max_batch_size=16,
+        clip_vector_size=512,
+        image_batch_size=12,
+        image_max_size_mb=8.5,
+        image_target_size=336,
     )
 
-    assert env_vars["VECTOR_DB_TARGETS"] == "qdrant"
-
-
-def test_build_ingestion_env_targets_sorted(monkeypatch) -> None:
-    """Test that VECTOR_DB_TARGETS value is sorted for deterministic output.
-
-    **Why this test is important:**
-      - frozenset iteration order is not guaranteed
-      - Sorted output makes logging and debugging predictable
-
-    **What it tests:**
-      - VECTOR_DB_TARGETS is "qdrant,weaviate" (alphabetical order)
-    """
-    monkeypatch.delenv("VECTOR_DB_TARGETS", raising=False)
-    embedding_config = EmbeddingConfig(provider_type="ollama")
-
-    env_vars = build_ingestion_env(
-        namespace="ns",
-        s3_endpoint="http://minio:9000",
-        s3_access_key_id="ak",
-        s3_secret_access_key="sk",
-        s3_bucket="b",
-        s3_prefix="p/",
-        embedding_config=embedding_config,
-        collection="col",
-        ingestion_targets=frozenset({"weaviate", "qdrant"}),
+    env_vars = build_image_ingestion_env(
+        namespace="ml-system",
+        s3_endpoint="http://minio.test:9000",
+        s3_access_key_id="access-key",
+        s3_secret_access_key="secret-key",
+        s3_bucket="bucket",
+        s3_prefix="images/",
+        image_embedding_config=image_embedding_config,
+        collection="images",
+        extra_env_keys=["EXTRA_ENV"],
     )
 
     assert env_vars["K8S_NAMESPACE"] == "ml-system"
@@ -172,6 +144,47 @@ def test_build_ingestion_env_targets_sorted(monkeypatch) -> None:
     assert env_vars["INAT_METADATA_URL"] == "s3://inaturalist-open-data/photos.csv.gz"
     assert env_vars["INAT_IMAGE_SIZE"] == "large"
     assert env_vars["EXTRA_ENV"] == "extra-value"
+
+
+def test_build_ingestion_env_with_ingestion_targets(monkeypatch) -> None:
+    """Test that VECTOR_DB_TARGETS is set when ingestion_targets is provided."""
+    monkeypatch.delenv("VECTOR_DB_TARGETS", raising=False)
+    embedding_config = EmbeddingConfig(provider_type="ollama")
+
+    env_vars = build_ingestion_env(
+        namespace="ns",
+        s3_endpoint="http://minio:9000",
+        s3_access_key_id="ak",
+        s3_secret_access_key="sk",
+        s3_bucket="b",
+        s3_prefix="p/",
+        embedding_config=embedding_config,
+        collection="col",
+        ingestion_targets=frozenset({"qdrant"}),
+    )
+
+    assert env_vars["VECTOR_DB_TARGETS"] == "qdrant"
+
+
+def test_build_ingestion_env_targets_sorted(monkeypatch) -> None:
+    """Test that VECTOR_DB_TARGETS value is sorted for deterministic output."""
+    monkeypatch.delenv("VECTOR_DB_TARGETS", raising=False)
+    embedding_config = EmbeddingConfig(provider_type="ollama")
+
+    env_vars = build_ingestion_env(
+        namespace="ns",
+        s3_endpoint="http://minio:9000",
+        s3_access_key_id="ak",
+        s3_secret_access_key="sk",
+        s3_bucket="b",
+        s3_prefix="p/",
+        embedding_config=embedding_config,
+        collection="col",
+        ingestion_targets=frozenset({"weaviate", "qdrant"}),
+    )
+
+    assert env_vars["K8S_NAMESPACE"] == "ns"
+    assert env_vars["VECTOR_DB_TARGETS"] == "qdrant,weaviate"
 
 
 def test_build_inat_image_ingestion_env_excludes_s3_connection_keys(monkeypatch) -> None:

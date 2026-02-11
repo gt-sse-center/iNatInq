@@ -147,6 +147,7 @@ class ImageProcessingPipeline:
         session = create_retry_session()
         clip_client = CLIPClient.from_config(self._config.image_embedding_config, session=session)
         db_factory = VectorDBConfigFactory(self._config.namespace)
+        targets = self._config.ingestion_targets
 
         qdrant_db = None
         weaviate_db = None

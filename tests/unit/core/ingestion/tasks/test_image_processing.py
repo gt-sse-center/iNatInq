@@ -465,6 +465,7 @@ class TestImageProcessingPipelineAsync:
         mock_qdrant.ensure_image_collection_async = AsyncMock()
 
         mock_weaviate = MagicMock()
+        mock_weaviate.batch_upsert_async = AsyncMock()
         mock_weaviate.ensure_image_collection_async = AsyncMock()
 
         image = ImageContentResult(

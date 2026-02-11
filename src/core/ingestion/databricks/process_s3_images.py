@@ -17,7 +17,7 @@ from typing import Any
 from botocore.exceptions import ClientError
 
 from clients.s3 import S3ClientWrapper
-from config import ImageEmbeddingConfig, MinIOConfig, RayJobConfig, resolve_vector_db_provider
+from config import ImageEmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
 from core.ingestion.databricks.batch_runner import run_ray_batch_processing
 from core.ingestion.databricks.runtime import apply_python_params as _apply_python_params
 from core.ingestion.interfaces.operations import ImageContentFetcher
