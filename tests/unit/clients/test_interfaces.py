@@ -271,4 +271,5 @@ class TestEmbeddingProviderABC:
 
         provider = MinimalProvider()
         # close() should not raise
+        assert hasattr(provider, "close") and callable(provider.close)
         provider.close()
