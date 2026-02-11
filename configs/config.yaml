@@ -1,0 +1,349 @@
+# =============================================================================
+# iNatInq Configuration
+# =============================================================================
+#
+# Welcome! This file contains ALL configuration options with sensible defaults.
+# You typically only need to change a few settings for your deployment.
+#
+# HOW IT WORKS:
+#   1. This file has all defaults
+#   2. Environment files (environments/*.yaml) override specific values
+#   3. Secrets come from secrets.yaml or environment variables
+#   4. Run with: ENV=dev make run (or ENV=prod, ENV=staging, etc.)
+#
+# QUICK START:
+#   1. For local development: Just use defaults (docker compose up)
+#   2. For cloud: Edit environments/prod.yaml and set up secrets
+#
+# =============================================================================
+
+
+# =============================================================================
+# STORAGE - Where images and documents are stored
+# =============================================================================
+# Supports: AWS S3, MinIO, Google Cloud Storage, Azure Blob (via S3 gateway)
+
+storage:
+  # S3-compatible endpoint URL
+  # Examples:
+  #   - Local MinIO: http://localhost:9000
+  #   - AWS S3: https://s3.us-east-1.amazonaws.com
+  #   - GCS: https://storage.googleapis.com
+  endpoint: "http://localhost:9000"
+
+  # Bucket name for storing images and documents
+  bucket: "pipeline"
+
+  # AWS region (required for AWS S3, optional for others)
+  region: "us-east-1"
+
+  # Prefix/folder for input files
+  input_prefix: "inputs/"
+
+  # Connection settings
+  use_ssl: false              # Set true for production/cloud
+  path_style: true            # true for MinIO, false for AWS S3
+  timeout_seconds: 30
+
+  # Retry settings for transient failures
+  retry:
+    max_attempts: 3
+    min_wait_seconds: 1.0
+    max_wait_seconds: 10.0
+
+  # Circuit breaker - stops retrying after repeated failures
+  circuit_breaker:
+    failure_threshold: 5      # Failures before circuit opens
+    recovery_timeout: 120     # Seconds before retrying
+
+
+# =============================================================================
+# VECTOR DATABASES - Where embeddings are stored and searched
+# =============================================================================
+
+vector_databases:
+  # Which provider to use for search queries: "qdrant" or "weaviate"
+  search_provider: "qdrant"
+
+  # Collection/class name for embeddings
+  collection: "documents"
+
+  # Ingestion targets: comma-separated list of databases to index
+  # Valid values: "qdrant", "weaviate" (at least one required)
+  ingestion_targets: "qdrant,weaviate"
+
+  # ----- Qdrant Configuration -----
+  qdrant:
+    url: "http://localhost:6333"
+    api_key: ""               # Leave empty for local, required for Qdrant Cloud
+    timeout_seconds: 300
+
+    # Circuit breaker
+    circuit_breaker:
+      failure_threshold: 3
+      recovery_timeout: 60
+
+    # Index settings (HNSW algorithm)
+    index:
+      # Distance metric: "cosine" (recommended), "euclidean", or "dot"
+      distance_metric: "cosine"
+
+      # HNSW parameters - tune for speed vs accuracy tradeoff
+      # Higher m = better recall, more memory, slower indexing
+      hnsw_m: 16
+
+      # ef_construct: Higher = better recall, slower indexing (default: 100)
+      hnsw_ef_construct: 100
+
+      # Threshold for triggering index building (during bulk loads, set to 0)
+      indexing_threshold: 20000
+
+    # Sharding (for large datasets)
+    sharding:
+      enabled: false
+      shard_count: 1          # Number of shards
+      replication_factor: 1   # Replicas per shard
+
+  # ----- Weaviate Configuration -----
+  weaviate:
+    url: "http://localhost:8080"
+    api_key: ""               # Leave empty for local, required for Weaviate Cloud
+    grpc_host: ""             # For Weaviate Cloud (e.g., "grpc-xxx.weaviate.network")
+    grpc_port: 443
+    timeout_seconds: 300
+
+    # Circuit breaker
+    circuit_breaker:
+      failure_threshold: 3
+      recovery_timeout: 60
+
+    # Index settings
+    index:
+      # Distance metric: "cosine" (recommended), "euclidean", or "dot"
+      distance_metric: "cosine"
+
+      # Vector index type: "hnsw" (recommended) or "flat"
+      index_type: "hnsw"
+
+      # HNSW parameters
+      hnsw_ef: 100            # Query time parameter
+      hnsw_max_connections: 64
+      hnsw_ef_construction: 128
+
+
+# =============================================================================
+# EMBEDDINGS - Text embedding models
+# =============================================================================
+
+embeddings:
+  # Provider: "ollama", "openai", "huggingface", or "sagemaker"
+  provider: "ollama"
+
+  # Vector size (auto-detected for known models, set manually if needed)
+  vector_size: null           # null = auto-detect
+
+  # ----- Ollama (local/self-hosted) -----
+  ollama:
+    url: "http://localhost:11434"
+    model: "nomic-embed-text"
+    timeout_seconds: 60
+    max_batch_size: 12
+
+    circuit_breaker:
+      failure_threshold: 5
+      recovery_timeout: 30
+
+  # ----- OpenAI -----
+  openai:
+    # API key set in secrets.yaml or OPENAI_API_KEY env var
+    model: "text-embedding-ada-002"
+
+  # ----- HuggingFace (local) -----
+  huggingface:
+    model: "sentence-transformers/all-MiniLM-L6-v2"
+    device: "cpu"             # "cpu" or "cuda"
+
+  # ----- AWS SageMaker -----
+  sagemaker:
+    endpoint: ""              # Your SageMaker endpoint name
+    region: "us-east-1"
+
+
+# =============================================================================
+# IMAGE EMBEDDINGS - Image embedding models (CLIP)
+# =============================================================================
+
+image_embeddings:
+  # Provider: "clip" or "llava"
+  provider: "clip"
+
+  # Backend: "ollama" (recommended), "clip" (standalone service), or "hosted_clip"
+  backend: "ollama"
+
+  # Model settings
+  model: "llava"              # For ollama backend
+  # api_key: ""               # Required for hosted_clip backend
+  vector_size: null           # null = auto-detect (512 for ViT-B/32)
+
+  # URL (auto-configured based on backend)
+  url: "http://localhost:11434"
+
+  # Timeouts and limits
+  timeout_seconds: 120
+  max_batch_size: 8
+
+  # Image preprocessing
+  preprocessing:
+    target_size: 224          # Resize images to this size (pixels)
+    max_size_mb: 10.0         # Skip images larger than this
+
+  # Circuit breaker
+  circuit_breaker:
+    failure_threshold: 5
+    recovery_timeout: 30
+
+
+# =============================================================================
+# PROCESSING - Batch processing settings
+# =============================================================================
+
+processing:
+  # Number of parallel workers
+  workers: 4
+
+  # Batch sizes
+  batch_size: 50              # Documents per batch
+  image_batch_size: 20        # Images per batch
+  embed_batch_size: 8         # Embeddings per API call
+  upsert_batch_size: 200      # Vectors per upsert
+
+  # Checkpointing (resume failed jobs)
+  checkpoint:
+    enabled: true
+    directory: "/tmp/inatinq-checkpoints"
+
+
+# =============================================================================
+# RAY - Distributed processing configuration
+# =============================================================================
+
+ray:
+  # Connection (auto-detected in Kubernetes)
+  address: null               # null = auto-detect, or "ray://head:10001"
+  dashboard_url: null         # null = auto-detect
+  namespace: "ml-pipeline"
+
+  # Cluster resources
+  cluster:
+    num_workers: 0            # 0 = auto-scale
+    worker_cpus: 1.0
+    worker_memory_bytes: 500000000   # 500MB
+    head_cpus: 1.0
+    head_memory_bytes: 200000000     # 200MB
+
+  # Task settings
+  tasks:
+    num_cpus: 1
+    max_retries: 3
+    pipeline_concurrency: 10
+    progress_log_interval: 1000
+
+  # Rate limiting for external services
+  rate_limits:
+    ollama_max_concurrency: 10
+    ollama_requests_per_second: 5
+
+  # Timeouts
+  timeouts:
+    embedding_seconds: 120
+    upsert_seconds: 60
+    wait_seconds: 1.0
+
+  # Retry settings
+  retry:
+    max_attempts: 3
+    min_wait_seconds: 1.0
+    max_wait_seconds: 10.0
+
+  # Circuit breaker
+  circuit_breaker:
+    failure_threshold: 5
+    recovery_timeout: 30
+
+
+# =============================================================================
+# DATABRICKS - Databricks job configuration (alternative to Ray)
+# =============================================================================
+
+databricks:
+  # Set via secrets: DATABRICKS_HOST, DATABRICKS_TOKEN
+  host: ""
+  job_id: null
+  task_type: "python"
+  workspace_path: ""
+
+
+# =============================================================================
+# SEARCH API - Search service settings
+# =============================================================================
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+
+  # Search defaults
+  default_limit: 10
+  max_limit: 100
+
+
+# =============================================================================
+# BENCHMARKING - Performance evaluation
+# =============================================================================
+
+benchmark:
+  # Metrics to compute
+  # Available: precision@k, recall@k, map, mrr, ndcg
+  metrics:
+    - precision@k
+    - recall@k
+    - ndcg
+    - mrr
+
+  # K values for @K metrics
+  k_values: [5, 10, 20]
+
+  # Warmup queries (reduces cold-start noise)
+  warmup_queries: 5
+
+  # Cooldown between queries (seconds)
+  cooldown_seconds: 0.1
+
+  # Output format: "console", "json", or "both"
+  output_format: "console"
+  output_path: null           # Path for JSON output (if format includes json)
+
+
+# =============================================================================
+# LOGGING - Logging configuration
+# =============================================================================
+
+logging:
+  # Level: debug, info, warning, error
+  level: "info"
+
+  # Format: "json" (for log aggregators) or "text" (human readable)
+  format: "text"
+
+
+# =============================================================================
+# ENVIRONMENT DETECTION
+# =============================================================================
+
+environment:
+  # Usually auto-detected, but can be forced
+  # "local" = development machine
+  # "cluster" = Kubernetes/cloud
+  mode: null                  # null = auto-detect
+
+  # Kubernetes namespace (used for service discovery)
+  k8s_namespace: "ml-system"

@@ -21,7 +21,7 @@ from clients.clip import CLIPClient
 from clients.interfaces.vector_db import VectorDBProvider  # noqa: TC001
 from clients.s3 import S3ClientWrapper
 from clients.weaviate import WeaviateClientWrapper, WeaviateDataObject
-from config import ImageEmbeddingConfig, resolve_vector_db_targets
+from config import ImageEmbeddingConfig  # noqa: TC001
 from foundation.image import resize_for_embedding
 from core.ingestion.interfaces.factories import VectorDBConfigFactory, create_vector_db_provider
 from core.ingestion.interfaces.operations import ImageContentFetcher
@@ -59,6 +59,7 @@ class RayImageProcessingConfig:
     image_batch_size: int = 20
     image_embed_batch_size: int = 4
     namespace: str = attrs.field(factory=lambda: os.getenv("K8S_NAMESPACE", "ml-system"))
+    ingestion_targets: frozenset[str] = frozenset({"qdrant", "weaviate"})
     # Resilience (reuse same as text pipeline)
     rate_limit_rps: int = 5
     max_concurrency: int = 10
@@ -107,6 +108,8 @@ class ImageProcessingPipeline:
     def process_keys_sync(self, keys: list[str]) -> list[ProcessingResult]:
         """Process image S3 keys synchronously (for Ray remote functions).
 
+        Only creates DB clients for databases in ``ingestion_targets``.
+
         Args:
             keys: List of S3 object keys (images).
 
@@ -116,6 +119,8 @@ class ImageProcessingPipeline:
         if not keys:
             return []
 
+        targets = self._config.ingestion_targets
+
         s3 = S3ClientWrapper(
             endpoint_url=self._config.s3_endpoint,
             access_key_id=self._config.s3_access_key,
@@ -124,9 +129,13 @@ class ImageProcessingPipeline:
         session = create_retry_session()
         clip_client = CLIPClient.from_config(self._config.image_embedding_config, session=session)
         db_factory = VectorDBConfigFactory(self._config.namespace)
-        qdrant_cfg, weaviate_cfg = db_factory.create_both()
-        qdrant_db = create_vector_db_provider(qdrant_cfg)
-        weaviate_db = create_vector_db_provider(weaviate_cfg)
+
+        qdrant_db = None
+        weaviate_db = None
+        if "qdrant" in targets:
+            qdrant_db = create_vector_db_provider(db_factory.create_qdrant_config())
+        if "weaviate" in targets:
+            weaviate_db = create_vector_db_provider(db_factory.create_weaviate_config())
 
         try:
             fetcher = ImageContentFetcher(s3, self._config.s3_bucket)
@@ -140,22 +149,22 @@ class ImageProcessingPipeline:
             )
             return fetch_failures + process_results
         finally:
-            qdrant_db.close()
-            weaviate_db.close()
+            if qdrant_db is not None:
+                qdrant_db.close()
+            if weaviate_db is not None:
+                weaviate_db.close()
             session.close()
 
     async def _process_images_async(  # noqa: PLR0912
         self,
         images: list[ImageContentResult],
         clip_client: CLIPClient,
-        qdrant_db: VectorDBProvider,
-        weaviate_db: VectorDBProvider,
+        qdrant_db: VectorDBProvider | None,
+        weaviate_db: VectorDBProvider | None,
     ) -> list[ProcessingResult]:
-        """Preprocess, embed, and upsert images to vector DBs."""
+        """Preprocess, embed, and upsert images to targeted vector DBs."""
         if not images:
             return []
-
-        use_qdrant, use_weaviate = resolve_vector_db_targets(logger=logger)
 
         max_size = self._config.image_preprocess_max_size
         batch_size = self._config.image_embed_batch_size
@@ -203,25 +212,17 @@ class ImageProcessingPipeline:
         weaviate_image_class = WeaviateClientWrapper._collection_to_image_class_name(collection)
         vector_size = clip_client.vector_size
 
-        logger.info(
-            "CLIP config for image batch",
-            extra={
-                "backend": getattr(clip_client, "backend", None),
-                "model": getattr(clip_client, "model", None),
-                "vector_size": vector_size,
-                "base_url": getattr(clip_client, "base_url", None),
-            },
-        )
+        # Ensure image collections exist for targeted DBs
+        if qdrant_db is not None:
+            ensure_qdrant = getattr(qdrant_db, "ensure_image_collection_async", None)
+            if callable(ensure_qdrant):
+                await ensure_qdrant(collection=collection, vector_size=vector_size)
+        if weaviate_db is not None:
+            ensure_weaviate = getattr(weaviate_db, "ensure_image_collection_async", None)
+            if callable(ensure_weaviate):
+                await ensure_weaviate(collection=collection, vector_size=vector_size)
 
-        # Ensure image collections exist
-        ensure_qdrant = getattr(qdrant_db, "ensure_image_collection_async", None)
-        ensure_weaviate = getattr(weaviate_db, "ensure_image_collection_async", None)
-        if use_qdrant and callable(ensure_qdrant):
-            await ensure_qdrant(collection=collection, vector_size=vector_size)
-        if use_weaviate and callable(ensure_weaviate):
-            await ensure_weaviate(collection=collection, vector_size=vector_size)
-
-        # Build Qdrant points and Weaviate objects
+        # Build Qdrant points and Weaviate objects for targeted DBs
         qdrant_points: list[PointStruct] = []
         weaviate_objects: list[WeaviateDataObject] = []
         valid_indices: list[int] = []
@@ -239,20 +240,20 @@ class ImageProcessingPipeline:
                 "height": img.height if img.height is not None else 0,
                 "thumbnail_key": "",  # optional, leave empty if not set
             }
-            if use_qdrant:
+            if qdrant_db is not None:
                 qdrant_points.append(PointStruct(id=point_id, vector=vec, payload=payload))
-            if use_weaviate:
+            if weaviate_db is not None:
                 weaviate_objects.append(WeaviateDataObject(uuid=point_id, properties=payload, vector=vec))
             valid_indices.append(idx)
 
-        if (use_qdrant and not qdrant_points) or (use_weaviate and not weaviate_objects):
+        if not valid_indices:
             return [
                 ProcessingResult.failure_result(images[i].s3_key, "Embedding or point build failed")
                 for i in range(len(images))
             ]
 
-        # Upsert to both DBs
-        if use_qdrant:
+        # Upsert to targeted DBs
+        if qdrant_db is not None and qdrant_points:
             try:
                 await qdrant_db.batch_upsert_async(
                     collection=qdrant_image_collection,
@@ -269,7 +270,7 @@ class ImageProcessingPipeline:
                     for i in range(len(images))
                 ]
 
-        if use_weaviate:
+        if weaviate_db is not None and weaviate_objects:
             try:
                 await weaviate_db.batch_upsert_async(
                     collection=weaviate_image_class,
@@ -322,6 +323,7 @@ def process_image_batch_ray(
     retry_max_attempts: int = 3,
     retry_min_wait: float = 1.0,
     retry_max_wait: float = 10.0,
+    ingestion_targets: frozenset[str] | None = None,
 ) -> list[tuple[str, bool, str]]:
     """Process a batch of images through the embedding pipeline.
 
@@ -365,6 +367,7 @@ def process_image_batch_ray(
         image_batch_size=image_batch_size,
         image_embed_batch_size=image_embed_batch_size,
         namespace=namespace,
+        ingestion_targets=ingestion_targets or frozenset({"qdrant", "weaviate"}),
         max_concurrency=pipeline_concurrency,
         circuit_breaker_threshold=circuit_breaker_threshold,
         circuit_breaker_timeout=circuit_breaker_timeout,

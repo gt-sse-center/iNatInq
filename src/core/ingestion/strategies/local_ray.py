@@ -123,8 +123,8 @@ class LocalRayStrategy:
 
         try:
             ray.init(
-                address=self._config.ray_address,
-                namespace=self._config.ray_namespace,
+                address=config.ray_address,
+                namespace=config.ray_namespace,
                 runtime_env=runtime_env or None,
                 ignore_reinit_error=True,
                 logging_level=logging.WARNING,
@@ -133,15 +133,15 @@ class LocalRayStrategy:
             logger.info(
                 "Connected to Ray cluster",
                 extra={
-                    "ray_address": self._config.ray_address,
-                    "namespace": self._config.ray_namespace,
+                    "ray_address": config.ray_address,
+                    "namespace": config.ray_namespace,
                 },
             )
         except Exception as e:
             logger.error(
                 "Failed to connect to Ray cluster",
                 extra={
-                    "ray_address": self._config.ray_address,
+                    "ray_address": config.ray_address,
                     "error": str(e),
                 },
                 exc_info=True,

@@ -127,44 +127,51 @@ class TestDatabricksImageJobMain:
                     "core.ingestion.databricks.process_s3_images.ImageEmbeddingConfig.from_env"
                 ) as mock_embed_cfg:
                     with patch(
-                        "core.ingestion.databricks.process_s3_images.DatabricksStrategy"
-                    ) as mock_strat_cls:
+                        "core.ingestion.databricks.process_s3_images.VectorDBConfig.from_env"
+                    ) as mock_vector_cfg:
                         with patch(
-                            "core.ingestion.databricks.process_s3_images.S3ClientWrapper"
-                        ) as mock_s3_cls:
-                            mock_ray_cfg.return_value = MagicMock(
-                                num_workers=4,
-                                image_batch_size=50,
-                                image_embed_batch_size=8,
-                                task_num_cpus=1,
-                                task_max_retries=3,
-                                wait_batch_size=10,
-                                wait_timeout=1.0,
-                                pipeline_concurrency=10,
-                                circuit_breaker_threshold=5,
-                                circuit_breaker_timeout=30,
-                                embedding_timeout=120,
-                                upsert_timeout=60,
-                                retry_max_attempts=3,
-                                retry_min_wait=1.0,
-                                retry_max_wait=10.0,
-                            )
-                            mock_minio_cfg.return_value = MagicMock(
-                                endpoint_url="http://minio:9000",
-                                access_key_id="access",
-                                secret_access_key="secret",
-                                bucket="test-bucket",
-                            )
-                            mock_embed_cfg.return_value = MagicMock()
-                            mock_strat_cls.from_env.return_value = mock_strategy
-                            mock_s3_cls.return_value = mock_s3
+                            "core.ingestion.databricks.process_s3_images.DatabricksStrategy"
+                        ) as mock_strat_cls:
+                            with patch(
+                                "core.ingestion.databricks.process_s3_images.S3ClientWrapper"
+                            ) as mock_s3_cls:
+                                mock_ray_cfg.return_value = MagicMock(
+                                    num_workers=4,
+                                    image_batch_size=50,
+                                    image_embed_batch_size=8,
+                                    task_num_cpus=1,
+                                    task_max_retries=3,
+                                    wait_batch_size=10,
+                                    wait_timeout=1.0,
+                                    pipeline_concurrency=10,
+                                    circuit_breaker_threshold=5,
+                                    circuit_breaker_timeout=30,
+                                    embedding_timeout=120,
+                                    upsert_timeout=60,
+                                    retry_max_attempts=3,
+                                    retry_min_wait=1.0,
+                                    retry_max_wait=10.0,
+                                )
+                                mock_minio_cfg.return_value = MagicMock(
+                                    endpoint_url="http://minio:9000",
+                                    access_key_id="access",
+                                    secret_access_key="secret",
+                                    bucket="test-bucket",
+                                )
+                                mock_embed_cfg.return_value = MagicMock()
+                                mock_vector_cfg.return_value = MagicMock(
+                                    ingestion_targets=frozenset({"qdrant", "weaviate"}),
+                                )
+                                mock_strat_cls.from_env.return_value = mock_strategy
+                                mock_s3_cls.return_value = mock_s3
 
-                            yield {
-                                "ray_cfg": mock_ray_cfg,
-                                "minio_cfg": mock_minio_cfg,
-                                "strategy": mock_strategy,
-                                "s3": mock_s3,
-                            }
+                                yield {
+                                    "ray_cfg": mock_ray_cfg,
+                                    "minio_cfg": mock_minio_cfg,
+                                    "vector_cfg": mock_vector_cfg,
+                                    "strategy": mock_strategy,
+                                    "s3": mock_s3,
+                                }
 
     def test_main_initializes_and_shuts_down_cluster(self, mock_dependencies, mock_ray):
         """main() initializes cluster and shuts down on completion.
