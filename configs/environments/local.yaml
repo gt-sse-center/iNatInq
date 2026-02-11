@@ -1,0 +1,19 @@
+# =============================================================================
+# Local Development Environment
+# =============================================================================
+# Use with: ENV=local make run
+#
+# Assumes: docker compose up (MinIO, Qdrant, Weaviate, Ollama running locally)
+# =============================================================================
+
+logging:
+  level: "debug"
+  format: "text"
+
+processing:
+  workers: 2                  # Fewer workers for laptop
+  batch_size: 10              # Smaller batches for faster feedback
+
+ray:
+  cluster:
+    num_workers: 1            # Minimal for local testing

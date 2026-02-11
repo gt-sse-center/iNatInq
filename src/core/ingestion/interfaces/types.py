@@ -143,11 +143,11 @@ class BatchEmbeddingResult:
 
     def __len__(self) -> int:
         """Return the number of points in the batch."""
-        return len(self.qdrant_points)
+        return max(len(self.qdrant_points), len(self.weaviate_objects))
 
     def is_empty(self) -> bool:
         """Check if the batch is empty."""
-        return len(self.qdrant_points) == 0
+        return len(self.qdrant_points) == 0 and len(self.weaviate_objects) == 0
 
 
 @attrs.define(frozen=True, slots=True)
@@ -270,6 +270,7 @@ class ProcessingConfig:
     embed_batch_size: int = 8
     upsert_batch_size: int = 200
     namespace: str = attrs.field(factory=lambda: os.getenv("K8S_NAMESPACE", "ml-system"))
+    ingestion_targets: frozenset[str] = frozenset({"qdrant", "weaviate"})
 
 
 @attrs.define(frozen=True, slots=True)
@@ -314,9 +315,9 @@ class ProcessingClients:
 
     s3: S3ClientWrapper
     embedder: EmbeddingProvider
-    qdrant_db: VectorDBProvider
-    weaviate_db: VectorDBProvider
-    session: requests.Session
+    qdrant_db: VectorDBProvider | None = None
+    weaviate_db: VectorDBProvider | None = None
+    session: requests.Session = attrs.field(factory=requests.Session)
 
     def close_sync(self) -> None:
         """Close all clients gracefully (synchronous).
@@ -324,15 +325,17 @@ class ProcessingClients:
         Use this in Ray remote functions or synchronous code.
         Logs warnings for any errors during cleanup.
         """
-        try:
-            self.qdrant_db.close()
-        except Exception as e:
-            logger.warning("Error closing Qdrant client", extra={"error": str(e)})
+        if self.qdrant_db is not None:
+            try:
+                self.qdrant_db.close()
+            except Exception as e:
+                logger.warning("Error closing Qdrant client", extra={"error": str(e)})
 
-        try:
-            self.weaviate_db.close()
-        except Exception as e:
-            logger.warning("Error closing Weaviate client", extra={"error": str(e)})
+        if self.weaviate_db is not None:
+            try:
+                self.weaviate_db.close()
+            except Exception as e:
+                logger.warning("Error closing Weaviate client", extra={"error": str(e)})
 
         try:
             self.session.close()
@@ -346,14 +349,14 @@ class ProcessingClients:
         Handles async client cleanup properly.
         """
         # Close Qdrant async client
-        if self.qdrant_db._client is not None:
+        if self.qdrant_db is not None and self.qdrant_db._client is not None:
             try:
                 await self.qdrant_db._client.close()
             except Exception as e:
                 logger.warning("Error closing Qdrant async client", extra={"error": str(e)})
 
         # Close Weaviate async client
-        if self.weaviate_db._client is not None:
+        if self.weaviate_db is not None and self.weaviate_db._client is not None:
             try:
                 await self.weaviate_db._client.close()
             except Exception as e:

@@ -144,15 +144,15 @@ class TestDatabricksStrategyRuntimeEnv:
 
         assert env["env_vars"]["PYTHONPATH"] == "/custom/path"
 
-    def test_get_runtime_env_defaults_vector_provider_when_missing(self, ray_job_config: RayJobConfig):
-        """get_runtime_env() sets default VECTOR_DB_PROVIDER when missing."""
+    def test_get_runtime_env_defaults_vector_targets_when_missing(self, ray_job_config: RayJobConfig):
+        """get_runtime_env() sets default VECTOR_DB_TARGETS when missing."""
         strategy = DatabricksStrategy(config=ray_job_config)
 
         with patch.dict(os.environ, {"INATINQ_SRC_DIR": "/workspace/src"}, clear=True):
             with patch("pathlib.Path.is_dir", return_value=True):
                 env = strategy.get_runtime_env()
 
-        assert env["env_vars"]["VECTOR_DB_PROVIDER"] == "qdrant"
+        assert env["env_vars"]["VECTOR_DB_TARGETS"] == "qdrant,weaviate"
 
     def test_get_runtime_env_raises_without_src_dir(self, ray_job_config: RayJobConfig):
         """get_runtime_env() raises RuntimeError without INATINQ_SRC_DIR.

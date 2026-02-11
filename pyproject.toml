@@ -21,6 +21,7 @@ dependencies = [
     "pybreaker>=0.9.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
+    "PyYAML>=6.0",
     "Pillow>=10.0.0",
     "qdrant-client>=1.15.1",
     "ray[default]>=2.53.0",
@@ -73,7 +74,7 @@ filterwarnings = [
 line-length = 110
 
 [tool.ruff.lint]
-exclude = ["tests/**"]
+exclude = ["tests/**", "configs/**"]
 
 select = ["ALL"]
 
@@ -146,6 +147,9 @@ convention = "google"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/foundation"]
+
+[tool.mypy]
+ignore_missing_imports = true
 
 [tool.uv.build-backend]
 module-name = "foundation"

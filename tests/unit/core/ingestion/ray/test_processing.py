@@ -527,7 +527,7 @@ class TestVectorDBUpserter:
     """Test suite for VectorDBUpserter."""
 
     @pytest.mark.asyncio
-    async def test_upsert_batch_async_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_upsert_batch_async_success(self) -> None:
         """Test successful batch upsert.
 
         **Why this test is important:**
@@ -537,7 +537,6 @@ class TestVectorDBUpserter:
         **What it tests:**
           - upsert_batch_async returns True on success
         """
-        monkeypatch.setenv("VECTOR_DB_PROVIDER", "both")
         mock_qdrant = MagicMock()
         mock_qdrant.batch_upsert_async = AsyncMock(return_value=None)
         mock_weaviate = MagicMock()
@@ -561,7 +560,7 @@ class TestVectorDBUpserter:
         mock_weaviate.batch_upsert_async.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_upsert_batch_async_partial_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_upsert_batch_async_partial_failure(self) -> None:
         """Test partial failure handling.
 
         **Why this test is important:**
@@ -571,7 +570,6 @@ class TestVectorDBUpserter:
         **What it tests:**
           - Returns True if at least one DB succeeds
         """
-        monkeypatch.setenv("VECTOR_DB_PROVIDER", "both")
         mock_qdrant = MagicMock()
         mock_qdrant.batch_upsert_async = AsyncMock(return_value=None)
         mock_weaviate = MagicMock()
