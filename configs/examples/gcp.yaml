@@ -1,0 +1,204 @@
+# =============================================================================
+# GCP Deployment Example
+# =============================================================================
+# Copy to configs/environments/prod.yaml and customize for your GCP environment
+#
+# Prerequisites:
+#   - GCS bucket created
+#   - GKE cluster (for Ray and services)
+#   - Qdrant Cloud or self-hosted on GKE
+#   - Vertex AI (optional, for embeddings)
+# =============================================================================
+
+storage:
+  # GCS with S3-compatible interoperability API
+  endpoint: "https://storage.googleapis.com"
+  bucket: "${GCS_BUCKET}"
+  region: "${GCP_REGION}"
+  use_ssl: true
+  path_style: false
+  timeout_seconds: 60
+
+  retry:
+    max_attempts: 5
+    min_wait_seconds: 1.0
+    max_wait_seconds: 30.0
+
+  circuit_breaker:
+    failure_threshold: 5
+    recovery_timeout: 60
+
+vector_databases:
+  search_provider: "qdrant"
+  collection: "documents_prod"
+
+  qdrant:
+    # Option 1: Qdrant Cloud
+    url: "${QDRANT_CLOUD_URL}"
+
+    # Option 2: Self-hosted on GKE
+    # url: "http://qdrant.qdrant.svc.cluster.local:6333"
+
+    timeout_seconds: 30
+
+    index:
+      distance_metric: "cosine"
+      hnsw_m: 32
+      hnsw_ef_construct: 200
+      indexing_threshold: 50000
+
+    sharding:
+      enabled: true
+      shard_count: 3
+      replication_factor: 2
+
+    circuit_breaker:
+      failure_threshold: 3
+      recovery_timeout: 30
+
+  # Alternative: Weaviate on GKE
+  # provider: "weaviate"
+  # weaviate:
+  #   url: "http://weaviate.weaviate.svc.cluster.local:8080"
+  #   grpc_host: "weaviate.weaviate.svc.cluster.local"
+  #   grpc_port: 50051
+
+embeddings:
+  provider: "ollama"            # Or use Vertex AI
+  vector_size: null
+
+  ollama:
+    url: "http://ollama.ollama.svc.cluster.local:11434"
+    model: "nomic-embed-text"
+    max_batch_size: 16
+    timeout_seconds: 60
+
+    circuit_breaker:
+      failure_threshold: 3
+      recovery_timeout: 30
+
+  # Alternative: HuggingFace on GPU nodes
+  # provider: "huggingface"
+  # huggingface:
+  #   model: "sentence-transformers/all-MiniLM-L6-v2"
+  #   device: "cuda"
+
+image_embeddings:
+  provider: "clip"
+  backend: "ollama"
+  url: "http://ollama.ollama.svc.cluster.local:11434"
+  model: "clip"
+  max_batch_size: 12
+  timeout_seconds: 60
+
+  preprocessing:
+    target_size: 224
+    max_size_mb: 10.0
+
+  circuit_breaker:
+    failure_threshold: 3
+    recovery_timeout: 30
+
+processing:
+  workers: 16
+  batch_size: 100
+  image_batch_size: 50
+  embed_batch_size: 32
+  upsert_batch_size: 500
+
+  checkpoint:
+    enabled: true
+    directory: "gs://${GCS_BUCKET}/checkpoints"
+
+ray:
+  # Connect to Ray cluster on GKE
+  address: "ray://ray-head.ray.svc.cluster.local:10001"
+  dashboard_url: "http://ray-dashboard.ray.svc.cluster.local:8265"
+  namespace: "inatinq"
+
+  cluster:
+    num_workers: 8
+    worker_cpus: 2.0
+    worker_memory_bytes: 4000000000  # 4GB
+    head_cpus: 2.0
+    head_memory_bytes: 4000000000
+
+  tasks:
+    num_cpus: 1
+    max_retries: 3
+    pipeline_concurrency: 20
+    progress_log_interval: 100
+
+  rate_limits:
+    ollama_max_concurrency: 20
+    ollama_requests_per_second: 10
+
+  timeouts:
+    embedding_seconds: 60
+    upsert_seconds: 30
+    wait_seconds: 0.1
+
+  circuit_breaker:
+    failure_threshold: 5
+    recovery_timeout: 60
+
+api:
+  host: "0.0.0.0"
+  port: 8080
+  default_limit: 10
+  max_limit: 100
+
+benchmark:
+  metrics: ["precision@k", "recall@k", "map", "mrr", "ndcg"]
+  k_values: [1, 5, 10, 20]
+  warmup_queries: 10
+  cooldown_seconds: 1.0
+  output_format: "json"
+  output_path: "gs://${GCS_BUCKET}/benchmarks/"
+
+logging:
+  level: "info"
+  format: "json"              # JSON for Cloud Logging
+
+environment:
+  mode: "cluster"
+  k8s_namespace: "inatinq"
+
+
+# =============================================================================
+# GCP-Specific Notes
+# =============================================================================
+#
+# GCP Resources Required:
+#   - GCS bucket
+#   - GKE cluster (Autopilot or Standard)
+#   - Service Account with appropriate IAM roles
+#   - Secret Manager for secrets
+#
+# IAM Roles Required:
+#   - roles/storage.objectAdmin (for GCS)
+#   - roles/container.developer (for GKE)
+#   - roles/secretmanager.secretAccessor (for secrets)
+#
+# Environment Variables (set in GKE deployment):
+#   GCP_PROJECT=your-project-id
+#   GCP_REGION=us-central1
+#   GCS_BUCKET=your-bucket-name
+#   GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+#   QDRANT_CLOUD_URL=https://xxx.cloud.qdrant.io:6333
+#   QDRANT_API_KEY=your-api-key  (from Secret Manager)
+#
+# Recommended Machine Types:
+#   - Ray workers: n2-standard-4 or c2-standard-4
+#   - Qdrant: n2-highmem-4 (memory optimized)
+#   - API: e2-medium
+#   - GPU nodes (for HuggingFace): n1-standard-4 + nvidia-tesla-t4
+#
+# GCS Interoperability:
+#   GCS supports S3-compatible API via interoperability keys:
+#   1. Go to Cloud Console > Cloud Storage > Settings > Interoperability
+#   2. Create HMAC key for service account
+#   3. Use Access Key as S3_ACCESS_KEY_ID
+#   4. Use Secret as S3_SECRET_ACCESS_KEY
+#
+# =============================================================================

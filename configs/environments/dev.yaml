@@ -1,0 +1,26 @@
+# =============================================================================
+# Development Environment
+# =============================================================================
+# Use with: ENV=dev make run
+#
+# For shared development environments (not local machines)
+# =============================================================================
+
+storage:
+  bucket: "inatinq-dev-data"
+  use_ssl: true
+
+vector_databases:
+  collection: "documents_dev"
+
+logging:
+  level: "debug"
+  format: "json"              # Structured for log aggregation
+
+processing:
+  workers: 4
+  batch_size: 25
+
+ray:
+  cluster:
+    num_workers: 2

@@ -104,6 +104,25 @@ class VectorDBConfigFactory:
         """
         return (self.create_qdrant_config(), self.create_weaviate_config())
 
+    def create_for_targets(
+        self,
+        targets: frozenset[str],
+    ) -> dict[str, VectorDBConfig]:
+        """Create configurations only for targeted vector databases.
+
+        Args:
+            targets: Set of target names (e.g. {"qdrant"}, {"weaviate"}, or both).
+
+        Returns:
+            Dictionary mapping target name to its VectorDBConfig.
+        """
+        configs: dict[str, VectorDBConfig] = {}
+        if "qdrant" in targets:
+            configs["qdrant"] = self.create_qdrant_config()
+        if "weaviate" in targets:
+            configs["weaviate"] = self.create_weaviate_config()
+        return configs
+
 
 class ProcessingClientsFactory:
     """Factory for creating processing client bundles.
@@ -132,6 +151,9 @@ class ProcessingClientsFactory:
     def create(self, config: ProcessingConfig) -> ProcessingClients:
         """Create all clients needed for processing.
 
+        Only creates vector DB clients for databases listed in
+        ``config.ingestion_targets``. Non-targeted DBs are set to None.
+
         Args:
             config: Processing configuration.
 
@@ -151,11 +173,16 @@ class ProcessingClientsFactory:
         # Create embedding provider
         embedder = create_embedding_provider(config.embedding_config, session=session)
 
-        # Create vector DB providers
+        # Create vector DB providers only for targeted databases
         db_factory = self._vector_db_factory or VectorDBConfigFactory(config.namespace)
-        qdrant_config, weaviate_config = db_factory.create_both()
-        qdrant_db = create_vector_db_provider(qdrant_config)
-        weaviate_db = create_vector_db_provider(weaviate_config)
+        targets = config.ingestion_targets
+
+        qdrant_db = None
+        weaviate_db = None
+        if "qdrant" in targets:
+            qdrant_db = create_vector_db_provider(db_factory.create_qdrant_config())
+        if "weaviate" in targets:
+            weaviate_db = create_vector_db_provider(db_factory.create_weaviate_config())
 
         return ProcessingClients(
             s3=s3,
@@ -170,19 +197,26 @@ class VectorPointFactory:
     """Factory for creating vector points for Qdrant and Weaviate.
 
     Converts content and embeddings into database-specific point formats.
+    When ``targets`` is specified, only builds points for targeted databases.
 
     Example:
         >>> factory = VectorPointFactory(s3_bucket="pipeline")
         >>> batch = factory.create_batch(contents, vectors)
     """
 
-    def __init__(self, s3_bucket: str) -> None:
+    def __init__(
+        self,
+        s3_bucket: str,
+        targets: frozenset[str] | None = None,
+    ) -> None:
         """Initialize the factory.
 
         Args:
             s3_bucket: S3 bucket name for metadata.
+            targets: Set of targeted databases. If None, targets both.
         """
         self.s3_bucket = s3_bucket
+        self.targets = targets or frozenset({"qdrant", "weaviate"})
 
     def _create_payload(self, content: ContentResult) -> dict:
         """Create metadata payload for a vector point.
@@ -271,12 +305,14 @@ class VectorPointFactory:
     ) -> BatchEmbeddingResult:
         """Create vector points for a batch of content.
 
+        Only builds points for databases in ``self.targets``.
+
         Args:
             contents: List of content results.
             vectors: Corresponding embedding vectors.
 
         Returns:
-            BatchEmbeddingResult with points for both databases.
+            BatchEmbeddingResult with points for targeted databases.
 
         Raises:
             ValueError: If contents and vectors have different lengths.
@@ -286,11 +322,15 @@ class VectorPointFactory:
 
         qdrant_points: list[VectorPoint] = []
         weaviate_objects: list[WeaviateDataObject] = []
+        build_qdrant = "qdrant" in self.targets
+        build_weaviate = "weaviate" in self.targets
 
         for content, vector in zip(contents, vectors, strict=True):
-            qdrant_point, weaviate_obj = self.create_pair(content, vector)
-            qdrant_points.append(qdrant_point)
-            weaviate_objects.append(weaviate_obj)
+            point_id = str(uuid.uuid4())
+            if build_qdrant:
+                qdrant_points.append(self.create_qdrant_point(content, vector, point_id))
+            if build_weaviate:
+                weaviate_objects.append(self.create_weaviate_object(content, vector, point_id))
 
         return BatchEmbeddingResult(
             qdrant_points=qdrant_points,

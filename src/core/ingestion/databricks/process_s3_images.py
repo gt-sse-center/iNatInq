@@ -17,7 +17,7 @@ import ray
 from botocore.exceptions import ClientError
 
 from clients.s3 import S3ClientWrapper
-from config import ImageEmbeddingConfig, MinIOConfig, RayJobConfig, resolve_vector_db_provider
+from config import ImageEmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
 from core.ingestion.interfaces.operations import ImageContentFetcher
 from core.ingestion.tasks import process_image_batch_ray
 from core.ingestion.strategies import DatabricksStrategy
@@ -52,8 +52,6 @@ def main() -> None:
 
     _apply_python_params(sys.argv[1:])
 
-    vector_db_provider = resolve_vector_db_provider()
-
     namespace = os.environ.get("K8S_NAMESPACE", "ml-system")
     s3_prefix = os.environ.get("S3_PREFIX") or (
         sys.argv[1] if len(sys.argv) > 1 and not sys.argv[0].endswith("uvicorn") else "images/"
@@ -63,7 +61,9 @@ def main() -> None:
     ray_cfg = RayJobConfig.from_env(namespace)
     minio_cfg = MinIOConfig.from_env(namespace)
     embed_cfg = ImageEmbeddingConfig.from_env(namespace)
+    vector_cfg = VectorDBConfig.from_env(namespace)
     bucket = minio_cfg.bucket
+    ingestion_targets = vector_cfg.ingestion_targets
 
     job_logger.info(
         "Configuration loaded",
@@ -72,7 +72,7 @@ def main() -> None:
             "s3_bucket": bucket,
             "s3_prefix": s3_prefix,
             "collection": collection,
-            "vector_db_provider": vector_db_provider,
+            "ingestion_targets": sorted(ingestion_targets),
             "num_workers": ray_cfg.num_workers,
             "image_batch_size": ray_cfg.image_batch_size,
         },
@@ -148,6 +148,7 @@ def main() -> None:
                 retry_max_attempts=ray_cfg.retry_max_attempts,
                 retry_min_wait=ray_cfg.retry_min_wait,
                 retry_max_wait=ray_cfg.retry_max_wait,
+                ingestion_targets=ingestion_targets,
             )
             for batch in key_batches
         ]
