@@ -6,7 +6,6 @@ iNaturalist open-data metadata using INaturalistOpenDataClient.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import sys
@@ -17,17 +16,14 @@ from urllib.parse import urlparse
 
 import ray
 
-from clients.clip import CLIPClient
 from clients.inaturalist_open_data import INaturalistOpenDataClient
 from config import ImageEmbeddingConfig, RayJobConfig
 from core.ingestion.databricks.batch_runner import run_ray_batch_processing
 from core.ingestion.databricks.runtime import apply_python_params as _apply_python_params
-from core.ingestion.interfaces.factories import VectorDBConfigFactory, create_vector_db_provider
 from core.ingestion.interfaces.operations import detect_image_format
 from core.ingestion.interfaces.types import ImageContentResult, ProcessingResult
 from core.ingestion.strategies import DatabricksStrategy
 from core.ingestion.tasks.image_processing import ImageProcessingPipeline, RayImageProcessingConfig
-from foundation.http import create_retry_session
 from foundation.logger import LOGGING_CONFIG
 
 dictConfig(LOGGING_CONFIG)
@@ -129,12 +125,6 @@ def process_inat_photo_batch_ray(
     )
     pipeline = ImageProcessingPipeline(config, rate_limiter=rate_limiter)
 
-    session = create_retry_session()
-    clip_client = CLIPClient.from_config(image_embedding_config, session=session)
-    db_factory = VectorDBConfigFactory(namespace)
-    qdrant_cfg, weaviate_cfg = db_factory.create_both()
-    qdrant_db = create_vector_db_provider(qdrant_cfg)
-    weaviate_db = create_vector_db_provider(weaviate_cfg)
     inat_client = INaturalistOpenDataClient(
         photo_base_url=inat_photo_base_url,
         timeout_s=inat_timeout_s,
@@ -172,13 +162,10 @@ def process_inat_photo_batch_ray(
         if not images:
             return [result.to_tuple() for result in download_failures]
 
-        process_results = asyncio.run(pipeline._process_images_async(images, clip_client, qdrant_db, weaviate_db))
+        process_results = pipeline.process_images_sync(images)
         return [result.to_tuple() for result in (download_failures + process_results)]
     finally:
-        qdrant_db.close()
-        weaviate_db.close()
         inat_client.close()
-        session.close()
 
 
 def main() -> None:

@@ -819,6 +819,68 @@ class TestDatabricksJobEndpoints:
         assert data["run_id"] == "123"
         assert data["status"] == "submitted"
 
+    def test_submit_databricks_image_job_s3_success(self, test_client: TestClient) -> None:
+        """Test S3 image job submission path uses submit_image_job."""
+        with patch("api.routes.DatabricksRayService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.submit_image_job.return_value = 456
+            mock_service_cls.return_value = mock_service
+
+            with patch("api.routes.get_settings") as mock_settings:
+                mock_settings.return_value.k8s_namespace = "ml-system"
+                with patch("api.routes.MinIOConfig.from_env") as mock_minio:
+                    mock_minio.return_value.endpoint_url = "http://minio:9000"
+                    mock_minio.return_value.access_key_id = "minioadmin"
+                    mock_minio.return_value.secret_access_key = "minioadmin"
+                    mock_minio.return_value.bucket = "pipeline"
+                    with patch("api.routes.ImageEmbeddingConfig.from_env") as mock_embed_cfg:
+                        mock_embed_cfg.return_value = MagicMock()
+                        response = test_client.post(
+                            "/databricks/jobs/images",
+                            json={
+                                "source": "s3",
+                                "s3_prefix": "images/",
+                                "collection": "documents",
+                            },
+                        )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["run_id"] == "456"
+        assert data["source"] == "s3"
+        mock_minio.assert_called_once_with("ml-system")
+        mock_service.submit_image_job.assert_called_once()
+        mock_service.submit_inat_image_job.assert_not_called()
+
+    def test_submit_databricks_image_job_inat_success(self, test_client: TestClient) -> None:
+        """Test iNat image job submission path bypasses MinIO and uses dedicated submit method."""
+        with patch("api.routes.DatabricksRayService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.submit_inat_image_job.return_value = 789
+            mock_service_cls.return_value = mock_service
+
+            with patch("api.routes.get_settings") as mock_settings:
+                mock_settings.return_value.k8s_namespace = "ml-system"
+                with patch("api.routes.MinIOConfig.from_env") as mock_minio:
+                    with patch("api.routes.ImageEmbeddingConfig.from_env") as mock_embed_cfg:
+                        mock_embed_cfg.return_value = MagicMock()
+                        response = test_client.post(
+                            "/databricks/jobs/images",
+                            json={
+                                "source": "inat",
+                                "s3_prefix": "ignored/",
+                                "collection": "documents",
+                            },
+                        )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["run_id"] == "789"
+        assert data["source"] == "inat"
+        mock_minio.assert_not_called()
+        mock_service.submit_inat_image_job.assert_called_once()
+        mock_service.submit_image_job.assert_not_called()
+
     def test_get_databricks_job_status_success(self, test_client: TestClient) -> None:
         """Test getting Databricks job status."""
         with patch("api.routes.DatabricksRayService") as mock_service_cls:

@@ -5,7 +5,12 @@ from __future__ import annotations
 import os
 
 from config import EmbeddingConfig, ImageEmbeddingConfig
-from core.services.ingestion_params import add_ray_tuning_env, build_image_ingestion_env, build_ingestion_env
+from core.services.ingestion_params import (
+    add_ray_tuning_env,
+    build_image_ingestion_env,
+    build_inat_image_ingestion_env,
+    build_ingestion_env,
+)
 
 
 def test_build_ingestion_env_includes_required_and_optional(monkeypatch) -> None:
@@ -167,3 +172,45 @@ def test_build_ingestion_env_targets_sorted(monkeypatch) -> None:
     assert env_vars["INAT_METADATA_URL"] == "s3://inaturalist-open-data/photos.csv.gz"
     assert env_vars["INAT_IMAGE_SIZE"] == "large"
     assert env_vars["EXTRA_ENV"] == "extra-value"
+
+
+def test_build_inat_image_ingestion_env_excludes_s3_connection_keys(monkeypatch) -> None:
+    """Ensure iNat image ingestion env does not require MinIO/S3 connection values."""
+    monkeypatch.setenv("QDRANT_URL", "http://qdrant.test:6333")
+    monkeypatch.setenv("INAT_MAX_ROWS", "500")
+    monkeypatch.setenv("INAT_METADATA_URL", "s3://inaturalist-open-data/photos.csv.gz")
+    monkeypatch.setenv("EXTRA_ENV", "extra-value")
+
+    image_embedding_config = ImageEmbeddingConfig(
+        provider_type="clip",
+        clip_url="http://clip.test:8000",
+        clip_model="ViT-B/32",
+        clip_backend="hosted_clip",
+        clip_timeout=90,
+        clip_circuit_breaker_threshold=7,
+        clip_circuit_breaker_timeout=45,
+        clip_max_batch_size=16,
+        clip_vector_size=512,
+        image_batch_size=12,
+        image_max_size_mb=8.5,
+        image_target_size=336,
+    )
+
+    env_vars = build_inat_image_ingestion_env(
+        namespace="ml-system",
+        image_embedding_config=image_embedding_config,
+        collection="images",
+        extra_env_keys=["EXTRA_ENV"],
+    )
+
+    assert env_vars["K8S_NAMESPACE"] == "ml-system"
+    assert env_vars["VECTOR_DB_COLLECTION"] == "images"
+    assert env_vars["IMAGE_EMBEDDING_PROVIDER"] == "clip"
+    assert env_vars["INAT_MAX_ROWS"] == "500"
+    assert env_vars["INAT_METADATA_URL"] == "s3://inaturalist-open-data/photos.csv.gz"
+    assert env_vars["EXTRA_ENV"] == "extra-value"
+    assert env_vars["QDRANT_URL"] == "http://qdrant.test:6333"
+    assert "S3_ENDPOINT" not in env_vars
+    assert "S3_ACCESS_KEY_ID" not in env_vars
+    assert "S3_SECRET_ACCESS_KEY" not in env_vars
+    assert "S3_BUCKET" not in env_vars

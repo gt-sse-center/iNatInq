@@ -126,6 +126,24 @@ class ImageProcessingPipeline:
             access_key_id=self._config.s3_access_key,
             secret_access_key=self._config.s3_secret_key,
         )
+        fetcher = ImageContentFetcher(s3, self._config.s3_bucket)
+        images, fetch_failures = fetcher.fetch_all(keys, with_dimensions=True)
+
+        if not images:
+            return fetch_failures
+
+        process_results = self.process_images_sync(images)
+        return fetch_failures + process_results
+
+    def process_images_sync(self, images: list[ImageContentResult]) -> list[ProcessingResult]:
+        """Process already-loaded image content synchronously.
+
+        This is used by non-S3 ingestion sources (for example iNaturalist),
+        where image bytes are fetched outside this pipeline.
+        """
+        if not images:
+            return []
+
         session = create_retry_session()
         clip_client = CLIPClient.from_config(self._config.image_embedding_config, session=session)
         db_factory = VectorDBConfigFactory(self._config.namespace)
@@ -138,16 +156,7 @@ class ImageProcessingPipeline:
             weaviate_db = create_vector_db_provider(db_factory.create_weaviate_config())
 
         try:
-            fetcher = ImageContentFetcher(s3, self._config.s3_bucket)
-            images, fetch_failures = fetcher.fetch_all(keys, with_dimensions=True)
-
-            if not images:
-                return fetch_failures
-
-            process_results = asyncio.run(
-                self._process_images_async(images, clip_client, qdrant_db, weaviate_db)
-            )
-            return fetch_failures + process_results
+            return asyncio.run(self._process_images_async(images, clip_client, qdrant_db, weaviate_db))
         finally:
             if qdrant_db is not None:
                 qdrant_db.close()

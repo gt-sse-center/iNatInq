@@ -575,7 +575,7 @@ async def submit_databricks_job(req: models.DatabricksJobRequest) -> models.Data
 async def submit_databricks_image_job(
     req: models.DatabricksImageJobRequest,
 ) -> models.DatabricksImageJobResponse:
-    """Submit a new Databricks job to process S3 images.
+    """Submit a new Databricks job to process images.
 
     This submits a run for a preconfigured Databricks Job and returns immediately.
 
@@ -593,20 +593,16 @@ async def submit_databricks_image_job(
         namespace = settings.k8s_namespace
 
         databricks_service = DatabricksRayService()
-        minio_cfg = MinIOConfig.from_env(namespace)
         image_embed_cfg = ImageEmbeddingConfig.from_env(namespace)
         if req.source == "inat":
             run_id = databricks_service.submit_inat_image_job(
                 namespace=namespace,
-                s3_endpoint=minio_cfg.endpoint_url,
-                s3_access_key_id=minio_cfg.access_key_id,
-                s3_secret_access_key=minio_cfg.secret_access_key,
-                s3_bucket=minio_cfg.bucket,
-                s3_prefix=req.s3_prefix,
                 image_embedding_config=image_embed_cfg,
                 collection=req.collection,
+                s3_prefix=req.s3_prefix,
             )
         else:
+            minio_cfg = MinIOConfig.from_env(namespace)
             run_id = databricks_service.submit_image_job(
                 namespace=namespace,
                 s3_endpoint=minio_cfg.endpoint_url,

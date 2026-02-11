@@ -344,10 +344,6 @@ class TestDatabricksRayServiceSubmitINatImageJob:
         service = DatabricksRayService()
         run_id = service.submit_inat_image_job(
             namespace="test-namespace",
-            s3_endpoint="http://minio.test:9000",
-            s3_access_key_id="test-key",
-            s3_secret_access_key="test-secret",
-            s3_bucket="test-bucket",
             s3_prefix="images/",
             image_embedding_config=image_embedding_config,
             collection="test-image-collection",
@@ -359,6 +355,10 @@ class TestDatabricksRayServiceSubmitINatImageJob:
         params = call_kwargs["python_params"]
         assert "INAT_MAX_ROWS=250" in params
         assert "INAT_METADATA_URL=s3://inaturalist-open-data/photos.csv.gz" in params
+        assert not any(param.startswith("S3_ENDPOINT=") for param in params)
+        assert not any(param.startswith("S3_ACCESS_KEY_ID=") for param in params)
+        assert not any(param.startswith("S3_SECRET_ACCESS_KEY=") for param in params)
+        assert not any(param.startswith("S3_BUCKET=") for param in params)
 
     @patch("core.services.databricks_ray_service.DatabricksRayJobConfig.from_env")
     def test_submit_inat_image_job_raises_without_inat_job_id(self, mock_config: MagicMock) -> None:
@@ -380,10 +380,6 @@ class TestDatabricksRayServiceSubmitINatImageJob:
         with pytest.raises(ValueError, match="DATABRICKS_INAT_JOB_ID"):
             service.submit_inat_image_job(
                 namespace="test-namespace",
-                s3_endpoint="http://minio.test:9000",
-                s3_access_key_id="test-key",
-                s3_secret_access_key="test-secret",
-                s3_bucket="test-bucket",
                 s3_prefix="images/",
                 image_embedding_config=image_embedding_config,
                 collection="test-image-collection",

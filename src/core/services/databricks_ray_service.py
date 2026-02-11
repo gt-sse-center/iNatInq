@@ -19,7 +19,12 @@ from databricks.sdk import WorkspaceClient
 
 from config import DatabricksRayJobConfig, EmbeddingConfig, ImageEmbeddingConfig
 from core.exceptions import UpstreamError
-from core.services.ingestion_params import add_ray_tuning_env, build_image_ingestion_env, build_ingestion_env
+from core.services.ingestion_params import (
+    add_ray_tuning_env,
+    build_image_ingestion_env,
+    build_inat_image_ingestion_env,
+    build_ingestion_env,
+)
 from foundation.logger import LOGGING_CONFIG
 
 dictConfig(LOGGING_CONFIG)
@@ -197,13 +202,9 @@ class DatabricksRayService:
         self,
         *,
         namespace: str,
-        s3_endpoint: str,
-        s3_access_key_id: str,
-        s3_secret_access_key: str,
-        s3_bucket: str,
-        s3_prefix: str = "images/",
         image_embedding_config: ImageEmbeddingConfig,
         collection: str,
+        s3_prefix: str = "images/",
     ) -> int:
         """Submit a Databricks job to process iNaturalist images.
 
@@ -213,13 +214,8 @@ class DatabricksRayService:
         if databricks_config.inat_job_id is None:
             raise ValueError("Missing required Databricks config: DATABRICKS_INAT_JOB_ID")
 
-        env_vars = build_image_ingestion_env(
+        env_vars = build_inat_image_ingestion_env(
             namespace=namespace,
-            s3_endpoint=s3_endpoint,
-            s3_access_key_id=s3_access_key_id,
-            s3_secret_access_key=s3_secret_access_key,
-            s3_bucket=s3_bucket,
-            s3_prefix=s3_prefix,
             image_embedding_config=image_embedding_config,
             collection=collection,
             extra_env_keys=("INATINQ_SRC_DIR",),
