@@ -154,7 +154,6 @@ class RayService:
                         "tenacity",
                         "pybreaker",
                         "aiobreaker",
-                        "pillow",
                     ],
                 },
             )

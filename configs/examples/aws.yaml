@@ -28,7 +28,7 @@ storage:
     recovery_timeout: 60
 
 vector_databases:
-  provider: "qdrant"
+  search_provider: "qdrant"
   collection: "documents_prod"
 
   qdrant:

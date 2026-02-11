@@ -37,7 +37,7 @@ configs/
 │   ├── dev.yaml            # Shared development
 │   ├── staging.yaml        # Pre-production
 │   └── prod.yaml           # Production
-├── examples/                # Cloud provider examples
+├── examples/                # Cloud provider sample templates (untested)
 │   ├── aws.yaml            # AWS deployment
 │   ├── azure.yaml          # Azure deployment
 │   └── gcp.yaml            # GCP deployment
@@ -100,11 +100,11 @@ storage:
 
 ### Vector Database
 
-Supports Qdrant and Weaviate. Set `provider` to choose:
+Supports Qdrant and Weaviate. Set `search_provider` to choose:
 
 ```yaml
 vector_databases:
-  provider: "qdrant"          # or "weaviate"
+  search_provider: "qdrant"   # or "weaviate"
   collection: "documents"
 
   qdrant:
@@ -155,7 +155,9 @@ ray:
 
 ## Cloud Deployments
 
-See `configs/examples/` for cloud-specific configurations:
+See `configs/examples/` for cloud-specific configurations. **These are sample
+templates, not tested deployments.** You will need to adapt them to your
+specific cloud setup and credentials.
 
 - **AWS:** `examples/aws.yaml` - S3, SageMaker, EKS
 - **Azure:** `examples/azure.yaml` - Blob Storage, AKS

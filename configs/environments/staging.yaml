@@ -23,6 +23,14 @@ vector_databases:
       hnsw_m: 16
       indexing_threshold: 20000
 
+image_embeddings:
+  # Backend: "ollama", "clip", or "hosted_clip"
+  backend: "ollama"
+  model: "llava"
+  url: "${CLIP_URL}"
+  max_batch_size: 8
+  # api_key: "${CLIP_API_KEY}"  # Required for hosted_clip backend
+
 logging:
   level: "info"
   format: "json"

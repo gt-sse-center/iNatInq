@@ -51,17 +51,16 @@
         "circuit_breaker": {
           "$ref": "#/$defs/circuit_breaker"
         }
-      },
-      "required": ["endpoint", "bucket"]
+      }
     },
     "vector_databases": {
       "type": "object",
       "description": "Vector database configuration",
       "properties": {
-        "provider": {
+        "search_provider": {
           "type": "string",
           "enum": ["qdrant", "weaviate"],
-          "description": "Vector database provider"
+          "description": "Vector database provider for search queries"
         },
         "collection": {
           "type": "string",
@@ -144,8 +143,7 @@
             }
           }
         }
-      },
-      "required": ["provider", "collection"]
+      }
     },
     "embeddings": {
       "type": "object",
@@ -190,8 +188,7 @@
             "region": { "type": "string" }
           }
         }
-      },
-      "required": ["provider"]
+      }
     },
     "image_embeddings": {
       "type": "object",
@@ -203,9 +200,13 @@
         },
         "backend": {
           "type": "string",
-          "enum": ["ollama", "clip"]
+          "enum": ["ollama", "clip", "hosted_clip"]
         },
         "model": { "type": "string" },
+        "api_key": {
+          "type": "string",
+          "description": "API key for hosted_clip backend"
+        },
         "vector_size": { "type": ["integer", "null"] },
         "url": { "type": "string", "format": "uri" },
         "timeout_seconds": { "type": "integer", "minimum": 1 },

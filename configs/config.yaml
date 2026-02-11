@@ -62,8 +62,8 @@ storage:
 # =============================================================================
 
 vector_databases:
-  # Which provider to use: "qdrant" or "weaviate"
-  provider: "qdrant"
+  # Which provider to use for search queries: "qdrant" or "weaviate"
+  search_provider: "qdrant"
 
   # Collection/class name for embeddings
   collection: "documents"
@@ -177,11 +177,12 @@ image_embeddings:
   # Provider: "clip" or "llava"
   provider: "clip"
 
-  # Backend: "ollama" (recommended) or "clip" (standalone service)
+  # Backend: "ollama" (recommended), "clip" (standalone service), or "hosted_clip"
   backend: "ollama"
 
   # Model settings
   model: "llava"              # For ollama backend
+  # api_key: ""               # Required for hosted_clip backend
   vector_size: null           # null = auto-detect (512 for ViT-B/32)
 
   # URL (auto-configured based on backend)

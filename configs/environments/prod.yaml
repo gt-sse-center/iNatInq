@@ -19,7 +19,7 @@ storage:
     max_wait_seconds: 30.0
 
 vector_databases:
-  provider: "qdrant"
+  search_provider: "qdrant"
   collection: "documents_prod"
 
   qdrant:
@@ -46,8 +46,12 @@ embeddings:
     max_batch_size: 16
 
 image_embeddings:
+  # Backend: "ollama", "clip", or "hosted_clip"
+  backend: "ollama"
+  model: "llava"
   url: "${CLIP_URL}"
   max_batch_size: 12
+  # api_key: "${CLIP_API_KEY}"  # Required for hosted_clip backend
 
 logging:
   level: "info"

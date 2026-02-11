@@ -156,7 +156,7 @@ YAML_TO_ENV_MAP: dict[str, str] = {
     "storage.circuit_breaker.failure_threshold": "S3_CIRCUIT_BREAKER_THRESHOLD",
     "storage.circuit_breaker.recovery_timeout": "S3_CIRCUIT_BREAKER_TIMEOUT",
     # Vector databases
-    "vector_databases.provider": "VECTOR_DB_PROVIDER",
+    "vector_databases.search_provider": "VECTOR_DB_PROVIDER",
     "vector_databases.collection": "VECTOR_DB_COLLECTION",
     "vector_databases.ingestion_targets": "VECTOR_DB_TARGETS",
     "vector_databases.qdrant.url": "QDRANT_URL",
