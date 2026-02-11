@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gold-standard.schema.json",
+  "title": "Gold Standard Benchmark Dataset",
+  "description": "Schema for gold standard benchmark datasets used to evaluate vector database providers.",
+  "type": "object",
+  "required": ["name", "description", "modality", "queries"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Unique dataset identifier."
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the dataset."
+    },
+    "modality": {
+      "type": "string",
+      "enum": ["text", "image"],
+      "description": "Data modality: text or image."
+    },
+    "queries": {
+      "type": "array",
+      "minItems": 1,
+      "description": "List of benchmark queries with relevance judgments.",
+      "items": {
+        "type": "object",
+        "required": ["id", "text", "relevant"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique query identifier."
+          },
+          "text": {
+            "type": "string",
+            "description": "Query text."
+          },
+          "relevant": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string" },
+            "description": "List of relevant document IDs."
+          },
+          "graded_relevance": {
+            "type": "object",
+            "additionalProperties": { "type": "integer", "minimum": 0 },
+            "description": "Mapping of document IDs to integer relevance grades."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "created_at": {
+          "type": "string",
+          "description": "Creation date."
+        },
+        "annotators": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of annotator identifiers."
+        },
+        "agreement_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Inter-annotator agreement threshold."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Optional dataset metadata."
+    }
+  },
+  "additionalProperties": false
+}
