@@ -148,6 +148,11 @@ class LocalRayStrategy:
             )
             raise RuntimeError(f"Failed to connect to Ray cluster: {e}") from e
 
+    # Backward-compatible alias used by integration tests and older callers.
+    def initialize(self) -> None:
+        """Initialize the Ray strategy."""
+        self.init()
+
     def shutdown(self) -> None:
         """Shutdown Ray client connection.
 

@@ -26,8 +26,11 @@ from core.ingestion.tasks import process_s3_batch_ray
 from core.ingestion.shared import RateLimiterActor
 from foundation.logger import LOGGING_CONFIG
 
-from ray.util.spark import setup_ray_cluster
-from ray.util.spark import MAX_NUM_WORKER_NODES
+try:
+    from ray.util.spark import MAX_NUM_WORKER_NODES, setup_ray_cluster
+except Exception:  # pragma: no cover - handled in _setup_ray_cluster
+    setup_ray_cluster = None
+    MAX_NUM_WORKER_NODES = None
 
 
 logger = logging.getLogger("pipeline.ray.databricks")
@@ -36,7 +39,7 @@ dictConfig(LOGGING_CONFIG)
 
 def _setup_ray_cluster(config: RayJobConfig) -> object | None:
     """Start Ray on Databricks and return the cluster handle when possible."""
-    if setup_ray_cluster is None:
+    if setup_ray_cluster is None or MAX_NUM_WORKER_NODES is None:
         raise RuntimeError("ray.util.spark is required to start Ray on Databricks.")
 
     kwargs = {
