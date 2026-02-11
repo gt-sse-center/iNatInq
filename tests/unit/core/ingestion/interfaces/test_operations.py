@@ -916,7 +916,7 @@ class TestVectorDBUpserter:
         assert upserter.weaviate_db == mock_weaviate
 
     @pytest.mark.asyncio
-    async def test_upsert_batch_async_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_upsert_batch_async_success(self) -> None:
         """Test successful batch upsert.
 
         **Why this test is important:**
@@ -926,7 +926,6 @@ class TestVectorDBUpserter:
         **What it tests:**
           - Returns True on success
         """
-        monkeypatch.setenv("VECTOR_DB_PROVIDER", "both")
         mock_qdrant = MagicMock()
         mock_qdrant.batch_upsert_async = AsyncMock(return_value=None)
         mock_weaviate = MagicMock()
@@ -974,7 +973,7 @@ class TestVectorDBUpserter:
         mock_qdrant.batch_upsert_async.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_upsert_batch_async_partial_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_upsert_batch_async_partial_failure(self) -> None:
         """Test partial failure handling.
 
         **Why this test is important:**
@@ -984,7 +983,6 @@ class TestVectorDBUpserter:
         **What it tests:**
           - Returns True when one DB succeeds
         """
-        monkeypatch.setenv("VECTOR_DB_PROVIDER", "both")
         mock_qdrant = MagicMock()
         mock_qdrant.batch_upsert_async = AsyncMock(return_value=None)
         mock_weaviate = MagicMock()
@@ -1007,7 +1005,7 @@ class TestVectorDBUpserter:
         assert not result.weaviate_success
 
     @pytest.mark.asyncio
-    async def test_upsert_batch_async_both_fail(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_upsert_batch_async_both_fail(self) -> None:
         """Test both DBs failing.
 
         **Why this test is important:**
@@ -1017,7 +1015,6 @@ class TestVectorDBUpserter:
         **What it tests:**
           - Returns False when both fail
         """
-        monkeypatch.setenv("VECTOR_DB_PROVIDER", "both")
         mock_qdrant = MagicMock()
         mock_qdrant.batch_upsert_async = AsyncMock(side_effect=Exception("Qdrant error"))
         mock_weaviate = MagicMock()
@@ -1038,6 +1035,84 @@ class TestVectorDBUpserter:
         assert not result.any_success
         assert not result.qdrant_success
         assert not result.weaviate_success
+
+    @pytest.mark.asyncio
+    async def test_upsert_qdrant_only(self) -> None:
+        """Test upsert with only Qdrant targeted and weaviate_db=None.
+
+        **Why this test is important:**
+          - Single-target mode passes None for the disabled database
+          - Non-targeted DB must default to success without being called
+
+        **What it tests:**
+          - Qdrant upsert succeeds
+          - Weaviate defaults to success (not targeted)
+          - Qdrant batch_upsert_async is called exactly once
+        """
+        mock_qdrant = MagicMock()
+        mock_qdrant.batch_upsert_async = AsyncMock(return_value=None)
+
+        upserter = VectorDBUpserter(mock_qdrant, weaviate_db=None)
+
+        mock_point = MagicMock(spec=VectorPoint)
+        mock_point.to_qdrant.return_value = MagicMock()
+        batch = BatchEmbeddingResult(
+            qdrant_points=[mock_point],
+            weaviate_objects=[],
+        )
+
+        result = await upserter.upsert_batch_async(batch, "documents", 768)
+
+        assert result.qdrant_success
+        assert result.weaviate_success  # Defaulted to success (not targeted)
+        mock_qdrant.batch_upsert_async.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_upsert_weaviate_only(self) -> None:
+        """Test upsert with only Weaviate targeted and qdrant_db=None.
+
+        **Why this test is important:**
+          - Single-target mode passes None for the disabled database
+          - Non-targeted DB must default to success without being called
+
+        **What it tests:**
+          - Weaviate upsert succeeds
+          - Qdrant defaults to success (not targeted)
+          - Weaviate batch_upsert_async is called exactly once
+        """
+        mock_weaviate = MagicMock()
+        mock_weaviate.batch_upsert_async = AsyncMock(return_value=None)
+
+        upserter = VectorDBUpserter(qdrant_db=None, weaviate_db=mock_weaviate)
+
+        batch = BatchEmbeddingResult(
+            qdrant_points=[],
+            weaviate_objects=[MagicMock()],
+        )
+
+        result = await upserter.upsert_batch_async(batch, "documents", 768)
+
+        assert result.qdrant_success  # Defaulted to success (not targeted)
+        assert result.weaviate_success
+        mock_weaviate.batch_upsert_async.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_upsert_both_none_empty_batch(self) -> None:
+        """Test upsert with both providers None and empty batch.
+
+        **Why this test is important:**
+          - Edge case: no targeted DBs with no data to upsert
+          - Must not crash when both providers are None
+
+        **What it tests:**
+          - Returns all_success for empty batch with no providers
+        """
+        upserter = VectorDBUpserter(qdrant_db=None, weaviate_db=None)
+        batch = BatchEmbeddingResult(qdrant_points=[], weaviate_objects=[])
+
+        result = await upserter.upsert_batch_async(batch, "documents", 768)
+
+        assert result.all_success  # Empty batch is success
 
 
 # =============================================================================

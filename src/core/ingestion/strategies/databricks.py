@@ -15,7 +15,7 @@ from typing import Any
 import attrs
 import ray
 
-from config import RayJobConfig, resolve_vector_db_provider
+from config import RayJobConfig, VectorDBConfig
 
 logger = logging.getLogger("pipeline.ray.strategy.databricks")
 
@@ -144,7 +144,8 @@ class DatabricksStrategy:
             if value is not None and value != "":
                 env_vars[key] = value
 
-        env_vars["VECTOR_DB_PROVIDER"] = resolve_vector_db_provider()
+        targets = VectorDBConfig.parse_targets_from_env()
+        env_vars["VECTOR_DB_TARGETS"] = ",".join(sorted(targets))
         if env_vars:
             runtime_env["env_vars"] = env_vars
 

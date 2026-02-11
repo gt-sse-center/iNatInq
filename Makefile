@@ -24,6 +24,7 @@ help:
 	@echo "│ make lint              Run linters (ruff)                                   │"
 	@echo "│ make format            Format code (ruff)                                   │"
 	@echo "│ make typecheck         Run type checker (mypy)                              │"
+	@echo "│ make validate-config   Validate YAML config files                           │"
 	@echo "│ make dev               Start development server (local, no Docker)          │"
 	@echo "├── Docker Compose ───────────────────────────────────────────────────────────┤"
 	@echo "│ make docker-up         Start all services                                   │"
@@ -168,6 +169,18 @@ format:
 typecheck:
 	@echo "Running type checker..."
 	uv run mypy src/
+
+.PHONY: validate-config
+validate-config:
+	@echo "Validating YAML configuration..."
+	@uv run python -c "\
+	from config_loader import load_yaml_config; \
+	c = load_yaml_config(); \
+	print('Base config: OK (' + str(len(c)) + ' top-level keys)'); \
+	import os, pathlib; \
+	env_dir = pathlib.Path('configs/environments'); \
+	[print(f'  + {f.stem}: OK') for f in sorted(env_dir.glob('*.yaml')) if load_yaml_config(env=f.stem) is not None]; \
+	print('All configs valid.')"
 
 .PHONY: dev
 dev:
