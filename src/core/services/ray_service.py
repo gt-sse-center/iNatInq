@@ -237,6 +237,8 @@ class RayService:
             env_vars["CLIP_MODEL"] = os.getenv("CLIP_MODEL")
         if os.getenv("CLIP_BACKEND"):
             env_vars["CLIP_BACKEND"] = os.getenv("CLIP_BACKEND")
+        if os.getenv("VECTOR_DB_TARGETS"):
+            env_vars["VECTOR_DB_TARGETS"] = os.getenv("VECTOR_DB_TARGETS")
 
         try:
             client = JobSubmissionClient(dashboard_address)

@@ -56,12 +56,14 @@ def main() -> None:
     vector_cfg = VectorDBConfig.from_env(namespace)
     embed_cfg = EmbeddingConfig.from_env(namespace)
 
+    ingestion_targets = vector_cfg.ingestion_targets
     job_logger.info(
         "Configuration loaded",
         extra={
             "namespace": namespace,
             "s3_prefix": s3_prefix,
             "num_workers": ray_cfg.num_workers,
+            "ingestion_targets": sorted(ingestion_targets),
         },
     )
 
@@ -169,6 +171,7 @@ def main() -> None:
                 retry_max_attempts=ray_cfg.retry_max_attempts,
                 retry_min_wait=ray_cfg.retry_min_wait,
                 retry_max_wait=ray_cfg.retry_max_wait,
+                ingestion_targets=ingestion_targets,
             )
             for batch in key_batches
         ]

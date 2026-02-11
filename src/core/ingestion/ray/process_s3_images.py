@@ -18,7 +18,7 @@ import ray
 from botocore.exceptions import ClientError
 
 from clients.s3 import S3ClientWrapper
-from config import ImageEmbeddingConfig, MinIOConfig, RayJobConfig
+from config import ImageEmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
 from core.ingestion.interfaces.operations import ImageContentFetcher
 from core.ingestion.strategies import LocalRayStrategy
 from foundation.logger import LOGGING_CONFIG
@@ -49,7 +49,9 @@ def main() -> None:
     ray_cfg = RayJobConfig.from_env(namespace)
     minio_cfg = MinIOConfig.from_env(namespace)
     embed_cfg = ImageEmbeddingConfig.from_env(namespace)
+    vector_cfg = VectorDBConfig.from_env(namespace)
     bucket = minio_cfg.bucket
+    ingestion_targets = vector_cfg.ingestion_targets
 
     job_logger.info(
         "Configuration loaded",
@@ -60,6 +62,7 @@ def main() -> None:
             "collection": collection,
             "num_workers": ray_cfg.num_workers,
             "image_batch_size": ray_cfg.image_batch_size,
+            "ingestion_targets": sorted(ingestion_targets),
         },
     )
 
@@ -142,6 +145,7 @@ def main() -> None:
                 retry_max_attempts=ray_cfg.retry_max_attempts,
                 retry_min_wait=ray_cfg.retry_min_wait,
                 retry_max_wait=ray_cfg.retry_max_wait,
+                ingestion_targets=ingestion_targets,
             )
             for batch in key_batches
         ]

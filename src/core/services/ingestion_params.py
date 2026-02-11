@@ -24,6 +24,7 @@ _VECTOR_ENV_KEYS = (
     "WEAVIATE_URL",
     "WEAVIATE_API_KEY",
     "WEAVIATE_GRPC_HOST",
+    "VECTOR_DB_TARGETS",
 )
 
 _VECTOR_TIMEOUT_ENV_KEYS = (
@@ -106,6 +107,7 @@ def build_ingestion_env(
     s3_prefix: str,
     embedding_config: EmbeddingConfig,
     collection: str,
+    ingestion_targets: frozenset[str] | None = None,
     extra_env_keys: Iterable[str] | None = None,
 ) -> dict[str, str]:
     """Build env-style params for ingestion jobs (Ray/Databricks).
@@ -113,7 +115,7 @@ def build_ingestion_env(
     This function returns a dictionary of environment variables that configure
     the ingestion pipeline entrypoint. It includes:
       - Namespace and S3 connection details
-      - Vector DB collection name
+      - Vector DB collection name and ingestion targets
       - Embedding provider settings
       - Optional vector DB credentials from the current process environment
 
@@ -126,6 +128,8 @@ def build_ingestion_env(
         s3_prefix: S3 prefix to filter objects.
         embedding_config: Embedding provider configuration.
         collection: Vector DB collection name.
+        ingestion_targets: Set of vector DBs to index. If provided, written
+            as VECTOR_DB_TARGETS env var.
         extra_env_keys: Optional iterable of env var names to pass through
             from the current process if set.
 
@@ -143,6 +147,9 @@ def build_ingestion_env(
         "VECTOR_DB_COLLECTION": collection,
         "EMBEDDING_PROVIDER": embedding_config.provider_type,
     }
+
+    if ingestion_targets:
+        env_vars["VECTOR_DB_TARGETS"] = ",".join(sorted(ingestion_targets))
 
     if embedding_config.vector_size is not None:
         env_vars["EMBEDDING_VECTOR_SIZE"] = str(embedding_config.vector_size)
