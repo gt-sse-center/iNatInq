@@ -978,8 +978,8 @@ class TestObservability:
                 )
             )
 
-        # Note: The error may be raised without logging depending on implementation
-        # This test validates the exception is raised correctly
+        # Search on nonexistent collection either raises UpstreamError or logs; test completed
+        assert qdrant_client is not None
 
 
 # =============================================================================

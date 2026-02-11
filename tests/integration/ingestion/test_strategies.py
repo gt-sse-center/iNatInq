@@ -147,112 +147,75 @@ class TestLocalRayStrategyWithContainer:
 
 @pytest.mark.integration
 class TestLocalRayStrategyStandalone:
-    """Test LocalRayStrategy creating its own local cluster.
+    """Test LocalRayStrategy against an external Ray cluster.
 
-    These tests verify the strategy can start and manage a local Ray cluster
-    without relying on an external container.
+    These tests verify the strategy connects to an existing Ray cluster
+    (e.g. containerized) via RayJobConfig and init/shutdown.
     """
 
-    def test_strategy_initializes_local_cluster(self) -> None:
-        """Test that LocalRayStrategy can start a local Ray cluster.
+    def test_strategy_connects_to_external_cluster(
+        self,
+        ray_client_address: str,
+    ) -> None:
+        """Test that LocalRayStrategy connects to external cluster and shuts down.
 
         **Why this test is important:**
-          - Local cluster is fallback when no external cluster
-          - Critical for development mode
-          - Validates strategy initialization
+          - Validates strategy init()/shutdown() with real cluster
+          - Ensures config is passed correctly
+          - Critical for Docker/K8s deployments
 
         **What it tests:**
-          - Strategy creates cluster on initialize()
+          - Strategy init() connects to cluster
           - Ray becomes initialized
           - Shutdown cleans up properly
         """
+        import os
+
         import ray
 
+        from config import RayJobConfig
         from core.ingestion.strategies.local_ray import LocalRayStrategy
-
-        strategy = LocalRayStrategy(
-            num_cpus=1,
-            include_dashboard=False,
-        )
 
         # Ensure clean state
         if ray.is_initialized():
             ray.shutdown()
 
+        # Strategy requires RAY_ADDRESS; point to containerized cluster
+        prev = os.environ.get("RAY_ADDRESS")
+        os.environ["RAY_ADDRESS"] = ray_client_address
         try:
-            strategy.initialize()
+            config = RayJobConfig.from_env()
+            strategy = LocalRayStrategy(config=config)
+            strategy.init()
             assert ray.is_initialized()
-
-            # Verify cluster has expected resources
             resources = ray.cluster_resources()
             assert "CPU" in resources
-
         finally:
-            strategy.shutdown()
-            # Ray should be shut down
-            assert not ray.is_initialized()
-
-    def test_strategy_context_manager(self) -> None:
-        """Test LocalRayStrategy as context manager.
-
-        **Why this test is important:**
-          - Context manager ensures cleanup
-          - Prevents resource leaks
-          - Validates proper shutdown
-
-        **What it tests:**
-          - __enter__ initializes cluster
-          - __exit__ shuts down cluster
-          - Exception handling works
-        """
-        import ray
-
-        from core.ingestion.strategies.local_ray import LocalRayStrategy
-
-        # Ensure clean state
-        if ray.is_initialized():
-            ray.shutdown()
-
-        strategy = LocalRayStrategy(num_cpus=1, include_dashboard=False)
-
-        with strategy:
-            assert ray.is_initialized()
-
-        # After context exit, Ray should be shut down
+            if ray.is_initialized():
+                ray.shutdown()
+            if prev is not None:
+                os.environ["RAY_ADDRESS"] = prev
+            else:
+                os.environ.pop("RAY_ADDRESS", None)
         assert not ray.is_initialized()
 
-    def test_strategy_is_active_property(self) -> None:
-        """Test the is_active property reflects cluster state.
+    def test_strategy_get_runtime_env_and_config(
+        self,
+        ray_client_address: str,
+    ) -> None:
+        """Test get_runtime_env() and config property without connecting.
 
         **Why this test is important:**
-          - is_active used for conditional logic
-          - Must accurately reflect state
-          - Critical for error handling
-
-        **What it tests:**
-          - is_active is False before initialize
-          - is_active is True after initialize
-          - is_active is False after shutdown
+          - Protocol requires get_runtime_env and config
+          - Validates configuration exposure
         """
-        import ray
-
+        from config import RayJobConfig
         from core.ingestion.strategies.local_ray import LocalRayStrategy
 
-        # Ensure clean state
-        if ray.is_initialized():
-            ray.shutdown()
-
-        strategy = LocalRayStrategy(num_cpus=1, include_dashboard=False)
-
-        assert not strategy.is_active
-
-        strategy.initialize()
-        try:
-            assert strategy.is_active
-        finally:
-            strategy.shutdown()
-
-        assert not strategy.is_active
+        config = RayJobConfig(ray_address=ray_client_address)
+        strategy = LocalRayStrategy(config=config)
+        assert strategy.config is config
+        assert isinstance(strategy.get_runtime_env(), dict)
 
 
 # =============================================================================
@@ -265,7 +228,7 @@ class TestStrategyProtocolCompliance:
     """Test that strategies comply with the ClusterStrategy protocol."""
 
     def test_local_ray_strategy_has_required_methods(self) -> None:
-        """Test LocalRayStrategy implements required protocol methods.
+        """Test LocalRayStrategy implements ClusterStrategy protocol.
 
         **Why this test is important:**
           - Protocol compliance ensures interchangeability
@@ -273,16 +236,20 @@ class TestStrategyProtocolCompliance:
           - Prevents runtime errors
 
         **What it tests:**
-          - initialize() method exists
-          - shutdown() method exists
-          - is_active property exists
+          - init() and shutdown() exist and are callable
+          - get_runtime_env() and config property exist
         """
+        from config import RayJobConfig
         from core.ingestion.strategies.local_ray import LocalRayStrategy
 
-        strategy = LocalRayStrategy()
+        config = RayJobConfig(ray_address="ray://localhost:10001")
+        strategy = LocalRayStrategy(config=config)
 
-        assert hasattr(strategy, "initialize")
-        assert callable(strategy.initialize)
+        assert hasattr(strategy, "init")
+        assert callable(strategy.init)
         assert hasattr(strategy, "shutdown")
         assert callable(strategy.shutdown)
-        assert hasattr(strategy, "is_active")
+        assert hasattr(strategy, "get_runtime_env")
+        assert callable(strategy.get_runtime_env)
+        assert hasattr(strategy, "config")
+        assert strategy.config is config
