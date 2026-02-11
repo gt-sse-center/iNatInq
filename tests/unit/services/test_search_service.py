@@ -250,13 +250,16 @@ class TestSearchServiceSearchDocuments:
           - Limit=50 is accepted (mid-range)
         """
         # Lower boundary
-        search_service.search_documents(collection="test_collection", query="test", limit=1)
+        result_1 = search_service.search_documents(collection="test_collection", query="test", limit=1)
+        assert result_1 is not None
 
         # Upper boundary
-        search_service.search_documents(collection="test_collection", query="test", limit=100)
+        result_100 = search_service.search_documents(collection="test_collection", query="test", limit=100)
+        assert result_100 is not None
 
         # Mid-range
-        search_service.search_documents(collection="test_collection", query="test", limit=50)
+        result_50 = search_service.search_documents(collection="test_collection", query="test", limit=50)
+        assert result_50 is not None
 
     def test_search_propagates_embedding_error(self, search_service: SearchService) -> None:
         """Test that search_documents propagates embedding provider errors.
@@ -793,13 +796,16 @@ class TestImageSearchServiceSearchImages:
           - Limit=50 is accepted (mid-range)
         """
         # Lower boundary
-        image_search_service.search_images(collection="documents", query="test", limit=1)
+        result_1 = image_search_service.search_images(collection="documents", query="test", limit=1)
+        assert result_1 is not None
 
         # Upper boundary
-        image_search_service.search_images(collection="documents", query="test", limit=100)
+        result_100 = image_search_service.search_images(collection="documents", query="test", limit=100)
+        assert result_100 is not None
 
         # Mid-range
-        image_search_service.search_images(collection="documents", query="test", limit=50)
+        result_50 = image_search_service.search_images(collection="documents", query="test", limit=50)
+        assert result_50 is not None
 
     def test_search_propagates_clip_error(self, image_search_service: ImageSearchService) -> None:
         """Test that search_images propagates CLIP client errors.

@@ -996,3 +996,4 @@ class TestQdrantClientWrapperAdditional:
 
             # Should not raise
             client.close()
+            assert client._client is None

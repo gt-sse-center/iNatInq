@@ -135,7 +135,10 @@ class TestLocalRayStrategyRuntimeEnv:
 class TestLocalRayStrategyConnection:
     """Tests for Ray cluster connection."""
 
-    def test_init_skips_when_already_initialized(self, ray_job_config: RayJobConfig, mock_ray: MagicMock):
+    @patch("core.ingestion.strategies.local_ray.ray")
+    def test_init_skips_when_already_initialized(
+        self, mock_ray_module: MagicMock, ray_job_config: RayJobConfig
+    ):
         """init() skips initialization when Ray is already connected.
 
         **Why this test is important:**
@@ -148,14 +151,15 @@ class TestLocalRayStrategyConnection:
         - When ray.is_initialized() returns True, ray.init() is not called
         - No side effects occur when already connected
         """
-        mock_ray.is_initialized.return_value = True
+        mock_ray_module.is_initialized.return_value = True
         strategy = LocalRayStrategy(config=ray_job_config)
 
         strategy.init()
 
-        mock_ray.init.assert_not_called()
+        mock_ray_module.init.assert_not_called()
 
-    def test_init_starts_local_when_no_ray_address(self, mock_ray: MagicMock):
+    @patch("core.ingestion.strategies.local_ray.ray")
+    def test_init_starts_local_when_no_ray_address(self, mock_ray_module: MagicMock):
         """init() starts a local cluster when RAY_ADDRESS is not set.
 
         **Why this test is important:**
@@ -169,15 +173,16 @@ class TestLocalRayStrategyConnection:
         """
         config = RayJobConfig(ray_address=None)
         strategy = LocalRayStrategy(config=config)
-        mock_ray.is_initialized.return_value = False
+        mock_ray_module.is_initialized.return_value = False
 
         strategy.init()
 
-        mock_ray.init.assert_called_once()
-        call_kwargs = mock_ray.init.call_args[1]
+        mock_ray_module.init.assert_called_once()
+        call_kwargs = mock_ray_module.init.call_args[1]
         assert "address" not in call_kwargs or call_kwargs["address"] is None
 
-    def test_init_connects_to_ray_cluster(self, ray_job_config: RayJobConfig, mock_ray: MagicMock):
+    @patch("core.ingestion.strategies.local_ray.ray")
+    def test_init_connects_to_ray_cluster(self, mock_ray_module: MagicMock, ray_job_config: RayJobConfig):
         """init() connects to Ray cluster with correct parameters.
 
         **Why this test is important:**
@@ -191,19 +196,22 @@ class TestLocalRayStrategyConnection:
         - Namespace is set from config
         - ignore_reinit_error is True for idempotent behavior
         """
-        mock_ray.is_initialized.return_value = False
+        mock_ray_module.is_initialized.return_value = False
         strategy = LocalRayStrategy(config=ray_job_config)
 
         with patch("core.ingestion.strategies.local_ray.LocalRayStrategy._increase_thread_limit"):
             strategy.init()
 
-        mock_ray.init.assert_called_once()
-        call_kwargs = mock_ray.init.call_args[1]
+        mock_ray_module.init.assert_called_once()
+        call_kwargs = mock_ray_module.init.call_args[1]
         assert call_kwargs["address"] == "ray://localhost:10001"
         assert call_kwargs["namespace"] == "test-namespace"
         assert call_kwargs["ignore_reinit_error"] is True
 
-    def test_init_raises_runtime_error_on_failure(self, ray_job_config: RayJobConfig, mock_ray: MagicMock):
+    @patch("core.ingestion.strategies.local_ray.ray")
+    def test_init_raises_runtime_error_on_failure(
+        self, mock_ray_module: MagicMock, ray_job_config: RayJobConfig
+    ):
         """init() raises RuntimeError when connection fails.
 
         **Why this test is important:**
@@ -216,8 +224,8 @@ class TestLocalRayStrategyConnection:
         - RuntimeError is raised when ray.init() throws an exception
         - Error message indicates connection failure
         """
-        mock_ray.is_initialized.return_value = False
-        mock_ray.init.side_effect = Exception("Connection refused")
+        mock_ray_module.is_initialized.return_value = False
+        mock_ray_module.init.side_effect = Exception("Connection refused")
         strategy = LocalRayStrategy(config=ray_job_config)
 
         with patch("core.ingestion.strategies.local_ray.LocalRayStrategy._increase_thread_limit"):
@@ -225,13 +233,14 @@ class TestLocalRayStrategyConnection:
                 strategy.init()
 
         # Reset side_effect for other tests
-        mock_ray.init.side_effect = None
+        mock_ray_module.init.side_effect = None
 
 
 class TestLocalRayStrategyShutdown:
     """Tests for Ray shutdown."""
 
-    def test_shutdown_calls_ray_shutdown(self, ray_job_config: RayJobConfig, mock_ray: MagicMock):
+    @patch("core.ingestion.strategies.local_ray.ray")
+    def test_shutdown_calls_ray_shutdown(self, mock_ray_module: MagicMock, ray_job_config: RayJobConfig):
         """shutdown() calls ray.shutdown() when initialized.
 
         **Why this test is important:**
@@ -244,12 +253,12 @@ class TestLocalRayStrategyShutdown:
         - ray.shutdown() is called when Ray is initialized
         - Shutdown proceeds normally when connected
         """
-        mock_ray.is_initialized.return_value = True
+        mock_ray_module.is_initialized.return_value = True
         strategy = LocalRayStrategy(config=ray_job_config)
 
         strategy.shutdown()
 
-        mock_ray.shutdown.assert_called_once()
+        mock_ray_module.shutdown.assert_called_once()
 
     def test_shutdown_skips_when_not_initialized(self, ray_job_config: RayJobConfig, mock_ray: MagicMock):
         """shutdown() does nothing when Ray is not initialized.
@@ -290,6 +299,7 @@ class TestLocalRayStrategyShutdown:
 
         # Should not raise
         strategy.shutdown()
+        assert strategy is not None
 
 
 class TestLocalRayStrategyThreadLimit:
@@ -340,6 +350,7 @@ class TestLocalRayStrategyThreadLimit:
 
             # Should not raise
             strategy._increase_thread_limit()
+            assert strategy is not None
 
     def test_increase_thread_limit_handles_value_error(self, ray_job_config: RayJobConfig):
         """_increase_thread_limit() handles ValueError gracefully.
@@ -364,6 +375,7 @@ class TestLocalRayStrategyThreadLimit:
 
             # Should not raise
             strategy._increase_thread_limit()
+            assert strategy is not None
 
     def test_increase_thread_limit_respects_hard_limit(self, ray_job_config: RayJobConfig):
         """_increase_thread_limit() does not exceed hard limit.

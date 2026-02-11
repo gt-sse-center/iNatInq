@@ -313,7 +313,8 @@ class TestIngestionPipelineRun:
 
         mock_pipeline.cluster_strategy.shutdown.assert_called_once()
 
-    def test_run_processes_keys_with_batching(self, mock_pipeline, mock_ray):
+    @patch("core.ingestion.pipeline.ray")
+    def test_run_processes_keys_with_batching(self, mock_ray_module: MagicMock, mock_pipeline):
         """Verify run() batches keys and submits ray tasks.
 
         **Why this test is important:**
@@ -332,8 +333,8 @@ class TestIngestionPipelineRun:
         mock_s3.list_objects.return_value = ["file1.txt", "file2.txt", "file3.txt"]
 
         # Mock ray functions
-        mock_ray.wait.return_value = ([MagicMock()], [])
-        mock_ray.get.return_value = [
+        mock_ray_module.wait.return_value = ([MagicMock()], [])
+        mock_ray_module.get.return_value = [
             [("file1.txt", True, ""), ("file2.txt", True, ""), ("file3.txt", False, "error")]
         ]
 
@@ -597,7 +598,8 @@ class TestIngestionPipelineContentType:
             embed_config=embed_config,
         )
 
-    def test_run_uses_text_task_for_text_content(self, pipeline, mock_ray):
+    @patch("core.ingestion.pipeline.ray")
+    def test_run_uses_text_task_for_text_content(self, mock_ray_module: MagicMock, pipeline):
         """Verify run() uses process_s3_batch_ray for text content.
 
         **Why this test is important:**
@@ -613,8 +615,8 @@ class TestIngestionPipelineContentType:
         """
         mock_s3 = MagicMock()
         mock_s3.list_objects.return_value = ["file.txt"]
-        mock_ray.wait.return_value = ([MagicMock()], [])
-        mock_ray.get.return_value = [[("file.txt", True, "")]]
+        mock_ray_module.wait.return_value = ([MagicMock()], [])
+        mock_ray_module.get.return_value = [[("file.txt", True, "")]]
 
         with patch("core.ingestion.pipeline.S3ClientWrapper", return_value=mock_s3):
             with patch("core.ingestion.pipeline.RateLimiterActor") as mock_rate:
@@ -627,7 +629,8 @@ class TestIngestionPipelineContentType:
                         mock_text_task.options.assert_called_once()
                         mock_image_task.options.assert_not_called()
 
-    def test_run_uses_image_task_for_image_content(self, pipeline, mock_ray):
+    @patch("core.ingestion.pipeline.ray")
+    def test_run_uses_image_task_for_image_content(self, mock_ray_module: MagicMock, pipeline):
         """Verify run() uses process_s3_image_batch_ray for image content.
 
         **Why this test is important:**
@@ -643,8 +646,8 @@ class TestIngestionPipelineContentType:
         """
         mock_s3 = MagicMock()
         mock_s3.list_objects.return_value = ["file.jpg"]
-        mock_ray.wait.return_value = ([MagicMock()], [])
-        mock_ray.get.return_value = [[("file.jpg", True, "")]]
+        mock_ray_module.wait.return_value = ([MagicMock()], [])
+        mock_ray_module.get.return_value = [[("file.jpg", True, "")]]
 
         with patch("core.ingestion.pipeline.S3ClientWrapper", return_value=mock_s3):
             with patch("core.ingestion.pipeline.RateLimiterActor") as mock_rate:
