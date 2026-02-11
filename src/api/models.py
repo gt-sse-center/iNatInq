@@ -247,8 +247,10 @@ class RayJobRequest(BaseModel):
         ```
     """
 
-    s3_prefix: str = Field(..., example="inputs/", description="S3 prefix to process")
-    collection: str = Field(..., example="documents", description="Vector DB collection")
+    s3_prefix: str = Field(..., json_schema_extra={"example": "inputs/"}, description="S3 prefix to process")
+    collection: str = Field(
+        ..., json_schema_extra={"example": "documents"}, description="Vector DB collection"
+    )
 
 
 class RayJobResponse(BaseModel):
@@ -324,9 +326,13 @@ class RayImageJobRequest(BaseModel):
         ```
     """
 
-    s3_bucket: str = Field(..., example="pipeline", description="S3 bucket containing images")
-    s3_prefix: str = Field(..., example="images/", description="S3 prefix to process")
-    collection: str = Field(..., example="documents", description="Vector DB base collection name")
+    s3_bucket: str = Field(
+        ..., json_schema_extra={"example": "pipeline"}, description="S3 bucket containing images"
+    )
+    s3_prefix: str = Field(..., json_schema_extra={"example": "images/"}, description="S3 prefix to process")
+    collection: str = Field(
+        ..., json_schema_extra={"example": "documents"}, description="Vector DB base collection name"
+    )
 
 
 class RayImageJobResponse(BaseModel):
@@ -385,8 +391,10 @@ class DatabricksJobRequest(BaseModel):
         ```
     """
 
-    s3_prefix: str = Field(..., example="inputs/", description="S3 prefix to process")
-    collection: str = Field(..., example="documents", description="Vector DB collection")
+    s3_prefix: str = Field(..., json_schema_extra={"example": "inputs/"}, description="S3 prefix to process")
+    collection: str = Field(
+        ..., json_schema_extra={"example": "documents"}, description="Vector DB collection"
+    )
 
 
 class DatabricksImageJobRequest(BaseModel):
@@ -405,8 +413,10 @@ class DatabricksImageJobRequest(BaseModel):
         ```
     """
 
-    s3_prefix: str = Field(..., example="images/", description="S3 prefix to process")
-    collection: str = Field(..., example="documents", description="Vector DB base collection name")
+    s3_prefix: str = Field(..., json_schema_extra={"example": "images/"}, description="S3 prefix to process")
+    collection: str = Field(
+        ..., json_schema_extra={"example": "documents"}, description="Vector DB base collection name"
+    )
 
 
 class DatabricksJobResponse(BaseModel):
