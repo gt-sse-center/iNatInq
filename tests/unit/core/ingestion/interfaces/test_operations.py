@@ -916,7 +916,7 @@ class TestVectorDBUpserter:
         assert upserter.weaviate_db == mock_weaviate
 
     @pytest.mark.asyncio
-    async def test_upsert_batch_async_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_upsert_batch_async_success(self) -> None:
         """Test successful batch upsert.
 
         **Why this test is important:**
@@ -926,7 +926,6 @@ class TestVectorDBUpserter:
         **What it tests:**
           - Returns True on success
         """
-        monkeypatch.setenv("VECTOR_DB_PROVIDER", "both")
         mock_qdrant = MagicMock()
         mock_qdrant.batch_upsert_async = AsyncMock(return_value=None)
         mock_weaviate = MagicMock()
@@ -974,7 +973,7 @@ class TestVectorDBUpserter:
         mock_qdrant.batch_upsert_async.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_upsert_batch_async_partial_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_upsert_batch_async_partial_failure(self) -> None:
         """Test partial failure handling.
 
         **Why this test is important:**
@@ -984,7 +983,6 @@ class TestVectorDBUpserter:
         **What it tests:**
           - Returns True when one DB succeeds
         """
-        monkeypatch.setenv("VECTOR_DB_PROVIDER", "both")
         mock_qdrant = MagicMock()
         mock_qdrant.batch_upsert_async = AsyncMock(return_value=None)
         mock_weaviate = MagicMock()
@@ -1007,7 +1005,7 @@ class TestVectorDBUpserter:
         assert not result.weaviate_success
 
     @pytest.mark.asyncio
-    async def test_upsert_batch_async_both_fail(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_upsert_batch_async_both_fail(self) -> None:
         """Test both DBs failing.
 
         **Why this test is important:**
@@ -1017,7 +1015,6 @@ class TestVectorDBUpserter:
         **What it tests:**
           - Returns False when both fail
         """
-        monkeypatch.setenv("VECTOR_DB_PROVIDER", "both")
         mock_qdrant = MagicMock()
         mock_qdrant.batch_upsert_async = AsyncMock(side_effect=Exception("Qdrant error"))
         mock_weaviate = MagicMock()

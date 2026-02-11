@@ -14,7 +14,6 @@ from botocore.exceptions import ClientError
 from clients.interfaces.embedding import EmbeddingProvider
 from clients.interfaces.vector_db import VectorDBProvider
 from clients.s3 import S3ClientWrapper
-from config import resolve_vector_db_targets
 from core.exceptions import UpstreamError
 from foundation.rate_limiter import RateLimiter
 
@@ -614,8 +613,8 @@ class VectorDBUpserter:
             qdrant_error=qdrant_error,
             weaviate_error=weaviate_error,
             batch_size=batch_size,
-            qdrant_enabled=use_qdrant,
-            weaviate_enabled=use_weaviate,
+            qdrant_enabled=self.qdrant_db is not None,
+            weaviate_enabled=self.weaviate_db is not None,
         )
 
 

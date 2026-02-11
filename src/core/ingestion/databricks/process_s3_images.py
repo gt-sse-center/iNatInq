@@ -52,8 +52,6 @@ def main() -> None:
 
     _apply_python_params(sys.argv[1:])
 
-    vector_db_provider = resolve_vector_db_provider()
-
     namespace = os.environ.get("K8S_NAMESPACE", "ml-system")
     s3_prefix = os.environ.get("S3_PREFIX") or (
         sys.argv[1] if len(sys.argv) > 1 and not sys.argv[0].endswith("uvicorn") else "images/"
@@ -74,10 +72,9 @@ def main() -> None:
             "s3_bucket": bucket,
             "s3_prefix": s3_prefix,
             "collection": collection,
-            "vector_db_provider": vector_db_provider,
+            "ingestion_targets": sorted(ingestion_targets),
             "num_workers": ray_cfg.num_workers,
             "image_batch_size": ray_cfg.image_batch_size,
-            "ingestion_targets": sorted(ingestion_targets),
         },
     )
 

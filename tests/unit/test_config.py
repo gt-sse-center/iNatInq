@@ -22,7 +22,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from config import DatabricksRayJobConfig, MinIOConfig, RayJobConfig, VectorDBConfig
+from config import (
+    DatabricksRayJobConfig,
+    MinIOConfig,
+    RayJobConfig,
+    VectorDBConfig,
+    resolve_vector_db_provider,
+    resolve_vector_db_targets,
+)
 
 
 # =============================================================================
@@ -407,9 +414,7 @@ class TestResolveVectorDBTargets:
         ],
     )
     @patch.dict(os.environ, {}, clear=True)
-    def test_resolves_known_targets(
-        self, provider: str | None, expected: tuple[bool, bool]
-    ) -> None:
+    def test_resolves_known_targets(self, provider: str | None, expected: tuple[bool, bool]) -> None:
         """Known providers map to expected enabled target tuple."""
         assert resolve_vector_db_targets(provider=provider) == expected
 

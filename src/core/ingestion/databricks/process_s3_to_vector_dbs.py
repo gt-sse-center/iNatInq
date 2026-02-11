@@ -20,7 +20,7 @@ import ray
 from botocore.exceptions import ClientError
 
 from clients.s3 import S3ClientWrapper
-from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig, resolve_vector_db_provider
+from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
 from foundation.checkpoint import CheckpointManager, is_s3_path
 from core.ingestion.tasks import process_s3_batch_ray
 from core.ingestion.shared import RateLimiterActor
@@ -108,7 +108,8 @@ def _init_ray(config: RayJobConfig, ray_cluster: object | None) -> None:
         value = os.environ.get(key)
         if value is not None and value != "":
             env_vars[key] = value
-    env_vars["VECTOR_DB_PROVIDER"] = resolve_vector_db_provider()
+    targets = VectorDBConfig.parse_targets_from_env()
+    env_vars["VECTOR_DB_TARGETS"] = ",".join(sorted(targets))
 
     if env_vars:
         runtime_env["env_vars"] = env_vars

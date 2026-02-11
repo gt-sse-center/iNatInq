@@ -21,7 +21,7 @@ from clients.clip import CLIPClient
 from clients.interfaces.vector_db import VectorDBProvider  # noqa: TC001
 from clients.s3 import S3ClientWrapper
 from clients.weaviate import WeaviateClientWrapper, WeaviateDataObject
-from config import ImageEmbeddingConfig, resolve_vector_db_targets
+from config import ImageEmbeddingConfig  # noqa: TC001
 from foundation.image import resize_for_embedding
 from core.ingestion.interfaces.factories import VectorDBConfigFactory, create_vector_db_provider
 from core.ingestion.interfaces.operations import ImageContentFetcher
@@ -165,8 +165,6 @@ class ImageProcessingPipeline:
         """Preprocess, embed, and upsert images to targeted vector DBs."""
         if not images:
             return []
-
-        use_qdrant, use_weaviate = resolve_vector_db_targets(logger=logger)
 
         max_size = self._config.image_preprocess_max_size
         batch_size = self._config.image_embed_batch_size
