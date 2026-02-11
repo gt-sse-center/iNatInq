@@ -152,6 +152,7 @@ def process_inat_photo_batch_ray(
                         image_bytes=image_bytes,
                         format=resolved_format,
                         size_bytes=len(image_bytes),
+                        source_uri=photo_url,
                     )
                 )
             except Exception as e:

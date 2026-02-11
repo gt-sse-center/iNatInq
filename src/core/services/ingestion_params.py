@@ -75,6 +75,16 @@ _IMAGE_OPTIONAL_ENV_KEYS = (
     "IMAGE_TARGET_SIZE",
 )
 
+_INAT_IMAGE_ENV_KEYS = (
+    "INAT_IMAGE_SIZE",
+    "INAT_MAX_ROWS",
+    "INAT_METADATA_URL",
+    "INAT_PHOTO_BASE_URL",
+    "INAT_TIMEOUT_S",
+    "INAT_CB_FAILURE_THRESHOLD",
+    "INAT_CB_RECOVERY_TIMEOUT_S",
+)
+
 
 def _passthrough_env_vars(
     env_vars: dict[str, str],
@@ -251,6 +261,7 @@ def build_image_ingestion_env(
         _VECTOR_TIMEOUT_ENV_KEYS,
         _S3_TUNING_ENV_KEYS,
         _OLLAMA_TIMEOUT_ENV_KEYS,
+        _INAT_IMAGE_ENV_KEYS,
     )
     _passthrough_env_vars(env_vars, _IMAGE_OPTIONAL_ENV_KEYS, overwrite=False)
 

@@ -179,6 +179,8 @@ class TestDatabricksRayServiceSubmitImageJob:
         "os.environ",
         {
             "CLIP_API_KEY": "clip-key",
+            "INAT_MAX_ROWS": "250",
+            "INAT_METADATA_URL": "s3://inaturalist-open-data/photos.csv.gz",
             "INATINQ_SRC_DIR": "/Workspace/Users/test/iNatInq/src",
             "VECTOR_DB_PROVIDER": "qdrant",
         },
@@ -257,6 +259,8 @@ class TestDatabricksRayServiceSubmitImageJob:
         assert "IMAGE_MAX_SIZE_MB=8.5" in params
         assert "IMAGE_TARGET_SIZE=336" in params
         assert "CLIP_API_KEY=clip-key" in params
+        assert "INAT_MAX_ROWS=250" in params
+        assert "INAT_METADATA_URL=s3://inaturalist-open-data/photos.csv.gz" in params
         assert "INATINQ_SRC_DIR=/Workspace/Users/test/iNatInq/src" in params
         assert "VECTOR_DB_PROVIDER=qdrant" in params
 

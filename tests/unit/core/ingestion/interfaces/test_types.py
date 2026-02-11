@@ -304,6 +304,18 @@ class TestImageContentResult:
 
         assert result.s3_uri == "s3://images/photo.jpg"
 
+    def test_s3_uri_property_uses_source_uri_override(self) -> None:
+        """Test that s3_uri property prefers source_uri when provided."""
+        result = ImageContentResult(
+            s3_key="photos/21213/medium.jpg",
+            image_bytes=b"\xff\xd8\xff",
+            format="jpeg",
+            size_bytes=100,
+            source_uri="https://inaturalist-open-data.s3.amazonaws.com/photos/21213/medium.jpg",
+        )
+
+        assert result.s3_uri == "https://inaturalist-open-data.s3.amazonaws.com/photos/21213/medium.jpg"
+
     def test_mime_type_property_jpeg(self) -> None:
         """Test mime_type property for JPEG format.
 
