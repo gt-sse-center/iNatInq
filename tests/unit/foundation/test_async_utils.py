@@ -254,8 +254,9 @@ class TestCloseAsyncResourceStoppedLoop:
 
         try:
             with patch("foundation.async_utils.logger") as mock_logger:
-                # The outer function catches and logs the error
+                # The outer function catches and logs the error (callback may log after return)
                 loop.run_until_complete(close_async_resource(mock_resource, "failing_resource"))
+                assert mock_logger is not None
 
             # Since we're in the running loop branch, it schedules as task
             # The error will be caught by the callback
