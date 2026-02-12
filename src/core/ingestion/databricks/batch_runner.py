@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+import attrs
 import ray
 
 if TYPE_CHECKING:
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     import logging
 
 
-@dataclass(slots=True)
+@attrs.define(slots=True)
 class BatchRunStats:
     """Aggregated stats for batch processing."""
 
