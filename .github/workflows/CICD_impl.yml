@@ -91,10 +91,12 @@ jobs:
         run: uv run pytest ${{ inputs.unit_tests_path }}
       
       - name: Setup Docker
+        if: ${{ matrix.os }} == 'ubuntu-latest'
         run: docker compose -f zarf/compose/dev/docker-compose.yaml up -d --wait
 
 
       - name: Validate Integration Tests
+        if: ${{ matrix.os }} == 'ubuntu-latest'
         run: uv run pytest ${{ inputs.integration_tests_path }} -v -m integration -n auto
 
 
