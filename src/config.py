@@ -153,6 +153,7 @@ defaults):
 - `DATABRICKS_HOST`: Databricks workspace host (e.g., `https://dbc.cloud`)
 - `DATABRICKS_TOKEN`: Databricks access token
 - `DATABRICKS_JOB_ID`: Databricks job ID (integer)
+- `DATABRICKS_INAT_JOB_ID`: Optional dedicated Databricks iNaturalist image job ID
 - `DATABRICKS_TASK_TYPE`: Task parameter style (`python` only, default: `python`)
 - `DATABRICKS_WORKSPACE_PATH`: Optional workspace path (if used)
 
@@ -1122,6 +1123,7 @@ class DatabricksRayJobConfig(BaseModel):
     host: str
     token: str
     job_id: int
+    inat_job_id: int | None = None
     task_type: Literal["python"] = "python"
     workspace_path: str | None = None
 
@@ -1135,12 +1137,14 @@ class DatabricksRayJobConfig(BaseModel):
             DATABRICKS_HOST: Databricks workspace host URL.
             DATABRICKS_TOKEN: Databricks access token.
             DATABRICKS_JOB_ID: Databricks job ID (integer).
+            DATABRICKS_INAT_JOB_ID: Optional dedicated iNaturalist image job ID (integer).
             DATABRICKS_TASK_TYPE: Task parameter style ("python" only).
             DATABRICKS_WORKSPACE_PATH: Optional workspace path.
         """
         host = os.getenv("DATABRICKS_HOST")
         token = os.getenv("DATABRICKS_TOKEN")
         job_id_raw = os.getenv("DATABRICKS_JOB_ID")
+        inat_job_id_raw = os.getenv("DATABRICKS_INAT_JOB_ID")
         task_type = os.getenv("DATABRICKS_TASK_TYPE", "python").lower()
         workspace_path = os.getenv("DATABRICKS_WORKSPACE_PATH")
 
@@ -1161,6 +1165,13 @@ class DatabricksRayJobConfig(BaseModel):
         except (TypeError, ValueError) as exc:
             raise ValueError("DATABRICKS_JOB_ID must be an integer") from exc
 
+        inat_job_id: int | None = None
+        if inat_job_id_raw:
+            try:
+                inat_job_id = int(inat_job_id_raw)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("DATABRICKS_INAT_JOB_ID must be an integer") from exc
+
         valid_task_types = ("python",)
         if task_type not in valid_task_types:
             msg = f"Invalid DATABRICKS_TASK_TYPE: {task_type}. Must be one of: {valid_task_types}"
@@ -1170,6 +1181,7 @@ class DatabricksRayJobConfig(BaseModel):
             host=host,
             token=token,
             job_id=job_id,
+            inat_job_id=inat_job_id,
             task_type=task_type,
             workspace_path=workspace_path,
         )
