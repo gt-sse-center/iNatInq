@@ -809,17 +809,29 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         encoded_images = [self._encode_image(img) for img in images]
 
         if self.backend == "hosted_clip":
-            url = f"{self.base_url}"
-            payload = self._build_hosted_clip_payload(images=encoded_images, texts=texts)
-            client = await self._get_async_client()
-            response = await client.post(
-                url,
-                json=payload,
-                headers=self._build_request_headers(accept_json=True),
+
+            async def _do_hosted_batch() -> list[list[float]]:
+                url = f"{self.base_url}"
+                payload = self._build_hosted_clip_payload(images=encoded_images, texts=texts)
+                client = await self._get_async_client()
+                response = await client.post(
+                    url,
+                    json=payload,
+                    headers=self._build_request_headers(accept_json=True),
+                )
+                response.raise_for_status()
+                data = response.json()
+                return self._parse_hosted_clip_batch_response(data, kind="image", count=len(encoded_images))
+
+            return await async_retry_call(
+                _do_hosted_batch,
+                max_retries=self.max_retries,
+                min_wait=self.retry_min_wait,
+                max_wait=self.retry_max_wait,
+                is_retriable=_clip_classifier.is_retriable,
+                before_sleep=_clip_log_retry,
+                operation="CLIP embed_image_batch_async (hosted)",
             )
-            response.raise_for_status()
-            data = response.json()
-            return self._parse_hosted_clip_batch_response(data, kind="image", count=len(encoded_images))
 
         # Make concurrent requests with optional text
         tasks = [
@@ -1131,17 +1143,29 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                 raise ValueError(msg)
 
         if self.backend == "hosted_clip":
-            url = f"{self.base_url}"
-            payload = self._build_hosted_clip_payload(images=[""] * len(texts), texts=texts)
-            client = await self._get_async_client()
-            response = await client.post(
-                url,
-                json=payload,
-                headers=self._build_request_headers(accept_json=True),
+
+            async def _do_hosted_text_batch() -> list[list[float]]:
+                url = f"{self.base_url}"
+                payload = self._build_hosted_clip_payload(images=[""] * len(texts), texts=texts)
+                client = await self._get_async_client()
+                response = await client.post(
+                    url,
+                    json=payload,
+                    headers=self._build_request_headers(accept_json=True),
+                )
+                response.raise_for_status()
+                data = response.json()
+                return self._parse_hosted_clip_batch_response(data, kind="text", count=len(texts))
+
+            return await async_retry_call(
+                _do_hosted_text_batch,
+                max_retries=self.max_retries,
+                min_wait=self.retry_min_wait,
+                max_wait=self.retry_max_wait,
+                is_retriable=_clip_classifier.is_retriable,
+                before_sleep=_clip_log_retry,
+                operation="CLIP embed_text_batch_async (hosted)",
             )
-            response.raise_for_status()
-            data = response.json()
-            return self._parse_hosted_clip_batch_response(data, kind="text", count=len(texts))
 
         # Make concurrent requests
         tasks = [self._make_text_embed_request_async(text) for text in texts]

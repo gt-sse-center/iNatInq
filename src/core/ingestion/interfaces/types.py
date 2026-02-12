@@ -385,8 +385,8 @@ class ProcessingClients:
             except Exception as e:
                 logger.warning("Error closing embedder async client", extra={"error": str(e)})
 
-        # Close HTTP session (aiohttp-style close)
+        # Close HTTP session (requests.Session.close() is synchronous)
         try:
-            await self.session.close()
+            self.session.close()
         except Exception as e:
             logger.warning("Error closing HTTP session", extra={"error": str(e)})

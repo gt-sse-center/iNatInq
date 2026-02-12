@@ -567,7 +567,7 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             content = await client.get_object_async(bucket="pipeline", key="data.txt")
             ```
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         # Run blocking boto3 call in thread pool for async-like behavior
         return await loop.run_in_executor(None, lambda: self.get_object(bucket=bucket, key=key))
 

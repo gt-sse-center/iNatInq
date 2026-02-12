@@ -203,15 +203,9 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-            else:
-                if loop.is_closed():
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
+            # No running event loop — ensure one exists for WeaviateAsyncClient
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
 
         auth_config = None
         if self.api_key:

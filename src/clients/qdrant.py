@@ -393,6 +393,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             operation="Qdrant search",
         )
 
+    @with_circuit_breaker_async("qdrant")
     async def disable_indexing(self, *, collection: str) -> None:
         """Disable indexing for a collection during bulk operations.
 
@@ -410,7 +411,8 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             This should be called before bulk operations and followed by
             `enable_indexing()` after the bulk load is complete.
         """
-        try:
+
+        async def _do_disable() -> None:
             await self._client.update_collection(
                 collection_name=collection,
                 optimizer_config=qmodels.OptimizersConfigDiff(
@@ -422,10 +424,18 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
                 "Disabled indexing for collection",
                 extra={"collection": collection},
             )
-        except Exception as e:
-            msg = f"Failed to disable indexing: {e}"
-            raise UpstreamError(msg) from e
 
+        await async_retry_call(
+            _do_disable,
+            max_retries=self.max_retries,
+            min_wait=self.retry_min_wait,
+            max_wait=self.retry_max_wait,
+            is_retriable=_qdrant_classifier.is_retriable,
+            before_sleep=_qdrant_log_retry,
+            operation="Qdrant disable_indexing",
+        )
+
+    @with_circuit_breaker_async("qdrant")
     async def enable_indexing(
         self,
         *,
@@ -449,7 +459,8 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         Note:
             This should be called after bulk operations are complete.
         """
-        try:
+
+        async def _do_enable() -> None:
             await self._client.update_collection(
                 collection_name=collection,
                 optimizer_config=qmodels.OptimizersConfigDiff(indexing_threshold=indexing_threshold),
@@ -463,9 +474,16 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
                     "hnsw_m": hnsw_m,
                 },
             )
-        except Exception as e:
-            msg = f"Failed to enable indexing: {e}"
-            raise UpstreamError(msg) from e
+
+        await async_retry_call(
+            _do_enable,
+            max_retries=self.max_retries,
+            min_wait=self.retry_min_wait,
+            max_wait=self.retry_max_wait,
+            is_retriable=_qdrant_classifier.is_retriable,
+            before_sleep=_qdrant_log_retry,
+            operation="Qdrant enable_indexing",
+        )
 
     @with_circuit_breaker_async("qdrant")
     async def _do_batch_upsert(self, *, collection: str, points: list[PointStruct]) -> None:

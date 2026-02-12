@@ -252,7 +252,13 @@ class ImageProcessingPipeline:
             if callable(ensure_fn):
                 ensure_tasks.append(ensure_fn(collection=collection, vector_size=vector_size))
         if ensure_tasks:
-            await asyncio.gather(*ensure_tasks)
+            ensure_results = await asyncio.gather(*ensure_tasks, return_exceptions=True)
+            for result in ensure_results:
+                if isinstance(result, Exception):
+                    logger.error(
+                        "Failed to ensure image collection",
+                        extra={"error": str(result), "error_type": type(result).__name__},
+                    )
 
         # Build Qdrant points and Weaviate objects for targeted DBs
         qdrant_points: list[PointStruct] = []
