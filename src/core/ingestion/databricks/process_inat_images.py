@@ -10,14 +10,15 @@ import logging
 import os
 import sys
 import time
+from collections.abc import Iterable, Iterator
 from logging.config import dictConfig
 from typing import Any
 from urllib.parse import urlparse
 
 import ray
 
-from clients.inaturalist_open_data import INaturalistOpenDataClient
-from config import ImageEmbeddingConfig, RayJobConfig
+from clients.inaturalist_open_data import INaturalistOpenDataClient, INaturalistPhotoRecord
+from config import ImageEmbeddingConfig, RayJobConfig, VectorDBConfig
 from core.ingestion.databricks.batch_runner import run_ray_batch_processing
 from core.ingestion.databricks.runtime import apply_python_params as _apply_python_params
 from core.ingestion.interfaces.operations import detect_image_format
@@ -45,11 +46,11 @@ def _parse_required_positive_int_env(name: str) -> int:
     return value
 
 
-def _record_to_task_payload(record: Any, image_size: str) -> dict[str, str]:
-    """Convert INaturalistPhotoRecord-like object to serializable task payload."""
-    photo_url = str(getattr(record, "photo_url", "")).strip()
-    photo_id = str(getattr(record, "photo_id", "")).strip()
-    extension = str(getattr(record, "extension", "")).strip().lstrip(".").lower()
+def _record_to_task_payload(record: INaturalistPhotoRecord, image_size: str) -> dict[str, str]:
+    """Convert INaturalistPhotoRecord to serializable task payload."""
+    photo_url = record.photo_url.strip()
+    photo_id = record.photo_id.strip()
+    extension = record.extension.strip().lstrip(".").lower()
     parsed_path = urlparse(photo_url).path.lstrip("/")
     fallback_key = f"photos/{photo_id}/{image_size}.{extension}" if photo_id and extension else photo_url
     return {
@@ -61,11 +62,11 @@ def _record_to_task_payload(record: Any, image_size: str) -> dict[str, str]:
 
 
 def _iter_task_payload_batches(
-    records: Any,
+    records: Iterable[INaturalistPhotoRecord],
     *,
     image_size: str,
     batch_size: int,
-) -> Any:
+) -> Iterator[list[dict[str, str]]]:
     """Yield serialized task payload batches from a streaming record iterator."""
     resolved_batch_size = max(1, batch_size)
     batch: list[dict[str, str]] = []
@@ -94,6 +95,7 @@ def process_inat_photo_batch_ray(
     retry_max_attempts: int = 3,
     retry_min_wait: float = 1.0,
     retry_max_wait: float = 10.0,
+    ingestion_targets: frozenset[str] | None = None,
     inat_photo_base_url: str = "https://inaturalist-open-data.s3.amazonaws.com/photos",
     inat_timeout_s: int = 120,
     inat_cb_failure_threshold: int = 5,
@@ -114,6 +116,7 @@ def process_inat_photo_batch_ray(
         image_batch_size=image_batch_size,
         image_embed_batch_size=image_embed_batch_size,
         namespace=namespace,
+        ingestion_targets=ingestion_targets or frozenset({"qdrant", "weaviate"}),
         max_concurrency=pipeline_concurrency,
         circuit_breaker_threshold=circuit_breaker_threshold,
         circuit_breaker_timeout=circuit_breaker_timeout,
@@ -199,6 +202,8 @@ def main() -> None:
 
     ray_cfg = RayJobConfig.from_env(namespace)
     embed_cfg = ImageEmbeddingConfig.from_env(namespace)
+    vector_cfg = VectorDBConfig.from_env(namespace)
+    ingestion_targets = vector_cfg.ingestion_targets
 
     job_logger.info(
         "Configuration loaded",
@@ -207,6 +212,7 @@ def main() -> None:
             "collection": collection,
             "num_workers": ray_cfg.num_workers,
             "image_batch_size": ray_cfg.image_batch_size,
+            "ingestion_targets": sorted(ingestion_targets),
             "metadata_url": metadata_url or "default:s3://inaturalist-open-data/photos.csv.gz",
             "image_size": image_size,
             "max_rows": max_rows,
@@ -271,6 +277,7 @@ def main() -> None:
                 retry_max_attempts=ray_cfg.retry_max_attempts,
                 retry_min_wait=ray_cfg.retry_min_wait,
                 retry_max_wait=ray_cfg.retry_max_wait,
+                ingestion_targets=ingestion_targets,
                 inat_photo_base_url=inat_photo_base_url,
                 inat_timeout_s=inat_timeout_s,
                 inat_cb_failure_threshold=inat_cb_failure_threshold,

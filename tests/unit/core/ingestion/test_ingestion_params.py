@@ -227,3 +227,22 @@ def test_build_inat_image_ingestion_env_excludes_s3_connection_keys(monkeypatch)
     assert "S3_ACCESS_KEY_ID" not in env_vars
     assert "S3_SECRET_ACCESS_KEY" not in env_vars
     assert "S3_BUCKET" not in env_vars
+
+
+def test_build_inat_image_ingestion_env_passthroughs_vector_db_targets(monkeypatch) -> None:
+    """Ensure iNat image ingestion env passes through VECTOR_DB_TARGETS when set."""
+    monkeypatch.setenv("VECTOR_DB_TARGETS", "qdrant")
+
+    image_embedding_config = ImageEmbeddingConfig(
+        provider_type="clip",
+        clip_url="http://clip.test:8000",
+        clip_model="ViT-B/32",
+    )
+
+    env_vars = build_inat_image_ingestion_env(
+        namespace="ml-system",
+        image_embedding_config=image_embedding_config,
+        collection="images",
+    )
+
+    assert env_vars["VECTOR_DB_TARGETS"] == "qdrant"

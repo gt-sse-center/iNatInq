@@ -868,7 +868,6 @@ class TestDatabricksJobEndpoints:
                             "/databricks/jobs/images",
                             json={
                                 "source": "inat",
-                                "s3_prefix": "ignored/",
                                 "collection": "documents",
                             },
                         )
@@ -877,9 +876,35 @@ class TestDatabricksJobEndpoints:
         data = response.json()
         assert data["run_id"] == "789"
         assert data["source"] == "inat"
+        assert data["s3_prefix"] is None
         mock_minio.assert_not_called()
-        mock_service.submit_inat_image_job.assert_called_once()
+        mock_service.submit_inat_image_job.assert_called_once_with(
+            namespace="ml-system",
+            image_embedding_config=mock_embed_cfg.return_value,
+            collection="documents",
+        )
         mock_service.submit_image_job.assert_not_called()
+
+    def test_submit_databricks_image_job_s3_requires_s3_prefix(self, test_client: TestClient) -> None:
+        """Test S3 image submission validates that s3_prefix is present."""
+        with patch("api.routes.DatabricksRayService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service_cls.return_value = mock_service
+
+            response = test_client.post(
+                "/databricks/jobs/images",
+                json={
+                    "source": "s3",
+                    "collection": "documents",
+                },
+            )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert data["error"] == "Bad Request"
+        assert data["message"] == "s3_prefix is required when source='s3'"
+        mock_service.submit_image_job.assert_not_called()
+        mock_service.submit_inat_image_job.assert_not_called()
 
     def test_get_databricks_job_status_success(self, test_client: TestClient) -> None:
         """Test getting Databricks job status."""

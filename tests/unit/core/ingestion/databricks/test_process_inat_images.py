@@ -1,22 +1,8 @@
 """Unit tests for core.ingestion.databricks.process_inat_images module."""
 
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-
-class TestApplyPythonParams:
-    """Tests for _apply_python_params helper."""
-
-    def test_applies_valid_key_value_pairs(self) -> None:
-        """_apply_python_params should parse and set KEY=VALUE pairs."""
-        from core.ingestion.databricks.process_inat_images import _apply_python_params
-
-        with patch.dict("os.environ", {}, clear=True):
-            _apply_python_params(["INAT_METADATA_URL=https://example.com/photos.tsv", "K8S_NAMESPACE=test"])
-            assert os.environ["INAT_METADATA_URL"] == "https://example.com/photos.tsv"
-            assert os.environ["K8S_NAMESPACE"] == "test"
 
 
 class TestDatabricksINatImageJobMain:
@@ -38,6 +24,7 @@ class TestDatabricksINatImageJobMain:
             patch(
                 "core.ingestion.databricks.process_inat_images.ImageEmbeddingConfig.from_env"
             ) as mock_embed_cfg,
+            patch("core.ingestion.databricks.process_inat_images.VectorDBConfig.from_env") as mock_vector_cfg,
             patch("core.ingestion.databricks.process_inat_images.DatabricksStrategy") as mock_strat_cls,
             patch("core.ingestion.databricks.process_inat_images.INaturalistOpenDataClient") as mock_inat_cls,
         ):
@@ -60,6 +47,7 @@ class TestDatabricksINatImageJobMain:
             )
             mock_ray_cfg.return_value = ray_cfg
             mock_embed_cfg.return_value = MagicMock()
+            mock_vector_cfg.return_value = MagicMock(ingestion_targets=frozenset({"qdrant", "weaviate"}))
             mock_strat_cls.from_env.return_value = mock_strategy
             mock_inat_cls.return_value = mock_inat_client
 
@@ -68,6 +56,7 @@ class TestDatabricksINatImageJobMain:
                 "inat_client": mock_inat_client,
                 "inat_cls": mock_inat_cls,
                 "ray_cfg": ray_cfg,
+                "vector_cfg": mock_vector_cfg.return_value,
             }
 
     def test_main_requires_inat_max_rows(self, mock_dependencies, mock_ray) -> None:
@@ -112,6 +101,8 @@ class TestDatabricksINatImageJobMain:
         )
         mock_dependencies["inat_client"].read_photo_records.assert_not_called()
         mock_task.options.assert_called_once()
+        remote_call = mock_task.options.return_value.remote.call_args.kwargs
+        assert remote_call["ingestion_targets"] == frozenset({"qdrant", "weaviate"})
         mock_dependencies["strategy"].init.assert_called_once()
         mock_dependencies["strategy"].shutdown.assert_called_once()
 

@@ -402,7 +402,7 @@ class DatabricksImageJobRequest(BaseModel):
 
     Attributes:
         source: Image source to ingest ("s3" or "inat").
-        s3_prefix: S3 prefix to process (e.g., "images/").
+        s3_prefix: S3 prefix to process (required when source is "s3").
         collection: Vector DB base collection name.
 
     Example:
@@ -416,8 +416,16 @@ class DatabricksImageJobRequest(BaseModel):
     """
 
     source: Literal["s3", "inat"] = Field("s3", description="Image source type")
-    s3_prefix: str = Field(..., example="images/", description="S3 prefix to process")
-    collection: str = Field(..., example="documents", description="Vector DB base collection name")
+    s3_prefix: str | None = Field(
+        None,
+        json_schema_extra={"example": "images/"},
+        description="S3 prefix to process (required when source='s3')",
+    )
+    collection: str = Field(
+        ...,
+        json_schema_extra={"example": "documents"},
+        description="Vector DB base collection name",
+    )
 
 
 class DatabricksJobResponse(BaseModel):
@@ -460,7 +468,7 @@ class DatabricksImageJobResponse(BaseModel):
         status: Job status (always "submitted" on success).
         namespace: Kubernetes namespace used for config resolution.
         source: Image source selected for this run.
-        s3_prefix: S3 prefix being processed.
+        s3_prefix: S3 prefix being processed (present when source is "s3").
         collection: Target vector DB base collection.
         submitted_at: ISO 8601 timestamp when job was submitted.
 
@@ -482,7 +490,7 @@ class DatabricksImageJobResponse(BaseModel):
     status: str
     namespace: str
     source: Literal["s3", "inat"]
-    s3_prefix: str
+    s3_prefix: str | None
     collection: str
     submitted_at: str
 

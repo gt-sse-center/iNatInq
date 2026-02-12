@@ -8,14 +8,9 @@ import os
 import sys
 
 try:
-    from core.ingestion.databricks.runtime import apply_python_params, bootstrap_runtime
+    from core.ingestion.databricks.runtime import bootstrap_runtime
 except ModuleNotFoundError:  # pragma: no cover - direct script execution fallback
-    from runtime import apply_python_params, bootstrap_runtime
-
-
-def _load_params(params: list[str]) -> None:
-    """Backward-compatible alias for Databricks python_params loading."""
-    apply_python_params(params)
+    from runtime import bootstrap_runtime
 
 
 def _entrypoint_file() -> str:
