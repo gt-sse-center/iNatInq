@@ -105,6 +105,72 @@ class S3ContentFetcher:
 
         return contents, failures
 
+    async def _fetch_one_async(self, key: str) -> ContentResult | None:
+        """Fetch content from a single S3 object asynchronously.
+
+        Args:
+            key: S3 object key.
+
+        Returns:
+            ContentResult if successful, None if failed.
+        """
+        try:
+            data = await self.s3.get_object_async(bucket=self.bucket, key=key)
+            content = data.decode("utf-8")
+            return ContentResult(s3_key=key, content=content)
+        except (UpstreamError, ClientError, OSError, ValueError) as e:
+            logger.error(
+                "Failed to fetch S3 object",
+                extra={"s3_key": key, "error": str(e), "error_type": type(e).__name__},
+                exc_info=True,
+            )
+            return None
+        except (RuntimeError, MemoryError, AttributeError, TypeError) as e:
+            logger.error(
+                "Unexpected error fetching S3 object",
+                extra={"s3_key": key, "error": str(e), "error_type": type(e).__name__},
+                exc_info=True,
+            )
+            return None
+
+    async def fetch_all_async(
+        self,
+        keys: list[str],
+        max_concurrent: int = 20,
+    ) -> tuple[list[ContentResult], list[ProcessingResult]]:
+        """Fetch content from all S3 objects concurrently.
+
+        Uses asyncio.gather with a semaphore for concurrency control.
+
+        Args:
+            keys: List of S3 object keys.
+            max_concurrent: Maximum concurrent S3 fetch operations.
+
+        Returns:
+            Tuple of (successful content results, failed processing results).
+        """
+        if not keys:
+            return [], []
+
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def _bounded_fetch(key: str) -> tuple[str, ContentResult | None]:
+            async with semaphore:
+                result = await self._fetch_one_async(key)
+                return key, result
+
+        fetch_results = await asyncio.gather(*[_bounded_fetch(key) for key in keys])
+
+        contents: list[ContentResult] = []
+        failures: list[ProcessingResult] = []
+        for key, result in fetch_results:
+            if result is not None:
+                contents.append(result)
+            else:
+                failures.append(ProcessingResult.failure_result(key, "S3 fetch failed in fetch_all_async"))
+
+        return contents, failures
+
 
 # =============================================================================
 # Image Format Detection Constants
@@ -358,6 +424,119 @@ class ImageContentFetcher:
 
         return images, failures
 
+    async def _fetch_one_async(self, key: str, *, with_dimensions: bool = False) -> ImageContentResult | None:
+        """Fetch image from a single S3 object asynchronously.
+
+        Args:
+            key: S3 object key.
+            with_dimensions: If True, extract dimensions using PIL.
+
+        Returns:
+            ImageContentResult if successful, None if failed.
+        """
+        try:
+            data = await self.s3.get_object_async(bucket=self.bucket, key=key)
+
+            detected_format = detect_image_format(data)
+            is_valid, error_msg = self._validate_image(key, data, detected_format)
+            if not is_valid:
+                logger.warning(
+                    "Image validation failed",
+                    extra={"s3_key": key, "error": error_msg},
+                )
+                return None
+
+            result = ImageContentResult(
+                s3_key=key,
+                image_bytes=data,
+                format=detected_format,  # type: ignore[arg-type]
+                size_bytes=len(data),
+            )
+
+            if with_dimensions:
+                try:
+                    from io import BytesIO
+
+                    from PIL import Image
+
+                    with Image.open(BytesIO(result.image_bytes)) as img:
+                        width, height = img.size
+                    result = ImageContentResult(
+                        s3_key=result.s3_key,
+                        image_bytes=result.image_bytes,
+                        format=result.format,
+                        size_bytes=result.size_bytes,
+                        width=width,
+                        height=height,
+                    )
+                except ImportError:
+                    logger.warning("PIL not available for dimension extraction", extra={"s3_key": key})
+                except Exception as e:
+                    logger.warning(
+                        "Failed to extract image dimensions",
+                        extra={"s3_key": key, "error": str(e), "error_type": type(e).__name__},
+                    )
+
+            return result
+
+        except (UpstreamError, ClientError, OSError, ValueError) as e:
+            logger.error(
+                "Failed to fetch S3 image object",
+                extra={"s3_key": key, "error": str(e), "error_type": type(e).__name__},
+                exc_info=True,
+            )
+            return None
+        except (RuntimeError, MemoryError, AttributeError, TypeError) as e:
+            logger.error(
+                "Unexpected error fetching S3 image object",
+                extra={"s3_key": key, "error": str(e), "error_type": type(e).__name__},
+                exc_info=True,
+            )
+            return None
+
+    async def fetch_all_async(
+        self,
+        keys: list[str],
+        *,
+        with_dimensions: bool = False,
+        max_concurrent: int = 20,
+    ) -> tuple[list[ImageContentResult], list[ProcessingResult]]:
+        """Fetch images from all S3 objects concurrently.
+
+        Uses asyncio.gather with a semaphore for concurrency control.
+
+        Args:
+            keys: List of S3 object keys.
+            with_dimensions: If True, extract dimensions using PIL.
+            max_concurrent: Maximum concurrent S3 fetch operations.
+
+        Returns:
+            Tuple of (successful image results, failed processing results).
+        """
+        if not keys:
+            return [], []
+
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def _bounded_fetch(key: str) -> tuple[str, ImageContentResult | None]:
+            async with semaphore:
+                result = await self._fetch_one_async(key, with_dimensions=with_dimensions)
+                return key, result
+
+        fetch_results = await asyncio.gather(*[_bounded_fetch(key) for key in keys])
+
+        images: list[ImageContentResult] = []
+        failures: list[ProcessingResult] = []
+        for key, result in fetch_results:
+            if result is not None:
+                images.append(result)
+            else:
+                failures.append(
+                    ProcessingResult.failure_result(key, "Image fetch/validation failed in fetch_all_async")
+                )
+
+        return images, failures
+
     @staticmethod
     def filter_image_keys(keys: list[str]) -> list[str]:
         """Filter a list of S3 keys to only include supported image extensions.
@@ -461,7 +640,7 @@ class EmbeddingGenerator:
         async def _generate() -> list[list[float]] | None:
             try:
                 texts = [c.content for c in batch]
-                vectors = await asyncio.gather(*[self.embedder.embed_async(text) for text in texts])
+                vectors = await self.embedder.embed_batch_async(texts)
                 return list(vectors)
             except (UpstreamError, ClientError, OSError, ValueError) as e:
                 logger.warning(

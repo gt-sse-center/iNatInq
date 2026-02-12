@@ -164,6 +164,7 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
 
     # Private attributes
     _session: requests.Session | None = attrs.field(init=False, default=None)
+    _async_client: httpx.AsyncClient | None = attrs.field(init=False, default=None)
     _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
     _async_breaker: aiobreaker.CircuitBreaker = attrs.field(init=False)
 
@@ -212,6 +213,25 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
             session: Requests session to use for API calls.
         """
         self._session = session
+
+    async def _get_async_client(self) -> httpx.AsyncClient:
+        """Get or create a reusable async HTTP client.
+
+        Returns:
+            Shared httpx.AsyncClient instance with connection pooling.
+        """
+        if self._async_client is None or self._async_client.is_closed:
+            self._async_client = httpx.AsyncClient(
+                timeout=self.timeout_s,
+                limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+            )
+        return self._async_client
+
+    async def close_async(self) -> None:
+        """Close the async HTTP client and release resources."""
+        if self._async_client is not None:
+            await self._async_client.aclose()
+            self._async_client = None
 
     @classmethod
     def from_config(cls, config: EmbeddingConfig, session: requests.Session | None = None) -> "OllamaClient":
@@ -473,14 +493,14 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         url = f"{self.base_url.rstrip('/')}/api/embeddings"
 
         async def _do_embed() -> list[float]:
-            async with httpx.AsyncClient(timeout=self.timeout_s) as client:
-                resp = await client.post(url, json={"model": self.model, "prompt": text})
-                resp.raise_for_status()
-                data = resp.json()
-                emb = data.get("embedding")
-                if not isinstance(emb, list) or not emb:
-                    raise UpstreamError("Ollama response missing embedding")
-                return [float(x) for x in emb]
+            client = await self._get_async_client()
+            resp = await client.post(url, json={"model": self.model, "prompt": text})
+            resp.raise_for_status()
+            data = resp.json()
+            emb = data.get("embedding")
+            if not isinstance(emb, list) or not emb:
+                raise UpstreamError("Ollama response missing embedding")
+            return [float(x) for x in emb]
 
         return await async_retry_call(
             _do_embed,
@@ -538,21 +558,21 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         batch_timeout = self.timeout_s * self.batch_timeout_multiplier * max(1, len(texts))
 
         async def _do_batch_embed() -> list[list[float]]:
-            async with httpx.AsyncClient(timeout=batch_timeout) as client:
-                resp = await client.post(url, json={"model": self.model, "input": texts})
-                resp.raise_for_status()
-                data = resp.json()
+            client = await self._get_async_client()
+            resp = await client.post(url, json={"model": self.model, "input": texts}, timeout=batch_timeout)
+            resp.raise_for_status()
+            data = resp.json()
 
-                embeddings = data.get("embeddings")
+            embeddings = data.get("embeddings")
 
-                if not embeddings or not isinstance(embeddings, list):
-                    raise UpstreamError("Ollama response missing embeddings field")
+            if not embeddings or not isinstance(embeddings, list):
+                raise UpstreamError("Ollama response missing embeddings field")
 
-                if len(embeddings) != len(texts):
-                    msg = f"Ollama returned {len(embeddings)} embeddings for {len(texts)} texts"
-                    raise UpstreamError(msg)
+            if len(embeddings) != len(texts):
+                msg = f"Ollama returned {len(embeddings)} embeddings for {len(texts)} texts"
+                raise UpstreamError(msg)
 
-                return [[float(x) for x in emb] for emb in embeddings]
+            return [[float(x) for x in emb] for emb in embeddings]
 
         try:
             return await async_retry_call(
@@ -586,14 +606,14 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         url = f"{self.base_url.rstrip('/')}/api/embeddings"
 
         async def _do_embed() -> list[float]:
-            async with httpx.AsyncClient(timeout=self.timeout_s) as client:
-                resp = await client.post(url, json={"model": self.model, "prompt": text})
-                resp.raise_for_status()
-                data = resp.json()
-                emb = data.get("embedding")
-                if not isinstance(emb, list) or not emb:
-                    raise UpstreamError("Ollama response missing embedding")
-                return [float(x) for x in emb]
+            client = await self._get_async_client()
+            resp = await client.post(url, json={"model": self.model, "prompt": text})
+            resp.raise_for_status()
+            data = resp.json()
+            emb = data.get("embedding")
+            if not isinstance(emb, list) or not emb:
+                raise UpstreamError("Ollama response missing embedding")
+            return [float(x) for x in emb]
 
         return await async_retry_call(
             _do_embed,

@@ -1143,9 +1143,8 @@ class TestCLIPClientEmbedText:
 class TestCLIPClientEmbedTextAsync:
     """Tests for CLIPClient.embed_text_async method."""
 
-    @patch("clients.clip.httpx.AsyncClient")
     @pytest.mark.asyncio
-    async def test_embed_text_async_returns_embedding(self, mock_async_client_cls: MagicMock) -> None:
+    async def test_embed_text_async_returns_embedding(self) -> None:
         """Test that embed_text_async returns embedding vector.
 
         **Why this test is important:**
@@ -1158,17 +1157,16 @@ class TestCLIPClientEmbedTextAsync:
         """
         mock_response = {"embedding": [0.1] * 512}
 
-        mock_client = MagicMock()
-        mock_async_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_async_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
-
         mock_post_response = MagicMock()
         mock_post_response.json.return_value = mock_response
         mock_post_response.raise_for_status = MagicMock()
-        mock_client.post = AsyncMock(return_value=mock_post_response)
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_post_response
 
         client = CLIPClient(base_url="http://localhost:11434", model="llava")
-        result = await client.embed_text_async("a fluffy cat")
+        with patch.object(client, "_get_async_client", return_value=mock_client):
+            result = await client.embed_text_async("a fluffy cat")
 
         assert len(result) == 512
         assert all(isinstance(x, float) for x in result)
@@ -1268,11 +1266,8 @@ class TestCLIPClientEmbedTextBatch:
 class TestCLIPClientEmbedTextBatchAsync:
     """Tests for CLIPClient.embed_text_batch_async method."""
 
-    @patch("clients.clip.httpx.AsyncClient")
     @pytest.mark.asyncio
-    async def test_embed_text_batch_async_returns_multiple_embeddings(
-        self, mock_async_client_cls: MagicMock
-    ) -> None:
+    async def test_embed_text_batch_async_returns_multiple_embeddings(self) -> None:
         """Test that embed_text_batch_async returns embeddings for all texts.
 
         **Why this test is important:**
@@ -1285,18 +1280,17 @@ class TestCLIPClientEmbedTextBatchAsync:
         """
         mock_response = {"embedding": [0.1] * 512}
 
-        mock_client = MagicMock()
-        mock_async_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_async_client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
-
         mock_post_response = MagicMock()
         mock_post_response.json.return_value = mock_response
         mock_post_response.raise_for_status = MagicMock()
-        mock_client.post = AsyncMock(return_value=mock_post_response)
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_post_response
 
         client = CLIPClient(base_url="http://localhost:11434", model="llava")
         texts = ["cat", "dog"]
-        results = await client.embed_text_batch_async(texts)
+        with patch.object(client, "_get_async_client", return_value=mock_client):
+            results = await client.embed_text_batch_async(texts)
 
         assert len(results) == 2
 
