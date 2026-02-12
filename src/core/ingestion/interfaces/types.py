@@ -116,15 +116,13 @@ class ImageContentResult:
 
     @property
     def s3_uri(self) -> str:
-        """Return canonical URI for this image source.
-
-        For legacy S3 ingestion this is `s3://{s3_key}`.
-        For non-S3 sources (e.g. iNaturalist), `source_uri` can override
-        this value with the original source URL.
-        """
-        if self.source_uri:
-            return self.source_uri
+        """Return S3 URI for this image key."""
         return f"s3://{self.s3_key}"
+
+    @property
+    def canonical_uri(self) -> str:
+        """Return canonical source URI, preferring original source when available."""
+        return self.source_uri or self.s3_uri
 
     @property
     def mime_type(self) -> str:

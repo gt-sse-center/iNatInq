@@ -452,8 +452,8 @@ class TestImageProcessingPipelineAsync:
         assert "Qdrant" in results[0].error_message
 
     @pytest.mark.asyncio
-    async def test_process_images_async_uses_source_uri_when_provided(self, config):
-        """Verify payload s3_uri uses source_uri override for non-S3 sources."""
+    async def test_process_images_async_uses_s3_uri_when_source_uri_provided(self, config):
+        """Verify payload s3_uri remains s3:// URI even when source_uri is set."""
         pipeline = ImageProcessingPipeline(config)
 
         mock_clip = MagicMock()
@@ -486,10 +486,7 @@ class TestImageProcessingPipelineAsync:
         assert results[0].success is True
         call_kwargs = mock_qdrant.batch_upsert_async.await_args.kwargs
         points = call_kwargs["points"]
-        assert (
-            points[0].payload["s3_uri"]
-            == "https://inaturalist-open-data.s3.amazonaws.com/photos/21213/medium.jpg"
-        )
+        assert points[0].payload["s3_uri"] == "s3://photos/21213/medium.jpg"
 
 
 class TestProcessImageBatchRay:
