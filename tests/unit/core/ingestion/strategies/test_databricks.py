@@ -237,6 +237,8 @@ class TestDatabricksStrategyRuntimeEnv:
         assert "QDRANT_URL" in _PASSTHROUGH_ENV_VARS
         assert "WEAVIATE_URL" in _PASSTHROUGH_ENV_VARS
         assert "OLLAMA_BASE_URL" in _PASSTHROUGH_ENV_VARS
+        assert "INAT_MAX_ROWS" in _PASSTHROUGH_ENV_VARS
+        assert "INAT_METADATA_URL" in _PASSTHROUGH_ENV_VARS
 
 
 class TestDatabricksStrategyConnection:

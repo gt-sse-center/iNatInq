@@ -1,11 +1,13 @@
-"""Fixtures specific to client integration tests.
+"""Fixtures for client integration tests.
 
-Container and client fixtures (minio_client, qdrant_client, ollama_client,
-test_bucket, test_collection) are defined in tests/integration/conftest.py
-and are available here. This module adds client-test-specific fixtures:
-sample vectors, CLIP container, and utility fixtures.
+This module provides container-based fixtures for testing client wrappers
+against real services. Containers are managed by testcontainers-python.
+
+All container fixtures are session-scoped for performance. Per-test fixtures
+(test_bucket, test_collection, unique_key) provide isolation.
 """
 
+import asyncio
 import logging
 import time
 import uuid
@@ -13,8 +15,230 @@ import uuid
 import httpx
 import pytest
 from testcontainers.core.container import DockerContainer
+from testcontainers.minio import MinioContainer
+from testcontainers.qdrant import QdrantContainer
+
+from clients.ollama import OllamaClient
+from clients.qdrant import QdrantClientWrapper
+from clients.s3 import S3ClientWrapper
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# MinIO Container Fixtures
+# =============================================================================
+
+
+def _wait_for_minio_health(container: MinioContainer, timeout: int = 30) -> None:
+    config = container.get_config()
+    health_url = f"http://{config['endpoint']}/minio/health/live"
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            response = httpx.get(health_url, timeout=2.0)
+            if response.status_code == 200:
+                return
+        except httpx.RequestError:
+            pass
+        time.sleep(0.5)
+    raise TimeoutError(f"MinIO container not healthy after {timeout}s")
+
+
+@pytest.fixture(scope="session")
+def minio_container():
+    """Start a MinIO container for the test session."""
+    logger.info("Starting MinIO container...")
+    container = MinioContainer(
+        image="minio/minio:RELEASE.2024-01-01T16-36-33Z",
+        access_key="minioadmin",
+        secret_key="minioadmin",  # noqa: S106 - Test credentials
+    )
+    container.start()
+    _wait_for_minio_health(container)
+    logger.info(
+        "MinIO container started",
+        extra={"endpoint": container.get_config()["endpoint"]},
+    )
+    yield container
+    logger.info("Stopping MinIO container...")
+    container.stop()
+
+
+@pytest.fixture(scope="session")
+def minio_config(minio_container: MinioContainer) -> dict[str, str]:
+    """Get MinIO connection configuration."""
+    config = minio_container.get_config()
+    return {
+        "endpoint_url": f"http://{config['endpoint']}",
+        "access_key_id": config["access_key"],
+        "secret_access_key": config["secret_key"],
+    }
+
+
+@pytest.fixture(scope="session")
+def minio_client(minio_config: dict[str, str]) -> S3ClientWrapper:
+    """Create an S3ClientWrapper connected to the test MinIO instance."""
+    client = S3ClientWrapper(
+        endpoint_url=minio_config["endpoint_url"],
+        access_key_id=minio_config["access_key_id"],
+        secret_access_key=minio_config["secret_access_key"],
+        max_retries=3,
+        retry_min_wait=0.1,
+        retry_max_wait=1.0,
+        timeout_s=10,
+    )
+    logger.info("Created S3 client for integration tests", extra={"endpoint": minio_config["endpoint_url"]})
+    yield client
+    client.close()
+
+
+@pytest.fixture
+def test_bucket(minio_client: S3ClientWrapper) -> str:
+    """Create a unique test bucket that's cleaned up after the test."""
+    bucket_name = f"test-{uuid.uuid4().hex[:12]}"
+    minio_client.ensure_bucket(bucket_name)
+    yield bucket_name
+    try:
+        keys = minio_client.list_objects(bucket=bucket_name)
+        for key in keys:
+            minio_client.delete_object(bucket=bucket_name, key=key)
+    except Exception as e:
+        logger.warning("Bucket cleanup failed", extra={"bucket": bucket_name, "error": str(e)})
+
+
+# =============================================================================
+# Qdrant Container Fixtures
+# =============================================================================
+
+
+def _get_qdrant_url(container: QdrantContainer) -> str:
+    return f"http://{container.rest_host_address}"
+
+
+def _wait_for_qdrant_health(container: QdrantContainer, timeout: int = 60) -> None:
+    health_url = f"{_get_qdrant_url(container)}/healthz"
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            response = httpx.get(health_url, timeout=2.0)
+            if response.status_code == 200:
+                return
+        except httpx.RequestError:
+            pass
+        time.sleep(0.5)
+    raise TimeoutError(f"Qdrant container not healthy after {timeout}s")
+
+
+@pytest.fixture(scope="session")
+def qdrant_container():
+    """Start a Qdrant container for the test session."""
+    logger.info("Starting Qdrant container...")
+    container = QdrantContainer(image="qdrant/qdrant:v1.16.0")
+    container.start()
+    _wait_for_qdrant_health(container)
+    logger.info("Qdrant container started", extra={"url": _get_qdrant_url(container)})
+    yield container
+    logger.info("Stopping Qdrant container...")
+    container.stop()
+
+
+@pytest.fixture(scope="session")
+def qdrant_url(qdrant_container: QdrantContainer) -> str:
+    """Get Qdrant connection URL."""
+    return _get_qdrant_url(qdrant_container)
+
+
+@pytest.fixture(scope="session")
+def qdrant_client(qdrant_url: str) -> QdrantClientWrapper:
+    """Create a QdrantClientWrapper connected to the test Qdrant instance."""
+    client = QdrantClientWrapper(url=qdrant_url)
+    logger.info("Created Qdrant client for integration tests", extra={"url": qdrant_url})
+    yield client
+    client.close()
+
+
+@pytest.fixture
+def test_collection(qdrant_client: QdrantClientWrapper) -> str:
+    """Create a unique test collection that's cleaned up after the test."""
+    collection_name = f"test-{uuid.uuid4().hex[:12]}"
+    yield collection_name
+    try:
+        asyncio.run(qdrant_client._client.delete_collection(collection_name=collection_name))
+    except Exception as e:
+        logger.warning("Collection cleanup failed", extra={"collection": collection_name, "error": str(e)})
+
+
+# =============================================================================
+# Ollama Container Fixtures
+# =============================================================================
+
+
+def _get_ollama_url(container: DockerContainer) -> str:
+    host = container.get_container_host_ip()
+    port = container.get_exposed_port(11434)
+    return f"http://{host}:{port}"
+
+
+def _wait_for_ollama_health(container: DockerContainer, timeout: int = 60) -> None:
+    url = _get_ollama_url(container)
+    health_url = f"{url}/api/tags"
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            response = httpx.get(health_url, timeout=2.0)
+            if response.status_code == 200:
+                return
+        except httpx.RequestError:
+            pass
+        time.sleep(0.5)
+    raise TimeoutError(f"Ollama container not healthy after {timeout}s")
+
+
+def _pull_ollama_model(container: DockerContainer, model: str, timeout: int = 120) -> None:
+    url = _get_ollama_url(container)
+    logger.info("Pulling Ollama model: %s", model)
+    try:
+        response = httpx.post(f"{url}/api/pull", json={"name": model}, timeout=timeout)
+        if response.status_code != 200:
+            raise RuntimeError(f"Failed to pull model {model}: {response.text}")
+    except httpx.RequestError as e:
+        raise RuntimeError(f"Failed to pull model {model}: {e}") from e
+    logger.info("Ollama model pulled: %s", model)
+
+
+@pytest.fixture(scope="session")
+def ollama_container():
+    """Start an Ollama container for the test session."""
+    logger.info("Starting Ollama container...")
+    container = (
+        DockerContainer("ollama/ollama:latest").with_exposed_ports(11434).with_env("OLLAMA_HOST", "0.0.0.0")
+    )
+    container.start()
+    _wait_for_ollama_health(container)
+    _pull_ollama_model(container, "all-minilm")
+    logger.info("Ollama container started", extra={"url": _get_ollama_url(container)})
+    yield container
+    logger.info("Stopping Ollama container...")
+    container.stop()
+
+
+@pytest.fixture(scope="session")
+def ollama_url(ollama_container: DockerContainer) -> str:
+    """Get Ollama connection URL."""
+    return _get_ollama_url(ollama_container)
+
+
+@pytest.fixture(scope="session")
+def ollama_client(ollama_url: str) -> OllamaClient:
+    """Create an OllamaClient connected to the test Ollama instance."""
+    client = OllamaClient(base_url=ollama_url, model="all-minilm", timeout_s=30)
+    logger.info(
+        "Created Ollama client for integration tests", extra={"url": ollama_url, "model": "all-minilm"}
+    )
+    yield client
+    client.close()
+
 
 # =============================================================================
 # Utility Fixtures
