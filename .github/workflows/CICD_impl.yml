@@ -7,6 +7,16 @@ on:
         type: string
         description: "The path to the tests diretory to be executed."
         required: true
+      
+      unit_tests_path:
+        type: string
+        description: "The path to the unit tests directory to be executed."
+        required: true
+
+      integration_tests_path:
+        type: string
+        description: "The path to the integration tests directory to be executed."
+        required: true
 
       operating_system_json_string:
         type: string
