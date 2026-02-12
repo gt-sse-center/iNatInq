@@ -24,3 +24,11 @@ repos:
     language: system
     pass_filenames: false
     always_run: true
+
+  - id: uv run pytest tests/integration/ -v -m integration -n auto
+    name: uv run pytest tests/integration/ -v -m integration -n auto
+    entry: uv run pytest tests/integration/ -v -m integration -n auto
+    language: system
+    pass_filenames: false
+    always_run: true
+    stages: [post-commit]
