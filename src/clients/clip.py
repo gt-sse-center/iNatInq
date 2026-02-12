@@ -41,6 +41,7 @@ The client class:
 import asyncio
 import base64
 import logging
+from typing import Any
 
 import aiobreaker
 import attrs
@@ -56,10 +57,51 @@ from foundation.circuit_breaker import (
     with_circuit_breaker_async,
 )
 from foundation.http import create_retry_session
+from foundation.retry import HTTPErrorClassifier, async_retry_call, create_retry_logger
 
 from .mixins import CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin
 
 logger = logging.getLogger(__name__)
+_retry_logger = logging.getLogger("clients.clip.retry")
+
+
+# =============================================================================
+# CLIP Error Classifier
+# =============================================================================
+
+
+class CLIPErrorClassifier(HTTPErrorClassifier):
+    """CLIP-specific error classification for retry logic.
+
+    Classifies httpx exceptions into retriable and non-retriable categories.
+    Same pattern as OllamaErrorClassifier (both use httpx).
+    """
+
+    def is_retriable(self, exc: BaseException) -> bool:
+        """Classify whether the exception is retriable."""
+        if isinstance(exc, (httpx.ConnectError, httpx.ReadError, httpx.WriteError)):
+            return True
+        if isinstance(exc, httpx.TimeoutException):
+            return True
+        if isinstance(exc, httpx.HTTPStatusError):
+            return self.is_retriable_http_status(exc.response.status_code)
+        if isinstance(exc, UpstreamError):
+            return False
+        return False
+
+    def get_error_details(self, exc: BaseException) -> dict[str, Any]:
+        """Extract structured error details for logging."""
+        if isinstance(exc, httpx.HTTPStatusError):
+            return {"http_status": exc.response.status_code}
+        return {}
+
+
+_clip_classifier = CLIPErrorClassifier()
+_clip_log_retry = create_retry_logger(
+    _retry_logger,
+    _clip_classifier.get_error_details,
+    "CLIP async operation failed, retrying",
+)
 
 # Known CLIP model vector sizes
 CLIP_VECTOR_SIZES: dict[str, int] = {
@@ -141,6 +183,11 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
     # Vector size configuration
     vector_size_override: int | None = attrs.field(default=None)
+
+    # Async retry configuration
+    max_retries: int = attrs.field(default=3)
+    retry_min_wait: float = attrs.field(default=1.0)
+    retry_max_wait: float = attrs.field(default=10.0)
 
     # Private attributes
     _session: requests.Session | None = attrs.field(init=False, default=None)
@@ -502,7 +549,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             raise UpstreamError(msg) from e
 
     async def _make_embed_request_async(self, image_b64: str, text: str | None = None) -> list[float]:
-        """Make asynchronous embedding request.
+        """Make asynchronous embedding request with retry.
 
         Supports multiple backends:
         - ollama: Uses /api/embeddings with images array and optional prompt
@@ -517,20 +564,15 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             Embedding vector.
 
         Raises:
-            UpstreamError: If request fails.
+            UpstreamError: If request fails after retries.
         """
-        try:
+
+        async def _do_request() -> list[float]:
             async with httpx.AsyncClient(timeout=self.timeout_s) as client:
                 if self.backend == "clip":
-                    # ai4all/clip API format: POST /embedding/image with {"images": [...]}
-                    # Returns: list of {image, vector} objects
-                    # Note: clip backend doesn't support text alongside images
                     url = f"{self.base_url}/embedding/image"
                     payload = {"images": [image_b64]}
-                    response = await client.post(
-                        url,
-                        json=payload,
-                    )
+                    response = await client.post(url, json=payload)
                     response.raise_for_status()
                     data = response.json()
 
@@ -568,10 +610,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                     "prompt": self._ollama_prompt(text),
                     "images": [image_b64],
                 }
-                response = await client.post(
-                    url,
-                    json=payload,
-                )
+                response = await client.post(url, json=payload)
                 response.raise_for_status()
                 data = response.json()
 
@@ -587,9 +626,15 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                     )
                 return embedding
 
-        except httpx.HTTPError as e:
-            msg = f"CLIP embedding request failed: {e}"
-            raise UpstreamError(msg) from e
+        return await async_retry_call(
+            _do_request,
+            max_retries=self.max_retries,
+            min_wait=self.retry_min_wait,
+            max_wait=self.retry_max_wait,
+            is_retriable=_clip_classifier.is_retriable,
+            before_sleep=_clip_log_retry,
+            operation="CLIP embed_image_async",
+        )
 
     @with_circuit_breaker("clip")
     def embed_image(self, image_bytes: bytes, text: str | None = None) -> list[float]:
@@ -854,7 +899,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             raise UpstreamError(msg) from e
 
     async def _make_text_embed_request_async(self, text: str) -> list[float]:
-        """Make asynchronous text embedding request.
+        """Make asynchronous text embedding request with retry.
 
         Supports multiple backends:
         - ollama: Uses /api/embeddings with prompt
@@ -867,19 +912,15 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             Embedding vector.
 
         Raises:
-            UpstreamError: If request fails.
+            UpstreamError: If request fails after retries.
         """
-        try:
+
+        async def _do_request() -> list[float]:
             async with httpx.AsyncClient(timeout=self.timeout_s) as client:
                 if self.backend == "clip":
-                    # ai4all/clip API format: POST /embedding/text with {"texts": [...]}
-                    # Returns: list of {text, vector} objects
                     url = f"{self.base_url}/embedding/text"
                     payload = {"texts": [text]}
-                    response = await client.post(
-                        url,
-                        json=payload,
-                    )
+                    response = await client.post(url, json=payload)
                     response.raise_for_status()
                     data = response.json()
 
@@ -916,10 +957,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                     "model": self.model,
                     "prompt": self._ollama_prompt(text),
                 }
-                response = await client.post(
-                    url,
-                    json=payload,
-                )
+                response = await client.post(url, json=payload)
                 response.raise_for_status()
                 data = response.json()
 
@@ -935,9 +973,15 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                     )
                 return embedding
 
-        except httpx.HTTPError as e:
-            msg = f"CLIP text embedding request failed: {e}"
-            raise UpstreamError(msg) from e
+        return await async_retry_call(
+            _do_request,
+            max_retries=self.max_retries,
+            min_wait=self.retry_min_wait,
+            max_wait=self.retry_max_wait,
+            is_retriable=_clip_classifier.is_retriable,
+            before_sleep=_clip_log_retry,
+            operation="CLIP embed_text_async",
+        )
 
     @with_circuit_breaker("clip")
     def embed_text(self, text: str) -> list[float]:

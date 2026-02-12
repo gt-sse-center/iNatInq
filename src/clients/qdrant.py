@@ -29,14 +29,16 @@ The client wrapper:
 """
 
 import asyncio
-from typing import Literal
+import logging
+from typing import Any, Literal
 
 import aiobreaker
 import attrs
+import httpx
 import pybreaker
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as qmodels
-from qdrant_client.http.exceptions import UnexpectedResponse
+from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 from qdrant_client.models import PointStruct  # Qdrant's native point type
 
 from config import VectorDBConfig
@@ -44,9 +46,53 @@ from core.exceptions import UpstreamError
 from core.models import SearchResultItem, SearchResults
 from foundation.async_utils import close_async_resource
 from foundation.circuit_breaker import create_async_circuit_breaker, with_circuit_breaker_async
+from foundation.retry import HTTPErrorClassifier, async_retry_call, create_retry_logger
 
 from .base import VectorDBClientBase
 from .interfaces.vector_db import VectorDBProvider
+
+_retry_logger = logging.getLogger("clients.qdrant.retry")
+
+
+# =============================================================================
+# Qdrant Error Classifier
+# =============================================================================
+
+
+class QdrantErrorClassifier(HTTPErrorClassifier):
+    """Qdrant-specific error classification for retry logic."""
+
+    def is_retriable(self, exc: BaseException) -> bool:
+        """Classify whether the exception is retriable."""
+        # Qdrant SDK response handling errors (serialization, transport)
+        if isinstance(exc, ResponseHandlingException):
+            return True
+        # Qdrant HTTP errors: classify by status code
+        if isinstance(exc, UnexpectedResponse):
+            status_code = getattr(exc, "status_code", None)
+            if status_code is not None:
+                return self.is_retriable_http_status(status_code)
+            return True  # No status code implies transport error
+        # httpx transport errors (qdrant-client uses httpx internally)
+        if isinstance(exc, (httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError)):
+            return True
+        if isinstance(exc, UpstreamError):
+            return False
+        return False
+
+    def get_error_details(self, exc: BaseException) -> dict[str, Any]:
+        """Extract structured error details for logging."""
+        if isinstance(exc, UnexpectedResponse):
+            return {"http_status": getattr(exc, "status_code", None)}
+        return {}
+
+
+_qdrant_classifier = QdrantErrorClassifier()
+_qdrant_log_retry = create_retry_logger(
+    _retry_logger,
+    _qdrant_classifier.get_error_details,
+    "Qdrant async operation failed, retrying",
+)
 
 # Type alias for supported distance metrics
 DistanceMetric = Literal["cosine", "euclidean", "dot"]
@@ -78,6 +124,9 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
     timeout_s: int = attrs.field(default=300)
     circuit_breaker_threshold: int = attrs.field(default=3)
     circuit_breaker_timeout: int = attrs.field(default=60)
+    max_retries: int = attrs.field(default=3)
+    retry_min_wait: float = attrs.field(default=1.0)
+    retry_max_wait: float = attrs.field(default=10.0)
     _client: AsyncQdrantClient = attrs.field(init=False, default=None)
     _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
     _async_breaker: aiobreaker.CircuitBreaker = attrs.field(init=False)
@@ -145,6 +194,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             circuit_breaker_timeout=getattr(config, "qdrant_circuit_breaker_timeout", 60),
         )
 
+    @with_circuit_breaker_async("qdrant")
     async def ensure_collection_async(
         self,
         *,
@@ -172,15 +222,28 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             If the collection already exists, this function does nothing
             (no-op).
         """
-        existing_collections = await self._client.get_collections()
-        existing = {c.name for c in existing_collections.collections}
-        if collection in existing:
-            return
-        await self._client.create_collection(
-            collection_name=collection,
-            vectors_config=qmodels.VectorParams(size=vector_size, distance=qmodels.Distance.COSINE),
+
+        async def _do_ensure() -> None:
+            existing_collections = await self._client.get_collections()
+            existing = {c.name for c in existing_collections.collections}
+            if collection in existing:
+                return
+            await self._client.create_collection(
+                collection_name=collection,
+                vectors_config=qmodels.VectorParams(size=vector_size, distance=qmodels.Distance.COSINE),
+            )
+
+        await async_retry_call(
+            _do_ensure,
+            max_retries=self.max_retries,
+            min_wait=self.retry_min_wait,
+            max_wait=self.retry_max_wait,
+            is_retriable=_qdrant_classifier.is_retriable,
+            before_sleep=_qdrant_log_retry,
+            operation="Qdrant ensure_collection",
         )
 
+    @with_circuit_breaker_async("qdrant")
     async def ensure_image_collection_async(
         self,
         *,
@@ -235,26 +298,38 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             ```
         """
         image_collection = f"{collection}_images"
-        existing_collections = await self._client.get_collections()
-        existing = {c.name for c in existing_collections.collections}
-        if image_collection in existing:
-            return
-        try:
-            await self._client.create_collection(
-                collection_name=image_collection,
-                vectors_config=qmodels.VectorParams(
-                    size=vector_size, distance=_DISTANCE_METRIC_MAP[distance_metric]
-                ),
-            )
-        except UnexpectedResponse as e:
-            status_code = getattr(e, "status_code", None)
-            if status_code == 409:
-                self._logger.warning(  # type: ignore[attr-defined]
-                    "Qdrant image collection already exists; skipping create",
-                    extra={"collection": image_collection},
-                )
+
+        async def _do_ensure_image() -> None:
+            existing_collections = await self._client.get_collections()
+            existing = {c.name for c in existing_collections.collections}
+            if image_collection in existing:
                 return
-            raise
+            try:
+                await self._client.create_collection(
+                    collection_name=image_collection,
+                    vectors_config=qmodels.VectorParams(
+                        size=vector_size, distance=_DISTANCE_METRIC_MAP[distance_metric]
+                    ),
+                )
+            except UnexpectedResponse as e:
+                status_code = getattr(e, "status_code", None)
+                if status_code == 409:
+                    self._logger.warning(  # type: ignore[attr-defined]
+                        "Qdrant image collection already exists; skipping create",
+                        extra={"collection": image_collection},
+                    )
+                    return
+                raise
+
+        await async_retry_call(
+            _do_ensure_image,
+            max_retries=self.max_retries,
+            min_wait=self.retry_min_wait,
+            max_wait=self.retry_max_wait,
+            is_retriable=_qdrant_classifier.is_retriable,
+            before_sleep=_qdrant_log_retry,
+            operation="Qdrant ensure_image_collection",
+        )
 
     @with_circuit_breaker_async("qdrant")
     async def search_async(
@@ -288,8 +363,8 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             # Access: results.items[0].point_id, results.items[0].score, etc.
             ```
         """
-        try:
-            # Use query_points (new qdrant-client API, replaces deprecated .search())
+
+        async def _do_search() -> SearchResults:
             query_response = await self._client.query_points(
                 collection_name=collection,
                 query=query_vector,
@@ -307,12 +382,16 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             ]
 
             return SearchResults(items=items, total=len(items))
-        except aiobreaker.CircuitBreakerError:
-            # Let circuit breaker errors propagate to the decorator
-            raise
-        except Exception as e:
-            msg = f"Qdrant search failed: {e}"
-            raise UpstreamError(msg) from e
+
+        return await async_retry_call(
+            _do_search,
+            max_retries=self.max_retries,
+            min_wait=self.retry_min_wait,
+            max_wait=self.retry_max_wait,
+            is_retriable=_qdrant_classifier.is_retriable,
+            before_sleep=_qdrant_log_retry,
+            operation="Qdrant search",
+        )
 
     async def disable_indexing(self, *, collection: str) -> None:
         """Disable indexing for a collection during bulk operations.
@@ -390,7 +469,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
 
     @with_circuit_breaker_async("qdrant")
     async def _do_batch_upsert(self, *, collection: str, points: list[PointStruct]) -> None:
-        """Qdrant-specific batch upsert implementation.
+        """Qdrant-specific batch upsert implementation with retry.
 
         Args:
             collection: Collection name to upsert into.
@@ -399,7 +478,19 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         Raises:
             Exception: Any Qdrant-specific exceptions (wrapped by base class).
         """
-        await self._client.upsert(collection_name=collection, points=points)
+
+        async def _do_upsert() -> None:
+            await self._client.upsert(collection_name=collection, points=points)
+
+        await async_retry_call(
+            _do_upsert,
+            max_retries=self.max_retries,
+            min_wait=self.retry_min_wait,
+            max_wait=self.retry_max_wait,
+            is_retriable=_qdrant_classifier.is_retriable,
+            before_sleep=_qdrant_log_retry,
+            operation="Qdrant batch_upsert",
+        )
 
     async def batch_upsert_async(
         self,

@@ -32,6 +32,7 @@ The client wrapper:
 """
 
 import asyncio
+import logging
 from typing import Any, Literal
 from urllib.parse import urlparse
 
@@ -43,14 +44,66 @@ from weaviate.auth import AuthApiKey
 from weaviate.classes.config import Configure, DataType, Property, VectorDistances
 from weaviate.classes.data import DataObject
 from weaviate.connect import ConnectionParams
+from weaviate.exceptions import (
+    WeaviateConnectionError,
+    WeaviateGRPCUnavailableError,
+    WeaviateTimeoutError,
+    UnexpectedStatusCodeError,
+)
 
 from config import VectorDBConfig
 from core.exceptions import UpstreamError
 from core.models import SearchResultItem, SearchResults
-from foundation.circuit_breaker import create_async_circuit_breaker, handle_circuit_breaker_error
+from foundation.circuit_breaker import (
+    create_async_circuit_breaker,
+    with_circuit_breaker_async,
+)
+from foundation.retry import HTTPErrorClassifier, async_retry_call, create_retry_logger
 
 from .base import VectorDBClientBase
 from .interfaces.vector_db import VectorDBProvider
+
+_retry_logger = logging.getLogger("clients.weaviate.retry")
+
+
+# =============================================================================
+# Weaviate Error Classifier
+# =============================================================================
+
+
+class WeaviateErrorClassifier(HTTPErrorClassifier):
+    """Weaviate-specific error classification for retry logic."""
+
+    def is_retriable(self, exc: BaseException) -> bool:
+        """Classify whether the exception is retriable."""
+        # Connection/transport errors are always retriable
+        if isinstance(exc, (WeaviateConnectionError, WeaviateGRPCUnavailableError)):
+            return True
+        if isinstance(exc, WeaviateTimeoutError):
+            return True
+        # HTTP status errors: 5xx retriable, 4xx not
+        if isinstance(exc, UnexpectedStatusCodeError):
+            status_code = getattr(exc, "status_code", None)
+            if status_code is not None:
+                return self.is_retriable_http_status(status_code)
+            return True  # No status code implies transport error
+        if isinstance(exc, UpstreamError):
+            return False
+        return False
+
+    def get_error_details(self, exc: BaseException) -> dict[str, Any]:
+        """Extract structured error details for logging."""
+        if isinstance(exc, UnexpectedStatusCodeError):
+            return {"http_status": getattr(exc, "status_code", None)}
+        return {}
+
+
+_weaviate_classifier = WeaviateErrorClassifier()
+_weaviate_log_retry = create_retry_logger(
+    _retry_logger,
+    _weaviate_classifier.get_error_details,
+    "Weaviate async operation failed, retrying",
+)
 
 # Type alias for supported distance metrics
 DistanceMetric = Literal["cosine", "euclidean", "dot"]
@@ -123,6 +176,9 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
     timeout_s: int = attrs.field(default=300)
     circuit_breaker_threshold: int = attrs.field(default=3)
     circuit_breaker_timeout: int = attrs.field(default=60)
+    max_retries: int = attrs.field(default=3)
+    retry_min_wait: float = attrs.field(default=1.0)
+    retry_max_wait: float = attrs.field(default=10.0)
     skip_init_checks: bool = True  # Default True to avoid Docker-to-cloud gRPC issues
     _client: WeaviateAsyncClient = attrs.field(init=False, default=None)
     _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
@@ -243,6 +299,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             circuit_breaker_timeout=config.weaviate_circuit_breaker_timeout,
         )
 
+    @with_circuit_breaker_async("weaviate")
     async def ensure_collection_async(self, *, collection: str, vector_size: int) -> None:
         """Create a Weaviate collection (class) if it does not already exist.
 
@@ -264,36 +321,44 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
 
             If the collection already exists, this function does nothing (no-op).
         """
-        try:
-            # Weaviate v4 client is the async context manager
-            async with self._client:
-                # Check if collection exists
-                exists = await self._client.collections.exists(collection)
-                if exists:
-                    return
 
-                # Create collection with vector configuration
-                await self._client.collections.create(
-                    name=collection,
-                    vectorizer_config=None,  # We provide vectors directly
-                    properties=[
-                        Property(name="text", data_type=DataType.TEXT),
-                        Property(name="s3_key", data_type=DataType.TEXT),
-                        Property(name="s3_bucket", data_type=DataType.TEXT),
-                        Property(name="s3_uri", data_type=DataType.TEXT),
-                    ],
-                    vector_config=Configure.Vectors.self_provided(
-                        vector_index_config=Configure.VectorIndex.hnsw(
-                            distance_metric=VectorDistances.COSINE,
+        async def _do_ensure() -> None:
+            try:
+                async with self._client:
+                    exists = await self._client.collections.exists(collection)
+                    if exists:
+                        return
+
+                    await self._client.collections.create(
+                        name=collection,
+                        vectorizer_config=None,
+                        properties=[
+                            Property(name="text", data_type=DataType.TEXT),
+                            Property(name="s3_key", data_type=DataType.TEXT),
+                            Property(name="s3_bucket", data_type=DataType.TEXT),
+                            Property(name="s3_uri", data_type=DataType.TEXT),
+                        ],
+                        vector_config=Configure.Vectors.self_provided(
+                            vector_index_config=Configure.VectorIndex.hnsw(
+                                distance_metric=VectorDistances.COSINE,
+                            ),
                         ),
-                    ),
-                )
-        except Exception as e:
-            # If collection already exists, that's fine
-            if "already exists" in str(e).lower() or "duplicate" in str(e).lower():
-                return
-            msg = f"Weaviate collection creation failed: {e}"
-            raise UpstreamError(msg) from e
+                    )
+            except Exception as e:
+                if "already exists" in str(e).lower() or "duplicate" in str(e).lower():
+                    return
+                msg = f"Weaviate collection creation failed: {e}"
+                raise UpstreamError(msg) from e
+
+        await async_retry_call(
+            _do_ensure,
+            max_retries=self.max_retries,
+            min_wait=self.retry_min_wait,
+            max_wait=self.retry_max_wait,
+            is_retriable=_weaviate_classifier.is_retriable,
+            before_sleep=_weaviate_log_retry,
+            operation="Weaviate ensure_collection",
+        )
 
     @staticmethod
     def _collection_to_image_class_name(collection: str) -> str:
@@ -329,6 +394,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
         parts = collection.replace("-", "_").split("_")
         return "".join(part[:1].upper() + part[1:] for part in parts if part)
 
+    @with_circuit_breaker_async("weaviate")
     async def ensure_image_collection_async(
         self,
         *,
@@ -361,35 +427,48 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             >>> # Creates class "DocumentsImages" with 512-dimensional vectors
         """
         image_class = self._collection_to_image_class_name(collection)
-        try:
-            async with self._client:
-                exists = await self._client.collections.exists(image_class)
-                if exists:
-                    return
 
-                await self._client.collections.create(
-                    name=image_class,
-                    vectorizer_config=None,
-                    properties=[
-                        Property(name="s3_key", data_type=DataType.TEXT),
-                        Property(name="s3_uri", data_type=DataType.TEXT),
-                        Property(name="format", data_type=DataType.TEXT),
-                        Property(name="width", data_type=DataType.INT),
-                        Property(name="height", data_type=DataType.INT),
-                        Property(name="thumbnail_key", data_type=DataType.TEXT),
-                    ],
-                    vector_config=Configure.Vectors.self_provided(
-                        vector_index_config=Configure.VectorIndex.hnsw(
-                            distance_metric=_DISTANCE_METRIC_MAP[distance_metric],
+        async def _do_ensure_image() -> None:
+            try:
+                async with self._client:
+                    exists = await self._client.collections.exists(image_class)
+                    if exists:
+                        return
+
+                    await self._client.collections.create(
+                        name=image_class,
+                        vectorizer_config=None,
+                        properties=[
+                            Property(name="s3_key", data_type=DataType.TEXT),
+                            Property(name="s3_uri", data_type=DataType.TEXT),
+                            Property(name="format", data_type=DataType.TEXT),
+                            Property(name="width", data_type=DataType.INT),
+                            Property(name="height", data_type=DataType.INT),
+                            Property(name="thumbnail_key", data_type=DataType.TEXT),
+                        ],
+                        vector_config=Configure.Vectors.self_provided(
+                            vector_index_config=Configure.VectorIndex.hnsw(
+                                distance_metric=_DISTANCE_METRIC_MAP[distance_metric],
+                            ),
                         ),
-                    ),
-                )
-        except Exception as e:
-            if "already exists" in str(e).lower() or "duplicate" in str(e).lower():
-                return
-            msg = f"Weaviate image collection creation failed: {e}"
-            raise UpstreamError(msg) from e
+                    )
+            except Exception as e:
+                if "already exists" in str(e).lower() or "duplicate" in str(e).lower():
+                    return
+                msg = f"Weaviate image collection creation failed: {e}"
+                raise UpstreamError(msg) from e
 
+        await async_retry_call(
+            _do_ensure_image,
+            max_retries=self.max_retries,
+            min_wait=self.retry_min_wait,
+            max_wait=self.retry_max_wait,
+            is_retriable=_weaviate_classifier.is_retriable,
+            before_sleep=_weaviate_log_retry,
+            operation="Weaviate ensure_image_collection",
+        )
+
+    @with_circuit_breaker_async("weaviate")
     async def search_async(
         self, *, collection: str, query_vector: list[float], limit: int = 10
     ) -> SearchResults:
@@ -407,11 +486,11 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
 
         Raises:
             UpstreamError: If collection doesn't exist or search fails. Also raised when
-                circuit breaker is open.
+                circuit breaker is open or retries are exhausted.
 
         Example:
             ```python
-            results = client.search_async(
+            results = await client.search_async(
                 collection="documents",
                 query_vector=[0.1, 0.2, ...],  # 768-dimensional vector
                 limit=10
@@ -419,21 +498,12 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             # Access: results.items[0].point_id, results.items[0].score, etc.
             ```
         """
-        # Check async circuit breaker state - if open, fail fast
-        import aiobreaker.state as aio_state
-
-        if self._async_breaker.current_state == aio_state.CircuitBreakerState.OPEN:
-            handle_circuit_breaker_error("weaviate")
 
         async def _do_search() -> SearchResults:
-            """Inner search function to be wrapped by circuit breaker."""
-            # Convert collection name to Weaviate class name (PascalCase)
             class_name = self._to_class_name(collection)
-            # Weaviate v4 client is the async context manager
             async with self._client:
                 collection_obj = self._client.collections.get(class_name)
 
-                # Perform vector search (await the coroutine)
                 response = await collection_obj.query.near_vector(
                     near_vector=query_vector,
                     limit=limit,
@@ -442,21 +512,16 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
 
                 items = []
                 for obj in response.objects:
-                    # Weaviate returns distance (lower is better) or certainty (higher is better)
-                    # We'll use certainty if available, otherwise convert distance to similarity
                     distance = obj.metadata.distance if obj.metadata else None
                     certainty = obj.metadata.certainty if obj.metadata else None
 
-                    # Convert to similarity score (0.0 to 1.0, higher is more similar)
                     if certainty is not None:
                         score = float(certainty)
                     elif distance is not None:
-                        # Convert cosine distance to similarity (1 - distance for cosine)
                         score = max(0.0, min(1.0, 1.0 - float(distance)))
                     else:
                         score = 0.0
 
-                    # Extract payload (properties)
                     payload: dict[str, Any] = {}
                     if obj.properties:
                         payload = dict(obj.properties)
@@ -472,16 +537,24 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
                 return SearchResults(items=items, total=len(items))
 
         try:
-            # Wrap with async circuit breaker to track failures
-            return await self._async_breaker.call_async(_do_search)
-        except aiobreaker.CircuitBreakerError:
-            handle_circuit_breaker_error("weaviate")
+            return await async_retry_call(
+                _do_search,
+                max_retries=self.max_retries,
+                min_wait=self.retry_min_wait,
+                max_wait=self.retry_max_wait,
+                is_retriable=_weaviate_classifier.is_retriable,
+                before_sleep=_weaviate_log_retry,
+                operation="Weaviate search",
+            )
+        except UpstreamError:
+            raise
         except Exception as e:
             msg = f"Weaviate search failed: {e}"
             raise UpstreamError(msg) from e
 
+    @with_circuit_breaker_async("weaviate")
     async def _do_batch_upsert(self, *, collection: str, points: list[WeaviateDataObject]) -> None:
-        """Weaviate-specific batch upsert implementation.
+        """Weaviate-specific batch upsert implementation with retry.
 
         Args:
             collection: Collection name to upsert into.
@@ -490,22 +563,31 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
         Raises:
             Exception: Any Weaviate-specific exceptions (wrapped by base class).
         """
-        # Weaviate v4 client is the async context manager
-        async with self._client:
-            # Get collection for batch operations
-            collection_obj = self._client.collections.get(collection)
 
-            objects_to_insert = [
-                DataObject(
-                    properties=obj.properties,
-                    vector=obj.vector or None,
-                    uuid=obj.uuid or None,
-                )
-                for obj in points
-            ]
+        async def _do_upsert() -> None:
+            async with self._client:
+                collection_obj = self._client.collections.get(collection)
 
-            # Batch insert using collection's insert_many
-            await collection_obj.data.insert_many(objects_to_insert)
+                objects_to_insert = [
+                    DataObject(
+                        properties=obj.properties,
+                        vector=obj.vector or None,
+                        uuid=obj.uuid or None,
+                    )
+                    for obj in points
+                ]
+
+                await collection_obj.data.insert_many(objects_to_insert)
+
+        await async_retry_call(
+            _do_upsert,
+            max_retries=self.max_retries,
+            min_wait=self.retry_min_wait,
+            max_wait=self.retry_max_wait,
+            is_retriable=_weaviate_classifier.is_retriable,
+            before_sleep=_weaviate_log_retry,
+            operation="Weaviate batch_upsert",
+        )
 
     async def batch_upsert_async(
         self,

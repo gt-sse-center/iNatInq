@@ -28,6 +28,8 @@ The client class:
 """
 
 import asyncio
+import logging
+from typing import Any
 
 import aiobreaker
 import attrs
@@ -43,9 +45,54 @@ from foundation.circuit_breaker import (
     with_circuit_breaker_async,
 )
 from foundation.http import create_retry_session
+from foundation.retry import HTTPErrorClassifier, async_retry_call, create_retry_logger
 
 from .interfaces.embedding import EmbeddingProvider
 from .mixins import CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin
+
+_retry_logger = logging.getLogger("clients.ollama.retry")
+
+
+# =============================================================================
+# Ollama Error Classifier
+# =============================================================================
+
+
+class OllamaErrorClassifier(HTTPErrorClassifier):
+    """Ollama-specific error classification for retry logic.
+
+    Classifies httpx exceptions into retriable and non-retriable categories.
+    """
+
+    def is_retriable(self, exc: BaseException) -> bool:
+        """Classify whether the exception is retriable."""
+        # Connection-level errors are always retriable
+        if isinstance(exc, (httpx.ConnectError, httpx.ReadError, httpx.WriteError)):
+            return True
+        # Timeout errors are retriable
+        if isinstance(exc, httpx.TimeoutException):
+            return True
+        # HTTP status errors: 5xx retriable, 4xx not
+        if isinstance(exc, httpx.HTTPStatusError):
+            return self.is_retriable_http_status(exc.response.status_code)
+        # UpstreamError from inner layers is not retriable at this level
+        if isinstance(exc, UpstreamError):
+            return False
+        return False
+
+    def get_error_details(self, exc: BaseException) -> dict[str, Any]:
+        """Extract structured error details for logging."""
+        if isinstance(exc, httpx.HTTPStatusError):
+            return {"http_status": exc.response.status_code}
+        return {}
+
+
+_ollama_classifier = OllamaErrorClassifier()
+_ollama_log_retry = create_retry_logger(
+    _retry_logger,
+    _ollama_classifier.get_error_details,
+    "Ollama async operation failed, retrying",
+)
 
 
 @attrs.define(frozen=False, slots=True)
@@ -109,6 +156,11 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
 
     # Vector size configuration
     vector_size_override: int | None = attrs.field(default=None)
+
+    # Async retry configuration
+    max_retries: int = attrs.field(default=3)
+    retry_min_wait: float = attrs.field(default=1.0)
+    retry_max_wait: float = attrs.field(default=10.0)
 
     # Private attributes
     _session: requests.Session | None = attrs.field(init=False, default=None)
@@ -402,7 +454,7 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         Raises:
             UpstreamError: If Ollama is unreachable, returns an error status code, or
                 the response is missing the embedding field. Also raised when circuit
-                breaker is open.
+                breaker is open or retries are exhausted.
 
         Example:
             ```python
@@ -419,7 +471,8 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
             ```
         """
         url = f"{self.base_url.rstrip('/')}/api/embeddings"
-        try:
+
+        async def _do_embed() -> list[float]:
             async with httpx.AsyncClient(timeout=self.timeout_s) as client:
                 resp = await client.post(url, json={"model": self.model, "prompt": text})
                 resp.raise_for_status()
@@ -428,12 +481,16 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
                 if not isinstance(emb, list) or not emb:
                     raise UpstreamError("Ollama response missing embedding")
                 return [float(x) for x in emb]
-        except httpx.HTTPStatusError as e:
-            msg = f"Ollama error {e.response.status_code}: {e.response.text}"
-            raise UpstreamError(msg) from e
-        except httpx.RequestError as e:
-            msg = f"Ollama request failed: {e}"
-            raise UpstreamError(msg) from e
+
+        return await async_retry_call(
+            _do_embed,
+            max_retries=self.max_retries,
+            min_wait=self.retry_min_wait,
+            max_wait=self.retry_max_wait,
+            is_retriable=_ollama_classifier.is_retriable,
+            before_sleep=_ollama_log_retry,
+            operation="Ollama embed_async",
+        )
 
     @with_circuit_breaker_async("ollama")
     async def embed_batch_async(
@@ -480,7 +537,7 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         # Scale timeout based on batch size and multiplier
         batch_timeout = self.timeout_s * self.batch_timeout_multiplier * max(1, len(texts))
 
-        try:
+        async def _do_batch_embed() -> list[list[float]]:
             async with httpx.AsyncClient(timeout=batch_timeout) as client:
                 resp = await client.post(url, json={"model": self.model, "input": texts})
                 resp.raise_for_status()
@@ -489,7 +546,6 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
                 embeddings = data.get("embeddings")
 
                 if not embeddings or not isinstance(embeddings, list):
-                    # Batch API not supported, fall back to individual calls
                     raise UpstreamError("Ollama response missing embeddings field")
 
                 if len(embeddings) != len(texts):
@@ -497,6 +553,17 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
                     raise UpstreamError(msg)
 
                 return [[float(x) for x in emb] for emb in embeddings]
+
+        try:
+            return await async_retry_call(
+                _do_batch_embed,
+                max_retries=self.max_retries,
+                min_wait=self.retry_min_wait,
+                max_wait=self.retry_max_wait,
+                is_retriable=_ollama_classifier.is_retriable,
+                before_sleep=_ollama_log_retry,
+                operation="Ollama embed_batch_async",
+            )
         except (httpx.HTTPStatusError, httpx.RequestError, UpstreamError) as e:
             # Fall back to individual async calls only if explicitly enabled
             if fallback_to_individual:
@@ -514,9 +581,11 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         """Internal async embed implementation without circuit breaker.
 
         Used by embed_batch_async fallback to avoid double circuit breaker wrapping.
+        Includes retry logic for transient failures.
         """
         url = f"{self.base_url.rstrip('/')}/api/embeddings"
-        try:
+
+        async def _do_embed() -> list[float]:
             async with httpx.AsyncClient(timeout=self.timeout_s) as client:
                 resp = await client.post(url, json={"model": self.model, "prompt": text})
                 resp.raise_for_status()
@@ -525,12 +594,16 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
                 if not isinstance(emb, list) or not emb:
                     raise UpstreamError("Ollama response missing embedding")
                 return [float(x) for x in emb]
-        except httpx.HTTPStatusError as e:
-            msg = f"Ollama error {e.response.status_code}: {e.response.text}"
-            raise UpstreamError(msg) from e
-        except httpx.RequestError as e:
-            msg = f"Ollama request failed: {e}"
-            raise UpstreamError(msg) from e
+
+        return await async_retry_call(
+            _do_embed,
+            max_retries=self.max_retries,
+            min_wait=self.retry_min_wait,
+            max_wait=self.retry_max_wait,
+            is_retriable=_ollama_classifier.is_retriable,
+            before_sleep=_ollama_log_retry,
+            operation="Ollama _embed_async_impl",
+        )
 
     def close(self) -> None:
         """Close the HTTP session and release resources.

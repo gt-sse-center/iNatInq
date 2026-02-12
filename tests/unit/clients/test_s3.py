@@ -573,14 +573,14 @@ class TestS3ClientWrapperExists:
           - Validates error propagation
 
         **What it tests:**
-          - Non-404 ClientError is re-raised
-          - Error is not wrapped
+          - Non-404 ClientError is wrapped in UpstreamError (consistent with other S3 methods)
+          - Error propagates with appropriate message
         """
         mock_boto3_client.head_object.side_effect = ClientError(
             {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}}, "HeadObject"
         )
 
-        with pytest.raises(ClientError):
+        with pytest.raises(UpstreamError, match="AccessDenied"):
             s3_client.exists(bucket="test-bucket", key="test-key")
 
 

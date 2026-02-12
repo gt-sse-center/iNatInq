@@ -51,7 +51,18 @@ from collections.abc import Callable
 from functools import partial
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
-from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_exponential
+import aiobreaker
+from tenacity import (
+    AsyncRetrying,
+    RetryError,
+    Retrying,
+    retry_if_exception,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
+
+from foundation.exceptions import UpstreamError
 
 T = TypeVar("T")
 
@@ -450,3 +461,71 @@ class RetryWithBackoff:
                 extra={"error": str(e), "error_type": type(e).__name__},
             )
             raise
+
+
+# =============================================================================
+# Async Retry Utility
+# =============================================================================
+
+
+async def async_retry_call(
+    coro_func: Callable[..., Any],
+    *args: Any,
+    max_retries: int = 3,
+    min_wait: float = 1.0,
+    max_wait: float = 10.0,
+    is_retriable: Callable[[BaseException], bool],
+    before_sleep: Callable[[Any], None] | None = None,
+    operation: str = "operation",
+    **kwargs: Any,
+) -> Any:
+    """Execute an async callable with retry logic and exponential backoff.
+
+    This function provides async retry support using tenacity's AsyncRetrying.
+    It mirrors the S3 ``_with_retry`` pattern for async client methods.
+
+    On retriable failures the call is retried up to ``max_retries`` times with
+    exponential backoff between ``min_wait`` and ``max_wait`` seconds. When all
+    retries are exhausted the last exception is wrapped in ``UpstreamError``.
+    Non-retriable exceptions propagate immediately.
+
+    Args:
+        coro_func: Async callable to execute.
+        *args: Positional arguments for ``coro_func``.
+        max_retries: Maximum number of attempts (default: 3).
+        min_wait: Minimum wait between retries in seconds (default: 1.0).
+        max_wait: Maximum wait between retries in seconds (default: 10.0).
+        is_retriable: Predicate that returns True for retriable exceptions.
+        before_sleep: Optional tenacity ``before_sleep`` callback for logging.
+        operation: Operation name for the ``UpstreamError`` message.
+        **kwargs: Keyword arguments for ``coro_func``.
+
+    Returns:
+        Result of ``coro_func(*args, **kwargs)``.
+
+    Raises:
+        UpstreamError: If all retries are exhausted.
+        Exception: Non-retriable exceptions propagate immediately.
+    """
+    try:
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(max_retries),
+            wait=wait_exponential(min=min_wait, max=max_wait),
+            retry=retry_if_exception(is_retriable),
+            before_sleep=before_sleep,
+            reraise=False,
+        ):
+            with attempt:
+                return await coro_func(*args, **kwargs)
+    except RetryError as e:
+        # All retries exhausted — wrap in UpstreamError
+        last_exc = e.last_attempt.exception() if e.last_attempt else e
+        msg = f"{operation} failed after {max_retries} attempts: {last_exc}"
+        raise UpstreamError(msg) from last_exc
+    except (UpstreamError, aiobreaker.CircuitBreakerError):
+        # Already wrapped or circuit breaker — propagate as-is
+        raise
+    except Exception as e:
+        # Non-retriable exception that was not retried — wrap in UpstreamError
+        msg = f"{operation} failed: {e}"
+        raise UpstreamError(msg) from e

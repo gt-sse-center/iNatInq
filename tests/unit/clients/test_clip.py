@@ -601,7 +601,7 @@ class TestCLIPClientErrorHandling:
         from core.exceptions import UpstreamError
 
         client = CLIPClient(base_url="http://localhost:11434", model="llava")
-        with pytest.raises(UpstreamError, match="CLIP embedding request failed"):
+        with pytest.raises(UpstreamError, match="CLIP embed_image_async failed"):
             await client.embed_image_async(b"fake image")
 
     @patch("clients.clip.httpx.AsyncClient")

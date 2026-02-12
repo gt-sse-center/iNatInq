@@ -510,8 +510,9 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         result = self._with_retry("list_objects", _list_all)
         return cast(list[str], result)
 
+    @with_circuit_breaker("s3")
     def exists(self, *, bucket: str, key: str) -> bool:
-        """Check if an object exists in S3.
+        """Check if an object exists in S3 with retry and circuit breaker protection.
 
         Args:
             bucket: Bucket name.
@@ -520,21 +521,29 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         Returns:
             True if the object exists, False otherwise.
 
+        Raises:
+            UpstreamError: If S3 operation fails after retries or circuit is open.
+
         Note:
             This method handles 404 errors directly (returns False).
             Other errors (connection, server) are retried normally.
         """
-        try:
-            self._client.head_object(Bucket=bucket, Key=key)
-            return True
-        except ClientError as e:
-            # 404 means object doesn't exist - this is expected, not an error
-            error_code = e.response.get("Error", {}).get("Code", "")
-            http_status = str(e.response.get("ResponseMetadata", {}).get("HTTPStatusCode", ""))
-            if error_code in ("404", "NoSuchKey") or http_status == "404":
-                return False
-            # Re-raise other errors (permission denied, etc.)
-            raise
+
+        def _head_object() -> bool:
+            try:
+                self._client.head_object(Bucket=bucket, Key=key)
+                return True
+            except ClientError as e:
+                # 404 means object doesn't exist - this is expected, not an error
+                error_code = e.response.get("Error", {}).get("Code", "")
+                http_status = str(e.response.get("ResponseMetadata", {}).get("HTTPStatusCode", ""))
+                if error_code in ("404", "NoSuchKey") or http_status == "404":
+                    return False
+                # Re-raise other errors (permission denied, etc.) for retry logic
+                raise
+
+        result = self._with_retry("exists", _head_object)
+        return bool(result)
 
     async def get_object_async(self, *, bucket: str, key: str) -> bytes:
         """Get an object from S3 asynchronously using ThreadPoolExecutor.
@@ -562,6 +571,7 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         # Run blocking boto3 call in thread pool for async-like behavior
         return await loop.run_in_executor(None, lambda: self.get_object(bucket=bucket, key=key))
 
+    @with_circuit_breaker("s3")
     def delete_object(self, *, bucket: str, key: str) -> None:
         """Delete an object from S3 with retry and circuit breaker protection.
 
@@ -570,7 +580,7 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             key: Object key (path).
 
         Raises:
-            UpstreamError: If S3 operation fails after retries.
+            UpstreamError: If S3 operation fails after retries or circuit is open.
 
         Note:
             S3 delete is idempotent - deleting a non-existent object succeeds.
