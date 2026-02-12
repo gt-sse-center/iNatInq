@@ -26,6 +26,8 @@ jobs:
     with:
       # These values can be customized for your specific requirements.
       tests_path: "tests/"
+      unit_tests_path: "tests/unit/"
+      integration_tests_path: "tests/integration/"
       operating_system_json_string: "[ 'macos-latest', 'ubuntu-latest']"
       python_version_json_string: "['3.13', '3.12', '3.11']"
       python_package_version: "3.13"
