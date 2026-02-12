@@ -75,12 +75,16 @@ jobs:
         run: uv sync --locked --all-packages --dev
 
       - name: Run pre-commit scripts
-        run: uv run pre-commit run --verbose
+        run: uv run pre-commit run --verbose --hook-stage pre-commit
+
+      - name: Validate Unit Tests
+        run: uv run pytest ${{ inputs.unit_tests_path }}
       
       - name: Setup Docker
         run: docker compose -f zarf/compose/dev/docker-compose.yaml up -d --wait
 
-      - name: Validate Tests
-        run: uv run pytest ${{ inputs.tests_path }}
+
+      - name: Validate Integration Tests
+        run: uv run pytest ${{ inputs.integration_tests_path }} -v -m integration -n auto
 
 
