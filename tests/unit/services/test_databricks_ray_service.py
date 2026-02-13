@@ -179,6 +179,8 @@ class TestDatabricksRayServiceSubmitImageJob:
         "os.environ",
         {
             "CLIP_API_KEY": "clip-key",
+            "INAT_MAX_ROWS": "250",
+            "INAT_METADATA_URL": "s3://inaturalist-open-data/photos.csv.gz",
             "INATINQ_SRC_DIR": "/Workspace/Users/test/iNatInq/src",
             "VECTOR_DB_PROVIDER": "qdrant",
         },
@@ -257,6 +259,8 @@ class TestDatabricksRayServiceSubmitImageJob:
         assert "IMAGE_MAX_SIZE_MB=8.5" in params
         assert "IMAGE_TARGET_SIZE=336" in params
         assert "CLIP_API_KEY=clip-key" in params
+        assert "INAT_MAX_ROWS=250" in params
+        assert "INAT_METADATA_URL=s3://inaturalist-open-data/photos.csv.gz" in params
         assert "INATINQ_SRC_DIR=/Workspace/Users/test/iNatInq/src" in params
         assert "VECTOR_DB_PROVIDER=qdrant" in params
 
@@ -292,6 +296,90 @@ class TestDatabricksRayServiceSubmitImageJob:
                 s3_access_key_id="test-key",
                 s3_secret_access_key="test-secret",
                 s3_bucket="test-bucket",
+                s3_prefix="images/",
+                image_embedding_config=image_embedding_config,
+                collection="test-image-collection",
+            )
+
+
+class TestDatabricksRayServiceSubmitINatImageJob:
+    """Test suite for DatabricksRayService.submit_inat_image_job."""
+
+    @patch.dict(
+        "os.environ",
+        {
+            "INAT_MAX_ROWS": "250",
+            "INAT_METADATA_URL": "s3://inaturalist-open-data/photos.csv.gz",
+            "INATINQ_SRC_DIR": "/Workspace/Users/test/iNatInq/src",
+        },
+        clear=False,
+    )
+    @patch("core.services.databricks_ray_service.DatabricksRayJobConfig.from_env")
+    @patch("core.services.databricks_ray_service.WorkspaceClient")
+    def test_submit_inat_image_job_success(
+        self,
+        mock_client_cls: MagicMock,
+        mock_config: MagicMock,
+    ) -> None:
+        """Test that submit_inat_image_job uses DATABRICKS_INAT_JOB_ID."""
+        mock_databricks_config = MagicMock()
+        mock_databricks_config.host = "https://dbc.example.cloud"
+        mock_databricks_config.token = "databricks-token"
+        mock_databricks_config.job_id = 123
+        mock_databricks_config.inat_job_id = 987
+        mock_config.return_value = mock_databricks_config
+
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.run_id = 456
+        mock_client.jobs.run_now.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        image_embedding_config = ImageEmbeddingConfig(
+            provider_type="clip",
+            clip_url="http://clip.test:8000",
+            clip_model="ViT-B/32",
+        )
+
+        service = DatabricksRayService()
+        run_id = service.submit_inat_image_job(
+            namespace="test-namespace",
+            s3_prefix="images/",
+            image_embedding_config=image_embedding_config,
+            collection="test-image-collection",
+        )
+
+        assert run_id == 456
+        call_kwargs = mock_client.jobs.run_now.call_args.kwargs
+        assert call_kwargs["job_id"] == 987
+        params = call_kwargs["python_params"]
+        assert "INAT_MAX_ROWS=250" in params
+        assert "INAT_METADATA_URL=s3://inaturalist-open-data/photos.csv.gz" in params
+        assert not any(param.startswith("S3_ENDPOINT=") for param in params)
+        assert not any(param.startswith("S3_ACCESS_KEY_ID=") for param in params)
+        assert not any(param.startswith("S3_SECRET_ACCESS_KEY=") for param in params)
+        assert not any(param.startswith("S3_BUCKET=") for param in params)
+
+    @patch("core.services.databricks_ray_service.DatabricksRayJobConfig.from_env")
+    def test_submit_inat_image_job_raises_without_inat_job_id(self, mock_config: MagicMock) -> None:
+        """Test dedicated iNat job id is required for iNat submission method."""
+        mock_databricks_config = MagicMock()
+        mock_databricks_config.host = "https://dbc.example.cloud"
+        mock_databricks_config.token = "databricks-token"
+        mock_databricks_config.job_id = 123
+        mock_databricks_config.inat_job_id = None
+        mock_config.return_value = mock_databricks_config
+
+        image_embedding_config = ImageEmbeddingConfig(
+            provider_type="clip",
+            clip_url="http://clip.test:8000",
+            clip_model="ViT-B/32",
+        )
+
+        service = DatabricksRayService()
+        with pytest.raises(ValueError, match="DATABRICKS_INAT_JOB_ID"):
+            service.submit_inat_image_job(
+                namespace="test-namespace",
                 s3_prefix="images/",
                 image_embedding_config=image_embedding_config,
                 collection="test-image-collection",
