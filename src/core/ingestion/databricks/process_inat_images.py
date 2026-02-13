@@ -10,9 +10,11 @@ import logging
 import os
 import sys
 import time
-from collections.abc import Iterable, Iterator
 from logging.config import dictConfig
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
 from urllib.parse import urlparse
 
 import ray
