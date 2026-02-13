@@ -304,6 +304,41 @@ class TestImageContentResult:
 
         assert result.s3_uri == "s3://images/photo.jpg"
 
+    def test_s3_uri_property_ignores_source_uri_override(self) -> None:
+        """Test that s3_uri always uses s3:// URI based on s3_key."""
+        result = ImageContentResult(
+            s3_key="photos/21213/medium.jpg",
+            image_bytes=b"\xff\xd8\xff",
+            format="jpeg",
+            size_bytes=100,
+            source_uri="https://inaturalist-open-data.s3.amazonaws.com/photos/21213/medium.jpg",
+        )
+
+        assert result.s3_uri == "s3://photos/21213/medium.jpg"
+
+    def test_canonical_uri_property_prefers_source_uri(self) -> None:
+        """Test canonical_uri falls back to source_uri when present."""
+        result = ImageContentResult(
+            s3_key="photos/21213/medium.jpg",
+            image_bytes=b"\xff\xd8\xff",
+            format="jpeg",
+            size_bytes=100,
+            source_uri="https://inaturalist-open-data.s3.amazonaws.com/photos/21213/medium.jpg",
+        )
+
+        assert result.canonical_uri == "https://inaturalist-open-data.s3.amazonaws.com/photos/21213/medium.jpg"
+
+    def test_canonical_uri_property_falls_back_to_s3_uri(self) -> None:
+        """Test canonical_uri falls back to s3_uri when source_uri is absent."""
+        result = ImageContentResult(
+            s3_key="images/photo.jpg",
+            image_bytes=b"\xff\xd8\xff",
+            format="jpeg",
+            size_bytes=100,
+        )
+
+        assert result.canonical_uri == "s3://images/photo.jpg"
+
     def test_mime_type_property_jpeg(self) -> None:
         """Test mime_type property for JPEG format.
 

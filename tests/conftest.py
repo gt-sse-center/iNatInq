@@ -57,6 +57,29 @@ def _patch_ray_references(ray_module: ModuleType | MagicMock) -> None:
             continue
 
 
+def _ensure_ray_submodule_mocks() -> None:
+    """Restore ray submodule mocks that _get_real_ray() may have cleared.
+
+    _get_real_ray() deletes ALL ray.* entries from sys.modules when loading
+    the real ray package.  Unit tests for the Databricks entrypoint need
+    ray.util.spark to be mocked so the source module can be imported.
+    """
+    if "ray.util.spark" not in sys.modules:
+        mock_spark = MagicMock()
+        mock_spark.setup_ray_cluster = MagicMock(return_value=MagicMock())
+        mock_spark.MAX_NUM_WORKER_NODES = 10
+        sys.modules["ray.util.spark"] = mock_spark
+
+    # If the databricks entrypoint was previously imported with the real
+    # (and possibly broken) ray, clear the cached module so it can be
+    # re-imported cleanly with the mocks.
+    mod_name = "core.ingestion.databricks.process_s3_to_vector_dbs"
+    if mod_name in sys.modules:
+        mod = sys.modules[mod_name]
+        if not isinstance(getattr(mod, "ray", None), MagicMock):
+            del sys.modules[mod_name]
+
+
 def pytest_runtest_setup(item) -> None:
     path = str(item.fspath)
     if "/tests/integration/" in path:
@@ -67,4 +90,15 @@ def pytest_runtest_setup(item) -> None:
         mock_ray = _get_mock_ray()
         sys.modules["ray"] = mock_ray
         sys.modules["ray.job_submission"] = mock_ray.job_submission
+        _ensure_ray_submodule_mocks()
         _patch_ray_references(mock_ray)
+
+
+def pytest_sessionfinish(session, exitstatus) -> None:
+    """Restore real ray in sys.modules so ray's atexit handler can run cleanly."""
+    if _REAL_RAY is not None:
+        sys.modules["ray"] = _REAL_RAY
+    else:
+        # If real ray was never loaded, remove mock ray so the handler sees a real (or missing) module
+        sys.modules.pop("ray", None)
+        sys.modules.pop("ray.job_submission", None)

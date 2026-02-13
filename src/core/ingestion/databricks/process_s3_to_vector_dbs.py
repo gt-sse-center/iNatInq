@@ -7,12 +7,10 @@ logging for improved visibility in Databricks run logs.
 
 from __future__ import annotations
 
-import inspect
 import logging
 from logging.config import dictConfig
 
 import os
-from pathlib import Path
 import sys
 import time
 
@@ -21,141 +19,16 @@ from botocore.exceptions import ClientError
 
 from clients.s3 import S3ClientWrapper
 from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
-from foundation.checkpoint import CheckpointManager, is_s3_path
+from core.ingestion.databricks.runtime import apply_python_params as _apply_python_params
+from core.ingestion.strategies import DatabricksStrategy
 from core.ingestion.tasks import process_s3_batch_ray
 from core.ingestion.shared import RateLimiterActor
+from foundation.checkpoint import CheckpointManager, is_s3_path
 from foundation.logger import LOGGING_CONFIG
-
-from ray.util.spark import setup_ray_cluster
-from ray.util.spark import MAX_NUM_WORKER_NODES
 
 
 logger = logging.getLogger("pipeline.ray.databricks")
 dictConfig(LOGGING_CONFIG)
-
-
-def _setup_ray_cluster(config: RayJobConfig) -> object | None:
-    """Start Ray on Databricks and return the cluster handle when possible."""
-    if setup_ray_cluster is None:
-        raise RuntimeError("ray.util.spark is required to start Ray on Databricks.")
-
-    kwargs = {
-        "num_worker_nodes": config.num_workers,
-        "cpus_per_node": int(config.worker_cpus),
-        "memory_per_node": config.worker_memory,
-    }
-    signature = inspect.signature(setup_ray_cluster)
-    filtered = {key: value for key, value in kwargs.items() if key in signature.parameters and value}
-
-    logger.info("Initializing Ray on Databricks", extra={"params": filtered})
-    return setup_ray_cluster(
-        max_worker_nodes=MAX_NUM_WORKER_NODES,
-    )
-
-
-def _init_ray(config: RayJobConfig, ray_cluster: object | None) -> None:
-    """Initialize Ray client connection to the Databricks cluster."""
-    address = getattr(ray_cluster, "address", None) if ray_cluster is not None else None
-    runtime_env: dict[str, object] = {}
-    env_vars: dict[str, str] = {}
-    pythonpath = os.environ.get("PYTHONPATH")
-    if pythonpath:
-        env_vars["PYTHONPATH"] = pythonpath
-
-    passthrough_keys = (
-        "K8S_NAMESPACE",
-        "S3_PREFIX",
-        "S3_ENDPOINT",
-        "S3_ACCESS_KEY_ID",
-        "S3_SECRET_ACCESS_KEY",
-        "S3_BUCKET",
-        "S3_REGION",
-        "S3_USE_SSL",
-        "S3_PATH_STYLE",
-        "S3_TIMEOUT",
-        "S3_MAX_RETRIES",
-        "S3_RETRY_MIN_WAIT",
-        "S3_RETRY_MAX_WAIT",
-        "S3_CIRCUIT_BREAKER_THRESHOLD",
-        "S3_CIRCUIT_BREAKER_TIMEOUT",
-        "VECTOR_DB_PROVIDER",
-        "VECTOR_DB_COLLECTION",
-        "QDRANT_URL",
-        "QDRANT_API_KEY",
-        "QDRANT_TIMEOUT",
-        "QDRANT_CIRCUIT_BREAKER_THRESHOLD",
-        "QDRANT_CIRCUIT_BREAKER_TIMEOUT",
-        "WEAVIATE_URL",
-        "WEAVIATE_API_KEY",
-        "WEAVIATE_GRPC_HOST",
-        "WEAVIATE_GRPC_PORT",
-        "WEAVIATE_TIMEOUT",
-        "WEAVIATE_CIRCUIT_BREAKER_THRESHOLD",
-        "WEAVIATE_CIRCUIT_BREAKER_TIMEOUT",
-        "EMBEDDING_PROVIDER",
-        "OLLAMA_BASE_URL",
-        "OLLAMA_MODEL",
-        "OLLAMA_TIMEOUT",
-        "OLLAMA_MAX_RETRIES",
-        "OLLAMA_RETRY_MIN_WAIT",
-        "OLLAMA_RETRY_MAX_WAIT",
-        "OLLAMA_CIRCUIT_BREAKER_THRESHOLD",
-        "OLLAMA_CIRCUIT_BREAKER_TIMEOUT",
-        "VECTOR_DB_TARGETS",
-        "INATINQ_SRC_DIR",
-    )
-    for key in passthrough_keys:
-        value = os.environ.get(key)
-        if value is not None and value != "":
-            env_vars[key] = value
-    targets = VectorDBConfig.parse_targets_from_env()
-    env_vars["VECTOR_DB_TARGETS"] = ",".join(sorted(targets))
-
-    if env_vars:
-        runtime_env["env_vars"] = env_vars
-    workspace_src = os.environ.get("INATINQ_SRC_DIR")
-    if not workspace_src:
-        raise RuntimeError(
-            "INATINQ_SRC_DIR is not set. Please export INATINQ_SRC_DIR to the repo src path "
-            "(e.g. /Workspace/Users/<user>/iNatInq/src) before running this job."
-        )
-    if Path(workspace_src).is_dir():
-        runtime_env["working_dir"] = workspace_src
-    else:
-        logger.warning("Ray working_dir not found", extra={"working_dir": workspace_src})
-    if not runtime_env:
-        runtime_env = None
-    if not ray.is_initialized():
-        ray.init(
-            address=address or "auto",
-            namespace=config.ray_namespace,
-            ignore_reinit_error=True,
-            logging_level=logging.WARNING,
-            log_to_driver=False,
-            runtime_env=runtime_env,
-        )
-
-
-def _shutdown_ray_cluster(ray_cluster: object | None) -> None:
-    """Shutdown Ray and Databricks cluster resources."""
-    if ray.is_initialized():
-        ray.shutdown()
-    if ray_cluster is None:
-        return
-    shutdown = getattr(ray_cluster, "shutdown", None)
-    if callable(shutdown):
-        shutdown()
-
-
-def _apply_python_params(args: list[str]) -> None:
-    """Apply KEY=VALUE args (Databricks python_params) to the environment."""
-    for arg in args:
-        if "=" not in arg:
-            continue
-        key, value = arg.split("=", 1)
-        if not key or not key.isupper() or not key.replace("_", "").isalnum():
-            continue
-        os.environ[key] = value
 
 
 def main() -> None:
@@ -185,8 +58,8 @@ def main() -> None:
         },
     )
 
-    ray_cluster = _setup_ray_cluster(ray_cfg)
-    _init_ray(ray_cfg, ray_cluster)
+    strategy = DatabricksStrategy.from_env(namespace)
+    strategy.init()
 
     try:
         s3 = S3ClientWrapper(
@@ -346,7 +219,7 @@ def main() -> None:
         )
     finally:
         logger.info("Databricks Ray job completed; shutting down Ray")
-        _shutdown_ray_cluster(ray_cluster)
+        strategy.shutdown()
 
 
 if __name__ == "__main__":
