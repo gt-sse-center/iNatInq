@@ -37,6 +37,7 @@ Databricks job/CLI settings:
 - `DATABRICKS_HOST`
 - `DATABRICKS_TOKEN`
 - `DATABRICKS_JOB_ID`
+- `DATABRICKS_INAT_JOB_ID` (required for dedicated iNaturalist image job submission)
 - `DATABRICKS_TASK_TYPE` (default: `python`)
 - `DATABRICKS_CLUSTER_ID` (optional override for cluster start/stop)
 - `INATINQ_SRC_DIR` (optional; override the workspace src path)
@@ -45,6 +46,26 @@ Databricks job/CLI settings:
 
 - `RAY_NUM_WORKERS`
 - `RAY_WORKER_CPUS`
+
+### Databricks image entrypoints
+
+- S3 image job: `run_ingest_image.py` -> `process_s3_images.py`
+- iNaturalist image job: `run_ingest_inat_image.py` -> `process_inat_images.py`
+
+### iNaturalist image job (`run_ingest_inat_image.py` -> `process_inat_images.py`)
+
+Required:
+
+- `INAT_MAX_ROWS` (must be a positive integer; job fails fast if missing)
+
+Optional (with defaults):
+
+- `INAT_METADATA_URL` (default: `s3://inaturalist-open-data/photos.csv.gz`)
+- `INAT_IMAGE_SIZE` (default: `medium`)
+- `INAT_PHOTO_BASE_URL` (default: `https://inaturalist-open-data.s3.amazonaws.com/photos`)
+- `INAT_TIMEOUT_S` (default: `120`)
+- `INAT_CB_FAILURE_THRESHOLD` (default: `5`)
+- `INAT_CB_RECOVERY_TIMEOUT_S` (default: `30`)
 
 ### Vector DB settings
 
@@ -93,6 +114,23 @@ These targets use `zarf/databricks/dev/.env.local` and
 make azure-databricks-build
 make azure-databricks-up
 make azure-databricks-down
+```
+
+## Passing iNat params to the Databricks run
+
+Important: `zarf/databricks/dev/.env.local` is used by local helper scripts.
+Databricks task runtime values must still be passed as `python_params` (KEY=VALUE)
+at run submission time (Jobs API / service submission / task parameters).
+
+Example `python_params` for iNat image ingestion:
+
+```text
+INAT_MAX_ROWS=50000
+INAT_METADATA_URL=s3://inaturalist-open-data/photos.csv.gz
+INAT_IMAGE_SIZE=medium
+VECTOR_DB_PROVIDER=qdrant
+VECTOR_DB_COLLECTION=documents
+INATINQ_SRC_DIR=/Workspace/Users/<user>/iNatInq/apps/src
 ```
 
 ## Direct script usage

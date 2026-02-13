@@ -15,64 +15,13 @@ import os
 from collections.abc import Iterable
 
 from config import EmbeddingConfig, ImageEmbeddingConfig
-
-
-_VECTOR_ENV_KEYS = (
-    "VECTOR_DB_PROVIDER",
-    "QDRANT_URL",
-    "QDRANT_API_KEY",
-    "WEAVIATE_URL",
-    "WEAVIATE_API_KEY",
-    "WEAVIATE_GRPC_HOST",
-    "VECTOR_DB_TARGETS",
-)
-
-_VECTOR_TIMEOUT_ENV_KEYS = (
-    "QDRANT_TIMEOUT",
-    "QDRANT_CIRCUIT_BREAKER_THRESHOLD",
-    "QDRANT_CIRCUIT_BREAKER_TIMEOUT",
-    "WEAVIATE_GRPC_PORT",
-    "WEAVIATE_TIMEOUT",
-    "WEAVIATE_CIRCUIT_BREAKER_THRESHOLD",
-    "WEAVIATE_CIRCUIT_BREAKER_TIMEOUT",
-)
-
-_S3_TUNING_ENV_KEYS = (
-    "S3_REGION",
-    "S3_USE_SSL",
-    "S3_PATH_STYLE",
-    "S3_TIMEOUT",
-    "S3_MAX_RETRIES",
-    "S3_RETRY_MIN_WAIT",
-    "S3_RETRY_MAX_WAIT",
-    "S3_CIRCUIT_BREAKER_THRESHOLD",
-    "S3_CIRCUIT_BREAKER_TIMEOUT",
-)
-
-_OLLAMA_TIMEOUT_ENV_KEYS = (
-    "OLLAMA_TIMEOUT",
-    "OLLAMA_CIRCUIT_BREAKER_THRESHOLD",
-    "OLLAMA_CIRCUIT_BREAKER_TIMEOUT",
-    "OLLAMA_BATCH_TIMEOUT_MULTIPLIER",
-    "OLLAMA_MAX_BATCH_SIZE",
-    "OLLAMA_RETRY_MIN_WAIT",
-    "OLLAMA_RETRY_MAX_WAIT",
-)
-
-_IMAGE_OPTIONAL_ENV_KEYS = (
-    "CLIP_URL",
-    "CLIP_MODEL",
-    "CLIP_BACKEND",
-    "CLIP_API_KEY",
-    "CLIP_TIMEOUT",
-    "CLIP_CIRCUIT_BREAKER_THRESHOLD",
-    "CLIP_CIRCUIT_BREAKER_TIMEOUT",
-    "CLIP_MAX_BATCH_SIZE",
-    "CLIP_VECTOR_SIZE",
-    "IMAGE_EMBEDDING_PROVIDER",
-    "IMAGE_BATCH_SIZE",
-    "IMAGE_MAX_SIZE_MB",
-    "IMAGE_TARGET_SIZE",
+from core.ingestion.shared.env_keys import (
+    IMAGE_OPTIONAL_ENV_KEYS as _IMAGE_OPTIONAL_ENV_KEYS,
+    INAT_IMAGE_ENV_KEYS as _INAT_IMAGE_ENV_KEYS,
+    OLLAMA_TUNING_ENV_KEYS as _OLLAMA_TIMEOUT_ENV_KEYS,
+    S3_TUNING_ENV_KEYS as _S3_TUNING_ENV_KEYS,
+    VECTOR_ENV_KEYS as _VECTOR_ENV_KEYS,
+    VECTOR_TIMEOUT_ENV_KEYS as _VECTOR_TIMEOUT_ENV_KEYS,
 )
 
 
@@ -251,6 +200,55 @@ def build_image_ingestion_env(
         _VECTOR_TIMEOUT_ENV_KEYS,
         _S3_TUNING_ENV_KEYS,
         _OLLAMA_TIMEOUT_ENV_KEYS,
+        _INAT_IMAGE_ENV_KEYS,
+    )
+    _passthrough_env_vars(env_vars, _IMAGE_OPTIONAL_ENV_KEYS, overwrite=False)
+
+    if extra_env_keys:
+        _passthrough_env_vars(env_vars, extra_env_keys)
+
+    return env_vars
+
+
+def build_inat_image_ingestion_env(
+    *,
+    namespace: str,
+    image_embedding_config: ImageEmbeddingConfig,
+    collection: str,
+    extra_env_keys: Iterable[str] | None = None,
+) -> dict[str, str]:
+    """Build env-style params for iNaturalist image ingestion jobs.
+
+    Unlike S3 image ingestion, this does not require MinIO/S3 connection
+    parameters. Metadata and image source behavior is driven by INAT_* vars.
+    """
+    env_vars = {
+        "K8S_NAMESPACE": namespace,
+        "VECTOR_DB_COLLECTION": collection,
+        "IMAGE_EMBEDDING_PROVIDER": image_embedding_config.provider_type,
+        "CLIP_BACKEND": image_embedding_config.clip_backend,
+        "CLIP_TIMEOUT": str(image_embedding_config.clip_timeout),
+        "CLIP_CIRCUIT_BREAKER_THRESHOLD": str(image_embedding_config.clip_circuit_breaker_threshold),
+        "CLIP_CIRCUIT_BREAKER_TIMEOUT": str(image_embedding_config.clip_circuit_breaker_timeout),
+        "CLIP_MAX_BATCH_SIZE": str(image_embedding_config.clip_max_batch_size),
+        "IMAGE_BATCH_SIZE": str(image_embedding_config.image_batch_size),
+        "IMAGE_MAX_SIZE_MB": str(image_embedding_config.image_max_size_mb),
+        "IMAGE_TARGET_SIZE": str(image_embedding_config.image_target_size),
+    }
+
+    if image_embedding_config.clip_url:
+        env_vars["CLIP_URL"] = image_embedding_config.clip_url
+    if image_embedding_config.clip_model:
+        env_vars["CLIP_MODEL"] = image_embedding_config.clip_model
+    if image_embedding_config.clip_vector_size is not None:
+        env_vars["CLIP_VECTOR_SIZE"] = str(image_embedding_config.clip_vector_size)
+
+    _passthrough_env_vars(
+        env_vars,
+        _VECTOR_ENV_KEYS,
+        _VECTOR_TIMEOUT_ENV_KEYS,
+        _OLLAMA_TIMEOUT_ENV_KEYS,
+        _INAT_IMAGE_ENV_KEYS,
     )
     _passthrough_env_vars(env_vars, _IMAGE_OPTIONAL_ENV_KEYS, overwrite=False)
 
