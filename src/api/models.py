@@ -25,7 +25,7 @@ Pydantic automatically validates:
 - Optional fields can be omitted or set to `None`
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -401,21 +401,30 @@ class DatabricksImageJobRequest(BaseModel):
     """Request to submit a Databricks image processing job.
 
     Attributes:
-        s3_prefix: S3 prefix to process (e.g., "images/").
+        source: Image source to ingest ("s3" or "inat").
+        s3_prefix: S3 prefix to process (required when source is "s3").
         collection: Vector DB base collection name.
 
     Example:
         ```json
         {
+            "source": "s3",
             "s3_prefix": "images/",
             "collection": "documents"
         }
         ```
     """
 
-    s3_prefix: str = Field(..., json_schema_extra={"example": "images/"}, description="S3 prefix to process")
+    source: Literal["s3", "inat"] = Field("s3", description="Image source type")
+    s3_prefix: str | None = Field(
+        None,
+        json_schema_extra={"example": "images/"},
+        description="S3 prefix to process (required when source='s3')",
+    )
     collection: str = Field(
-        ..., json_schema_extra={"example": "documents"}, description="Vector DB base collection name"
+        ...,
+        json_schema_extra={"example": "documents"},
+        description="Vector DB base collection name",
     )
 
 
@@ -458,7 +467,8 @@ class DatabricksImageJobResponse(BaseModel):
         run_id: Databricks run ID.
         status: Job status (always "submitted" on success).
         namespace: Kubernetes namespace used for config resolution.
-        s3_prefix: S3 prefix being processed.
+        source: Image source selected for this run.
+        s3_prefix: S3 prefix being processed (present when source is "s3").
         collection: Target vector DB base collection.
         submitted_at: ISO 8601 timestamp when job was submitted.
 
@@ -468,6 +478,7 @@ class DatabricksImageJobResponse(BaseModel):
             "run_id": "123456789",
             "status": "submitted",
             "namespace": "ml-system",
+            "source": "s3",
             "s3_prefix": "images/",
             "collection": "documents",
             "submitted_at": "2026-01-12T15:30:45.123456Z"
@@ -478,7 +489,8 @@ class DatabricksImageJobResponse(BaseModel):
     run_id: str
     status: str
     namespace: str
-    s3_prefix: str
+    source: Literal["s3", "inat"]
+    s3_prefix: str | None
     collection: str
     submitted_at: str
 

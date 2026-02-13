@@ -4,41 +4,21 @@ This wrapper converts Databricks python_params (KEY=VALUE) into environment
 variables before invoking the Ray image ingestion entrypoint.
 """
 
-import os
 import sys
-from logging.config import dictConfig
-from pathlib import Path
+
+try:
+    from core.ingestion.databricks.runtime import bootstrap_runtime
+except ModuleNotFoundError:  # pragma: no cover - direct script execution fallback
+    from runtime import bootstrap_runtime
 
 
-def _load_params(params: list[str]) -> None:
-    """Load KEY=VALUE params into os.environ."""
-    for item in params:
-        if "=" not in item:
-            continue
-        key, value = item.split("=", 1)
-        os.environ[key] = value
-
-
-def _bootstrap_runtime(params: list[str]) -> None:
-    """Apply params before resolving repo paths and configuring logging."""
-    _load_params(params)
-
-    repo_src_env = os.getenv("INATINQ_SRC_DIR")
-    # Default to the local repo's src directory based on this file's location.
-    repo_src = Path(repo_src_env) if repo_src_env else Path(__file__).resolve().parents[3]
-
-    if repo_src.exists():
-        sys.path.insert(0, str(repo_src.resolve()))
-
-    # Deferred import: we must load python_params first so LOGGING_CONFIG can
-    # read env-driven settings without being imported too early.
-    from foundation.logger import LOGGING_CONFIG
-
-    dictConfig(LOGGING_CONFIG)
+def _entrypoint_file() -> str:
+    """Resolve entrypoint path for script and notebook exec contexts."""
+    return globals().get("__file__") or (sys.argv[0] if sys.argv else "run_ingest_image.py")
 
 
 if __name__ == "__main__":
-    _bootstrap_runtime(sys.argv[1:])
+    bootstrap_runtime(sys.argv[1:], entrypoint_file=_entrypoint_file())
     # Deferred import: only valid after sys.path is set from INATINQ_SRC_DIR.
     from core.ingestion.databricks.process_s3_images import main
 

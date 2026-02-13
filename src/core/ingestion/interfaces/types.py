@@ -86,6 +86,9 @@ class ImageContentResult:
 
     Attributes:
         s3_key: The S3 object key.
+        source_uri: Original source URI for this image.
+            - S3 pipelines can leave this unset (defaults to `s3://{s3_key}`)
+            - iNaturalist pipelines can set this to the canonical photo URL
         image_bytes: Raw image data as bytes.
         format: Detected image format ("jpeg", "png", "webp", "gif").
         size_bytes: Size of the image in bytes.
@@ -107,13 +110,19 @@ class ImageContentResult:
     image_bytes: bytes
     format: str
     size_bytes: int
+    source_uri: str | None = None
     width: int | None = None
     height: int | None = None
 
     @property
     def s3_uri(self) -> str:
-        """Return the S3 URI for this object."""
+        """Return S3 URI for this image key."""
         return f"s3://{self.s3_key}"
+
+    @property
+    def canonical_uri(self) -> str:
+        """Return canonical source URI, preferring original source when available."""
+        return self.source_uri or self.s3_uri
 
     @property
     def mime_type(self) -> str:

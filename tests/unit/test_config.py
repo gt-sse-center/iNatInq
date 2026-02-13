@@ -296,6 +296,37 @@ class TestDatabricksRayJobConfig:
             with pytest.raises(ValueError, match="Invalid DATABRICKS_TASK_TYPE"):
                 DatabricksRayJobConfig.from_env()
 
+    def test_parses_optional_inat_job_id(self) -> None:
+        """Test optional DATABRICKS_INAT_JOB_ID parsing."""
+        with patch.dict(
+            os.environ,
+            {
+                "DATABRICKS_HOST": "https://dbc.example.cloud",
+                "DATABRICKS_TOKEN": "databricks-token",
+                "DATABRICKS_JOB_ID": "789",
+                "DATABRICKS_INAT_JOB_ID": "12345",
+            },
+            clear=True,
+        ):
+            config = DatabricksRayJobConfig.from_env()
+            assert config.job_id == 789
+            assert config.inat_job_id == 12345
+
+    def test_invalid_inat_job_id(self) -> None:
+        """Test invalid optional iNat job id is rejected."""
+        with patch.dict(
+            os.environ,
+            {
+                "DATABRICKS_HOST": "https://dbc.example.cloud",
+                "DATABRICKS_TOKEN": "databricks-token",
+                "DATABRICKS_JOB_ID": "789",
+                "DATABRICKS_INAT_JOB_ID": "not-an-int",
+            },
+            clear=True,
+        ):
+            with pytest.raises(ValueError, match="DATABRICKS_INAT_JOB_ID must be an integer"):
+                DatabricksRayJobConfig.from_env()
+
 
 # =============================================================================
 # MinIOConfig Tests

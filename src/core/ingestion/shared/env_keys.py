@@ -1,0 +1,117 @@
+"""Shared environment variable key groups for ingestion pipelines.
+
+This module centralizes env-key registries used across:
+- Databricks runtime env passthrough
+- Databricks job python_params construction
+- Ingestion service env builders
+"""
+
+from __future__ import annotations
+
+
+S3_CONNECTION_ENV_KEYS = (
+    "S3_PREFIX",
+    "S3_ENDPOINT",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+    "S3_BUCKET",
+)
+
+S3_TUNING_ENV_KEYS = (
+    "S3_REGION",
+    "S3_USE_SSL",
+    "S3_PATH_STYLE",
+    "S3_TIMEOUT",
+    "S3_MAX_RETRIES",
+    "S3_RETRY_MIN_WAIT",
+    "S3_RETRY_MAX_WAIT",
+    "S3_CIRCUIT_BREAKER_THRESHOLD",
+    "S3_CIRCUIT_BREAKER_TIMEOUT",
+)
+
+VECTOR_ENV_KEYS = (
+    "VECTOR_DB_PROVIDER",
+    "VECTOR_DB_TARGETS",
+    "QDRANT_URL",
+    "QDRANT_API_KEY",
+    "WEAVIATE_URL",
+    "WEAVIATE_API_KEY",
+    "WEAVIATE_GRPC_HOST",
+)
+
+VECTOR_TIMEOUT_ENV_KEYS = (
+    "QDRANT_TIMEOUT",
+    "QDRANT_CIRCUIT_BREAKER_THRESHOLD",
+    "QDRANT_CIRCUIT_BREAKER_TIMEOUT",
+    "WEAVIATE_GRPC_PORT",
+    "WEAVIATE_TIMEOUT",
+    "WEAVIATE_CIRCUIT_BREAKER_THRESHOLD",
+    "WEAVIATE_CIRCUIT_BREAKER_TIMEOUT",
+)
+
+OLLAMA_BASE_ENV_KEYS = (
+    "OLLAMA_BASE_URL",
+    "OLLAMA_MODEL",
+)
+
+OLLAMA_TUNING_ENV_KEYS = (
+    "OLLAMA_TIMEOUT",
+    "OLLAMA_MAX_RETRIES",
+    "OLLAMA_RETRY_MIN_WAIT",
+    "OLLAMA_RETRY_MAX_WAIT",
+    "OLLAMA_CIRCUIT_BREAKER_THRESHOLD",
+    "OLLAMA_CIRCUIT_BREAKER_TIMEOUT",
+    "OLLAMA_BATCH_TIMEOUT_MULTIPLIER",
+    "OLLAMA_MAX_BATCH_SIZE",
+)
+
+IMAGE_OPTIONAL_ENV_KEYS = (
+    "CLIP_URL",
+    "CLIP_MODEL",
+    "CLIP_BACKEND",
+    "CLIP_API_KEY",
+    "CLIP_TIMEOUT",
+    "CLIP_CIRCUIT_BREAKER_THRESHOLD",
+    "CLIP_CIRCUIT_BREAKER_TIMEOUT",
+    "CLIP_MAX_BATCH_SIZE",
+    "CLIP_VECTOR_SIZE",
+    "IMAGE_EMBEDDING_PROVIDER",
+    "IMAGE_BATCH_SIZE",
+    "IMAGE_MAX_SIZE_MB",
+    "IMAGE_TARGET_SIZE",
+)
+
+INAT_IMAGE_ENV_KEYS = (
+    "INAT_IMAGE_SIZE",
+    "INAT_MAX_ROWS",
+    "INAT_METADATA_URL",
+    "INAT_PHOTO_BASE_URL",
+    "INAT_TIMEOUT_S",
+    "INAT_CB_FAILURE_THRESHOLD",
+    "INAT_CB_RECOVERY_TIMEOUT_S",
+)
+
+
+def _dedupe(keys: tuple[str, ...]) -> tuple[str, ...]:
+    """Return keys preserving order and removing duplicates."""
+    return tuple(dict.fromkeys(keys))
+
+
+DATABRICKS_RUNTIME_PASSTHROUGH_ENV_VARS = _dedupe(
+    (
+        "K8S_NAMESPACE",
+        *S3_CONNECTION_ENV_KEYS,
+        *S3_TUNING_ENV_KEYS,
+        "VECTOR_DB_PROVIDER",
+        "VECTOR_DB_COLLECTION",
+        *VECTOR_ENV_KEYS,
+        *VECTOR_TIMEOUT_ENV_KEYS,
+        "EMBEDDING_PROVIDER",
+        *OLLAMA_BASE_ENV_KEYS,
+        *OLLAMA_TUNING_ENV_KEYS,
+        "IMAGE_EMBEDDING_PROVIDER",
+        *IMAGE_OPTIONAL_ENV_KEYS,
+        *INAT_IMAGE_ENV_KEYS,
+        "INATINQ_SRC_DIR",
+    )
+)
