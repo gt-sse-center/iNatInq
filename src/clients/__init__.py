@@ -10,6 +10,7 @@ from config import EmbeddingConfig, MinIOConfig, VectorDBConfig, get_settings
 
 # Import registries to trigger provider registration
 from . import registries as _  # noqa: F401
+from .inaturalist_open_data import INaturalistOpenDataClient, INaturalistPhotoRecord
 from .interfaces.embedding import EmbeddingProvider, create_embedding_provider
 from .interfaces.vector_db import VectorDBProvider, create_vector_db_provider
 from .s3 import S3ClientWrapper
@@ -104,6 +105,8 @@ def create_vector_db_client(
 __all__ = [
     "EmbeddingConfig",
     "EmbeddingProvider",
+    "INaturalistOpenDataClient",
+    "INaturalistPhotoRecord",
     "S3ClientWrapper",
     "VectorDBConfig",
     "VectorDBProvider",
