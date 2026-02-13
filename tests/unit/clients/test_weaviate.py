@@ -505,8 +505,8 @@ class TestWeaviateClientWrapperEnsureImageCollection:
         call_kwargs = mock_weaviate_client.collections.create.call_args[1]
         assert call_kwargs["name"] == "PhotosImages"
         # Verify distance metric is mapped correctly
-        vector_config = call_kwargs["vector_index_config"]
-        assert vector_config.distance == VectorDistances.L2_SQUARED
+        vector_config = call_kwargs["vector_config"]
+        assert vector_config.vectorIndexConfig.distance == VectorDistances.L2_SQUARED
 
     @pytest.mark.asyncio
     async def test_ensure_image_collection_distance_metric_mapping(

@@ -575,41 +575,54 @@ async def submit_databricks_job(req: models.DatabricksJobRequest) -> models.Data
 async def submit_databricks_image_job(
     req: models.DatabricksImageJobRequest,
 ) -> models.DatabricksImageJobResponse:
-    """Submit a new Databricks job to process S3 images.
+    """Submit a new Databricks job to process images.
 
     This submits a run for a preconfigured Databricks Job and returns immediately.
 
     Args:
-        req: Request containing s3_prefix and collection.
+        req: Request containing source, optional s3_prefix, and collection.
 
     Returns:
         Job metadata including Databricks run ID and submission timestamp.
 
     Raises:
+        HTTPException(400): If source is "s3" and s3_prefix is missing.
         HTTPException(500): If job submission fails.
     """
+    if req.source == "s3" and (req.s3_prefix is None or req.s3_prefix.strip() == ""):
+        raise BadRequestError("s3_prefix is required when source='s3'")
+
     try:
         settings = get_settings()
         namespace = settings.k8s_namespace
 
         databricks_service = DatabricksRayService()
-        minio_cfg = MinIOConfig.from_env(namespace)
         image_embed_cfg = ImageEmbeddingConfig.from_env(namespace)
-        run_id = databricks_service.submit_image_job(
-            namespace=namespace,
-            s3_endpoint=minio_cfg.endpoint_url,
-            s3_access_key_id=minio_cfg.access_key_id,
-            s3_secret_access_key=minio_cfg.secret_access_key,
-            s3_bucket=minio_cfg.bucket,
-            s3_prefix=req.s3_prefix,
-            image_embedding_config=image_embed_cfg,
-            collection=req.collection,
-        )
+        if req.source == "inat":
+            run_id = databricks_service.submit_inat_image_job(
+                namespace=namespace,
+                image_embedding_config=image_embed_cfg,
+                collection=req.collection,
+            )
+        else:
+            s3_prefix = req.s3_prefix or ""
+            minio_cfg = MinIOConfig.from_env(namespace)
+            run_id = databricks_service.submit_image_job(
+                namespace=namespace,
+                s3_endpoint=minio_cfg.endpoint_url,
+                s3_access_key_id=minio_cfg.access_key_id,
+                s3_secret_access_key=minio_cfg.secret_access_key,
+                s3_bucket=minio_cfg.bucket,
+                s3_prefix=s3_prefix,
+                image_embedding_config=image_embed_cfg,
+                collection=req.collection,
+            )
 
         return models.DatabricksImageJobResponse(
             run_id=str(run_id),
             status="submitted",
             namespace=namespace,
+            source=req.source,
             s3_prefix=req.s3_prefix,
             collection=req.collection,
             submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
