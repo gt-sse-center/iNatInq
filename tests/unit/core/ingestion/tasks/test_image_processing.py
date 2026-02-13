@@ -193,7 +193,7 @@ class TestImageProcessingPipeline:
 
         mock_s3 = MagicMock()
         mock_fetcher = MagicMock()
-        mock_fetcher.fetch_all_async = AsyncMock(
+        mock_fetcher.fetch_all = MagicMock(
             return_value=(
                 [],  # no images
                 [ProcessingResult.failure_result("image.jpg", "S3 error")],
@@ -254,7 +254,7 @@ class TestImageProcessingPipeline:
             size_bytes=15,
         )
         mock_fetcher = MagicMock()
-        mock_fetcher.fetch_all_async = AsyncMock(return_value=([image], []))
+        mock_fetcher.fetch_all = MagicMock(return_value=([image], []))
 
         mock_db_factory = MagicMock()
         mock_db_factory.create_both.return_value = (MagicMock(), MagicMock())

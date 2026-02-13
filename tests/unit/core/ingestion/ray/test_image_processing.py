@@ -129,7 +129,7 @@ class TestImageProcessingPipeline:
                 MagicMock(),
             )
             mock_fetcher = MagicMock()
-            mock_fetcher.fetch_all_async = AsyncMock(
+            mock_fetcher.fetch_all = MagicMock(
                 return_value=(
                     [],  # no images
                     [

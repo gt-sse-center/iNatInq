@@ -43,6 +43,8 @@ from weaviate import WeaviateAsyncClient
 from weaviate.auth import AuthApiKey
 from weaviate.classes.config import Configure, DataType, Property, VectorDistances
 from weaviate.classes.data import DataObject
+from weaviate.classes.init import Timeout
+from weaviate.config import AdditionalConfig
 from weaviate.connect import ConnectionParams
 from weaviate.exceptions import (
     WeaviateConnectionError,
@@ -247,6 +249,13 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             # to external Weaviate Cloud. The health check can fail due to
             # firewall rules or network latency from containerized environments.
             skip_init_checks=self.skip_init_checks,
+            additional_config=AdditionalConfig(
+                timeout=Timeout(
+                    init=self.timeout_s,
+                    query=self.timeout_s,
+                    insert=self.timeout_s,
+                ),
+            ),
         )
 
         self._client = _client_instance
@@ -502,6 +511,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
                     near_vector=query_vector,
                     limit=limit,
                     return_metadata=["distance", "certainty"],
+                    target_vector="default",
                 )
 
                 items = []
@@ -565,7 +575,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
                 objects_to_insert = [
                     DataObject(
                         properties=obj.properties,
-                        vector=obj.vector or None,
+                        vector={"default": obj.vector} if obj.vector else None,
                         uuid=obj.uuid or None,
                     )
                     for obj in points

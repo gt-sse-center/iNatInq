@@ -225,6 +225,89 @@ class TestS3ClientWrapperBucket:
         mock_boto3_client.head_bucket.assert_called_once_with(Bucket="test-bucket")
         mock_boto3_client.create_bucket.assert_not_called()
 
+    def test_ensure_bucket_handles_circuit_breaker_open(
+        self,
+        s3_client: S3ClientWrapper,
+    ) -> None:
+        """Test that ensure_bucket fails fast when circuit breaker is open.
+
+        **Why this test is important:**
+          - ensure_bucket must be protected by the circuit breaker like all other S3 methods
+          - Prevents cascading failures when S3 is down
+
+        **What it tests:**
+          - UpstreamError is raised when circuit breaker is open
+        """
+        mock_breaker = MagicMock(spec=pybreaker.CircuitBreaker)
+        mock_breaker.current_state = pybreaker.STATE_OPEN
+        object.__setattr__(s3_client, "_breaker", mock_breaker)
+
+        with pytest.raises(UpstreamError, match="s3 service is currently unavailable"):
+            s3_client.ensure_bucket("test-bucket")
+
+    def test_ensure_bucket_retries_transient_errors(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that ensure_bucket retries on transient errors.
+
+        **Why this test is important:**
+          - ensure_bucket must retry transient errors like all other S3 methods
+          - Validates retry integration for bucket operations
+
+        **What it tests:**
+          - Transient error (5xx) on create_bucket is retried
+          - Operation succeeds on subsequent attempt
+
+        Note:
+          head_bucket ClientErrors are caught internally (triggering create_bucket),
+          so retry is exercised when create_bucket itself fails transiently.
+        """
+        # head_bucket fails (bucket doesn't exist), create_bucket fails transiently then succeeds
+        mock_boto3_client.head_bucket.side_effect = ClientError(
+            {"Error": {"Code": "404", "Message": "Not Found"}}, "HeadBucket"
+        )
+        mock_boto3_client.create_bucket.side_effect = [
+            ClientError(
+                {
+                    "Error": {"Code": "InternalError", "Message": "Internal Error"},
+                    "ResponseMetadata": {"HTTPStatusCode": 500},
+                },
+                "CreateBucket",
+            ),
+            None,  # Success on retry
+        ]
+
+        s3_client.ensure_bucket("test-bucket")
+
+        assert mock_boto3_client.create_bucket.call_count == 2
+
+    def test_ensure_bucket_raises_after_retries_exhausted(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that ensure_bucket raises UpstreamError when retries are exhausted.
+
+        **Why this test is important:**
+          - After all retries fail, the error must surface as UpstreamError
+          - Validates consistent error handling with other S3 methods
+
+        **What it tests:**
+          - Persistent transient errors exhaust retries
+          - UpstreamError is raised with appropriate message
+        """
+        mock_boto3_client.head_bucket.side_effect = ClientError(
+            {"Error": {"Code": "404", "Message": "Not Found"}}, "HeadBucket"
+        )
+        mock_boto3_client.create_bucket.side_effect = ClientError(
+            {
+                "Error": {"Code": "InternalError", "Message": "Internal Error"},
+                "ResponseMetadata": {"HTTPStatusCode": 500},
+            },
+            "CreateBucket",
+        )
+
+        with pytest.raises(UpstreamError, match="S3 ensure_bucket failed"):
+            s3_client.ensure_bucket("test-bucket")
+
 
 # =============================================================================
 # Object Operations Tests

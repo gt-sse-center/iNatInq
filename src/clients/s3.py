@@ -417,6 +417,7 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             logger.exception(msg, extra={"operation": operation})
             raise UpstreamError(msg) from e
 
+    @with_circuit_breaker("s3")
     def ensure_bucket(self, bucket: str) -> None:
         """Ensure an S3 bucket exists, creating it if missing.
 
@@ -426,15 +427,22 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         Args:
             bucket: Bucket name to ensure exists.
 
+        Raises:
+            UpstreamError: If S3 operation fails after retries or circuit is open.
+
         Note:
             The function first checks if the bucket exists via `head_bucket()`. If
             that raises a `ClientError` (bucket not found), it creates the bucket.
             Other errors (e.g., permission denied) will propagate as exceptions.
         """
-        try:
-            self._client.head_bucket(Bucket=bucket)
-        except ClientError:
-            self._client.create_bucket(Bucket=bucket)
+
+        def _ensure() -> None:
+            try:
+                self._client.head_bucket(Bucket=bucket)
+            except ClientError:
+                self._client.create_bucket(Bucket=bucket)
+
+        self._with_retry("ensure_bucket", _ensure)
 
     @with_circuit_breaker("s3")
     def put_object(self, *, bucket: str, key: str, body: bytes) -> None:
