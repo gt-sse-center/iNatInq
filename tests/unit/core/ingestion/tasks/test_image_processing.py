@@ -17,6 +17,7 @@ and the Ray distributed processing function.
 """
 
 import asyncio
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -449,6 +450,43 @@ class TestImageProcessingPipelineAsync:
         assert len(results) == 1
         assert results[0].success is False
         assert "Qdrant" in results[0].error_message
+
+    @pytest.mark.asyncio
+    async def test_process_images_async_uses_s3_uri_when_source_uri_provided(self, config):
+        """Verify payload s3_uri remains s3:// URI even when source_uri is set."""
+        pipeline = ImageProcessingPipeline(config)
+
+        mock_clip = MagicMock()
+        mock_clip.embed_image_batch_async = AsyncMock(return_value=[[0.1] * 512])
+        mock_clip.vector_size = 512
+
+        mock_qdrant = MagicMock()
+        mock_qdrant.batch_upsert_async = AsyncMock()
+        mock_qdrant.ensure_image_collection_async = AsyncMock()
+
+        mock_weaviate = MagicMock()
+        mock_weaviate.batch_upsert_async = AsyncMock()
+        mock_weaviate.ensure_image_collection_async = AsyncMock()
+
+        image = ImageContentResult(
+            s3_key="photos/21213/medium.jpg",
+            image_bytes=b"image_data",
+            format="jpeg",
+            size_bytes=10,
+            source_uri="https://inaturalist-open-data.s3.amazonaws.com/photos/21213/medium.jpg",
+        )
+
+        with (
+            patch.dict(os.environ, {"VECTOR_DB_PROVIDER": "qdrant"}, clear=False),
+            patch("core.ingestion.tasks.image_processing.resize_for_embedding", return_value=b"resized"),
+        ):
+            results = await pipeline._process_images_async([image], mock_clip, mock_qdrant, mock_weaviate)
+
+        assert len(results) == 1
+        assert results[0].success is True
+        call_kwargs = mock_qdrant.batch_upsert_async.await_args.kwargs
+        points = call_kwargs["points"]
+        assert points[0].payload["s3_uri"] == "s3://photos/21213/medium.jpg"
 
 
 class TestProcessImageBatchRay:

@@ -7,8 +7,8 @@ import sys
 import types
 
 
-def test_load_params_sets_env(monkeypatch) -> None:
-    """_load_params should apply KEY=VALUE pairs and ignore non-assignments."""
+def test_entrypoint_file_uses_explicit_env(monkeypatch) -> None:
+    """_entrypoint_file should prefer DATABRICKS_ENTRYPOINT_FILE when set."""
     dummy_ingest = types.ModuleType("core.ingestion.databricks.process_s3_to_qdrant")
     dummy_ingest.main = lambda: None
     dummy_logger = types.ModuleType("foundation.logger")
@@ -18,13 +18,23 @@ def test_load_params_sets_env(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "foundation.logger", dummy_logger)
 
     module = importlib.import_module("core.ingestion.databricks.run_ingest")
+    monkeypatch.setenv("DATABRICKS_ENTRYPOINT_FILE", "/tmp/custom_entry.py")
 
-    monkeypatch.delenv("FOO", raising=False)
-    monkeypatch.delenv("BAR", raising=False)
-    monkeypatch.delenv("NOPE", raising=False)
+    assert module._entrypoint_file() == "/tmp/custom_entry.py"  # type: ignore[attr-defined]
 
-    module._load_params(["FOO=1", "NOPE", "BAR=two=three"])  # type: ignore[attr-defined]
 
-    assert module.os.environ["FOO"] == "1"
-    assert module.os.environ["BAR"] == "two=three"
-    assert module.os.environ.get("NOPE") is None
+def test_entrypoint_file_falls_back_to_module_file(monkeypatch) -> None:
+    """_entrypoint_file should use module __file__ when no env override exists."""
+    dummy_ingest = types.ModuleType("core.ingestion.databricks.process_s3_to_qdrant")
+    dummy_ingest.main = lambda: None
+    dummy_logger = types.ModuleType("foundation.logger")
+    dummy_logger.LOGGING_CONFIG = {"version": 1}
+
+    monkeypatch.setitem(sys.modules, "core.ingestion.databricks.process_s3_to_qdrant", dummy_ingest)
+    monkeypatch.setitem(sys.modules, "foundation.logger", dummy_logger)
+
+    module = importlib.import_module("core.ingestion.databricks.run_ingest")
+    monkeypatch.delenv("DATABRICKS_ENTRYPOINT_FILE", raising=False)
+
+    expected = str(module.__file__)
+    assert module._entrypoint_file() == expected  # type: ignore[attr-defined]

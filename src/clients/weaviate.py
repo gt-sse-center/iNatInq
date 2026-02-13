@@ -282,8 +282,10 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
                         Property(name="s3_bucket", data_type=DataType.TEXT),
                         Property(name="s3_uri", data_type=DataType.TEXT),
                     ],
-                    vector_index_config=Configure.VectorIndex.hnsw(
-                        distance_metric=VectorDistances.COSINE,
+                    vector_config=Configure.Vectors.self_provided(
+                        vector_index_config=Configure.VectorIndex.hnsw(
+                            distance_metric=VectorDistances.COSINE,
+                        ),
                     ),
                 )
         except Exception as e:
@@ -376,8 +378,10 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
                         Property(name="height", data_type=DataType.INT),
                         Property(name="thumbnail_key", data_type=DataType.TEXT),
                     ],
-                    vector_index_config=Configure.VectorIndex.hnsw(
-                        distance_metric=_DISTANCE_METRIC_MAP[distance_metric],
+                    vector_config=Configure.Vectors.self_provided(
+                        vector_index_config=Configure.VectorIndex.hnsw(
+                            distance_metric=_DISTANCE_METRIC_MAP[distance_metric],
+                        ),
                     ),
                 )
         except Exception as e:
