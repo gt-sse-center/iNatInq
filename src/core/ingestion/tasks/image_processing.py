@@ -335,31 +335,29 @@ class ImageProcessingPipeline:
             )
             upsert_labels.append("weaviate")
 
+        failed_dbs: list[str] = []
         if upsert_tasks:
             upsert_results = await asyncio.gather(*upsert_tasks, return_exceptions=True)
-            any_failure = False
             for label, result in zip(upsert_labels, upsert_results, strict=True):
                 if isinstance(result, Exception):
-                    any_failure = True
+                    failed_dbs.append(label)
                     logger.exception(
                         "%s image batch upsert failed",
                         label.capitalize(),
                         extra={"error": str(result), "collection": collection},
                     )
-            if any_failure:
-                return [
-                    ProcessingResult.failure_result(images[i].s3_key, "Image upsert failed")
-                    for i in range(len(images))
-                ]
 
-        # Success for all processed images
-        success_keys = {images[i].s3_key for i in valid_indices}
+        # Build results per image
+        upserted_keys = {images[i].s3_key for i in valid_indices}
         results: list[ProcessingResult] = []
         for img in images:
-            if img.s3_key in success_keys:
-                results.append(ProcessingResult.success_result(img.s3_key))
-            else:
+            if img.s3_key not in upserted_keys:
                 results.append(ProcessingResult.failure_result(img.s3_key, "Not in valid embed batch"))
+            elif failed_dbs:
+                error_msg = f"Upsert failed for: {', '.join(failed_dbs)}"
+                results.append(ProcessingResult.failure_result(img.s3_key, error_msg))
+            else:
+                results.append(ProcessingResult.success_result(img.s3_key))
         return results
 
 
