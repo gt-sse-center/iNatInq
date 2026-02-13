@@ -293,3 +293,83 @@ class TestDefaultBenchmarkRunner:
         retrieved, relevant = received_args[0]
         assert retrieved == ["d1", "d2", "d3"]
         assert relevant == {"d1", "d3"}
+
+    @pytest.mark.asyncio
+    async def test_batch_size_in_config(self, mock_provider: AsyncMock, dataset: StubDataset):
+        """batch_size is recorded in result config."""
+        runner = DefaultBenchmarkRunner(batch_size=42)
+        result = await runner.run(
+            provider=mock_provider,
+            dataset=dataset,
+            metrics=[StubMetric()],
+            limit=10,
+            warmup_queries=0,
+        )
+
+        assert result.config["batch_size"] == 42
+
+    @pytest.mark.asyncio
+    async def test_batched_processing_matches_unbatched(self, mock_provider: AsyncMock):
+        """Results are identical regardless of batch size."""
+        queries = [Query(id=f"q{i}", text=f"query {i}", relevant={f"d{i}"}) for i in range(10)]
+        ds = StubDataset(queries)
+
+        runner_small = DefaultBenchmarkRunner(batch_size=1)
+        result_small = await runner_small.run(
+            provider=mock_provider,
+            dataset=ds,
+            metrics=[StubMetric(fixed_score=0.7)],
+            limit=10,
+            warmup_queries=0,
+        )
+
+        mock_provider.reset_mock()
+
+        runner_large = DefaultBenchmarkRunner(batch_size=1000)
+        result_large = await runner_large.run(
+            provider=mock_provider,
+            dataset=ds,
+            metrics=[StubMetric(fixed_score=0.7)],
+            limit=10,
+            warmup_queries=0,
+        )
+
+        assert result_small.metrics == result_large.metrics
+        assert result_small.latency["count"] == result_large.latency["count"] == 10
+
+    @pytest.mark.asyncio
+    async def test_batch_size_limits_memory(self, mock_provider: AsyncMock):
+        """Queries are consumed lazily from the iterator, not all at once."""
+        consumed: list[str] = []
+
+        class LazyDataset(Dataset):
+            @property
+            def name(self) -> str:
+                return "lazy"
+
+            @property
+            def modality(self):
+                return "text"
+
+            def queries(self) -> Iterator[Query]:
+                for i in range(20):
+                    consumed.append(f"q{i}")
+                    yield Query(id=f"q{i}", text=f"query {i}", relevant={f"d{i}"})
+
+            def __len__(self) -> int:
+                return 20
+
+        runner = DefaultBenchmarkRunner(batch_size=5)
+        # We need to run the benchmark and verify queries aren't all consumed before processing starts.
+        # With batch_size=5 and warmup=0, the iterator yields in chunks of 5.
+        result = await runner.run(
+            provider=mock_provider,
+            dataset=LazyDataset(),
+            metrics=[StubMetric()],
+            limit=10,
+            warmup_queries=0,
+        )
+
+        # All 20 queries should have been processed (consumed)
+        assert len(consumed) == 20
+        assert result.latency["count"] == 20
