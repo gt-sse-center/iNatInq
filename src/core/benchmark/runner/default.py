@@ -25,13 +25,14 @@ from __future__ import annotations
 
 import logging
 import time
+from itertools import chain, islice
 from typing import TYPE_CHECKING
 
 from core.benchmark.metrics.latency import LatencyStats
 from core.benchmark.runner.base import BenchmarkResult, BenchmarkRunner
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
 
     from clients.interfaces.vector_db import VectorDBProvider
     from core.benchmark.datasets.base import Dataset, Query
@@ -48,10 +49,22 @@ class DefaultBenchmarkRunner(BenchmarkRunner):
     query's latency is recorded and IR metrics are computed per-query
     and aggregated as means.
 
+    Queries are consumed lazily from the dataset iterator in batches to
+    avoid materializing all queries into memory at once.
+
     The runner uses the provider's ``search_async`` method for text
     modality datasets and ``search_images_async`` (if available) for
     image modality datasets, falling back to ``search_async``.
     """
+
+    def __init__(self, *, batch_size: int = 100) -> None:
+        """Initialize the runner.
+
+        Args:
+            batch_size: Number of queries to process per batch during
+                the measurement phase (default: 100).
+        """
+        self._batch_size = batch_size
 
     async def run(
         self,
@@ -75,37 +88,41 @@ class DefaultBenchmarkRunner(BenchmarkRunner):
         Returns:
             BenchmarkResult with aggregated metrics and latency statistics.
         """
-        all_queries = list(dataset.queries())
+        query_iter: Iterator[Query] = dataset.queries()
 
-        # Warmup phase — run a subset of queries without timing
-        warmup_count = min(warmup_queries, len(all_queries))
-        for query in all_queries[:warmup_count]:
+        # Warmup phase — pull warmup queries lazily from the iterator
+        warmup_count = min(warmup_queries, len(dataset))
+        warmup_batch = list(islice(query_iter, warmup_count))
+        for query in warmup_batch:
             await self._execute_query(provider, dataset, query, limit)
 
         logger.info(
             "Warmup complete",
-            extra={"warmup_queries": warmup_count, "dataset": dataset.name},
+            extra={"warmup_queries": len(warmup_batch), "dataset": dataset.name},
         )
 
-        # Measurement phase — time each query and collect metrics
+        # Measurement phase — chain warmup queries back with remaining iterator,
+        # then consume in batches of self._batch_size to limit memory usage.
+        measurement_iter: Iterator[Query] = chain(warmup_batch, query_iter)
         latency_stats = LatencyStats()
         per_query_scores: dict[str, list[float]] = {m.name: [] for m in metrics}
 
-        for query in all_queries:
-            start = time.perf_counter()
-            results = await self._execute_query(provider, dataset, query, limit)
-            elapsed = time.perf_counter() - start
-            latency_stats.add_sample(elapsed)
+        while batch := list(islice(measurement_iter, self._batch_size)):
+            for query in batch:
+                start = time.perf_counter()
+                results = await self._execute_query(provider, dataset, query, limit)
+                elapsed = time.perf_counter() - start
+                latency_stats.add_sample(elapsed)
 
-            retrieved = [item.point_id for item in results.items]
+                retrieved = [item.point_id for item in results.items]
 
-            for metric in metrics:
-                score = metric.compute(
-                    retrieved,
-                    set(query.relevant),
-                    graded=query.graded_relevance or None,
-                )
-                per_query_scores[metric.name].append(score)
+                for metric in metrics:
+                    score = metric.compute(
+                        retrieved,
+                        set(query.relevant),
+                        graded=query.graded_relevance or None,
+                    )
+                    per_query_scores[metric.name].append(score)
 
         # Aggregate: mean across all queries
         aggregated_metrics: dict[str, float] = {}
@@ -117,7 +134,7 @@ class DefaultBenchmarkRunner(BenchmarkRunner):
             dataset=dataset.name,
             metrics=aggregated_metrics,
             latency=latency_stats.to_dict(),
-            config={"limit": limit, "warmup_queries": warmup_queries},
+            config={"limit": limit, "warmup_queries": warmup_queries, "batch_size": self._batch_size},
         )
 
     @staticmethod
