@@ -64,10 +64,13 @@ norecursedirs = []
 asyncio_mode = "auto"
 markers = [
     "integration: marks tests as integration tests (require Docker)",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
 filterwarnings = [
     "ignore:.*@wait_container_is_ready decorator is deprecated.*:DeprecationWarning",
     "ignore:.*wait_for_logs function.*is deprecated.*:DeprecationWarning",
+    "ignore:.*vector_index_config.*argument.*is deprecated.*:DeprecationWarning",
+    "ignore::RuntimeWarning",
 ]
 
 [tool.ruff]
