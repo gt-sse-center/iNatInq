@@ -440,6 +440,37 @@ class TestDatabricksImageJobMain:
         # With batch size 50, 75 keys should create 2 batches
         assert mock_task.options.return_value.remote.call_count == 2
 
+    def test_main_limits_images_when_image_max_items_is_set(self, mock_dependencies, mock_ray):
+        """main() should cap processed image keys to IMAGE_MAX_ITEMS."""
+        from core.ingestion.databricks.process_s3_images import main
+
+        keys = [f"img{i}.jpg" for i in range(10)]
+        mock_dependencies["s3"].list_objects.return_value = keys
+
+        future_mock = MagicMock()
+        mock_ray.wait.return_value = ([future_mock], [])
+        mock_ray.get.return_value = [[("img0.jpg", True, ""), ("img1.jpg", True, ""), ("img2.jpg", True, "")]]
+
+        with patch("core.ingestion.databricks.process_s3_images.ImageContentFetcher") as mock_fetcher:
+            mock_fetcher.filter_image_keys.return_value = keys
+            with patch("core.ingestion.databricks.process_s3_images.process_image_batch_ray") as mock_task:
+                mock_task.options.return_value.remote.return_value = future_mock
+                with patch.dict("os.environ", {"S3_PREFIX": "images/", "IMAGE_MAX_ITEMS": "3"}, clear=False):
+                    main()
+
+        submitted_batch = mock_task.options.return_value.remote.call_args.kwargs["s3_keys"]
+        assert submitted_batch == ["img0.jpg", "img1.jpg", "img2.jpg"]
+
+    def test_main_rejects_invalid_image_max_items(self, mock_dependencies, mock_ray):
+        """main() should fail fast when IMAGE_MAX_ITEMS is invalid."""
+        from core.ingestion.databricks.process_s3_images import main
+
+        with (
+            patch.dict("os.environ", {"S3_PREFIX": "images/", "IMAGE_MAX_ITEMS": "0"}, clear=False),
+            pytest.raises(RuntimeError, match="IMAGE_MAX_ITEMS must be a positive integer"),
+        ):
+            main()
+
     def test_main_handles_unexpected_exception(self, mock_dependencies, mock_ray):
         """main() handles unexpected exceptions and still shuts down.
 

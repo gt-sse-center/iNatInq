@@ -30,6 +30,20 @@ dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("pipeline.ray")
 
 
+def _parse_optional_positive_int_env(name: str) -> int | None:
+    """Parse an optional positive integer environment variable."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        raise RuntimeError(f"{name} must be a positive integer") from None
+    if value <= 0:
+        raise RuntimeError(f"{name} must be a positive integer")
+    return value
+
+
 def main() -> None:
     """Process S3 image objects and store embeddings in vector DB image collections.
 
@@ -45,6 +59,7 @@ def main() -> None:
         sys.argv[1] if len(sys.argv) > 1 and not sys.argv[0].endswith("uvicorn") else "images/"
     )
     collection = os.environ.get("VECTOR_DB_COLLECTION", "documents")
+    image_max_items = _parse_optional_positive_int_env("IMAGE_MAX_ITEMS")
 
     ray_cfg = RayJobConfig.from_env(namespace)
     minio_cfg = MinIOConfig.from_env(namespace)
@@ -63,6 +78,7 @@ def main() -> None:
             "num_workers": ray_cfg.num_workers,
             "image_batch_size": ray_cfg.image_batch_size,
             "ingestion_targets": sorted(ingestion_targets),
+            "image_max_items": image_max_items,
         },
     )
 
@@ -94,9 +110,15 @@ def main() -> None:
             sys.exit(1)
 
         keys = ImageContentFetcher.filter_image_keys(all_keys)
+        if image_max_items is not None:
+            keys = keys[:image_max_items]
         job_logger.info(
             "Filtered to image keys",
-            extra={"total_listed": len(all_keys), "image_keys": len(keys)},
+            extra={
+                "total_listed": len(all_keys),
+                "image_keys": len(keys),
+                "image_max_items": image_max_items,
+            },
         )
 
         if not keys:

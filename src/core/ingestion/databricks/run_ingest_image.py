@@ -4,6 +4,7 @@ This wrapper converts Databricks python_params (KEY=VALUE) into environment
 variables before invoking the Ray image ingestion entrypoint.
 """
 
+import os
 import sys
 
 try:
@@ -14,6 +15,9 @@ except ModuleNotFoundError:  # pragma: no cover - direct script execution fallba
 
 def _entrypoint_file() -> str:
     """Resolve entrypoint path for script and notebook exec contexts."""
+    explicit_path = os.getenv("DATABRICKS_ENTRYPOINT_FILE")
+    if explicit_path:
+        return explicit_path
     return globals().get("__file__") or (sys.argv[0] if sys.argv else "run_ingest_image.py")
 
 

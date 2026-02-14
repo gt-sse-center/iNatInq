@@ -179,7 +179,7 @@ class TestDatabricksRayServiceSubmitImageJob:
         "os.environ",
         {
             "CLIP_API_KEY": "clip-key",
-            "INAT_MAX_ROWS": "250",
+            "IMAGE_MAX_ITEMS": "250",
             "INAT_METADATA_URL": "s3://inaturalist-open-data/photos.csv.gz",
             "INATINQ_SRC_DIR": "/Workspace/Users/test/iNatInq/src",
             "VECTOR_DB_PROVIDER": "qdrant",
@@ -259,7 +259,7 @@ class TestDatabricksRayServiceSubmitImageJob:
         assert "IMAGE_MAX_SIZE_MB=8.5" in params
         assert "IMAGE_TARGET_SIZE=336" in params
         assert "CLIP_API_KEY=clip-key" in params
-        assert "INAT_MAX_ROWS=250" in params
+        assert "IMAGE_MAX_ITEMS=250" in params
         assert "INAT_METADATA_URL=s3://inaturalist-open-data/photos.csv.gz" in params
         assert "INATINQ_SRC_DIR=/Workspace/Users/test/iNatInq/src" in params
         assert "VECTOR_DB_PROVIDER=qdrant" in params
@@ -308,7 +308,7 @@ class TestDatabricksRayServiceSubmitINatImageJob:
     @patch.dict(
         "os.environ",
         {
-            "INAT_MAX_ROWS": "250",
+            "IMAGE_MAX_ITEMS": "250",
             "INAT_METADATA_URL": "s3://inaturalist-open-data/photos.csv.gz",
             "INATINQ_SRC_DIR": "/Workspace/Users/test/iNatInq/src",
         },
@@ -353,7 +353,7 @@ class TestDatabricksRayServiceSubmitINatImageJob:
         call_kwargs = mock_client.jobs.run_now.call_args.kwargs
         assert call_kwargs["job_id"] == 987
         params = call_kwargs["python_params"]
-        assert "INAT_MAX_ROWS=250" in params
+        assert "IMAGE_MAX_ITEMS=250" in params
         assert "INAT_METADATA_URL=s3://inaturalist-open-data/photos.csv.gz" in params
         assert not any(param.startswith("S3_ENDPOINT=") for param in params)
         assert not any(param.startswith("S3_ACCESS_KEY_ID=") for param in params)

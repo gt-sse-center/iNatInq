@@ -337,15 +337,16 @@ class TestRayServiceSubmitImageJob:
         mock_client.submit_job.return_value = "raysubmit_image123"
         mock_client_cls.return_value = mock_client
 
-        job_id = ray_service.submit_image_job(
-            namespace="test-namespace",
-            s3_endpoint="http://minio.test:9000",
-            s3_access_key_id="test-key",
-            s3_secret_access_key="test-secret",
-            s3_bucket="pipeline",
-            s3_prefix="images/",
-            collection="documents",
-        )
+        with patch.dict("os.environ", {"IMAGE_MAX_ITEMS": "25"}, clear=False):
+            job_id = ray_service.submit_image_job(
+                namespace="test-namespace",
+                s3_endpoint="http://minio.test:9000",
+                s3_access_key_id="test-key",
+                s3_secret_access_key="test-secret",
+                s3_bucket="pipeline",
+                s3_prefix="images/",
+                collection="documents",
+            )
 
         assert job_id == "raysubmit_image123"
         mock_client.submit_job.assert_called_once()
@@ -356,6 +357,7 @@ class TestRayServiceSubmitImageJob:
         assert env_vars["S3_BUCKET"] == "pipeline"
         assert env_vars["S3_PREFIX"] == "images/"
         assert env_vars["VECTOR_DB_COLLECTION"] == "documents"
+        assert env_vars["IMAGE_MAX_ITEMS"] == "25"
         assert "pillow" in call_kwargs["runtime_env"]["pip"]
 
     @patch("core.services.ray_service.RayJobConfig.from_env")

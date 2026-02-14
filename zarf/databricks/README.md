@@ -51,12 +51,13 @@ Databricks job/CLI settings:
 
 - S3 image job: `run_ingest_image.py` -> `process_s3_images.py`
 - iNaturalist image job: `run_ingest_inat_image.py` -> `process_inat_images.py`
+- `IMAGE_MAX_ITEMS` (optional): applies a max-image cap to both image jobs
 
 ### iNaturalist image job (`run_ingest_inat_image.py` -> `process_inat_images.py`)
 
-Required:
+Optional:
 
-- `INAT_MAX_ROWS` (must be a positive integer; job fails fast if missing)
+- `IMAGE_MAX_ITEMS` (positive integer cap applied to image processing)
 
 Optional (with defaults):
 
@@ -125,7 +126,7 @@ at run submission time (Jobs API / service submission / task parameters).
 Example `python_params` for iNat image ingestion:
 
 ```text
-INAT_MAX_ROWS=50000
+IMAGE_MAX_ITEMS=50000
 INAT_METADATA_URL=s3://inaturalist-open-data/photos.csv.gz
 INAT_IMAGE_SIZE=medium
 VECTOR_DB_PROVIDER=qdrant

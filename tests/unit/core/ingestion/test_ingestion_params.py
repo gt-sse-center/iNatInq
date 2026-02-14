@@ -83,7 +83,7 @@ def test_build_image_ingestion_env_includes_required_and_optional(monkeypatch) -
     monkeypatch.setenv("WEAVIATE_API_KEY", "weaviate-key")
     monkeypatch.setenv("WEAVIATE_GRPC_HOST", "grpc.weaviate.test")
     monkeypatch.setenv("CLIP_API_KEY", "clip-key")
-    monkeypatch.setenv("INAT_MAX_ROWS", "500")
+    monkeypatch.setenv("IMAGE_MAX_ITEMS", "500")
     monkeypatch.setenv("INAT_METADATA_URL", "s3://inaturalist-open-data/photos.csv.gz")
     monkeypatch.setenv("INAT_IMAGE_SIZE", "large")
     monkeypatch.setenv("EXTRA_ENV", "extra-value")
@@ -140,7 +140,7 @@ def test_build_image_ingestion_env_includes_required_and_optional(monkeypatch) -
     assert env_vars["WEAVIATE_API_KEY"] == "weaviate-key"
     assert env_vars["WEAVIATE_GRPC_HOST"] == "grpc.weaviate.test"
     assert env_vars["CLIP_API_KEY"] == "clip-key"
-    assert env_vars["INAT_MAX_ROWS"] == "500"
+    assert env_vars["IMAGE_MAX_ITEMS"] == "500"
     assert env_vars["INAT_METADATA_URL"] == "s3://inaturalist-open-data/photos.csv.gz"
     assert env_vars["INAT_IMAGE_SIZE"] == "large"
     assert env_vars["EXTRA_ENV"] == "extra-value"
@@ -190,7 +190,7 @@ def test_build_ingestion_env_targets_sorted(monkeypatch) -> None:
 def test_build_inat_image_ingestion_env_excludes_s3_connection_keys(monkeypatch) -> None:
     """Ensure iNat image ingestion env does not require MinIO/S3 connection values."""
     monkeypatch.setenv("QDRANT_URL", "http://qdrant.test:6333")
-    monkeypatch.setenv("INAT_MAX_ROWS", "500")
+    monkeypatch.setenv("IMAGE_MAX_ITEMS", "500")
     monkeypatch.setenv("INAT_METADATA_URL", "s3://inaturalist-open-data/photos.csv.gz")
     monkeypatch.setenv("EXTRA_ENV", "extra-value")
 
@@ -219,7 +219,7 @@ def test_build_inat_image_ingestion_env_excludes_s3_connection_keys(monkeypatch)
     assert env_vars["K8S_NAMESPACE"] == "ml-system"
     assert env_vars["VECTOR_DB_COLLECTION"] == "images"
     assert env_vars["IMAGE_EMBEDDING_PROVIDER"] == "clip"
-    assert env_vars["INAT_MAX_ROWS"] == "500"
+    assert env_vars["IMAGE_MAX_ITEMS"] == "500"
     assert env_vars["INAT_METADATA_URL"] == "s3://inaturalist-open-data/photos.csv.gz"
     assert env_vars["EXTRA_ENV"] == "extra-value"
     assert env_vars["QDRANT_URL"] == "http://qdrant.test:6333"

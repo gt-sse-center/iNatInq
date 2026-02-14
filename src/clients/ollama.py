@@ -165,6 +165,7 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
     # Private attributes
     _session: requests.Session | None = attrs.field(init=False, default=None)
     _async_client: httpx.AsyncClient | None = attrs.field(init=False, default=None)
+    _async_client_loop: asyncio.AbstractEventLoop | None = attrs.field(init=False, default=None)
     _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
     _async_breaker: aiobreaker.CircuitBreaker = attrs.field(init=False)
 
@@ -220,11 +221,28 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         Returns:
             Shared httpx.AsyncClient instance with connection pooling.
         """
+        current_loop = asyncio.get_running_loop()
+
+        # Async clients are loop-bound; recreate if loop changed between calls.
+        if (
+            self._async_client is not None
+            and not self._async_client.is_closed
+            and self._async_client_loop is not current_loop
+        ):
+            try:
+                await self._async_client.aclose()
+            except RuntimeError:
+                self._logger.debug("Discarding stale Ollama async client bound to a closed event loop")
+            finally:
+                self._async_client = None
+                self._async_client_loop = None
+
         if self._async_client is None or self._async_client.is_closed:
             self._async_client = httpx.AsyncClient(
                 timeout=self.timeout_s,
                 limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
             )
+            self._async_client_loop = current_loop
         return self._async_client
 
     async def close_async(self) -> None:
@@ -232,6 +250,7 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         if self._async_client is not None:
             await self._async_client.aclose()
             self._async_client = None
+            self._async_client_loop = None
 
     @classmethod
     def from_config(cls, config: EmbeddingConfig, session: requests.Session | None = None) -> "OllamaClient":
@@ -634,3 +653,5 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         if self._session is not None:
             self._session.close()
             self._session = None
+        self._async_client = None
+        self._async_client_loop = None

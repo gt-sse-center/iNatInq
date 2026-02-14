@@ -59,13 +59,30 @@ class TestDatabricksINatImageJobMain:
                 "vector_cfg": mock_vector_cfg.return_value,
             }
 
-    def test_main_requires_inat_max_rows(self, mock_dependencies, mock_ray) -> None:
-        """main() should fail fast when INAT_MAX_ROWS is missing."""
+    def test_main_allows_missing_image_max_items(self, mock_dependencies, mock_ray) -> None:
+        """main() should process without a cap when IMAGE_MAX_ITEMS is unset."""
+        from core.ingestion.databricks.process_inat_images import main
+
+        mock_dependencies[
+            "inat_client"
+        ].build_metadata_s3_uri.return_value = "s3://inaturalist-open-data/photos.csv.gz"
+
+        with patch.dict("os.environ", {}, clear=True):
+            main()
+
+        mock_dependencies["inat_client"].iter_photo_records.assert_called_once_with(
+            metadata_url="s3://inaturalist-open-data/photos.csv.gz",
+            size="medium",
+            max_rows=None,
+        )
+
+    def test_main_rejects_invalid_image_max_items(self, mock_dependencies, mock_ray) -> None:
+        """main() should fail fast when IMAGE_MAX_ITEMS is invalid."""
         from core.ingestion.databricks.process_inat_images import main
 
         with (
-            patch.dict("os.environ", {}, clear=True),
-            pytest.raises(RuntimeError, match="INAT_MAX_ROWS is required"),
+            patch.dict("os.environ", {"IMAGE_MAX_ITEMS": "0"}, clear=False),
+            pytest.raises(RuntimeError, match="IMAGE_MAX_ITEMS must be a positive integer"),
         ):
             main()
 
@@ -89,7 +106,7 @@ class TestDatabricksINatImageJobMain:
             mock_task.options.return_value.remote.return_value = future_mock
             with patch.dict(
                 "os.environ",
-                {"INAT_METADATA_URL": "https://example.com/photos.tsv", "INAT_MAX_ROWS": "50"},
+                {"INAT_METADATA_URL": "https://example.com/photos.tsv", "IMAGE_MAX_ITEMS": "50"},
                 clear=False,
             ):
                 main()
@@ -114,7 +131,7 @@ class TestDatabricksINatImageJobMain:
 
         with patch.dict(
             "os.environ",
-            {"INAT_METADATA_URL": "https://example.com/photos.tsv", "INAT_MAX_ROWS": "25"},
+            {"INAT_METADATA_URL": "https://example.com/photos.tsv", "IMAGE_MAX_ITEMS": "25"},
             clear=False,
         ):
             main()
@@ -131,7 +148,7 @@ class TestDatabricksINatImageJobMain:
         ].build_metadata_s3_uri.return_value = "s3://inaturalist-open-data/photos.csv.gz"
         mock_dependencies["inat_client"].iter_photo_records.return_value = iter(())
 
-        with patch.dict("os.environ", {"INAT_MAX_ROWS": "15"}, clear=False):
+        with patch.dict("os.environ", {"IMAGE_MAX_ITEMS": "15"}, clear=False):
             main()
 
         mock_dependencies["inat_client"].build_metadata_s3_uri.assert_called_once_with(
@@ -151,7 +168,7 @@ class TestDatabricksINatImageJobMain:
         with (
             patch(
                 "sys.argv",
-                ["script.py", "INAT_METADATA_URL=https://example.com/photos.tsv", "INAT_MAX_ROWS=10"],
+                ["script.py", "INAT_METADATA_URL=https://example.com/photos.tsv", "IMAGE_MAX_ITEMS=10"],
             ),
             patch.dict("os.environ", {}, clear=False),
         ):
@@ -193,7 +210,7 @@ class TestDatabricksINatImageJobMain:
             mock_task.options.return_value.remote.side_effect = futures
             with patch.dict(
                 "os.environ",
-                {"INAT_METADATA_URL": "https://example.com/photos.tsv", "INAT_MAX_ROWS": "3"},
+                {"INAT_METADATA_URL": "https://example.com/photos.tsv", "IMAGE_MAX_ITEMS": "3"},
                 clear=False,
             ):
                 main()

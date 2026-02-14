@@ -192,6 +192,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
     # Private attributes
     _session: requests.Session | None = attrs.field(init=False, default=None)
     _async_client: httpx.AsyncClient | None = attrs.field(init=False, default=None)
+    _async_client_loop: asyncio.AbstractEventLoop | None = attrs.field(init=False, default=None)
     _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
     _async_breaker: aiobreaker.CircuitBreaker = attrs.field(init=False)
 
@@ -234,11 +235,28 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         Returns:
             Shared httpx.AsyncClient instance with connection pooling.
         """
+        current_loop = asyncio.get_running_loop()
+
+        # Async clients are loop-bound; recreate if loop changed between calls.
+        if (
+            self._async_client is not None
+            and not self._async_client.is_closed
+            and self._async_client_loop is not current_loop
+        ):
+            try:
+                await self._async_client.aclose()
+            except RuntimeError:
+                logger.debug("Discarding stale CLIP async client bound to a closed event loop")
+            finally:
+                self._async_client = None
+                self._async_client_loop = None
+
         if self._async_client is None or self._async_client.is_closed:
             self._async_client = httpx.AsyncClient(
                 timeout=self.timeout_s,
                 limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
             )
+            self._async_client_loop = current_loop
         return self._async_client
 
     async def close_async(self) -> None:
@@ -246,6 +264,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         if self._async_client is not None:
             await self._async_client.aclose()
             self._async_client = None
+            self._async_client_loop = None
 
     @property
     def vector_size(self) -> int:
@@ -1178,6 +1197,8 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         if self._session is not None:
             self._session.close()
             self._session = None
+        self._async_client = None
+        self._async_client_loop = None
 
     def set_session(self, session: requests.Session) -> None:
         """Set custom requests session for connection pooling.

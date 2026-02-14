@@ -34,11 +34,11 @@ dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("pipeline.ray.databricks")
 
 
-def _parse_required_positive_int_env(name: str) -> int:
-    """Parse a required positive integer environment variable."""
+def _parse_optional_positive_int_env(name: str) -> int | None:
+    """Parse an optional positive integer environment variable."""
     raw = os.environ.get(name, "").strip()
     if not raw:
-        raise RuntimeError(f"{name} is required and must be a positive integer")
+        return None
     try:
         value = int(raw)
     except ValueError:
@@ -192,7 +192,7 @@ def main() -> None:
     namespace = os.environ.get("K8S_NAMESPACE", "ml-system")
     collection = os.environ.get("VECTOR_DB_COLLECTION", "documents")
     image_size = (os.environ.get("INAT_IMAGE_SIZE") or "medium").strip().lower()
-    max_rows = _parse_required_positive_int_env("INAT_MAX_ROWS")
+    max_items = _parse_optional_positive_int_env("IMAGE_MAX_ITEMS")
     metadata_url = (os.environ.get("INAT_METADATA_URL") or "").strip()
 
     inat_photo_base_url = (
@@ -217,7 +217,7 @@ def main() -> None:
             "ingestion_targets": sorted(ingestion_targets),
             "metadata_url": metadata_url or "default:s3://inaturalist-open-data/photos.csv.gz",
             "image_size": image_size,
-            "max_rows": max_rows,
+            "image_max_items": max_items,
         },
     )
 
@@ -241,7 +241,7 @@ def main() -> None:
         records = inat_client.iter_photo_records(
             metadata_url=metadata_url,
             size=image_size,
-            max_rows=max_rows,
+            max_rows=max_items,
         )
 
         image_batch_size = max(1, ray_cfg.image_batch_size)
