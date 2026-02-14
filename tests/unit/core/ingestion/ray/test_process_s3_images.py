@@ -256,6 +256,18 @@ class TestRayImageJobMain:
         call_kwargs = mock_dependencies["s3"].list_objects.call_args[1]
         assert call_kwargs["prefix"] == "custom/images/"
 
+    def test_main_allows_empty_s3_prefix_from_env(self, mock_dependencies, mock_ray):
+        """Test that explicit empty S3_PREFIX is respected (scan whole bucket)."""
+        from core.ingestion.ray.process_s3_images import main
+
+        mock_dependencies["s3"].list_objects.return_value = []
+
+        with patch.dict("os.environ", {"S3_PREFIX": ""}, clear=False):
+            main()
+
+        call_kwargs = mock_dependencies["s3"].list_objects.call_args[1]
+        assert call_kwargs["prefix"] == ""
+
     def test_main_uses_collection_from_env(self, mock_dependencies, mock_ray):
         """Test that main() uses VECTOR_DB_COLLECTION environment variable.
 

@@ -44,6 +44,22 @@ def _parse_optional_positive_int_env(name: str) -> int | None:
     return value
 
 
+def _resolve_s3_prefix(argv: list[str]) -> str:
+    """Resolve S3 prefix from env/argv with support for explicit empty prefix.
+
+    Resolution order:
+    1. ``S3_PREFIX`` environment variable (including empty string)
+    2. First positional argv argument (legacy behavior)
+    3. Default ``images/``
+    """
+    env_prefix = os.environ.get("S3_PREFIX")
+    if env_prefix is not None:
+        return env_prefix
+    if len(argv) > 1 and not argv[0].endswith("uvicorn"):
+        return argv[1]
+    return "images/"
+
+
 def main() -> None:
     """Process S3 image objects and store embeddings in vector DB image collections.
 
@@ -55,9 +71,7 @@ def main() -> None:
     job_logger.info("Ray image job started", extra={"pid": os.getpid()})
     start = time.time()
     namespace = os.environ.get("K8S_NAMESPACE", "ml-system")
-    s3_prefix = os.environ.get("S3_PREFIX") or (
-        sys.argv[1] if len(sys.argv) > 1 and not sys.argv[0].endswith("uvicorn") else "images/"
-    )
+    s3_prefix = _resolve_s3_prefix(sys.argv)
     collection = os.environ.get("VECTOR_DB_COLLECTION", "documents")
     image_max_items = _parse_optional_positive_int_env("IMAGE_MAX_ITEMS")
 
