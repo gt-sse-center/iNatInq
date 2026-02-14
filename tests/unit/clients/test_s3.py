@@ -667,6 +667,31 @@ class TestS3ClientWrapperExists:
             s3_client.exists(bucket="test-bucket", key="test-key")
 
 
+class TestS3ClientWrapperContentType:
+    """Test suite for S3ClientWrapper.get_object_content_type method."""
+
+    def test_get_object_content_type_returns_mime(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test content type lookup success."""
+        mock_boto3_client.head_object.return_value = {"ContentType": "image/jpeg"}
+
+        result = s3_client.get_object_content_type(bucket="test-bucket", key="test-key")
+
+        assert result == "image/jpeg"
+        mock_boto3_client.head_object.assert_called_once_with(Bucket="test-bucket", Key="test-key")
+
+    def test_get_object_content_type_returns_none_when_missing(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test content type lookup when metadata has no ContentType."""
+        mock_boto3_client.head_object.return_value = {}
+
+        result = s3_client.get_object_content_type(bucket="test-bucket", key="test-key")
+
+        assert result is None
+
+
 # =============================================================================
 # Async Operations Tests
 # =============================================================================

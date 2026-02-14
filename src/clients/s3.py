@@ -553,6 +553,29 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         result = self._with_retry("exists", _head_object)
         return bool(result)
 
+    @with_circuit_breaker("s3")
+    def get_object_content_type(self, *, bucket: str, key: str) -> str | None:
+        """Get object MIME type from S3 metadata via ``head_object``.
+
+        Args:
+            bucket: Bucket name.
+            key: Object key.
+
+        Returns:
+            MIME type string (for example ``image/jpeg``), or None if absent.
+
+        Raises:
+            UpstreamError: If S3 operation fails after retries or circuit is open.
+        """
+
+        def _head_content_type() -> str | None:
+            response = self._client.head_object(Bucket=bucket, Key=key)
+            content_type = response.get("ContentType")
+            return content_type if isinstance(content_type, str) else None
+
+        result = self._with_retry("head_object_content_type", _head_content_type)
+        return cast(str | None, result)
+
     async def get_object_async(self, *, bucket: str, key: str) -> bytes:
         """Get an object from S3 asynchronously using ThreadPoolExecutor.
 

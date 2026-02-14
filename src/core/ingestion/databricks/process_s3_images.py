@@ -103,7 +103,10 @@ def main() -> None:
             job_logger.exception("Failed to list S3 objects", extra={"error": str(e)})
             sys.exit(1)
 
-        keys = ImageContentFetcher.filter_image_keys(all_keys)
+        keys = ImageContentFetcher.filter_image_keys(
+            all_keys,
+            mime_type_resolver=lambda key: s3.get_object_content_type(bucket=bucket, key=key),
+        )
         if image_max_items is not None:
             keys = keys[:image_max_items]
         job_logger.info(

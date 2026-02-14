@@ -7,6 +7,7 @@ These classes are shared between Ray and Spark implementations.
 
 import asyncio
 import logging
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from botocore.exceptions import ClientError
@@ -187,6 +188,15 @@ _IMAGE_MAGIC_BYTES = {
 
 # Supported image extensions (for filtering S3 keys)
 SUPPORTED_IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif"})
+SUPPORTED_IMAGE_MIME_TYPES = frozenset(
+    {
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/gif",
+        "image/webp",
+    }
+)
 
 
 def detect_image_format(data: bytes) -> str | None:
@@ -538,11 +548,21 @@ class ImageContentFetcher:
         return images, failures
 
     @staticmethod
-    def filter_image_keys(keys: list[str]) -> list[str]:
-        """Filter a list of S3 keys to only include supported image extensions.
+    def filter_image_keys(
+        keys: list[str],
+        mime_type_resolver: Callable[[str], str | None] | None = None,
+    ) -> list[str]:
+        """Filter S3 keys using extension first, then MIME type fallback.
+
+        Keys are accepted when:
+        - Their extension is one of ``SUPPORTED_IMAGE_EXTENSIONS``, or
+        - ``mime_type_resolver`` is provided and resolves to one of
+          ``SUPPORTED_IMAGE_MIME_TYPES``.
 
         Args:
             keys: List of S3 object keys.
+            mime_type_resolver: Optional function to resolve MIME type for a key.
+                Used only when extension check fails.
 
         Returns:
             Filtered list containing only image keys.
@@ -551,7 +571,7 @@ class ImageContentFetcher:
             >>> ImageContentFetcher.filter_image_keys(["a.jpg", "b.txt", "c.png"])
             ['a.jpg', 'c.png']
         """
-        result = []
+        result: list[str] = []
         for key in keys:
             # Get extension (lowercase)
             dot_idx = key.rfind(".")
@@ -559,6 +579,23 @@ class ImageContentFetcher:
                 ext = key[dot_idx:].lower()
                 if ext in SUPPORTED_IMAGE_EXTENSIONS:
                     result.append(key)
+                    continue
+
+            if mime_type_resolver is None:
+                continue
+
+            try:
+                mime_type = mime_type_resolver(key)
+            except (UpstreamError, ClientError, OSError, ValueError, RuntimeError, AttributeError, TypeError):
+                # Best-effort fallback: keep filtering resilient to metadata lookup failures.
+                continue
+
+            if not mime_type:
+                continue
+
+            normalized_mime = mime_type.split(";", 1)[0].strip().lower()
+            if normalized_mime in SUPPORTED_IMAGE_MIME_TYPES:
+                result.append(key)
         return result
 
 

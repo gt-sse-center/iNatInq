@@ -6,6 +6,7 @@ variables before invoking the iNaturalist image ingestion entrypoint.
 
 from __future__ import annotations
 
+import os
 import sys
 
 try:
@@ -16,6 +17,9 @@ except ModuleNotFoundError:  # pragma: no cover - direct script execution fallba
 
 def _entrypoint_file() -> str:
     """Resolve entrypoint path for script and notebook exec contexts."""
+    explicit_path = os.getenv("DATABRICKS_ENTRYPOINT_FILE")
+    if explicit_path:
+        return explicit_path
     return globals().get("__file__") or (sys.argv[0] if sys.argv else "run_ingest_inat_image.py")
 
 

@@ -723,6 +723,52 @@ class TestImageContentFetcher:
 
         assert result == []
 
+    def test_filter_image_keys_uses_mime_type_fallback(self) -> None:
+        """Test MIME type fallback when extensions are missing.
+
+        **Why this test is important:**
+          - Some object keys may not have image extensions
+          - MIME type metadata should still allow ingestion
+
+        **What it tests:**
+          - Fallback includes keys with supported image MIME types
+          - Non-image MIME types remain excluded
+        """
+        keys = ["1000007", "1000009", "notes"]
+        mime_types = {
+            "1000007": "image/jpeg",
+            "1000009": "image/png; charset=binary",
+            "notes": "text/plain",
+        }
+
+        result = ImageContentFetcher.filter_image_keys(
+            keys,
+            mime_type_resolver=lambda key: mime_types.get(key),
+        )
+
+        assert result == ["1000007", "1000009"]
+
+    def test_filter_image_keys_mime_fallback_tolerates_lookup_errors(self) -> None:
+        """Test MIME fallback error handling.
+
+        **Why this test is important:**
+          - Metadata lookup can fail on individual keys
+          - Filtering should continue for remaining keys
+
+        **What it tests:**
+          - Resolver errors don't fail the whole filter operation
+        """
+        keys = ["ok", "broken"]
+
+        def resolver(key: str) -> str | None:
+            if key == "broken":
+                raise UpstreamError("head_object failed")
+            return "image/webp"
+
+        result = ImageContentFetcher.filter_image_keys(keys, mime_type_resolver=resolver)
+
+        assert result == ["ok"]
+
 
 # =============================================================================
 # EmbeddingGenerator Tests
