@@ -255,7 +255,7 @@ class TestDatabricksRayServiceSubmitImageJob:
         assert "CLIP_CIRCUIT_BREAKER_TIMEOUT=45" in params
         assert "CLIP_MAX_BATCH_SIZE=16" in params
         assert "CLIP_VECTOR_SIZE=512" in params
-        assert "IMAGE_BATCH_SIZE=12" in params
+        assert "S3_LIST_PAGE_SIZE=12" in params
         assert "IMAGE_MAX_SIZE_MB=8.5" in params
         assert "IMAGE_TARGET_SIZE=336" in params
         assert "CLIP_API_KEY=clip-key" in params

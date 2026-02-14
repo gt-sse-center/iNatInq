@@ -72,7 +72,7 @@ class TestRayImageJobMain:
                                 secret_access_key="secret",
                                 bucket="test-bucket",
                             )
-                            mock_embed_cfg.return_value = MagicMock()
+                            mock_embed_cfg.return_value = MagicMock(image_batch_size=10)
                             mock_strat_cls.from_env.return_value = mock_strategy
                             mock_s3_cls.return_value = mock_s3
 
@@ -223,7 +223,10 @@ class TestRayImageJobMain:
 
         with patch("core.ingestion.ray.process_s3_images.RayJobConfig.from_env"):
             with patch("core.ingestion.ray.process_s3_images.MinIOConfig.from_env"):
-                with patch("core.ingestion.ray.process_s3_images.ImageEmbeddingConfig.from_env"):
+                with patch(
+                    "core.ingestion.ray.process_s3_images.ImageEmbeddingConfig.from_env"
+                ) as mock_embed_cfg:
+                    mock_embed_cfg.return_value = MagicMock(image_batch_size=10)
                     with patch("core.ingestion.ray.process_s3_images.LocalRayStrategy") as mock_strat_cls:
                         mock_strat_cls.from_env.return_value = mock_strategy
 
@@ -255,6 +258,18 @@ class TestRayImageJobMain:
         mock_dependencies["s3"].list_objects.assert_called_once()
         call_kwargs = mock_dependencies["s3"].list_objects.call_args[1]
         assert call_kwargs["prefix"] == "custom/images/"
+
+    def test_main_uses_image_batch_size_for_s3_listing(self, mock_dependencies, mock_ray):
+        """Test that S3_LIST_PAGE_SIZE controls S3 listing page size."""
+        from core.ingestion.ray.process_s3_images import main
+
+        mock_dependencies["s3"].list_objects.return_value = []
+
+        with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
+            main()
+
+        call_kwargs = mock_dependencies["s3"].list_objects.call_args.kwargs
+        assert call_kwargs["page_size"] == 10
 
     def test_main_allows_empty_s3_prefix_from_env(self, mock_dependencies, mock_ray):
         """Test that explicit empty S3_PREFIX is respected (scan whole bucket)."""

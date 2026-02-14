@@ -193,6 +193,7 @@ def main() -> None:
     collection = os.environ.get("VECTOR_DB_COLLECTION", "documents")
     image_size = (os.environ.get("INAT_IMAGE_SIZE") or "medium").strip().lower()
     max_items = _parse_optional_positive_int_env("IMAGE_MAX_ITEMS")
+    inat_image_batch_size = _parse_optional_positive_int_env("INAT_IMAGE_BATCH_SIZE")
     metadata_url = (os.environ.get("INAT_METADATA_URL") or "").strip()
 
     inat_photo_base_url = (
@@ -214,6 +215,7 @@ def main() -> None:
             "collection": collection,
             "num_workers": ray_cfg.num_workers,
             "image_batch_size": ray_cfg.image_batch_size,
+            "inat_image_batch_size": inat_image_batch_size,
             "ingestion_targets": sorted(ingestion_targets),
             "metadata_url": metadata_url or "default:s3://inaturalist-open-data/photos.csv.gz",
             "image_size": image_size,
@@ -244,7 +246,8 @@ def main() -> None:
             max_rows=max_items,
         )
 
-        image_batch_size = max(1, ray_cfg.image_batch_size)
+        processing_image_batch_size = max(1, ray_cfg.image_batch_size)
+        csv_read_batch_size = max(1, inat_image_batch_size or ray_cfg.image_batch_size)
         image_embed_batch_size = max(1, ray_cfg.image_embed_batch_size)
         max_inflight_batches = max(1, ray_cfg.num_workers)
 
@@ -252,7 +255,8 @@ def main() -> None:
             "Starting iNaturalist streaming image batch processing",
             extra={
                 "metadata_url": metadata_url,
-                "image_batch_size": image_batch_size,
+                "csv_read_batch_size": csv_read_batch_size,
+                "processing_image_batch_size": processing_image_batch_size,
                 "image_embed_batch_size": image_embed_batch_size,
                 "max_inflight_batches": max_inflight_batches,
             },
@@ -268,7 +272,7 @@ def main() -> None:
                 records=batch,
                 image_embedding_config=embed_cfg,
                 collection=collection,
-                image_batch_size=image_batch_size,
+                image_batch_size=processing_image_batch_size,
                 image_embed_batch_size=image_embed_batch_size,
                 rate_limiter=None,
                 pipeline_concurrency=ray_cfg.pipeline_concurrency,
@@ -287,7 +291,9 @@ def main() -> None:
             )
 
         stats = run_ray_batch_processing(
-            batches=_iter_task_payload_batches(records, image_size=image_size, batch_size=image_batch_size),
+            batches=_iter_task_payload_batches(
+                records, image_size=image_size, batch_size=csv_read_batch_size
+            ),
             submit_batch=_submit_batch,
             wait_batch_size=ray_cfg.wait_batch_size,
             wait_timeout=ray_cfg.wait_timeout,

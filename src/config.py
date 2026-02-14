@@ -196,8 +196,8 @@ defaults):
   (default: `8`)
 - `CLIP_VECTOR_SIZE`: Override auto-detected vector dimension
   (optional)
-- `IMAGE_BATCH_SIZE`: Images per processing batch in Ray/pipeline
-  (default: `10`, smaller than text due to memory)
+- `S3_LIST_PAGE_SIZE`: Number of S3 keys requested per list page during image
+  ingestion (default: `10`)
 - `IMAGE_MAX_SIZE_MB`: Maximum allowed image size in megabytes
   (default: `10.0`)
 - `IMAGE_TARGET_SIZE`: Target dimension for image resizing before
@@ -510,8 +510,8 @@ class ImageEmbeddingConfig(BaseModel):
         clip_circuit_breaker_timeout: Circuit recovery timeout in seconds. Default: 30.
         clip_max_batch_size: Maximum images per batch API request. Default: 8.
         clip_vector_size: Override auto-detected vector size. Default: None.
-        image_batch_size: Number of images per processing batch (Ray/pipeline).
-            Smaller than text batches due to higher memory per image. Default: 10.
+        image_batch_size: Number of S3 keys requested per list page for image
+            ingestion. Default: 10.
         image_max_size_mb: Maximum allowed image size in megabytes. Images larger
             than this will be rejected. Default: 10 MB.
         image_target_size: Target dimension for image resizing before embedding.
@@ -554,7 +554,7 @@ class ImageEmbeddingConfig(BaseModel):
         - CLIP_CIRCUIT_BREAKER_TIMEOUT: Circuit recovery timeout
         - CLIP_MAX_BATCH_SIZE: Maximum images per batch API request
         - CLIP_VECTOR_SIZE: Override vector dimension
-        - IMAGE_BATCH_SIZE: Images per processing batch (Ray/pipeline)
+        - S3_LIST_PAGE_SIZE: Number of S3 keys requested per listing page
         - IMAGE_MAX_SIZE_MB: Maximum allowed image size in MB
         - IMAGE_TARGET_SIZE: Target dimension for image resizing
 
@@ -604,7 +604,7 @@ class ImageEmbeddingConfig(BaseModel):
             clip_circuit_breaker_timeout=int(os.getenv("CLIP_CIRCUIT_BREAKER_TIMEOUT", "30")),
             clip_max_batch_size=int(os.getenv("CLIP_MAX_BATCH_SIZE", "8")),
             clip_vector_size=clip_vector_size,
-            image_batch_size=int(os.getenv("IMAGE_BATCH_SIZE", "10")),
+            image_batch_size=int(os.getenv("S3_LIST_PAGE_SIZE", "10")),
             image_max_size_mb=float(os.getenv("IMAGE_MAX_SIZE_MB", "10.0")),
             image_target_size=int(os.getenv("IMAGE_TARGET_SIZE", "224")),
         )

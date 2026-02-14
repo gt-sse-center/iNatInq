@@ -402,7 +402,8 @@ class DatabricksImageJobRequest(BaseModel):
 
     Attributes:
         source: Image source to ingest ("s3" or "inat").
-        s3_prefix: S3 prefix to process (required when source is "s3").
+        s3_prefix: Optional S3 prefix to process. Use empty or omit to scan
+            bucket root. Ignored when source is "inat".
         collection: Vector DB base collection name.
 
     Example:
@@ -419,7 +420,7 @@ class DatabricksImageJobRequest(BaseModel):
     s3_prefix: str | None = Field(
         None,
         json_schema_extra={"example": "images/"},
-        description="S3 prefix to process (required when source='s3')",
+        description="Optional S3 prefix to process; empty/omitted scans bucket root",
     )
     collection: str = Field(
         ...,

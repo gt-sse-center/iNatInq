@@ -123,6 +123,49 @@ class TestDatabricksINatImageJobMain:
         mock_dependencies["strategy"].init.assert_called_once()
         mock_dependencies["strategy"].shutdown.assert_called_once()
 
+    def test_main_uses_inat_image_batch_size_for_csv_read_batching(self, mock_dependencies, mock_ray) -> None:
+        """main() should use INAT_IMAGE_BATCH_SIZE for CSV row batching."""
+        from core.ingestion.databricks.process_inat_images import main
+
+        records = [
+            MagicMock(photo_id="1", extension="jpg", photo_url="https://example.com/photos/1/medium.jpg"),
+            MagicMock(photo_id="2", extension="jpg", photo_url="https://example.com/photos/2/medium.jpg"),
+            MagicMock(photo_id="3", extension="jpg", photo_url="https://example.com/photos/3/medium.jpg"),
+        ]
+        mock_dependencies["inat_client"].iter_photo_records.return_value = iter(records)
+
+        futures = [MagicMock(name="f1"), MagicMock(name="f2")]
+
+        def wait_side_effect(current_futures, **_kwargs):
+            return [current_futures[0]], current_futures[1:]
+
+        mock_ray.wait.side_effect = wait_side_effect
+        mock_ray.get.side_effect = [
+            [[("photos/1/medium.jpg", True, ""), ("photos/2/medium.jpg", True, "")]],
+            [[("photos/3/medium.jpg", True, "")]],
+        ]
+
+        with patch("core.ingestion.databricks.process_inat_images.process_inat_photo_batch_ray") as mock_task:
+            mock_task.options.return_value.remote.side_effect = futures
+            with patch.dict(
+                "os.environ",
+                {
+                    "INAT_METADATA_URL": "https://example.com/photos.tsv",
+                    "INAT_IMAGE_BATCH_SIZE": "2",
+                    "IMAGE_MAX_ITEMS": "3",
+                },
+                clear=False,
+            ):
+                main()
+
+        assert mock_task.options.return_value.remote.call_count == 2
+        first_call = mock_task.options.return_value.remote.call_args_list[0].kwargs
+        second_call = mock_task.options.return_value.remote.call_args_list[1].kwargs
+        assert len(first_call["records"]) == 2
+        assert len(second_call["records"]) == 1
+        assert first_call["image_batch_size"] == mock_dependencies["ray_cfg"].image_batch_size
+        assert second_call["image_batch_size"] == mock_dependencies["ray_cfg"].image_batch_size
+
     def test_main_returns_early_when_no_records(self, mock_dependencies, mock_ray) -> None:
         """main() should return gracefully when metadata yields zero records."""
         from core.ingestion.databricks.process_inat_images import main

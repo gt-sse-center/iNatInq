@@ -485,17 +485,26 @@ class TestS3ClientWrapperListObjects:
           - Object keys are collected from all pages
           - List of keys is returned
         """
-        mock_paginator = MagicMock()
-        mock_page1 = {"Contents": [{"Key": "key1"}, {"Key": "key2"}]}
-        mock_page2 = {"Contents": [{"Key": "key3"}]}
-        mock_paginator.paginate.return_value = [mock_page1, mock_page2]
-        mock_boto3_client.get_paginator.return_value = mock_paginator
+        mock_page1 = {
+            "Contents": [{"Key": "key1"}, {"Key": "key2"}],
+            "IsTruncated": True,
+            "NextContinuationToken": "token-1",
+        }
+        mock_page2 = {"Contents": [{"Key": "key3"}], "IsTruncated": False}
+        mock_boto3_client.list_objects_v2.side_effect = [mock_page1, mock_page2]
 
         result = s3_client.list_objects(bucket="test-bucket", prefix="test-prefix/")
 
         assert result == ["key1", "key2", "key3"]
-        mock_boto3_client.get_paginator.assert_called_once_with("list_objects_v2")
-        mock_paginator.paginate.assert_called_once_with(Bucket="test-bucket", Prefix="test-prefix/")
+        assert mock_boto3_client.list_objects_v2.call_count == 2
+        first_call = mock_boto3_client.list_objects_v2.call_args_list[0].kwargs
+        second_call = mock_boto3_client.list_objects_v2.call_args_list[1].kwargs
+        assert first_call == {"Bucket": "test-bucket", "Prefix": "test-prefix/"}
+        assert second_call == {
+            "Bucket": "test-bucket",
+            "Prefix": "test-prefix/",
+            "ContinuationToken": "token-1",
+        }
 
     def test_list_objects_with_empty_prefix(
         self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
@@ -512,14 +521,12 @@ class TestS3ClientWrapperListObjects:
           - Empty prefix is handled correctly
           - All objects are returned
         """
-        mock_paginator = MagicMock()
-        mock_paginator.paginate.return_value = [{"Contents": [{"Key": "key1"}]}]
-        mock_boto3_client.get_paginator.return_value = mock_paginator
+        mock_boto3_client.list_objects_v2.return_value = {"Contents": [{"Key": "key1"}], "IsTruncated": False}
 
         result = s3_client.list_objects(bucket="test-bucket")
 
         assert result == ["key1"]
-        mock_paginator.paginate.assert_called_once_with(Bucket="test-bucket", Prefix="")
+        mock_boto3_client.list_objects_v2.assert_called_once_with(Bucket="test-bucket", Prefix="")
 
     def test_list_objects_handles_empty_results(
         self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
@@ -536,9 +543,7 @@ class TestS3ClientWrapperListObjects:
           - Empty Contents list returns empty list
           - Missing Contents key returns empty list
         """
-        mock_paginator = MagicMock()
-        mock_paginator.paginate.return_value = [{}]  # No Contents key
-        mock_boto3_client.get_paginator.return_value = mock_paginator
+        mock_boto3_client.list_objects_v2.return_value = {"IsTruncated": False}  # No Contents key
 
         result = s3_client.list_objects(bucket="test-bucket")
 
@@ -560,7 +565,7 @@ class TestS3ClientWrapperListObjects:
           - Error message includes context
         """
         # AccessDenied is a non-retriable 4xx error
-        mock_boto3_client.get_paginator.side_effect = ClientError(
+        mock_boto3_client.list_objects_v2.side_effect = ClientError(
             {
                 "Error": {"Code": "AccessDenied", "Message": "Access Denied"},
                 "ResponseMetadata": {"HTTPStatusCode": 403},
@@ -570,6 +575,21 @@ class TestS3ClientWrapperListObjects:
 
         with pytest.raises(UpstreamError, match="S3 list_objects failed"):
             s3_client.list_objects(bucket="test-bucket")
+
+    def test_list_objects_uses_page_size_when_provided(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that list_objects passes MaxKeys when page_size is configured."""
+        mock_boto3_client.list_objects_v2.return_value = {"Contents": [{"Key": "key1"}], "IsTruncated": False}
+
+        result = s3_client.list_objects(bucket="test-bucket", prefix="images/", page_size=25)
+
+        assert result == ["key1"]
+        mock_boto3_client.list_objects_v2.assert_called_once_with(
+            Bucket="test-bucket",
+            Prefix="images/",
+            MaxKeys=25,
+        )
 
     def test_list_objects_handles_circuit_breaker_error(
         self,

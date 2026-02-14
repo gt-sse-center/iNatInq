@@ -84,6 +84,7 @@ def main() -> None:
     vector_cfg = VectorDBConfig.from_env(namespace)
     bucket = minio_cfg.bucket
     ingestion_targets = vector_cfg.ingestion_targets
+    listing_batch_size = max(1, embed_cfg.image_batch_size)
 
     job_logger.info(
         "Configuration loaded",
@@ -95,6 +96,7 @@ def main() -> None:
             "ingestion_targets": sorted(ingestion_targets),
             "num_workers": ray_cfg.num_workers,
             "image_batch_size": ray_cfg.image_batch_size,
+            "listing_batch_size": listing_batch_size,
             "image_max_items": image_max_items,
         },
     )
@@ -111,7 +113,11 @@ def main() -> None:
         )
 
         try:
-            all_keys = s3.list_objects(bucket=bucket, prefix=s3_prefix)
+            all_keys = s3.list_objects(
+                bucket=bucket,
+                prefix=s3_prefix,
+                page_size=listing_batch_size,
+            )
             job_logger.info("S3 objects listed", extra={"count": len(all_keys)})
         except ClientError as e:
             job_logger.exception("Failed to list S3 objects", extra={"error": str(e)})

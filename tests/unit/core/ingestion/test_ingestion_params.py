@@ -131,7 +131,7 @@ def test_build_image_ingestion_env_includes_required_and_optional(monkeypatch) -
     assert env_vars["CLIP_CIRCUIT_BREAKER_TIMEOUT"] == "45"
     assert env_vars["CLIP_MAX_BATCH_SIZE"] == "16"
     assert env_vars["CLIP_VECTOR_SIZE"] == "512"
-    assert env_vars["IMAGE_BATCH_SIZE"] == "12"
+    assert env_vars["S3_LIST_PAGE_SIZE"] == "12"
     assert env_vars["IMAGE_MAX_SIZE_MB"] == "8.5"
     assert env_vars["IMAGE_TARGET_SIZE"] == "336"
     assert env_vars["QDRANT_URL"] == "http://qdrant.test:6333"

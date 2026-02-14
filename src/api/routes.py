@@ -586,24 +586,22 @@ async def submit_databricks_image_job(
         Job metadata including Databricks run ID and submission timestamp.
 
     Raises:
-        HTTPException(400): If source is "s3" and s3_prefix is missing.
         HTTPException(500): If job submission fails.
     """
-    if req.source == "s3" and (req.s3_prefix is None or req.s3_prefix.strip() == ""):
-        raise BadRequestError("s3_prefix is required when source='s3'")
-
     try:
         settings = get_settings()
         namespace = settings.k8s_namespace
 
         databricks_service = DatabricksRayService()
         image_embed_cfg = ImageEmbeddingConfig.from_env(namespace)
+        response_s3_prefix: str | None
         if req.source == "inat":
             run_id = databricks_service.submit_inat_image_job(
                 namespace=namespace,
                 image_embedding_config=image_embed_cfg,
                 collection=req.collection,
             )
+            response_s3_prefix = None
         else:
             s3_prefix = req.s3_prefix or ""
             minio_cfg = MinIOConfig.from_env(namespace)
@@ -617,13 +615,14 @@ async def submit_databricks_image_job(
                 image_embedding_config=image_embed_cfg,
                 collection=req.collection,
             )
+            response_s3_prefix = s3_prefix
 
         return models.DatabricksImageJobResponse(
             run_id=str(run_id),
             status="submitted",
             namespace=namespace,
             source=req.source,
-            s3_prefix=req.s3_prefix,
+            s3_prefix=response_s3_prefix,
             collection=req.collection,
             submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
         )

@@ -487,12 +487,20 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         return cast(bytes, result)
 
     @with_circuit_breaker("s3")
-    def list_objects(self, *, bucket: str, prefix: str = "") -> list[str]:
+    def list_objects(
+        self,
+        *,
+        bucket: str,
+        prefix: str = "",
+        page_size: int | None = None,
+    ) -> list[str]:
         """List all object keys in a bucket with retry and circuit breaker protection.
 
         Args:
             bucket: Bucket name to list objects from.
             prefix: Optional prefix to filter objects (default: empty string).
+            page_size: Optional page size (MaxKeys) for each S3 list request.
+                When set, the listing is fetched incrementally in batches.
 
         Returns:
             List of object keys (S3 keys) matching the prefix.
@@ -507,16 +515,38 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             ```
         """
 
-        def _list_all():
-            keys: list[str] = []
-            paginator = self._client.get_paginator("list_objects_v2")
-            for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-                if "Contents" in page:
-                    keys.extend([obj["Key"] for obj in page["Contents"]])
-            return keys
+        resolved_page_size = max(1, page_size) if page_size is not None else None
 
-        result = self._with_retry("list_objects", _list_all)
-        return cast(list[str], result)
+        keys: list[str] = []
+        continuation_token: str | None = None
+        while True:
+            request_kwargs: dict[str, Any] = {"Bucket": bucket, "Prefix": prefix}
+            if resolved_page_size is not None:
+                request_kwargs["MaxKeys"] = resolved_page_size
+            if continuation_token:
+                request_kwargs["ContinuationToken"] = continuation_token
+
+            page = cast(
+                dict[str, Any],
+                self._with_retry("list_objects", self._client.list_objects_v2, **request_kwargs),
+            )
+
+            contents = cast(list[dict[str, Any]], page.get("Contents", []))
+            keys.extend([obj["Key"] for obj in contents if "Key" in obj])
+
+            if not page.get("IsTruncated"):
+                break
+
+            next_token = cast(str | None, page.get("NextContinuationToken"))
+            if not next_token:
+                logger.warning(
+                    "S3 list_objects response marked truncated without continuation token",
+                    extra={"bucket": bucket, "prefix": prefix},
+                )
+                break
+            continuation_token = next_token
+
+        return keys
 
     @with_circuit_breaker("s3")
     def exists(self, *, bucket: str, key: str) -> bool:

@@ -182,7 +182,7 @@ def build_image_ingestion_env(
         "CLIP_CIRCUIT_BREAKER_THRESHOLD": str(image_embedding_config.clip_circuit_breaker_threshold),
         "CLIP_CIRCUIT_BREAKER_TIMEOUT": str(image_embedding_config.clip_circuit_breaker_timeout),
         "CLIP_MAX_BATCH_SIZE": str(image_embedding_config.clip_max_batch_size),
-        "IMAGE_BATCH_SIZE": str(image_embedding_config.image_batch_size),
+        "S3_LIST_PAGE_SIZE": str(image_embedding_config.image_batch_size),
         "IMAGE_MAX_SIZE_MB": str(image_embedding_config.image_max_size_mb),
         "IMAGE_TARGET_SIZE": str(image_embedding_config.image_target_size),
     }
@@ -231,7 +231,7 @@ def build_inat_image_ingestion_env(
         "CLIP_CIRCUIT_BREAKER_THRESHOLD": str(image_embedding_config.clip_circuit_breaker_threshold),
         "CLIP_CIRCUIT_BREAKER_TIMEOUT": str(image_embedding_config.clip_circuit_breaker_timeout),
         "CLIP_MAX_BATCH_SIZE": str(image_embedding_config.clip_max_batch_size),
-        "IMAGE_BATCH_SIZE": str(image_embedding_config.image_batch_size),
+        "S3_LIST_PAGE_SIZE": str(image_embedding_config.image_batch_size),
         "IMAGE_MAX_SIZE_MB": str(image_embedding_config.image_max_size_mb),
         "IMAGE_TARGET_SIZE": str(image_embedding_config.image_target_size),
     }
