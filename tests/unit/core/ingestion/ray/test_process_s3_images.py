@@ -36,7 +36,7 @@ class TestRayImageJobMain:
     def mock_dependencies(self, mock_ray):
         """Set up common mocks for main() tests."""
         mock_s3 = MagicMock()
-        mock_s3.list_objects.return_value = []
+        mock_s3.list_objects_page.return_value = ([], None)
 
         mock_strategy = MagicMock()
         mock_strategy.init = MagicMock()
@@ -117,7 +117,7 @@ class TestRayImageJobMain:
         """
         from core.ingestion.ray.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = []
+        mock_dependencies["s3"].list_objects_page.return_value = ([], None)
 
         with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
             main()
@@ -138,7 +138,7 @@ class TestRayImageJobMain:
         """
         from core.ingestion.ray.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = ["file1.txt", "file2.pdf"]
+        mock_dependencies["s3"].list_objects_page.side_effect = [(["file1.txt", "file2.pdf"], None)]
 
         with patch("core.ingestion.ray.process_s3_images.ImageContentFetcher") as mock_fetcher:
             mock_fetcher.filter_image_keys.return_value = []
@@ -162,7 +162,7 @@ class TestRayImageJobMain:
         """
         from core.ingestion.ray.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = ["img1.jpg", "img2.png"]
+        mock_dependencies["s3"].list_objects_page.side_effect = [(["img1.jpg", "img2.png"], None)]
 
         mock_ray.wait.return_value = ([MagicMock()], [])
         mock_ray.get.return_value = [[("img1.jpg", True, ""), ("img2.png", True, "")]]
@@ -192,7 +192,7 @@ class TestRayImageJobMain:
 
         from core.ingestion.ray.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.side_effect = ClientError(
+        mock_dependencies["s3"].list_objects_page.side_effect = ClientError(
             {"Error": {"Code": "500", "Message": "Error"}}, "ListObjects"
         )
 
@@ -245,42 +245,42 @@ class TestRayImageJobMain:
           - Critical for multi-tenant setups
 
         **What it tests:**
-          - S3_PREFIX env var is passed to list_objects
+          - S3_PREFIX env var is passed to list_objects_page
           - Custom prefix is used correctly
         """
         from core.ingestion.ray.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = []
+        mock_dependencies["s3"].list_objects_page.return_value = ([], None)
 
         with patch.dict("os.environ", {"S3_PREFIX": "custom/images/"}, clear=False):
             main()
 
-        mock_dependencies["s3"].list_objects.assert_called_once()
-        call_kwargs = mock_dependencies["s3"].list_objects.call_args[1]
+        mock_dependencies["s3"].list_objects_page.assert_called_once()
+        call_kwargs = mock_dependencies["s3"].list_objects_page.call_args[1]
         assert call_kwargs["prefix"] == "custom/images/"
 
     def test_main_uses_image_batch_size_for_s3_listing(self, mock_dependencies, mock_ray):
         """Test that S3_LIST_PAGE_SIZE controls S3 listing page size."""
         from core.ingestion.ray.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = []
+        mock_dependencies["s3"].list_objects_page.return_value = ([], None)
 
         with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
             main()
 
-        call_kwargs = mock_dependencies["s3"].list_objects.call_args.kwargs
+        call_kwargs = mock_dependencies["s3"].list_objects_page.call_args.kwargs
         assert call_kwargs["page_size"] == 10
 
     def test_main_allows_empty_s3_prefix_from_env(self, mock_dependencies, mock_ray):
         """Test that explicit empty S3_PREFIX is respected (scan whole bucket)."""
         from core.ingestion.ray.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = []
+        mock_dependencies["s3"].list_objects_page.return_value = ([], None)
 
         with patch.dict("os.environ", {"S3_PREFIX": ""}, clear=False):
             main()
 
-        call_kwargs = mock_dependencies["s3"].list_objects.call_args[1]
+        call_kwargs = mock_dependencies["s3"].list_objects_page.call_args[1]
         assert call_kwargs["prefix"] == ""
 
     def test_main_uses_collection_from_env(self, mock_dependencies, mock_ray):
@@ -297,7 +297,7 @@ class TestRayImageJobMain:
         """
         from core.ingestion.ray.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = ["img1.jpg"]
+        mock_dependencies["s3"].list_objects_page.side_effect = [(["img1.jpg"], None)]
 
         mock_ray.wait.return_value = ([MagicMock()], [])
         mock_ray.get.return_value = [[("img1.jpg", True, "")]]
@@ -330,7 +330,7 @@ class TestRayImageJobMain:
         from core.ingestion.ray.process_s3_images import main
 
         keys = [f"img{i}.jpg" for i in range(75)]
-        mock_dependencies["s3"].list_objects.return_value = keys
+        mock_dependencies["s3"].list_objects_page.side_effect = [(keys, None)]
 
         future1, future2 = MagicMock(), MagicMock()
 
@@ -357,7 +357,7 @@ class TestRayImageJobMain:
         from core.ingestion.ray.process_s3_images import main
 
         keys = [f"img{i}.jpg" for i in range(10)]
-        mock_dependencies["s3"].list_objects.return_value = keys
+        mock_dependencies["s3"].list_objects_page.side_effect = [(keys, None)]
 
         future_mock = MagicMock()
         mock_ray.wait.return_value = ([future_mock], [])
@@ -418,7 +418,7 @@ class TestRayImageJobMain:
         """
         from core.ingestion.ray.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = ["img1.jpg"]
+        mock_dependencies["s3"].list_objects_page.side_effect = [(["img1.jpg"], None)]
 
         with patch("core.ingestion.ray.process_s3_images.ImageContentFetcher") as mock_fetcher:
             mock_fetcher.filter_image_keys.side_effect = RuntimeError("Unexpected error")
@@ -443,7 +443,7 @@ class TestRayImageJobMain:
         """
         from core.ingestion.ray.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = ["img1.jpg", "img2.png", "img3.gif"]
+        mock_dependencies["s3"].list_objects_page.side_effect = [(["img1.jpg", "img2.png", "img3.gif"], None)]
 
         future_mock = MagicMock()
         mock_ray.wait.return_value = ([future_mock], [])

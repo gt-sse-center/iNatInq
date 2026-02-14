@@ -591,6 +591,46 @@ class TestS3ClientWrapperListObjects:
             MaxKeys=25,
         )
 
+    def test_list_objects_stops_early_when_max_items_set(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that list_objects stops paginating once max_items is reached."""
+        mock_page1 = {
+            "Contents": [{"Key": "key1"}, {"Key": "key2"}],
+            "IsTruncated": True,
+            "NextContinuationToken": "token-1",
+        }
+        mock_page2 = {
+            "Contents": [{"Key": "key3"}, {"Key": "key4"}],
+            "IsTruncated": True,
+            "NextContinuationToken": "token-2",
+        }
+        mock_boto3_client.list_objects_v2.side_effect = [mock_page1, mock_page2]
+
+        result = s3_client.list_objects(bucket="test-bucket", prefix="images/", page_size=2, max_items=3)
+
+        assert result == ["key1", "key2", "key3"]
+        assert mock_boto3_client.list_objects_v2.call_count == 2
+
+    def test_list_objects_raises_on_repeated_pagination_token(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that list_objects aborts when continuation token repeats."""
+        mock_page1 = {
+            "Contents": [{"Key": "key1"}],
+            "IsTruncated": True,
+            "NextContinuationToken": "token-1",
+        }
+        mock_page2 = {
+            "Contents": [{"Key": "key2"}],
+            "IsTruncated": True,
+            "NextContinuationToken": "token-1",
+        }
+        mock_boto3_client.list_objects_v2.side_effect = [mock_page1, mock_page2]
+
+        with pytest.raises(UpstreamError, match="pagination token repeated"):
+            s3_client.list_objects(bucket="test-bucket", prefix="images/")
+
     def test_list_objects_handles_circuit_breaker_error(
         self,
         s3_client: S3ClientWrapper,

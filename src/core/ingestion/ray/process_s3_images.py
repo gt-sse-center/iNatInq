@@ -19,6 +19,7 @@ from botocore.exceptions import ClientError
 
 from clients.s3 import S3ClientWrapper
 from config import ImageEmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
+from core.exceptions import UpstreamError
 from core.ingestion.interfaces.operations import ImageContentFetcher
 from core.ingestion.strategies import LocalRayStrategy
 from foundation.logger import LOGGING_CONFIG
@@ -116,52 +117,30 @@ def main() -> None:
             endpoint_url=minio_cfg.endpoint_url,
             access_key_id=minio_cfg.access_key_id,
             secret_access_key=minio_cfg.secret_access_key,
+            region_name=minio_cfg.region,
+            max_retries=minio_cfg.max_retries,
+            retry_min_wait=minio_cfg.retry_min_wait,
+            retry_max_wait=minio_cfg.retry_max_wait,
+            timeout_s=minio_cfg.timeout,
+            circuit_breaker_threshold=minio_cfg.circuit_breaker_threshold,
+            circuit_breaker_timeout=minio_cfg.circuit_breaker_timeout,
         )
-
-        try:
-            all_keys = s3.list_objects(
-                bucket=bucket,
-                prefix=s3_prefix,
-                page_size=listing_batch_size,
-            )
-            job_logger.info("S3 objects listed", extra={"count": len(all_keys)})
-        except ClientError as e:
-            job_logger.exception("Failed to list S3 objects", extra={"error": str(e)})
-            sys.exit(1)
-
-        keys = ImageContentFetcher.filter_image_keys(
-            all_keys,
-            mime_type_resolver=lambda key: s3.get_object_content_type(bucket=bucket, key=key),
-        )
-        if image_max_items is not None:
-            keys = keys[:image_max_items]
-        job_logger.info(
-            "Filtered to image keys",
-            extra={
-                "total_listed": len(all_keys),
-                "image_keys": len(keys),
-                "image_max_items": image_max_items,
-            },
-        )
-
-        if not keys:
-            job_logger.info("No image objects to process")
-            return
 
         image_batch_size = ray_cfg.image_batch_size
         image_embed_batch_size = ray_cfg.image_embed_batch_size
-        key_batches = [keys[i : i + image_batch_size] for i in range(0, len(keys), image_batch_size)]
-        num_batches = len(key_batches)
+        max_inflight_batches = max(1, ray_cfg.num_workers)
+        total_listed = 0
+        image_keys_selected = 0
 
         job_logger.info(
-            "Starting image batch processing: %d images in %d batches",
-            len(keys),
-            num_batches,
+            "Starting streaming image batch processing",
             extra={
-                "total_keys": len(keys),
-                "num_batches": num_batches,
+                "s3_prefix": s3_prefix,
+                "listing_batch_size": listing_batch_size,
+                "image_max_items": image_max_items,
                 "image_batch_size": image_batch_size,
                 "image_embed_batch_size": image_embed_batch_size,
+                "max_inflight_batches": max_inflight_batches,
             },
         )
 
@@ -170,52 +149,133 @@ def main() -> None:
             max_retries=ray_cfg.task_max_retries,
         )
 
-        futures = [
-            task_fn.remote(
-                s3_keys=batch,
-                s3_endpoint=minio_cfg.endpoint_url,
-                s3_access_key=minio_cfg.access_key_id,
-                s3_secret_key=minio_cfg.secret_access_key,
-                s3_bucket=bucket,
-                image_embedding_config=embed_cfg,
-                collection=collection,
-                image_batch_size=image_batch_size,
-                image_embed_batch_size=image_embed_batch_size,
-                rate_limiter=None,
-                pipeline_concurrency=ray_cfg.pipeline_concurrency,
-                circuit_breaker_threshold=ray_cfg.circuit_breaker_threshold,
-                circuit_breaker_timeout=ray_cfg.circuit_breaker_timeout,
-                embedding_timeout=ray_cfg.embedding_timeout,
-                upsert_timeout=ray_cfg.upsert_timeout,
-                retry_max_attempts=ray_cfg.retry_max_attempts,
-                retry_min_wait=ray_cfg.retry_min_wait,
-                retry_max_wait=ray_cfg.retry_max_wait,
-                ingestion_targets=ingestion_targets,
-            )
-            for batch in key_batches
-        ]
-
-        results: list[tuple[str, bool, str]] = []
+        futures: list[object] = []
+        submitted_records = 0
+        submitted_batches = 0
         completed_keys = 0
+        success = 0
+        failed = 0
         wait_batch = ray_cfg.wait_batch_size
         wait_timeout = ray_cfg.wait_timeout
 
-        while futures:
+        def _submit_batch(batch: list[str]) -> None:
+            nonlocal submitted_records, submitted_batches
+            futures.append(
+                task_fn.remote(
+                    s3_keys=batch,
+                    s3_endpoint=minio_cfg.endpoint_url,
+                    s3_access_key=minio_cfg.access_key_id,
+                    s3_secret_key=minio_cfg.secret_access_key,
+                    s3_bucket=bucket,
+                    image_embedding_config=embed_cfg,
+                    collection=collection,
+                    image_batch_size=image_batch_size,
+                    image_embed_batch_size=image_embed_batch_size,
+                    rate_limiter=None,
+                    pipeline_concurrency=ray_cfg.pipeline_concurrency,
+                    circuit_breaker_threshold=ray_cfg.circuit_breaker_threshold,
+                    circuit_breaker_timeout=ray_cfg.circuit_breaker_timeout,
+                    embedding_timeout=ray_cfg.embedding_timeout,
+                    upsert_timeout=ray_cfg.upsert_timeout,
+                    retry_max_attempts=ray_cfg.retry_max_attempts,
+                    retry_min_wait=ray_cfg.retry_min_wait,
+                    retry_max_wait=ray_cfg.retry_max_wait,
+                    ingestion_targets=ingestion_targets,
+                )
+            )
+            submitted_records += len(batch)
+            submitted_batches += 1
+
+        def _drain_futures(timeout: float | None) -> None:
+            nonlocal completed_keys, success, failed, futures
             ready, not_ready = ray.wait(
                 futures,
                 num_returns=min(wait_batch, len(futures)),
-                timeout=wait_timeout,
+                timeout=timeout,
             )
+            if not ready:
+                return
             futures = not_ready
             batch_results = ray.get(ready)
             for batch_result in batch_results:
-                results.extend(batch_result)
                 completed_keys += len(batch_result)
+                batch_success = sum(1 for _, ok, _ in batch_result if ok)
+                success += batch_success
+                failed += len(batch_result) - batch_success
 
-        success = sum(1 for _, ok, _ in results if ok)
-        failed = len(results) - success
+        try:
+            continuation_token: str | None = None
+            seen_tokens: set[str] = set()
+            pending_keys: list[str] = []
+
+            while True:
+                page_keys, next_token = s3.list_objects_page(
+                    bucket=bucket,
+                    prefix=s3_prefix,
+                    page_size=listing_batch_size,
+                    continuation_token=continuation_token,
+                )
+                total_listed += len(page_keys)
+
+                page_image_keys = ImageContentFetcher.filter_image_keys(
+                    page_keys,
+                    mime_type_resolver=lambda key: s3.get_object_content_type(bucket=bucket, key=key),
+                )
+
+                if image_max_items is not None:
+                    remaining = image_max_items - image_keys_selected
+                    if remaining <= 0:
+                        break
+                    if len(page_image_keys) > remaining:
+                        page_image_keys = page_image_keys[:remaining]
+
+                image_keys_selected += len(page_image_keys)
+                pending_keys.extend(page_image_keys)
+
+                while len(pending_keys) >= image_batch_size:
+                    batch = pending_keys[:image_batch_size]
+                    pending_keys = pending_keys[image_batch_size:]
+                    _submit_batch(batch)
+                    while len(futures) >= max_inflight_batches:
+                        _drain_futures(wait_timeout)
+
+                if image_max_items is not None and image_keys_selected >= image_max_items:
+                    break
+
+                if not next_token:
+                    break
+
+                if next_token in seen_tokens:
+                    raise UpstreamError(
+                        "S3 list_objects pagination token repeated; aborting to avoid infinite loop"
+                    )
+                seen_tokens.add(next_token)
+                continuation_token = next_token
+
+            if pending_keys:
+                _submit_batch(pending_keys)
+        except (ClientError, UpstreamError) as e:
+            job_logger.exception("Failed to list S3 objects", extra={"error": str(e)})
+            sys.exit(1)
+
+        while futures:
+            _drain_futures(None)
+
+        job_logger.info("S3 objects listed", extra={"count": total_listed})
+        job_logger.info(
+            "Filtered to image keys",
+            extra={
+                "total_listed": total_listed,
+                "image_keys": image_keys_selected,
+                "image_max_items": image_max_items,
+            },
+        )
+        if submitted_records == 0:
+            job_logger.info("No image objects to process")
+            return
+
         elapsed = round(time.time() - start, 2)
-        rate = round(len(results) / elapsed, 2) if elapsed > 0 else 0
+        rate = round(completed_keys / elapsed, 2) if elapsed > 0 else 0
         job_logger.info(
             "Ray image job complete: %d successful, %d failed in %.2fs (%.2f images/s)",
             success,
@@ -225,7 +285,9 @@ def main() -> None:
             extra={
                 "successful": success,
                 "failed": failed,
-                "total": len(results),
+                "total": completed_keys,
+                "submitted_records": submitted_records,
+                "num_batches": submitted_batches,
                 "elapsed_seconds": elapsed,
                 "rate_per_sec": rate,
             },

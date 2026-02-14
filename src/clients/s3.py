@@ -487,12 +487,65 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         return cast(bytes, result)
 
     @with_circuit_breaker("s3")
+    def list_objects_page(
+        self,
+        *,
+        bucket: str,
+        prefix: str = "",
+        page_size: int | None = None,
+        continuation_token: str | None = None,
+    ) -> tuple[list[str], str | None]:
+        """List one page of object keys from a bucket.
+
+        Args:
+            bucket: Bucket name to list objects from.
+            prefix: Optional prefix to filter objects (default: empty string).
+            page_size: Optional page size (MaxKeys) for this request.
+            continuation_token: Token from a previous response page.
+
+        Returns:
+            Tuple of (keys_for_page, next_continuation_token).
+            ``next_continuation_token`` is None when there are no more pages.
+
+        Raises:
+            UpstreamError: If S3 operation fails after retries or circuit is open.
+        """
+        resolved_page_size = max(1, page_size) if page_size is not None else None
+
+        request_kwargs: dict[str, Any] = {"Bucket": bucket, "Prefix": prefix}
+        if resolved_page_size is not None:
+            request_kwargs["MaxKeys"] = resolved_page_size
+        if continuation_token:
+            request_kwargs["ContinuationToken"] = continuation_token
+
+        page = cast(
+            dict[str, Any],
+            self._with_retry("list_objects", self._client.list_objects_v2, **request_kwargs),
+        )
+
+        contents = cast(list[dict[str, Any]], page.get("Contents", []))
+        keys = [obj["Key"] for obj in contents if "Key" in obj]
+
+        if not page.get("IsTruncated"):
+            return keys, None
+
+        next_token = cast(str | None, page.get("NextContinuationToken"))
+        if not next_token:
+            logger.warning(
+                "S3 list_objects response marked truncated without continuation token",
+                extra={"bucket": bucket, "prefix": prefix},
+            )
+            return keys, None
+
+        return keys, next_token
+
     def list_objects(
         self,
         *,
         bucket: str,
         prefix: str = "",
         page_size: int | None = None,
+        max_items: int | None = None,
     ) -> list[str]:
         """List all object keys in a bucket with retry and circuit breaker protection.
 
@@ -501,6 +554,8 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             prefix: Optional prefix to filter objects (default: empty string).
             page_size: Optional page size (MaxKeys) for each S3 list request.
                 When set, the listing is fetched incrementally in batches.
+            max_items: Optional maximum number of keys to return. When set,
+                pagination stops as soon as this many keys have been collected.
 
         Returns:
             List of object keys (S3 keys) matching the prefix.
@@ -516,34 +571,30 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         """
 
         resolved_page_size = max(1, page_size) if page_size is not None else None
+        resolved_max_items = max(1, max_items) if max_items is not None else None
 
         keys: list[str] = []
         continuation_token: str | None = None
+        seen_tokens: set[str] = set()
         while True:
-            request_kwargs: dict[str, Any] = {"Bucket": bucket, "Prefix": prefix}
-            if resolved_page_size is not None:
-                request_kwargs["MaxKeys"] = resolved_page_size
-            if continuation_token:
-                request_kwargs["ContinuationToken"] = continuation_token
-
-            page = cast(
-                dict[str, Any],
-                self._with_retry("list_objects", self._client.list_objects_v2, **request_kwargs),
+            page_keys, next_token = self.list_objects_page(
+                bucket=bucket,
+                prefix=prefix,
+                page_size=resolved_page_size,
+                continuation_token=continuation_token,
             )
+            keys.extend(page_keys)
+            if resolved_max_items is not None and len(keys) >= resolved_max_items:
+                return keys[:resolved_max_items]
 
-            contents = cast(list[dict[str, Any]], page.get("Contents", []))
-            keys.extend([obj["Key"] for obj in contents if "Key" in obj])
-
-            if not page.get("IsTruncated"):
-                break
-
-            next_token = cast(str | None, page.get("NextContinuationToken"))
             if not next_token:
-                logger.warning(
-                    "S3 list_objects response marked truncated without continuation token",
-                    extra={"bucket": bucket, "prefix": prefix},
-                )
                 break
+
+            if next_token in seen_tokens:
+                raise UpstreamError(
+                    "S3 list_objects pagination token repeated; aborting to avoid infinite loop"
+                )
+            seen_tokens.add(next_token)
             continuation_token = next_token
 
         return keys

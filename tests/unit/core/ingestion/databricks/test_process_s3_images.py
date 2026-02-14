@@ -115,7 +115,7 @@ class TestDatabricksImageJobMain:
     def mock_dependencies(self, mock_ray):
         """Set up common mocks for main() tests."""
         mock_s3 = MagicMock()
-        mock_s3.list_objects.return_value = []
+        mock_s3.list_objects_page.return_value = ([], None)
 
         mock_strategy = MagicMock()
         mock_strategy.init = MagicMock()
@@ -212,7 +212,7 @@ class TestDatabricksImageJobMain:
         """
         from core.ingestion.databricks.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = []
+        mock_dependencies["s3"].list_objects_page.return_value = ([], None)
 
         with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
             main()
@@ -237,7 +237,7 @@ class TestDatabricksImageJobMain:
         from core.ingestion.databricks.process_s3_images import main
 
         # Return non-image files
-        mock_dependencies["s3"].list_objects.return_value = ["file1.txt", "file2.pdf"]
+        mock_dependencies["s3"].list_objects_page.side_effect = [(["file1.txt", "file2.pdf"], None)]
 
         with patch("core.ingestion.databricks.process_s3_images.ImageContentFetcher") as mock_fetcher:
             mock_fetcher.filter_image_keys.return_value = []
@@ -263,7 +263,7 @@ class TestDatabricksImageJobMain:
         """
         from core.ingestion.databricks.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = ["img1.jpg", "img2.png"]
+        mock_dependencies["s3"].list_objects_page.side_effect = [(["img1.jpg", "img2.png"], None)]
 
         future_mock = MagicMock()
         mock_ray.wait.return_value = ([future_mock], [])
@@ -296,7 +296,7 @@ class TestDatabricksImageJobMain:
         from botocore.exceptions import ClientError
         from core.ingestion.databricks.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.side_effect = ClientError(
+        mock_dependencies["s3"].list_objects_page.side_effect = ClientError(
             {"Error": {"Code": "500", "Message": "Error"}}, "ListObjects"
         )
 
@@ -324,14 +324,14 @@ class TestDatabricksImageJobMain:
         """
         from core.ingestion.databricks.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = []
+        mock_dependencies["s3"].list_objects_page.return_value = ([], None)
 
         with patch("sys.argv", ["script.py", "S3_PREFIX=custom/"]):
             with patch.dict("os.environ", {}, clear=False):
                 main()
 
         # The prefix should have been applied to env and used
-        mock_dependencies["s3"].list_objects.assert_called_once()
+        mock_dependencies["s3"].list_objects_page.assert_called_once()
 
     def test_main_uses_s3_prefix_from_env(self, mock_dependencies, mock_ray):
         """main() uses S3_PREFIX from environment variable.
@@ -345,42 +345,42 @@ class TestDatabricksImageJobMain:
         **What it tests:**
 
         - S3_PREFIX environment variable is read
-        - Prefix is passed to list_objects call
+        - Prefix is passed to list_objects_page call
         - Correct S3 path is used for object listing
         """
         from core.ingestion.databricks.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = []
+        mock_dependencies["s3"].list_objects_page.return_value = ([], None)
 
         with patch.dict("os.environ", {"S3_PREFIX": "custom/images/"}, clear=False):
             main()
 
-        mock_dependencies["s3"].list_objects.assert_called_once()
-        call_kwargs = mock_dependencies["s3"].list_objects.call_args[1]
+        mock_dependencies["s3"].list_objects_page.assert_called_once()
+        call_kwargs = mock_dependencies["s3"].list_objects_page.call_args[1]
         assert call_kwargs["prefix"] == "custom/images/"
 
     def test_main_uses_image_batch_size_for_s3_listing(self, mock_dependencies, mock_ray):
         """main() uses S3_LIST_PAGE_SIZE as S3 listing page size."""
         from core.ingestion.databricks.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = []
+        mock_dependencies["s3"].list_objects_page.return_value = ([], None)
 
         with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
             main()
 
-        call_kwargs = mock_dependencies["s3"].list_objects.call_args.kwargs
+        call_kwargs = mock_dependencies["s3"].list_objects_page.call_args.kwargs
         assert call_kwargs["page_size"] == 10
 
     def test_main_allows_empty_s3_prefix_from_env(self, mock_dependencies, mock_ray):
         """main() respects explicit empty S3_PREFIX to scan whole bucket."""
         from core.ingestion.databricks.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = []
+        mock_dependencies["s3"].list_objects_page.return_value = ([], None)
 
         with patch.dict("os.environ", {"S3_PREFIX": ""}, clear=False):
             main()
 
-        call_kwargs = mock_dependencies["s3"].list_objects.call_args[1]
+        call_kwargs = mock_dependencies["s3"].list_objects_page.call_args[1]
         assert call_kwargs["prefix"] == ""
 
     def test_main_uses_collection_from_env(self, mock_dependencies, mock_ray):
@@ -400,7 +400,7 @@ class TestDatabricksImageJobMain:
         """
         from core.ingestion.databricks.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = ["img1.jpg"]
+        mock_dependencies["s3"].list_objects_page.side_effect = [(["img1.jpg"], None)]
 
         future_mock = MagicMock()
         mock_ray.wait.return_value = ([future_mock], [])
@@ -438,7 +438,7 @@ class TestDatabricksImageJobMain:
 
         # Create more keys than batch size
         keys = [f"img{i}.jpg" for i in range(75)]
-        mock_dependencies["s3"].list_objects.return_value = keys
+        mock_dependencies["s3"].list_objects_page.side_effect = [(keys, None)]
 
         # Setup futures for two batches
         future1, future2 = MagicMock(), MagicMock()
@@ -469,7 +469,7 @@ class TestDatabricksImageJobMain:
         from core.ingestion.databricks.process_s3_images import main
 
         keys = [f"img{i}.jpg" for i in range(10)]
-        mock_dependencies["s3"].list_objects.return_value = keys
+        mock_dependencies["s3"].list_objects_page.side_effect = [(keys, None)]
 
         future_mock = MagicMock()
         mock_ray.wait.return_value = ([future_mock], [])
@@ -512,7 +512,7 @@ class TestDatabricksImageJobMain:
         """
         from core.ingestion.databricks.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = ["img1.jpg"]
+        mock_dependencies["s3"].list_objects_page.side_effect = [(["img1.jpg"], None)]
 
         with patch("core.ingestion.databricks.process_s3_images.ImageContentFetcher") as mock_fetcher:
             mock_fetcher.filter_image_keys.side_effect = RuntimeError("Unexpected error")
@@ -539,7 +539,7 @@ class TestDatabricksImageJobMain:
         """
         from core.ingestion.databricks.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = ["img1.jpg", "img2.png", "img3.gif"]
+        mock_dependencies["s3"].list_objects_page.side_effect = [(["img1.jpg", "img2.png", "img3.gif"], None)]
 
         # Return mixed success/failure results - use return_value not side_effect
         future_mock = MagicMock()
