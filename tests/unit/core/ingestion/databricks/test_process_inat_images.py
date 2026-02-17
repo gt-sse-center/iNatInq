@@ -5,6 +5,28 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+class TestIterTaskPayloadBatches:
+    """Tests for _iter_task_payload_batches helper."""
+
+    def test_respects_max_items(self) -> None:
+        """Batching should stop after max_items records are yielded."""
+        from core.ingestion.databricks.process_inat_images import _iter_task_payload_batches
+
+        records = [
+            MagicMock(photo_id="1", extension="jpg", photo_url="https://example.com/photos/1/medium.jpg"),
+            MagicMock(photo_id="2", extension="png", photo_url="https://example.com/photos/2/medium.png"),
+            MagicMock(photo_id="3", extension="jpg", photo_url="https://example.com/photos/3/medium.jpg"),
+            MagicMock(photo_id="4", extension="jpg", photo_url="https://example.com/photos/4/medium.jpg"),
+        ]
+
+        batches = list(_iter_task_payload_batches(records, image_size="medium", batch_size=2, max_items=2))
+
+        assert len(batches) == 1, "Only 1 batch should be yielded when max_items equals batch_size"
+        assert len(batches[0]) == 2, "The single batch should contain exactly 2 items"
+        assert batches[0][0]["photo_id"] == "1"
+        assert batches[0][1]["photo_id"] == "2"
+
+
 class TestDatabricksINatImageJobMain:
     """Tests for main() in process_inat_images."""
 

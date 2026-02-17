@@ -14,21 +14,31 @@ import time
 from logging.config import dictConfig
 from typing import Any
 
-from botocore.exceptions import ClientError
-
 from clients.s3 import S3ClientWrapper
 from config import ImageEmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
 from core.ingestion.databricks.batch_runner import run_ray_batch_processing
 from core.ingestion.databricks.runtime import apply_python_params as _apply_python_params
-from core.ingestion.interfaces.operations import ImageContentFetcher
-from core.ingestion.tasks import process_image_batch_ray
+from core.ingestion.shared.batching import iter_image_batches
 from core.ingestion.strategies import DatabricksStrategy
+from core.ingestion.tasks import process_image_batch_ray
 from foundation.checkpoint import CheckpointManager, is_s3_path
 from foundation.logger import LOGGING_CONFIG
 
 dictConfig(LOGGING_CONFIG)
 
 logger = logging.getLogger("pipeline.ray.databricks")
+
+
+def _parse_optional_positive_int_env(name: str) -> int | None:
+    """Parse an optional positive integer from an environment variable."""
+    raw = os.environ.get(name)
+    if not raw:
+        return None
+    try:
+        val = int(raw)
+        return val if val > 0 else None
+    except ValueError:
+        return None
 
 
 def main() -> None:
@@ -56,6 +66,8 @@ def main() -> None:
     vector_cfg = VectorDBConfig.from_env(namespace)
     bucket = minio_cfg.bucket
     ingestion_targets = vector_cfg.ingestion_targets
+    image_max_items = _parse_optional_positive_int_env("IMAGE_MAX_ITEMS")
+    image_page_size = _parse_optional_positive_int_env("IMAGE_PAGE_SIZE") or 1000
 
     job_logger.info(
         "Configuration loaded",
@@ -67,6 +79,8 @@ def main() -> None:
             "ingestion_targets": sorted(ingestion_targets),
             "num_workers": ray_cfg.num_workers,
             "image_batch_size": ray_cfg.image_batch_size,
+            "image_max_items": image_max_items,
+            "image_page_size": image_page_size,
         },
     )
 
@@ -81,19 +95,6 @@ def main() -> None:
             secret_access_key=minio_cfg.secret_access_key,
         )
 
-        try:
-            all_keys = s3.list_objects(bucket=bucket, prefix=s3_prefix)
-            job_logger.info("S3 objects listed", extra={"count": len(all_keys)})
-        except ClientError as e:
-            job_logger.exception("Failed to list S3 objects", extra={"error": str(e)})
-            sys.exit(1)
-
-        keys = ImageContentFetcher.filter_image_keys(all_keys)
-        job_logger.info(
-            "Filtered to image keys",
-            extra={"total_listed": len(all_keys), "image_keys": len(keys)},
-        )
-
         # Load checkpoint if enabled
         processed: set[str] = set()
         checkpoint_path: str | None = None
@@ -103,25 +104,24 @@ def main() -> None:
         if ray_cfg.checkpoint_enabled:
             checkpoint_path = f"{ray_cfg.checkpoint_dir}/{collection}_images.json"
             processed = checkpoint_manager.load(checkpoint_path)
-            keys = [k for k in keys if k not in processed]
-
-        if not keys:
-            job_logger.info("No image objects to process")
-            return
 
         image_batch_size = ray_cfg.image_batch_size
         image_embed_batch_size = ray_cfg.image_embed_batch_size
-        key_batches = [keys[i : i + image_batch_size] for i in range(0, len(keys), image_batch_size)]
-        num_batches = len(key_batches)
         max_inflight_batches = max(1, ray_cfg.num_workers)
 
+        batch_gen = iter_image_batches(
+            s3=s3,
+            bucket=bucket,
+            prefix=s3_prefix,
+            processed=processed,
+            batch_size=image_batch_size,
+            max_items=image_max_items,
+            page_size=image_page_size,
+        )
+
         job_logger.info(
-            "Starting image batch processing: %d images in %d batches",
-            len(keys),
-            num_batches,
+            "Starting streaming image batch processing",
             extra={
-                "total_keys": len(keys),
-                "num_batches": num_batches,
                 "image_batch_size": image_batch_size,
                 "image_embed_batch_size": image_embed_batch_size,
                 "max_inflight_batches": max_inflight_batches,
@@ -157,14 +157,14 @@ def main() -> None:
             )
 
         stats = run_ray_batch_processing(
-            batches=key_batches,
+            batches=batch_gen,
             submit_batch=_submit_batch,
             wait_batch_size=ray_cfg.wait_batch_size,
             wait_timeout=ray_cfg.wait_timeout,
             max_inflight_batches=max_inflight_batches,
             job_logger=job_logger,
             progress_label="Image batch progress",
-            total_expected_records=len(keys),
+            total_expected_records=None,
         )
 
         success = stats.successful

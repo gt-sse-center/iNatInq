@@ -782,3 +782,149 @@ class TestS3ClientWrapperAsync:
 
         assert result == b"test-data"
         mock_boto3_client.get_object.assert_called_once_with(Bucket="test-bucket", Key="test-key")
+
+
+# =============================================================================
+# Streaming Iteration Tests
+# =============================================================================
+
+
+class TestS3ClientWrapperIterObjects:
+    """Test suite for S3ClientWrapper.iter_objects method."""
+
+    def test_iter_objects_yields_pages(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that iter_objects yields one list per S3 response page.
+
+        **What it tests:**
+          - Two pages with Contents yield two separate lists
+          - Keys within each page are preserved in order
+        """
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = [
+            {"Contents": [{"Key": "a"}, {"Key": "b"}]},
+            {"Contents": [{"Key": "c"}]},
+        ]
+        mock_boto3_client.get_paginator.return_value = mock_paginator
+
+        pages = list(s3_client.iter_objects(bucket="test-bucket", prefix="pfx/"))
+
+        assert pages == [["a", "b"], ["c"]]
+        mock_boto3_client.get_paginator.assert_called_once_with("list_objects_v2")
+        mock_paginator.paginate.assert_called_once_with(Bucket="test-bucket", Prefix="pfx/")
+
+    def test_iter_objects_skips_empty_pages(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that pages without Contents key are silently skipped.
+
+        **What it tests:**
+          - A page missing the Contents key does not yield anything
+          - Subsequent pages still yield their keys
+        """
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = [
+            {},  # empty page
+            {"Contents": [{"Key": "x"}]},
+        ]
+        mock_boto3_client.get_paginator.return_value = mock_paginator
+
+        pages = list(s3_client.iter_objects(bucket="b"))
+
+        assert pages == [["x"]]
+
+    def test_iter_objects_empty_bucket(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that an empty bucket yields nothing.
+
+        **What it tests:**
+          - No pages with Contents → generator is exhausted immediately
+        """
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = [{}]
+        mock_boto3_client.get_paginator.return_value = mock_paginator
+
+        pages = list(s3_client.iter_objects(bucket="b"))
+
+        assert pages == []
+
+    def test_iter_objects_propagates_client_error(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that ClientError from paginator propagates to caller.
+
+        **What it tests:**
+          - No circuit breaker or retry wrapping — errors propagate directly
+          - Caller is responsible for catching at the iteration site
+        """
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = iter(
+            [ClientError({"Error": {"Code": "AccessDenied", "Message": "denied"}}, "ListObjects")]
+        )
+
+        # Make iterating raise the error
+        def _raise_on_iterate(**_kwargs):
+            raise ClientError({"Error": {"Code": "AccessDenied", "Message": "denied"}}, "ListObjects")
+
+        mock_paginator.paginate.side_effect = _raise_on_iterate
+        mock_boto3_client.get_paginator.return_value = mock_paginator
+
+        with pytest.raises(ClientError, match="AccessDenied"):
+            list(s3_client.iter_objects(bucket="b"))
+
+    def test_iter_objects_default_prefix(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that default prefix is empty string.
+
+        **What it tests:**
+          - Calling without prefix passes empty string to paginator
+        """
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = []
+        mock_boto3_client.get_paginator.return_value = mock_paginator
+
+        list(s3_client.iter_objects(bucket="b"))
+
+        mock_paginator.paginate.assert_called_once_with(Bucket="b", Prefix="")
+
+    def test_iter_objects_custom_page_size(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that a non-default page_size adds PaginationConfig to paginator kwargs.
+
+        **What it tests:**
+          - Passing page_size != 1000 includes PaginationConfig={"PageSize": <value>}
+          - Keys are still yielded correctly
+        """
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = [
+            {"Contents": [{"Key": "a"}]},
+        ]
+        mock_boto3_client.get_paginator.return_value = mock_paginator
+
+        pages = list(s3_client.iter_objects(bucket="b", prefix="p/", page_size=50))
+
+        assert pages == [["a"]]
+        mock_paginator.paginate.assert_called_once_with(
+            Bucket="b", Prefix="p/", PaginationConfig={"PageSize": 50}
+        )
+
+    def test_iter_objects_default_page_size_omits_pagination_config(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that default page_size=1000 does NOT add PaginationConfig.
+
+        **What it tests:**
+          - Calling with page_size=1000 (the default) omits PaginationConfig from kwargs
+          - Ensures backward-compatible behavior with existing S3 pagination defaults
+        """
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = []
+        mock_boto3_client.get_paginator.return_value = mock_paginator
+
+        list(s3_client.iter_objects(bucket="b", page_size=1000))
+
+        mock_paginator.paginate.assert_called_once_with(Bucket="b", Prefix="")

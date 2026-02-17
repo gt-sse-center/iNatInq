@@ -34,6 +34,18 @@ dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("pipeline.ray.databricks")
 
 
+def _parse_optional_positive_int_env(name: str) -> int | None:
+    """Parse an optional positive integer from an environment variable."""
+    raw = os.environ.get(name)
+    if not raw:
+        return None
+    try:
+        val = int(raw)
+        return val if val > 0 else None
+    except ValueError:
+        return None
+
+
 def _parse_required_positive_int_env(name: str) -> int:
     """Parse a required positive integer environment variable."""
     raw = os.environ.get(name, "").strip()
@@ -68,15 +80,28 @@ def _iter_task_payload_batches(
     *,
     image_size: str,
     batch_size: int,
+    max_items: int | None = None,
 ) -> Iterator[list[dict[str, str]]]:
-    """Yield serialized task payload batches from a streaming record iterator."""
+    """Yield serialized task payload batches from a streaming record iterator.
+
+    Args:
+        records: Streaming iterator of photo records.
+        image_size: Image size variant for URL construction.
+        batch_size: Number of records per yielded batch.
+        max_items: Optional cap on total records yielded. ``None`` means no
+            limit (all records from the iterator are consumed).
+    """
     resolved_batch_size = max(1, batch_size)
     batch: list[dict[str, str]] = []
+    total_yielded = 0
     for record in records:
         batch.append(_record_to_task_payload(record, image_size))
         if len(batch) >= resolved_batch_size:
+            total_yielded += len(batch)
             yield batch
             batch = []
+            if max_items is not None and total_yielded >= max_items:
+                return
     if batch:
         yield batch
 
@@ -201,6 +226,7 @@ def main() -> None:
     inat_timeout_s = int((os.environ.get("INAT_TIMEOUT_S") or "120").strip())
     inat_cb_failure_threshold = int((os.environ.get("INAT_CB_FAILURE_THRESHOLD") or "5").strip())
     inat_cb_recovery_timeout_s = int((os.environ.get("INAT_CB_RECOVERY_TIMEOUT_S") or "30").strip())
+    image_max_items = _parse_optional_positive_int_env("IMAGE_MAX_ITEMS")
 
     ray_cfg = RayJobConfig.from_env(namespace)
     embed_cfg = ImageEmbeddingConfig.from_env(namespace)
@@ -218,6 +244,7 @@ def main() -> None:
             "metadata_url": metadata_url or "default:s3://inaturalist-open-data/photos.csv.gz",
             "image_size": image_size,
             "max_rows": max_rows,
+            "image_max_items": image_max_items,
         },
     )
 
@@ -287,7 +314,12 @@ def main() -> None:
             )
 
         stats = run_ray_batch_processing(
-            batches=_iter_task_payload_batches(records, image_size=image_size, batch_size=image_batch_size),
+            batches=_iter_task_payload_batches(
+                records,
+                image_size=image_size,
+                batch_size=image_batch_size,
+                max_items=image_max_items,
+            ),
             submit_batch=_submit_batch,
             wait_batch_size=ray_cfg.wait_batch_size,
             wait_timeout=ray_cfg.wait_timeout,

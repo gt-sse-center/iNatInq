@@ -62,6 +62,7 @@ The client wrapper:
 
 import asyncio
 import logging
+from collections.abc import Generator
 from typing import Any, cast
 
 import attrs
@@ -522,6 +523,66 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
         result = self._with_retry("list_objects", _list_all)
         return cast(list[str], result)
+
+    def iter_objects(
+        self, *, bucket: str, prefix: str = "", page_size: int = 1000
+    ) -> Generator[list[str], None, None]:
+        """Yield pages of object keys from S3 as they arrive.
+
+        Each yielded list corresponds to one S3 API response page.
+        Use this instead of ``list_objects`` when the bucket is large and
+        you want to start processing before the full listing completes.
+
+        Note:
+            No ``@with_circuit_breaker`` or ``_with_retry`` wrapping.
+            The decorator pattern doesn't compose with generators (breaker.call
+            returns the generator object immediately without executing the body).
+            boto3's paginator handles transient HTTP retries internally.
+            Callers should catch ``ClientError`` / ``BotoCoreError`` at the
+            iteration site.
+
+        Args:
+            bucket: Bucket name to list objects from.
+            prefix: Optional prefix to filter objects (default: empty string).
+            page_size: Maximum keys per S3 API page (default: 1000, S3 max).
+                Maps to the ``MaxKeys`` paginator parameter.
+
+        Yields:
+            Lists of object keys, one per S3 API response page.
+        """
+        paginator = self._client.get_paginator("list_objects_v2")
+        page_num = 0
+        total_keys = 0
+        logger.debug(
+            "iter_objects: starting pagination",
+            extra={"bucket": bucket, "prefix": prefix, "page_size": page_size},
+        )
+        paginate_kwargs: dict[str, Any] = {"Bucket": bucket, "Prefix": prefix}
+        if page_size != 1000:
+            paginate_kwargs["PaginationConfig"] = {"PageSize": page_size}
+        for page in paginator.paginate(**paginate_kwargs):
+            if "Contents" in page:
+                keys = [obj["Key"] for obj in page["Contents"]]
+                page_num += 1
+                total_keys += len(keys)
+                logger.info(
+                    "iter_objects: page %d yielded %d keys (%d cumulative)",
+                    page_num,
+                    len(keys),
+                    total_keys,
+                    extra={
+                        "page": page_num,
+                        "page_keys": len(keys),
+                        "cumulative_keys": total_keys,
+                    },
+                )
+                yield keys
+        logger.info(
+            "iter_objects: pagination complete — %d pages, %d total keys",
+            page_num,
+            total_keys,
+            extra={"total_pages": page_num, "total_keys": total_keys},
+        )
 
     @with_circuit_breaker("s3")
     def exists(self, *, bucket: str, key: str) -> bool:
