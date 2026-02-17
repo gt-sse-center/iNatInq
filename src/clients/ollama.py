@@ -165,6 +165,7 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
     # Private attributes
     _session: requests.Session | None = attrs.field(init=False, default=None)
     _async_client: httpx.AsyncClient | None = attrs.field(init=False, default=None)
+    _async_client_loop: asyncio.AbstractEventLoop | None = attrs.field(init=False, default=None)
     _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
     _async_breaker: aiobreaker.CircuitBreaker = attrs.field(init=False)
 
@@ -220,18 +221,39 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         Returns:
             Shared httpx.AsyncClient instance with connection pooling.
         """
-        if self._async_client is None or self._async_client.is_closed:
+        current_loop = asyncio.get_running_loop()
+
+        needs_recreate = (
+            self._async_client is None
+            or self._async_client.is_closed
+            or self._async_client_loop is None
+            or self._async_client_loop.is_closed()
+            or self._async_client_loop is not current_loop
+        )
+
+        if needs_recreate:
+            if self._async_client is not None and not self._async_client.is_closed:
+                try:
+                    await self._async_client.aclose()
+                except Exception:
+                    # Old client may be bound to a different/closed loop.
+                    pass
             self._async_client = httpx.AsyncClient(
                 timeout=self.timeout_s,
                 limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
             )
+            self._async_client_loop = current_loop
         return self._async_client
 
     async def close_async(self) -> None:
         """Close the async HTTP client and release resources."""
         if self._async_client is not None:
-            await self._async_client.aclose()
+            try:
+                await self._async_client.aclose()
+            except Exception:
+                pass
             self._async_client = None
+            self._async_client_loop = None
 
     @classmethod
     def from_config(cls, config: EmbeddingConfig, session: requests.Session | None = None) -> "OllamaClient":
