@@ -159,6 +159,9 @@ class TestDatabricksImageJobMain:
                                         retry_max_wait=10.0,
                                         checkpoint_enabled=False,
                                         checkpoint_dir="/tmp/checkpoints",
+                                        s3_prefix="",
+                                        image_max_items=None,
+                                        image_page_size=1000,
                                     )
                                     mock_minio_cfg.return_value = MagicMock(
                                         endpoint_url="http://minio:9000",
@@ -168,6 +171,7 @@ class TestDatabricksImageJobMain:
                                     )
                                     mock_embed_cfg.return_value = MagicMock()
                                     mock_vector_cfg.return_value = MagicMock(
+                                        collection="documents",
                                         ingestion_targets=frozenset({"qdrant", "weaviate"}),
                                     )
                                     mock_strat_cls.from_env.return_value = mock_strategy
@@ -285,29 +289,29 @@ class TestDatabricksImageJobMain:
         mock_dependencies["iter_batches"].assert_called_once()
 
     def test_main_passes_prefix_to_iter_image_batches(self, mock_dependencies, mock_ray):
-        """main() passes S3_PREFIX to iter_image_batches.
+        """main() passes s3_prefix from config to iter_image_batches.
 
         **Why this test is important:**
 
         - S3_PREFIX controls which objects are processed
-        - Environment variable configuration must work correctly
+        - Config-based settings must flow correctly
         - Ensures the correct S3 path is queried
 
         **What it tests:**
 
-        - S3_PREFIX environment variable is forwarded to iter_image_batches
+        - ray_cfg.s3_prefix is forwarded to iter_image_batches
         """
         from core.ingestion.databricks.process_s3_images import main
 
-        with patch.dict("os.environ", {"S3_PREFIX": "custom/images/"}, clear=False):
-            main()
+        mock_dependencies["ray_cfg"].return_value.s3_prefix = "custom/images/"
+        main()
 
         mock_dependencies["iter_batches"].assert_called_once()
         call_kwargs = mock_dependencies["iter_batches"].call_args[1]
         assert call_kwargs["prefix"] == "custom/images/"
 
-    def test_main_uses_collection_from_env(self, mock_dependencies, mock_ray):
-        """main() uses VECTOR_DB_COLLECTION from environment variable.
+    def test_main_uses_collection_from_config(self, mock_dependencies, mock_ray):
+        """main() uses collection from VectorDBConfig.
 
         **Why this test is important:**
 
@@ -317,12 +321,13 @@ class TestDatabricksImageJobMain:
 
         **What it tests:**
 
-        - VECTOR_DB_COLLECTION environment variable is respected
+        - vector_cfg.collection is used for the collection name
         - Processing tasks are invoked with correct configuration
         - Collection configuration flows through to task execution
         """
         from core.ingestion.databricks.process_s3_images import main
 
+        mock_dependencies["vector_cfg"].return_value.collection = "my_images"
         mock_dependencies["iter_batches"].return_value = iter([["img1.jpg"]])
 
         future_mock = MagicMock()
@@ -331,12 +336,7 @@ class TestDatabricksImageJobMain:
 
         with patch("core.ingestion.databricks.process_s3_images.process_image_batch_ray") as mock_task:
             mock_task.options.return_value.remote.return_value = future_mock
-            with patch.dict(
-                "os.environ",
-                {"S3_PREFIX": "images/", "VECTOR_DB_COLLECTION": "my_images"},
-                clear=False,
-            ):
-                main()
+            main()
 
         mock_task.options.assert_called()
 
@@ -441,54 +441,46 @@ class TestDatabricksImageJobMain:
         mock_dependencies["strategy"].shutdown.assert_called_once()
 
     def test_main_passes_image_max_items_to_iter_batches(self, mock_dependencies, mock_ray):
-        """main() passes IMAGE_MAX_ITEMS env var to iter_image_batches as max_items.
+        """main() passes image_max_items from config to iter_image_batches as max_items.
 
         **Why this test is important:**
 
         - IMAGE_MAX_ITEMS allows limiting the number of images processed per job
-        - The env var must be parsed as a positive integer and forwarded correctly
+        - The config field must be forwarded correctly
         - Ensures operators can cap processing volume for cost/time control
 
         **What it tests:**
 
-        - IMAGE_MAX_ITEMS=500 is parsed and passed as max_items=500
+        - ray_cfg.image_max_items=500 is passed as max_items=500
         - iter_image_batches receives the correct keyword argument
         """
         from core.ingestion.databricks.process_s3_images import main
 
-        with patch.dict(
-            "os.environ",
-            {"S3_PREFIX": "images/", "IMAGE_MAX_ITEMS": "500"},
-            clear=False,
-        ):
-            main()
+        mock_dependencies["ray_cfg"].return_value.image_max_items = 500
+        main()
 
         mock_dependencies["iter_batches"].assert_called_once()
         call_kwargs = mock_dependencies["iter_batches"].call_args[1]
         assert call_kwargs["max_items"] == 500
 
     def test_main_passes_image_page_size_to_iter_batches(self, mock_dependencies, mock_ray):
-        """main() passes IMAGE_PAGE_SIZE env var to iter_image_batches as page_size.
+        """main() passes image_page_size from config to iter_image_batches as page_size.
 
         **Why this test is important:**
 
         - IMAGE_PAGE_SIZE controls S3 listing pagination size
-        - The env var must be parsed and forwarded to iter_image_batches
+        - The config field must be forwarded to iter_image_batches
         - Allows tuning S3 list performance for different bucket sizes
 
         **What it tests:**
 
-        - IMAGE_PAGE_SIZE=200 is parsed and passed as page_size=200
+        - ray_cfg.image_page_size=200 is passed as page_size=200
         - iter_image_batches receives the correct keyword argument
         """
         from core.ingestion.databricks.process_s3_images import main
 
-        with patch.dict(
-            "os.environ",
-            {"S3_PREFIX": "images/", "IMAGE_PAGE_SIZE": "200"},
-            clear=False,
-        ):
-            main()
+        mock_dependencies["ray_cfg"].return_value.image_page_size = 200
+        main()
 
         mock_dependencies["iter_batches"].assert_called_once()
         call_kwargs = mock_dependencies["iter_batches"].call_args[1]

@@ -147,6 +147,7 @@ class DatabricksRayService:
         image_embedding_config: ImageEmbeddingConfig,
         collection: str,
         image_max_items: int | None = None,
+        image_page_size: int | None = None,
     ) -> int:
         """Submit a Databricks job to process S3 images and store embeddings.
 
@@ -163,6 +164,7 @@ class DatabricksRayService:
             image_embedding_config: Image embedding provider configuration.
             collection: Vector DB base collection name.
             image_max_items: Optional limit on number of images to process.
+            image_page_size: Optional S3 listing page size override.
 
         Returns:
             Databricks run ID for the submitted job.
@@ -185,6 +187,8 @@ class DatabricksRayService:
         add_ray_tuning_env(env_vars)
         if image_max_items is not None:
             env_vars["IMAGE_MAX_ITEMS"] = str(image_max_items)
+        if image_page_size is not None:
+            env_vars["IMAGE_PAGE_SIZE"] = str(image_page_size)
         python_params = [f"{key}={value}" for key, value in env_vars.items()]
 
         try:

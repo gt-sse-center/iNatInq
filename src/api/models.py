@@ -319,6 +319,8 @@ class RayImageJobRequest(BaseModel):
         s3_bucket: S3 bucket containing images.
         s3_prefix: S3 prefix to process (e.g., "images/").
         collection: Base collection name (image collections created as {collection}_images).
+        image_max_items: Optional limit on number of images to process.
+        image_page_size: Optional S3 listing page size override.
 
     Example:
         ```json
@@ -345,6 +347,11 @@ class RayImageJobRequest(BaseModel):
         default=None,
         gt=0,
         description="Optional limit on number of images to process",
+    )
+    image_page_size: int | None = Field(
+        default=None,
+        gt=0,
+        description="Optional S3 listing page size override",
     )
 
 
@@ -422,6 +429,8 @@ class DatabricksImageJobRequest(BaseModel):
         source: Image source to ingest ("s3" or "inat").
         s3_prefix: S3 prefix to process (required when source is "s3").
         collection: Vector DB base collection name.
+        image_max_items: Optional limit on number of images to process.
+        image_page_size: Optional S3 listing page size override.
 
     Example:
         ```json
@@ -448,6 +457,11 @@ class DatabricksImageJobRequest(BaseModel):
         default=None,
         gt=0,
         description="Optional limit on number of images to process",
+    )
+    image_page_size: int | None = Field(
+        default=None,
+        gt=0,
+        description="Optional S3 listing page size override",
     )
 
 

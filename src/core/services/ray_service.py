@@ -177,6 +177,7 @@ class RayService:
         collection: str,
         image_embedding_config: ImageEmbeddingConfig | None = None,
         image_max_items: int | None = None,
+        image_page_size: int | None = None,
     ) -> str:
         """Submit a Ray job to process S3 images and store embeddings in vector DB image collections.
 
@@ -194,6 +195,7 @@ class RayService:
             collection: Base collection name (image collections: {collection}_images).
             image_embedding_config: Image embedding configuration. If None, loaded from env.
             image_max_items: Optional limit on number of images to process.
+            image_page_size: Optional S3 listing page size override.
 
         Returns:
             Ray job ID (e.g., "raysubmit_1234567890").
@@ -228,6 +230,8 @@ class RayService:
         )
         if image_max_items is not None:
             env_vars["IMAGE_MAX_ITEMS"] = str(image_max_items)
+        if image_page_size is not None:
+            env_vars["IMAGE_PAGE_SIZE"] = str(image_page_size)
 
         try:
             client = JobSubmissionClient(dashboard_address)

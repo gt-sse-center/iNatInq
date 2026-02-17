@@ -463,6 +463,7 @@ class TestRayImageJobRequest:
         assert req.s3_prefix == ""
         assert req.collection == "documents"
         assert req.image_max_items is None
+        assert req.image_page_size is None
 
     def test_empty_prefix_means_bucket_root(self) -> None:
         """Test that s3_prefix defaults to empty string (bucket root)."""
@@ -506,6 +507,33 @@ class TestRayImageJobRequest:
                 s3_bucket="pipeline",
                 collection="documents",
                 image_max_items=-1,
+            )
+
+    def test_image_page_size_positive(self) -> None:
+        """Test that image_page_size accepts positive integers."""
+        req = models.RayImageJobRequest(
+            s3_bucket="pipeline",
+            collection="documents",
+            image_page_size=500,
+        )
+        assert req.image_page_size == 500
+
+    def test_image_page_size_rejects_zero(self) -> None:
+        """Test that image_page_size rejects zero (gt=0 constraint)."""
+        with pytest.raises(ValidationError):
+            models.RayImageJobRequest(
+                s3_bucket="pipeline",
+                collection="documents",
+                image_page_size=0,
+            )
+
+    def test_image_page_size_rejects_negative(self) -> None:
+        """Test that image_page_size rejects negative values."""
+        with pytest.raises(ValidationError):
+            models.RayImageJobRequest(
+                s3_bucket="pipeline",
+                collection="documents",
+                image_page_size=-1,
             )
 
 
@@ -566,6 +594,7 @@ class TestDatabricksImageJobRequest:
             collection="documents",
         )
         assert req.image_max_items is None
+        assert req.image_page_size is None
 
     def test_image_max_items_rejects_zero(self) -> None:
         """Test that image_max_items rejects zero."""
@@ -575,4 +604,24 @@ class TestDatabricksImageJobRequest:
                 s3_prefix="images/",
                 collection="documents",
                 image_max_items=0,
+            )
+
+    def test_image_page_size_positive(self) -> None:
+        """Test that image_page_size accepts positive integers."""
+        req = models.DatabricksImageJobRequest(
+            source="s3",
+            s3_prefix="images/",
+            collection="documents",
+            image_page_size=2000,
+        )
+        assert req.image_page_size == 2000
+
+    def test_image_page_size_rejects_zero(self) -> None:
+        """Test that image_page_size rejects zero."""
+        with pytest.raises(ValidationError):
+            models.DatabricksImageJobRequest(
+                source="s3",
+                s3_prefix="images/",
+                collection="documents",
+                image_page_size=0,
             )

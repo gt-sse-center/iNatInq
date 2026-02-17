@@ -33,18 +33,6 @@ dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("pipeline.ray")
 
 
-def _parse_optional_positive_int_env(name: str) -> int | None:
-    """Parse an optional positive integer from an environment variable."""
-    raw = os.environ.get(name)
-    if not raw:
-        return None
-    try:
-        val = int(raw)
-        return val if val > 0 else None
-    except ValueError:
-        return None
-
-
 def main() -> None:
     """Process S3 image objects and store embeddings in vector DB image collections.
 
@@ -58,19 +46,18 @@ def main() -> None:
     job_logger.info("Ray image job started", extra={"pid": os.getpid()})
     start = time.time()
     namespace = os.environ.get("K8S_NAMESPACE", "ml-system")
-    s3_prefix = os.environ.get("S3_PREFIX", "")
-    if not s3_prefix:
-        s3_prefix = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[0].endswith("uvicorn") else ""
-    collection = os.environ.get("VECTOR_DB_COLLECTION", "documents")
 
     ray_cfg = RayJobConfig.from_env(namespace)
     minio_cfg = MinIOConfig.from_env(namespace)
     embed_cfg = ImageEmbeddingConfig.from_env(namespace)
     vector_cfg = VectorDBConfig.from_env(namespace)
+
+    s3_prefix = ray_cfg.s3_prefix
+    collection = vector_cfg.collection
     bucket = minio_cfg.bucket
     ingestion_targets = vector_cfg.ingestion_targets
-    image_max_items = _parse_optional_positive_int_env("IMAGE_MAX_ITEMS")
-    image_page_size = _parse_optional_positive_int_env("IMAGE_PAGE_SIZE") or 1000
+    image_max_items = ray_cfg.image_max_items
+    image_page_size = ray_cfg.image_page_size
 
     job_logger.info(
         "Configuration loaded",

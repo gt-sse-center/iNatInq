@@ -502,6 +502,7 @@ async def submit_ray_image_job(req: models.RayImageJobRequest) -> models.RayImag
             s3_prefix=req.s3_prefix,
             collection=req.collection,
             image_max_items=req.image_max_items,
+            image_page_size=req.image_page_size,
         )
 
         return models.RayImageJobResponse(
@@ -619,6 +620,7 @@ async def submit_databricks_image_job(
                 image_embedding_config=image_embed_cfg,
                 collection=req.collection,
                 image_max_items=req.image_max_items,
+                image_page_size=req.image_page_size,
             )
 
         return models.DatabricksImageJobResponse(
