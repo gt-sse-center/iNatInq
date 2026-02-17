@@ -247,7 +247,11 @@ class RayJobRequest(BaseModel):
         ```
     """
 
-    s3_prefix: str = Field(..., json_schema_extra={"example": "inputs/"}, description="S3 prefix to process")
+    s3_prefix: str = Field(
+        default="",
+        json_schema_extra={"example": "inputs/"},
+        description="S3 prefix to process (empty string for bucket root)",
+    )
     collection: str = Field(
         ..., json_schema_extra={"example": "documents"}, description="Vector DB collection"
     )
@@ -401,7 +405,11 @@ class DatabricksJobRequest(BaseModel):
         ```
     """
 
-    s3_prefix: str = Field(..., json_schema_extra={"example": "inputs/"}, description="S3 prefix to process")
+    s3_prefix: str = Field(
+        default="",
+        json_schema_extra={"example": "inputs/"},
+        description="S3 prefix to process (empty string for bucket root)",
+    )
     collection: str = Field(
         ..., json_schema_extra={"example": "documents"}, description="Vector DB collection"
     )
