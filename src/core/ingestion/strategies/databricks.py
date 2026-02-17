@@ -23,6 +23,46 @@ logger = logging.getLogger("pipeline.ray.strategy.databricks")
 # Environment variables to pass through to Ray workers
 _PASSTHROUGH_ENV_VARS = DATABRICKS_RUNTIME_PASSTHROUGH_ENV_VARS
 
+_TRUTHY_VALUES = frozenset({"1", "true", "yes", "on"})
+_FALSY_VALUES = frozenset({"0", "false", "no", "off"})
+
+
+def _parse_bool_env(name: str, default: bool) -> bool:
+    """Parse a boolean env var with permissive true/false values."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+
+    normalized = raw.strip().lower()
+    if normalized in _TRUTHY_VALUES:
+        return True
+    if normalized in _FALSY_VALUES:
+        return False
+
+    logger.warning(
+        "Invalid boolean env var value; using default",
+        extra={"env_var": name, "value": raw, "default": default},
+    )
+    return default
+
+
+def _parse_logging_level_env(name: str, default: int = logging.WARNING) -> int:
+    """Parse a logging level env var (e.g., INFO, WARNING, DEBUG)."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+
+    normalized = raw.strip().upper()
+    value = getattr(logging, normalized, None)
+    if isinstance(value, int):
+        return value
+
+    logger.warning(
+        "Invalid logging level env var; using default",
+        extra={"env_var": name, "value": raw, "default_level": logging.getLevelName(default)},
+    )
+    return default
+
 
 @attrs.define
 class DatabricksStrategy:
@@ -192,6 +232,8 @@ class DatabricksStrategy:
         """Initialize Ray client connection to Databricks cluster."""
         address = getattr(self._cluster, "address", None) if self._cluster else None
         runtime_env = self.get_runtime_env()
+        log_to_driver = _parse_bool_env("RAY_LOG_TO_DRIVER", default=False)
+        ray_logging_level = _parse_logging_level_env("RAY_LOGGING_LEVEL", default=logging.WARNING)
 
         if ray.is_initialized():
             logger.warning(
@@ -204,8 +246,8 @@ class DatabricksStrategy:
             address=address or "auto",
             namespace=self._config.ray_namespace,
             ignore_reinit_error=True,
-            logging_level=logging.WARNING,
-            log_to_driver=False,
+            logging_level=ray_logging_level,
+            log_to_driver=log_to_driver,
             runtime_env=runtime_env or None,
         )
 
@@ -214,5 +256,7 @@ class DatabricksStrategy:
             extra={
                 "address": address or "auto",
                 "namespace": self._config.ray_namespace,
+                "log_to_driver": log_to_driver,
+                "ray_logging_level": logging.getLevelName(ray_logging_level),
             },
         )

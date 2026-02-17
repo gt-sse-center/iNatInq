@@ -46,6 +46,9 @@ Databricks job/CLI settings:
 
 - `RAY_NUM_WORKERS`
 - `RAY_WORKER_CPUS`
+- `RAY_LOG_TO_DRIVER` (optional; set `true` to forward Ray worker logs to driver output)
+- `RAY_LOGGING_LEVEL` (optional; defaults to `WARNING`)
+- `PIPELINE_DEBUG_COMPONENTS` (optional; comma-separated: `s3`, `clip`, `qdrant`, or `all`)
 
 ### Databricks image entrypoints
 

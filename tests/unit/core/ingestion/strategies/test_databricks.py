@@ -15,6 +15,7 @@ uv run pytest tests/unit/core/ingestion/strategies/test_databricks.py -v
 ```
 """
 
+import logging
 import os
 from unittest.mock import MagicMock, patch
 
@@ -239,6 +240,9 @@ class TestDatabricksStrategyRuntimeEnv:
         assert "OLLAMA_BASE_URL" in _PASSTHROUGH_ENV_VARS
         assert "IMAGE_MAX_ITEMS" in _PASSTHROUGH_ENV_VARS
         assert "INAT_METADATA_URL" in _PASSTHROUGH_ENV_VARS
+        assert "PIPELINE_DEBUG_COMPONENTS" in _PASSTHROUGH_ENV_VARS
+        assert "RAY_LOGGING_LEVEL" in _PASSTHROUGH_ENV_VARS
+        assert "RAY_LOG_TO_DRIVER" in _PASSTHROUGH_ENV_VARS
 
 
 class TestDatabricksStrategyConnection:
@@ -507,3 +511,29 @@ class TestDatabricksStrategyInitRayClient:
                 strategy._init_ray_client()
 
         mock_ray_module.init.assert_not_called()
+
+    @patch("core.ingestion.strategies.databricks.ray")
+    def test_init_ray_client_enables_log_to_driver_from_env(
+        self, mock_ray_module: MagicMock, ray_job_config: RayJobConfig
+    ):
+        """_init_ray_client() enables driver log forwarding when configured."""
+        mock_ray_module.is_initialized.return_value = False
+        strategy = DatabricksStrategy(config=ray_job_config)
+        strategy._cluster = None
+
+        with patch.dict(
+            os.environ,
+            {
+                "INATINQ_SRC_DIR": "/workspace/src",
+                "VECTOR_DB_PROVIDER": "qdrant",
+                "RAY_LOG_TO_DRIVER": "true",
+                "RAY_LOGGING_LEVEL": "INFO",
+            },
+            clear=False,
+        ):
+            with patch("pathlib.Path.is_dir", return_value=True):
+                strategy._init_ray_client()
+
+        call_kwargs = mock_ray_module.init.call_args.kwargs
+        assert call_kwargs["log_to_driver"] is True
+        assert call_kwargs["logging_level"] == logging.INFO
