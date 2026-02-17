@@ -329,9 +329,18 @@ class RayImageJobRequest(BaseModel):
     s3_bucket: str = Field(
         ..., json_schema_extra={"example": "pipeline"}, description="S3 bucket containing images"
     )
-    s3_prefix: str = Field(..., json_schema_extra={"example": "images/"}, description="S3 prefix to process")
+    s3_prefix: str = Field(
+        default="",
+        json_schema_extra={"example": "images/"},
+        description="S3 prefix to process (empty string for bucket root)",
+    )
     collection: str = Field(
         ..., json_schema_extra={"example": "documents"}, description="Vector DB base collection name"
+    )
+    image_max_items: int | None = Field(
+        default=None,
+        gt=0,
+        description="Optional limit on number of images to process",
     )
 
 
@@ -367,6 +376,7 @@ class RayImageJobResponse(BaseModel):
     s3_bucket: str
     s3_prefix: str
     collection: str
+    image_max_items: int | None = None
     submitted_at: str
 
 
@@ -425,6 +435,11 @@ class DatabricksImageJobRequest(BaseModel):
         ...,
         json_schema_extra={"example": "documents"},
         description="Vector DB base collection name",
+    )
+    image_max_items: int | None = Field(
+        default=None,
+        gt=0,
+        description="Optional limit on number of images to process",
     )
 
 

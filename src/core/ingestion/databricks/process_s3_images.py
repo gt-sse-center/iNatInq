@@ -23,6 +23,7 @@ from core.ingestion.databricks.runtime import apply_python_params as _apply_pyth
 from core.ingestion.interfaces.operations import ImageContentFetcher
 from core.ingestion.tasks import process_image_batch_ray
 from core.ingestion.strategies import DatabricksStrategy
+from foundation.checkpoint import CheckpointManager, is_s3_path
 from foundation.logger import LOGGING_CONFIG
 
 dictConfig(LOGGING_CONFIG)
@@ -44,9 +45,9 @@ def main() -> None:
     _apply_python_params(sys.argv[1:])
 
     namespace = os.environ.get("K8S_NAMESPACE", "ml-system")
-    s3_prefix = os.environ.get("S3_PREFIX") or (
-        sys.argv[1] if len(sys.argv) > 1 and not sys.argv[0].endswith("uvicorn") else "images/"
-    )
+    s3_prefix = os.environ.get("S3_PREFIX", "")
+    if not s3_prefix:
+        s3_prefix = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[0].endswith("uvicorn") else ""
     collection = os.environ.get("VECTOR_DB_COLLECTION", "documents")
 
     ray_cfg = RayJobConfig.from_env(namespace)
@@ -92,6 +93,17 @@ def main() -> None:
             "Filtered to image keys",
             extra={"total_listed": len(all_keys), "image_keys": len(keys)},
         )
+
+        # Load checkpoint if enabled
+        processed: set[str] = set()
+        checkpoint_path: str | None = None
+        checkpoint_manager = CheckpointManager(
+            s3_client=s3 if is_s3_path(ray_cfg.checkpoint_dir) else None,
+        )
+        if ray_cfg.checkpoint_enabled:
+            checkpoint_path = f"{ray_cfg.checkpoint_dir}/{collection}_images.json"
+            processed = checkpoint_manager.load(checkpoint_path)
+            keys = [k for k in keys if k not in processed]
 
         if not keys:
             job_logger.info("No image objects to process")
@@ -157,6 +169,12 @@ def main() -> None:
 
         success = stats.successful
         failed = stats.failed
+
+        # Save checkpoint if enabled
+        if ray_cfg.checkpoint_enabled and checkpoint_path:
+            processed.update(stats.successful_keys)
+            checkpoint_manager.save(checkpoint_path, processed)
+
         elapsed = round(time.time() - start, 2)
         rate = round(stats.completed_records / elapsed, 2) if elapsed > 0 else 0
         job_logger.info(

@@ -439,8 +439,13 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         def _ensure() -> None:
             try:
                 self._client.head_bucket(Bucket=bucket)
-            except ClientError:
-                self._client.create_bucket(Bucket=bucket)
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "")
+                http_status = str(e.response.get("ResponseMetadata", {}).get("HTTPStatusCode", ""))
+                if error_code in ("404", "NoSuchBucket") or http_status == "404":
+                    self._client.create_bucket(Bucket=bucket)
+                else:
+                    raise
 
         self._with_retry("ensure_bucket", _ensure)
 

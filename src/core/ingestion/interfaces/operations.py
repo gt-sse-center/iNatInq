@@ -188,6 +188,41 @@ _IMAGE_MAGIC_BYTES = {
 # Supported image extensions (for filtering S3 keys)
 SUPPORTED_IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif"})
 
+# Known non-image extensions to reject during filtering
+_NON_IMAGE_EXTENSIONS = frozenset(
+    {
+        ".txt",
+        ".csv",
+        ".json",
+        ".xml",
+        ".html",
+        ".htm",
+        ".pdf",
+        ".md",
+        ".yaml",
+        ".yml",
+        ".log",
+        ".sql",
+        ".parquet",
+        ".avro",
+        ".zip",
+        ".tar",
+        ".gz",
+        ".bz2",
+        ".7z",
+        ".rar",
+        ".py",
+        ".js",
+        ".ts",
+        ".java",
+        ".go",
+        ".rs",
+        ".c",
+        ".cpp",
+        ".h",
+    }
+)
+
 
 def detect_image_format(data: bytes) -> str | None:
     r"""Detect image format from magic bytes.
@@ -538,27 +573,58 @@ class ImageContentFetcher:
         return images, failures
 
     @staticmethod
-    def filter_image_keys(keys: list[str]) -> list[str]:
-        """Filter a list of S3 keys to only include supported image extensions.
+    def filter_image_keys(
+        keys: list[str],
+        mime_type_resolver: object = None,  # deprecated, unused
+    ) -> list[str]:
+        """Filter S3 keys to likely image files without HEAD requests.
+
+        Strategy:
+          1. Key has recognized image extension → accept
+          2. Key has NO extension (no '.' in basename) → accept optimistically
+          3. Key has a known non-image extension → reject
+          4. Key has unknown extension → accept optimistically
+
+        Extensionless keys are accepted because the fetch step validates
+        images via ``detect_image_format()`` magic bytes, making listing-time
+        validation redundant.
 
         Args:
             keys: List of S3 object keys.
+            mime_type_resolver: Deprecated, unused. Kept for backward compatibility.
 
         Returns:
-            Filtered list containing only image keys.
-
-        Example:
-            >>> ImageContentFetcher.filter_image_keys(["a.jpg", "b.txt", "c.png"])
-            ['a.jpg', 'c.png']
+            Filtered list containing likely image keys.
         """
-        result = []
+        result: list[str] = []
+        by_ext = 0
+        optimistic = 0
+        rejected = 0
         for key in keys:
-            # Get extension (lowercase)
-            dot_idx = key.rfind(".")
-            if dot_idx != -1:
-                ext = key[dot_idx:].lower()
-                if ext in SUPPORTED_IMAGE_EXTENSIONS:
-                    result.append(key)
+            basename = key.rsplit("/", 1)[-1] if "/" in key else key
+            dot_idx = basename.rfind(".")
+            if dot_idx == -1:
+                # No extension — accept optimistically
+                result.append(key)
+                optimistic += 1
+                continue
+            ext = basename[dot_idx:].lower()
+            if ext in SUPPORTED_IMAGE_EXTENSIONS:
+                result.append(key)
+                by_ext += 1
+            elif ext in _NON_IMAGE_EXTENSIONS:
+                rejected += 1
+            else:
+                # Unknown extension — accept optimistically
+                result.append(key)
+                optimistic += 1
+        logger.info(
+            "filter_image_keys: %d accepted (%d by extension, %d optimistic), %d rejected",
+            len(result),
+            by_ext,
+            optimistic,
+            rejected,
+        )
         return result
 
 

@@ -711,17 +711,122 @@ class TestImageContentFetcher:
         """Test filter_image_keys with files without extensions.
 
         **Why this test is important:**
-          - Some files have no extension
-          - Should be excluded
+          - Some files have no extension (e.g. iNaturalist observation IDs)
+          - Should be accepted optimistically; magic-byte check at fetch time
+            rejects non-images
 
         **What it tests:**
-          - Files without extensions filtered out
+          - Files without extensions are included
         """
         keys = ["photo", "image", "Makefile"]
 
         result = ImageContentFetcher.filter_image_keys(keys)
 
+        assert result == keys
+
+    def test_filter_image_keys_extensionless_accepted(self) -> None:
+        """Test that extensionless keys (no '.' in basename) are accepted.
+
+        **Why this test is important:**
+          - S3 objects from APIs often lack extensions (e.g. "12345", "photos/abc123")
+          - Optimistic acceptance defers validation to magic-byte detection at fetch
+
+        **What it tests:**
+          - Extensionless keys are included in the filtered result
+        """
+        keys = ["12345", "photos/abc123", "data/observations/99999"]
+
+        result = ImageContentFetcher.filter_image_keys(keys)
+
+        assert result == keys
+
+    def test_filter_image_keys_unknown_extension_accepted(self) -> None:
+        """Test that keys with unknown extensions are accepted optimistically.
+
+        **Why this test is important:**
+          - Unknown extensions may still be images (e.g. vendor-specific formats)
+          - Optimistic acceptance defers validation to magic-byte detection at fetch
+
+        **What it tests:**
+          - Keys with unrecognized extensions are included
+        """
+        keys = ["file.xyz", "photo.raw", "image.bmp", "scan.tiff"]
+
+        result = ImageContentFetcher.filter_image_keys(keys)
+
+        assert result == keys
+
+    def test_filter_image_keys_non_image_extension_rejected(self) -> None:
+        """Test that keys with known non-image extensions are rejected.
+
+        **Why this test is important:**
+          - Files like .txt, .json, .py are definitely not images
+          - Rejecting them avoids unnecessary S3 fetches
+
+        **What it tests:**
+          - Keys with extensions in _NON_IMAGE_EXTENSIONS are excluded
+        """
+        keys = [
+            "readme.txt",
+            "data.csv",
+            "config.json",
+            "schema.xml",
+            "page.html",
+            "doc.pdf",
+            "notes.md",
+            "settings.yaml",
+            "archive.zip",
+            "script.py",
+            "main.go",
+        ]
+
+        result = ImageContentFetcher.filter_image_keys(keys)
+
         assert result == []
+
+    def test_filter_image_keys_mixed_all_categories(self) -> None:
+        """Test filter_image_keys with a mix of all key categories.
+
+        **Why this test is important:**
+          - Real S3 listings contain a mix of image, non-image, extensionless,
+            and unknown-extension keys
+          - Validates the complete filtering strategy in one scenario
+
+        **What it tests:**
+          - Recognized image extensions accepted
+          - Extensionless keys accepted
+          - Known non-image extensions rejected
+          - Unknown extensions accepted
+        """
+        keys = [
+            "photos/sunset.jpg",  # recognized image extension → accept
+            "photos/logo.png",  # recognized image extension → accept
+            "photos/12345",  # no extension → accept optimistically
+            "docs/readme.txt",  # known non-image → reject
+            "data/export.csv",  # known non-image → reject
+            "photos/scan.tiff",  # unknown extension → accept optimistically
+            "photos/abc123",  # no extension → accept optimistically
+            "photos/anim.gif",  # recognized image extension → accept
+            "build/app.py",  # known non-image → reject
+            "photos/art.webp",  # recognized image extension → accept
+            "photos/raw.nef",  # unknown extension → accept optimistically
+        ]
+
+        result = ImageContentFetcher.filter_image_keys(keys)
+
+        assert len(result) == 8
+        assert "photos/sunset.jpg" in result
+        assert "photos/logo.png" in result
+        assert "photos/12345" in result
+        assert "photos/scan.tiff" in result
+        assert "photos/abc123" in result
+        assert "photos/anim.gif" in result
+        assert "photos/art.webp" in result
+        assert "photos/raw.nef" in result
+        # Rejected keys
+        assert "docs/readme.txt" not in result
+        assert "data/export.csv" not in result
+        assert "build/app.py" not in result
 
 
 # =============================================================================

@@ -225,6 +225,89 @@ class TestS3ClientWrapperBucket:
         mock_boto3_client.head_bucket.assert_called_once_with(Bucket="test-bucket")
         mock_boto3_client.create_bucket.assert_not_called()
 
+    def test_ensure_bucket_creates_on_404(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that ensure_bucket creates bucket when head_bucket returns 404 error code.
+
+        **Why this test is important:**
+          - Validates the error-code branch of the ensure_bucket fix
+          - Error code "404" from head_bucket must trigger bucket creation
+          - Ensures the conditional properly matches string error codes
+
+        **What it tests:**
+          - head_bucket raises ClientError with Code "404"
+          - create_bucket is called to create the missing bucket
+        """
+        mock_boto3_client.head_bucket.side_effect = ClientError(
+            {
+                "Error": {"Code": "404", "Message": "Not Found"},
+                "ResponseMetadata": {"HTTPStatusCode": 404},
+            },
+            "HeadBucket",
+        )
+
+        s3_client.ensure_bucket("test-bucket")
+
+        mock_boto3_client.head_bucket.assert_called_once_with(Bucket="test-bucket")
+        mock_boto3_client.create_bucket.assert_called_once_with(Bucket="test-bucket")
+
+    def test_ensure_bucket_creates_on_no_such_bucket(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that ensure_bucket creates bucket when head_bucket returns NoSuchBucket.
+
+        **Why this test is important:**
+          - Some S3-compatible backends return "NoSuchBucket" instead of "404"
+          - Validates the error-code branch handles the named error code
+          - Ensures both numeric and named error codes trigger creation
+
+        **What it tests:**
+          - head_bucket raises ClientError with Code "NoSuchBucket"
+          - create_bucket is called to create the missing bucket
+        """
+        mock_boto3_client.head_bucket.side_effect = ClientError(
+            {
+                "Error": {"Code": "NoSuchBucket", "Message": "The specified bucket does not exist"},
+                "ResponseMetadata": {"HTTPStatusCode": 404},
+            },
+            "HeadBucket",
+        )
+
+        s3_client.ensure_bucket("test-bucket")
+
+        mock_boto3_client.head_bucket.assert_called_once_with(Bucket="test-bucket")
+        mock_boto3_client.create_bucket.assert_called_once_with(Bucket="test-bucket")
+
+    def test_ensure_bucket_reraises_on_403(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that ensure_bucket re-raises non-404 ClientErrors instead of creating bucket.
+
+        **Why this test is important:**
+          - Permission errors (403/AccessDenied) must not be silently swallowed
+          - Before the fix, any ClientError from head_bucket triggered create_bucket
+          - Validates that only 404/NoSuchBucket errors lead to bucket creation
+          - Critical for security: access-denied must propagate, not create a new bucket
+
+        **What it tests:**
+          - head_bucket raises ClientError with Code "AccessDenied" and HTTP 403
+          - The error is re-raised (not caught), surfacing as UpstreamError via retry wrapper
+          - create_bucket is never called
+        """
+        mock_boto3_client.head_bucket.side_effect = ClientError(
+            {
+                "Error": {"Code": "AccessDenied", "Message": "Access Denied"},
+                "ResponseMetadata": {"HTTPStatusCode": 403},
+            },
+            "HeadBucket",
+        )
+
+        with pytest.raises(UpstreamError, match="S3 ensure_bucket failed"):
+            s3_client.ensure_bucket("test-bucket")
+
+        mock_boto3_client.create_bucket.assert_not_called()
+
     def test_ensure_bucket_handles_circuit_breaker_open(
         self,
         s3_client: S3ClientWrapper,

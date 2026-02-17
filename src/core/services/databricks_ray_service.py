@@ -143,9 +143,10 @@ class DatabricksRayService:
         s3_access_key_id: str,
         s3_secret_access_key: str,
         s3_bucket: str,
-        s3_prefix: str = "images/",
+        s3_prefix: str = "",
         image_embedding_config: ImageEmbeddingConfig,
         collection: str,
+        image_max_items: int | None = None,
     ) -> int:
         """Submit a Databricks job to process S3 images and store embeddings.
 
@@ -158,9 +159,10 @@ class DatabricksRayService:
             s3_access_key_id: S3 access key.
             s3_secret_access_key: S3 secret key.
             s3_bucket: S3 bucket name to read from.
-            s3_prefix: S3 prefix to filter objects (default: `images/`).
+            s3_prefix: S3 prefix to filter objects (default: "" for bucket root).
             image_embedding_config: Image embedding provider configuration.
             collection: Vector DB base collection name.
+            image_max_items: Optional limit on number of images to process.
 
         Returns:
             Databricks run ID for the submitted job.
@@ -181,6 +183,8 @@ class DatabricksRayService:
             extra_env_keys=("INATINQ_SRC_DIR",),
         )
         add_ray_tuning_env(env_vars)
+        if image_max_items is not None:
+            env_vars["IMAGE_MAX_ITEMS"] = str(image_max_items)
         python_params = [f"{key}={value}" for key, value in env_vars.items()]
 
         try:
