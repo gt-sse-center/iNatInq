@@ -576,6 +576,14 @@ class TestRayImageJobResponse:
 class TestDatabricksImageJobRequest:
     """Test suite for DatabricksImageJobRequest model."""
 
+    def test_s3_prefix_defaults_empty_string(self) -> None:
+        """Test that s3_prefix defaults to bucket root when omitted."""
+        req = models.DatabricksImageJobRequest(
+            source="s3",
+            collection="documents",
+        )
+        assert req.s3_prefix == ""
+
     def test_image_max_items_field(self) -> None:
         """Test that DatabricksImageJobRequest accepts image_max_items."""
         req = models.DatabricksImageJobRequest(
