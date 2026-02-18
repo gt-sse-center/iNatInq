@@ -286,7 +286,7 @@ class ImageProcessingPipeline:
             if idx >= len(all_vectors) or not all_vectors[idx]:
                 continue
             vec = all_vectors[idx]
-            point_id = str(uuid.uuid4())
+            point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, img.s3_key))
             payload = {
                 "s3_key": img.s3_key,
                 "s3_uri": img.s3_uri,
@@ -348,14 +348,24 @@ class ImageProcessingPipeline:
                     )
 
         # Build results per image
+        # Mark as success if at least one DB succeeded (partial failure is acceptable)
         upserted_keys = {images[i].s3_key for i in valid_indices}
+        all_failed = len(failed_dbs) == len(upsert_labels) and len(upsert_labels) > 0
         results: list[ProcessingResult] = []
         for img in images:
             if img.s3_key not in upserted_keys:
                 results.append(ProcessingResult.failure_result(img.s3_key, "Not in valid embed batch"))
-            elif failed_dbs:
-                error_msg = f"Upsert failed for: {', '.join(failed_dbs)}"
+            elif all_failed:
+                error_msg = f"Upsert failed for all DBs: {', '.join(failed_dbs)}"
                 results.append(ProcessingResult.failure_result(img.s3_key, error_msg))
+            elif failed_dbs:
+                logger.warning(
+                    "Partial upsert: %s succeeded but %s failed for %s",
+                    [label for label in upsert_labels if label not in failed_dbs],
+                    failed_dbs,
+                    img.s3_key,
+                )
+                results.append(ProcessingResult.success_result(img.s3_key))
             else:
                 results.append(ProcessingResult.success_result(img.s3_key))
         return results

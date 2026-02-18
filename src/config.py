@@ -139,6 +139,10 @@ defaults):
 - `RAY_WAIT_BATCH_SIZE`: Results per ray.wait() call (default: `10`)
 - `RAY_PROGRESS_LOG_INTERVAL`: Log progress every N keys
   (default: `1000`)
+- `S3_PREFIX`: S3 key prefix for pipeline jobs (default: `""`)
+- `IMAGE_MAX_ITEMS`: Optional cap on images to process
+  (default: no limit)
+- `IMAGE_PAGE_SIZE`: Keys per S3 API page (default: `1000`)
 - `RAY_CIRCUIT_BREAKER_THRESHOLD`: Failures to open breaker
   (default: `5`)
 - `RAY_CIRCUIT_BREAKER_TIMEOUT`: Recovery timeout in seconds
@@ -255,6 +259,28 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from pydantic_settings import SettingsConfigDict
+
+
+def _parse_optional_positive_int(name: str) -> int | None:
+    """Parse an optional positive integer from an environment variable.
+
+    Returns None if the variable is unset, empty, not a valid integer,
+    or not positive.
+
+    Args:
+        name: Environment variable name.
+
+    Returns:
+        Parsed positive integer, or None.
+    """
+    raw = os.getenv(name)
+    if not raw:
+        return None
+    try:
+        val = int(raw)
+        return val if val > 0 else None
+    except ValueError:
+        return None
 
 
 def _is_in_cluster() -> bool:
@@ -955,6 +981,11 @@ class RayJobConfig(BaseModel):
             Smaller than text batches due to higher memory per image. Default: 20.
         image_embed_batch_size: Batch size for CLIP image embedding per API call.
             Smaller than text embed batches. Default: 4.
+        s3_prefix: S3 key prefix for pipeline jobs. Default: "".
+        image_max_items: Optional cap on images to process. None means no
+            limit. Default: None.
+        image_page_size: Keys per S3 API page for image listing.
+            Default: 1000.
         task_num_cpus: CPUs requested per Ray task. Affects scheduling.
             Default: 1.
         task_max_retries: Maximum retries for failed Ray tasks.
@@ -1005,6 +1036,11 @@ class RayJobConfig(BaseModel):
     s3_batch_size: int = 50
     image_batch_size: int = 20
     image_embed_batch_size: int = 4
+
+    # S3 image pipeline settings
+    s3_prefix: str = ""
+    image_max_items: int | None = None
+    image_page_size: int = 1000
 
     # Checkpointing
     checkpoint_dir: str = "/tmp/ray-checkpoints"
@@ -1097,6 +1133,10 @@ class RayJobConfig(BaseModel):
             s3_batch_size=int(os.getenv("RAY_S3_BATCH_SIZE", "50")),
             image_batch_size=int(os.getenv("RAY_IMAGE_BATCH_SIZE", "20")),
             image_embed_batch_size=int(os.getenv("RAY_IMAGE_EMBED_BATCH_SIZE", "4")),
+            # S3 image pipeline settings
+            s3_prefix=os.getenv("S3_PREFIX", ""),
+            image_max_items=_parse_optional_positive_int("IMAGE_MAX_ITEMS"),
+            image_page_size=int(os.getenv("IMAGE_PAGE_SIZE", "1000")),
             # Checkpointing
             checkpoint_dir=os.getenv("RAY_CHECKPOINT_DIR", "/tmp/ray-checkpoints"),
             checkpoint_enabled=os.getenv("RAY_CHECKPOINT_ENABLED", "true").lower() == "true",
@@ -1118,6 +1158,77 @@ class RayJobConfig(BaseModel):
             retry_max_attempts=int(os.getenv("RAY_RETRY_MAX_ATTEMPTS", "3")),
             retry_min_wait=float(os.getenv("RAY_RETRY_MIN_WAIT", "1.0")),
             retry_max_wait=float(os.getenv("RAY_RETRY_MAX_WAIT", "10.0")),
+        )
+
+
+class INatConfig(BaseModel):
+    """Configuration for iNaturalist image pipeline.
+
+    Attributes:
+        image_size: Image size variant for URL construction (e.g., "medium",
+            "small", "original"). Default: "medium".
+        max_rows: Maximum number of metadata rows to read. Required — no default.
+        metadata_url: iNaturalist metadata URL. Empty string means auto-detect
+            from client. Default: "".
+        photo_base_url: Base URL for iNaturalist photo downloads.
+            Default: "https://inaturalist-open-data.s3.amazonaws.com/photos".
+        timeout_s: HTTP request timeout in seconds for image downloads.
+            Default: 120.
+        cb_failure_threshold: Circuit breaker failure threshold. Default: 5.
+        cb_recovery_timeout_s: Circuit breaker recovery timeout in seconds.
+            Default: 30.
+        image_max_items: Optional cap on total images to process. None means
+            no limit. Default: None.
+    """
+
+    image_size: str = "medium"
+    max_rows: int
+    metadata_url: str = ""
+    photo_base_url: str = "https://inaturalist-open-data.s3.amazonaws.com/photos"
+    timeout_s: int = 120
+    cb_failure_threshold: int = 5
+    cb_recovery_timeout_s: int = 30
+    image_max_items: int | None = None
+
+    model_config = SettingsConfigDict(frozen=True)
+
+    @classmethod
+    def from_env(cls) -> "INatConfig":
+        """Create INatConfig from environment variables.
+
+        Environment Variables:
+            INAT_IMAGE_SIZE: Image size variant (default: "medium").
+            INAT_MAX_ROWS: Required positive integer — max metadata rows.
+            INAT_METADATA_URL: Metadata URL (default: "" = auto-detect).
+            INAT_PHOTO_BASE_URL: Photo base URL.
+            INAT_TIMEOUT_S: Download timeout in seconds (default: 120).
+            INAT_CB_FAILURE_THRESHOLD: Circuit breaker failures (default: 5).
+            INAT_CB_RECOVERY_TIMEOUT_S: Circuit breaker recovery (default: 30).
+            IMAGE_MAX_ITEMS: Optional cap on images to process.
+
+        Returns:
+            Configured INatConfig instance.
+
+        Raises:
+            RuntimeError: If INAT_MAX_ROWS is missing or not a positive integer.
+        """
+        raw_max_rows = os.getenv("INAT_MAX_ROWS", "").strip()
+        if not raw_max_rows:
+            raise RuntimeError("INAT_MAX_ROWS is required and must be a positive integer")
+        max_rows = int(raw_max_rows)
+        if max_rows <= 0:
+            raise RuntimeError("INAT_MAX_ROWS must be a positive integer")
+        return cls(
+            image_size=(os.getenv("INAT_IMAGE_SIZE") or "medium").strip().lower(),
+            max_rows=max_rows,
+            metadata_url=(os.getenv("INAT_METADATA_URL") or "").strip(),
+            photo_base_url=(
+                os.getenv("INAT_PHOTO_BASE_URL") or "https://inaturalist-open-data.s3.amazonaws.com/photos"
+            ).strip(),
+            timeout_s=int((os.getenv("INAT_TIMEOUT_S") or "120").strip()),
+            cb_failure_threshold=int((os.getenv("INAT_CB_FAILURE_THRESHOLD") or "5").strip()),
+            cb_recovery_timeout_s=int((os.getenv("INAT_CB_RECOVERY_TIMEOUT_S") or "30").strip()),
+            image_max_items=_parse_optional_positive_int("IMAGE_MAX_ITEMS"),
         )
 
 

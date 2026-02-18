@@ -24,6 +24,7 @@ import pytest
 
 from config import (
     DatabricksRayJobConfig,
+    INatConfig,
     MinIOConfig,
     RayJobConfig,
     VectorDBConfig,
@@ -868,3 +869,152 @@ class TestVectorDBConfigIngestionTargets:
         """
         config = VectorDBConfig.from_env()
         assert config.ingestion_targets == frozenset({"qdrant", "weaviate"})
+
+
+# =============================================================================
+# RayJobConfig Image Pipeline Fields Tests
+# =============================================================================
+
+
+class TestRayJobConfigImagePipelineFields:
+    """Test suite for RayJobConfig image pipeline fields (s3_prefix, image_max_items, image_page_size)."""
+
+    @patch.dict(
+        os.environ,
+        {
+            "RAY_DASHBOARD_ADDRESS": "http://ray-head:8265",
+            "S3_PREFIX": "images/birds/",
+            "IMAGE_MAX_ITEMS": "500",
+            "IMAGE_PAGE_SIZE": "2000",
+        },
+        clear=False,
+    )
+    def test_image_pipeline_fields_from_env(self) -> None:
+        """Test that image pipeline fields are parsed from environment."""
+        config = RayJobConfig.from_env()
+        assert config.s3_prefix == "images/birds/"
+        assert config.image_max_items == 500
+        assert config.image_page_size == 2000
+
+    @patch.dict(
+        os.environ,
+        {"RAY_DASHBOARD_ADDRESS": "http://ray-head:8265"},
+        clear=False,
+    )
+    def test_image_pipeline_default_values(self) -> None:
+        """Test that image pipeline fields use correct defaults."""
+        config = RayJobConfig.from_env()
+        assert config.s3_prefix == ""
+        assert config.image_max_items is None
+        assert config.image_page_size == 1000
+
+    @patch.dict(
+        os.environ,
+        {
+            "RAY_DASHBOARD_ADDRESS": "http://ray-head:8265",
+            "IMAGE_MAX_ITEMS": "0",
+        },
+        clear=False,
+    )
+    def test_image_max_items_zero_returns_none(self) -> None:
+        """Test that IMAGE_MAX_ITEMS=0 is treated as None (no limit)."""
+        config = RayJobConfig.from_env()
+        assert config.image_max_items is None
+
+    @patch.dict(
+        os.environ,
+        {
+            "RAY_DASHBOARD_ADDRESS": "http://ray-head:8265",
+            "IMAGE_MAX_ITEMS": "-5",
+        },
+        clear=False,
+    )
+    def test_image_max_items_negative_returns_none(self) -> None:
+        """Test that negative IMAGE_MAX_ITEMS is treated as None."""
+        config = RayJobConfig.from_env()
+        assert config.image_max_items is None
+
+    @patch.dict(
+        os.environ,
+        {
+            "RAY_DASHBOARD_ADDRESS": "http://ray-head:8265",
+            "IMAGE_MAX_ITEMS": "not-a-number",
+        },
+        clear=False,
+    )
+    def test_image_max_items_invalid_returns_none(self) -> None:
+        """Test that non-integer IMAGE_MAX_ITEMS is treated as None."""
+        config = RayJobConfig.from_env()
+        assert config.image_max_items is None
+
+
+# =============================================================================
+# INatConfig Tests
+# =============================================================================
+
+
+class TestINatConfig:
+    """Test suite for INatConfig from_env() parsing and validation."""
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_missing_max_rows_raises(self) -> None:
+        """Test that missing INAT_MAX_ROWS raises RuntimeError."""
+        with pytest.raises(RuntimeError, match="INAT_MAX_ROWS is required"):
+            INatConfig.from_env()
+
+    @patch.dict(os.environ, {"INAT_MAX_ROWS": "0"}, clear=True)
+    def test_zero_max_rows_raises(self) -> None:
+        """Test that INAT_MAX_ROWS=0 raises RuntimeError."""
+        with pytest.raises(RuntimeError, match="INAT_MAX_ROWS must be a positive integer"):
+            INatConfig.from_env()
+
+    @patch.dict(os.environ, {"INAT_MAX_ROWS": "-10"}, clear=True)
+    def test_negative_max_rows_raises(self) -> None:
+        """Test that negative INAT_MAX_ROWS raises RuntimeError."""
+        with pytest.raises(RuntimeError, match="INAT_MAX_ROWS must be a positive integer"):
+            INatConfig.from_env()
+
+    @patch.dict(os.environ, {"INAT_MAX_ROWS": "100"}, clear=True)
+    def test_default_values(self) -> None:
+        """Test that INatConfig defaults are applied correctly."""
+        config = INatConfig.from_env()
+        assert config.image_size == "medium"
+        assert config.max_rows == 100
+        assert config.metadata_url == ""
+        assert config.photo_base_url == "https://inaturalist-open-data.s3.amazonaws.com/photos"
+        assert config.timeout_s == 120
+        assert config.cb_failure_threshold == 5
+        assert config.cb_recovery_timeout_s == 30
+        assert config.image_max_items is None
+
+    @patch.dict(
+        os.environ,
+        {
+            "INAT_MAX_ROWS": "50",
+            "INAT_IMAGE_SIZE": " Large ",
+            "INAT_METADATA_URL": "https://example.com/photos.tsv",
+            "INAT_PHOTO_BASE_URL": "https://custom.cdn.com/photos",
+            "INAT_TIMEOUT_S": "300",
+            "INAT_CB_FAILURE_THRESHOLD": "10",
+            "INAT_CB_RECOVERY_TIMEOUT_S": "60",
+            "IMAGE_MAX_ITEMS": "200",
+        },
+        clear=True,
+    )
+    def test_all_fields_from_env(self) -> None:
+        """Test that all INatConfig fields are parsed from environment."""
+        config = INatConfig.from_env()
+        assert config.image_size == "large"
+        assert config.max_rows == 50
+        assert config.metadata_url == "https://example.com/photos.tsv"
+        assert config.photo_base_url == "https://custom.cdn.com/photos"
+        assert config.timeout_s == 300
+        assert config.cb_failure_threshold == 10
+        assert config.cb_recovery_timeout_s == 60
+        assert config.image_max_items == 200
+
+    @patch.dict(os.environ, {"INAT_MAX_ROWS": "  25  "}, clear=True)
+    def test_whitespace_handling(self) -> None:
+        """Test that INAT_MAX_ROWS whitespace is stripped."""
+        config = INatConfig.from_env()
+        assert config.max_rows == 25

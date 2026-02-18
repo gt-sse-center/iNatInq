@@ -442,3 +442,194 @@ class TestRayJobStatusResponse:
 
         assert resp.status == "FAILED"
         assert resp.message == "Job failed due to timeout"
+
+
+# =============================================================================
+# Ray Image Job Models Tests
+# =============================================================================
+
+
+class TestRayImageJobRequest:
+    """Test suite for RayImageJobRequest model."""
+
+    def test_valid_request_with_defaults(self) -> None:
+        """Test that RayImageJobRequest works with default s3_prefix and no image_max_items."""
+        req = models.RayImageJobRequest(
+            s3_bucket="pipeline",
+            collection="documents",
+        )
+
+        assert req.s3_bucket == "pipeline"
+        assert req.s3_prefix == ""
+        assert req.collection == "documents"
+        assert req.image_max_items is None
+        assert req.image_page_size is None
+
+    def test_empty_prefix_means_bucket_root(self) -> None:
+        """Test that s3_prefix defaults to empty string (bucket root)."""
+        req = models.RayImageJobRequest(
+            s3_bucket="pipeline",
+            collection="documents",
+        )
+        assert req.s3_prefix == ""
+
+    def test_explicit_prefix(self) -> None:
+        """Test that an explicit s3_prefix is accepted."""
+        req = models.RayImageJobRequest(
+            s3_bucket="pipeline",
+            s3_prefix="images/2026/",
+            collection="documents",
+        )
+        assert req.s3_prefix == "images/2026/"
+
+    def test_image_max_items_positive(self) -> None:
+        """Test that image_max_items accepts positive integers."""
+        req = models.RayImageJobRequest(
+            s3_bucket="pipeline",
+            collection="documents",
+            image_max_items=500,
+        )
+        assert req.image_max_items == 500
+
+    def test_image_max_items_rejects_zero(self) -> None:
+        """Test that image_max_items rejects zero (gt=0 constraint)."""
+        with pytest.raises(ValidationError):
+            models.RayImageJobRequest(
+                s3_bucket="pipeline",
+                collection="documents",
+                image_max_items=0,
+            )
+
+    def test_image_max_items_rejects_negative(self) -> None:
+        """Test that image_max_items rejects negative values."""
+        with pytest.raises(ValidationError):
+            models.RayImageJobRequest(
+                s3_bucket="pipeline",
+                collection="documents",
+                image_max_items=-1,
+            )
+
+    def test_image_page_size_positive(self) -> None:
+        """Test that image_page_size accepts positive integers."""
+        req = models.RayImageJobRequest(
+            s3_bucket="pipeline",
+            collection="documents",
+            image_page_size=500,
+        )
+        assert req.image_page_size == 500
+
+    def test_image_page_size_rejects_zero(self) -> None:
+        """Test that image_page_size rejects zero (gt=0 constraint)."""
+        with pytest.raises(ValidationError):
+            models.RayImageJobRequest(
+                s3_bucket="pipeline",
+                collection="documents",
+                image_page_size=0,
+            )
+
+    def test_image_page_size_rejects_negative(self) -> None:
+        """Test that image_page_size rejects negative values."""
+        with pytest.raises(ValidationError):
+            models.RayImageJobRequest(
+                s3_bucket="pipeline",
+                collection="documents",
+                image_page_size=-1,
+            )
+
+
+class TestRayImageJobResponse:
+    """Test suite for RayImageJobResponse model."""
+
+    def test_response_includes_image_max_items(self) -> None:
+        """Test that RayImageJobResponse includes image_max_items when provided."""
+        resp = models.RayImageJobResponse(
+            job_id="raysubmit_123",
+            status="submitted",
+            namespace="ml-system",
+            s3_bucket="pipeline",
+            s3_prefix="images/",
+            collection="documents",
+            image_max_items=100,
+            submitted_at="2026-01-12T15:30:45Z",
+        )
+        assert resp.image_max_items == 100
+
+    def test_response_image_max_items_defaults_none(self) -> None:
+        """Test that RayImageJobResponse defaults image_max_items to None."""
+        resp = models.RayImageJobResponse(
+            job_id="raysubmit_123",
+            status="submitted",
+            namespace="ml-system",
+            s3_bucket="pipeline",
+            s3_prefix="",
+            collection="documents",
+            submitted_at="2026-01-12T15:30:45Z",
+        )
+        assert resp.image_max_items is None
+
+
+# =============================================================================
+# Databricks Image Job Models Tests
+# =============================================================================
+
+
+class TestDatabricksImageJobRequest:
+    """Test suite for DatabricksImageJobRequest model."""
+
+    def test_s3_prefix_defaults_empty_string(self) -> None:
+        """Test that s3_prefix defaults to bucket root when omitted."""
+        req = models.DatabricksImageJobRequest(
+            source="s3",
+            collection="documents",
+        )
+        assert req.s3_prefix == ""
+
+    def test_image_max_items_field(self) -> None:
+        """Test that DatabricksImageJobRequest accepts image_max_items."""
+        req = models.DatabricksImageJobRequest(
+            source="s3",
+            s3_prefix="images/",
+            collection="documents",
+            image_max_items=200,
+        )
+        assert req.image_max_items == 200
+
+    def test_image_max_items_defaults_none(self) -> None:
+        """Test that image_max_items defaults to None."""
+        req = models.DatabricksImageJobRequest(
+            source="s3",
+            s3_prefix="images/",
+            collection="documents",
+        )
+        assert req.image_max_items is None
+        assert req.image_page_size is None
+
+    def test_image_max_items_rejects_zero(self) -> None:
+        """Test that image_max_items rejects zero."""
+        with pytest.raises(ValidationError):
+            models.DatabricksImageJobRequest(
+                source="s3",
+                s3_prefix="images/",
+                collection="documents",
+                image_max_items=0,
+            )
+
+    def test_image_page_size_positive(self) -> None:
+        """Test that image_page_size accepts positive integers."""
+        req = models.DatabricksImageJobRequest(
+            source="s3",
+            s3_prefix="images/",
+            collection="documents",
+            image_page_size=2000,
+        )
+        assert req.image_page_size == 2000
+
+    def test_image_page_size_rejects_zero(self) -> None:
+        """Test that image_page_size rejects zero."""
+        with pytest.raises(ValidationError):
+            models.DatabricksImageJobRequest(
+                source="s3",
+                s3_prefix="images/",
+                collection="documents",
+                image_page_size=0,
+            )

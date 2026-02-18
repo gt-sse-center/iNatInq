@@ -16,15 +16,14 @@ This allows the API to return immediately while Ray cluster manages job executio
 """
 
 import logging
-import os
 from typing import Any
 
 import attrs
 from ray.job_submission import JobSubmissionClient
 
-from config import EmbeddingConfig, RayJobConfig
+from config import EmbeddingConfig, ImageEmbeddingConfig, RayJobConfig
 from core.exceptions import UpstreamError
-from core.services.ingestion_params import build_ingestion_env
+from core.services.ingestion_params import build_image_ingestion_env, build_ingestion_env
 
 logger = logging.getLogger("pipeline.ray.service")
 
@@ -174,8 +173,11 @@ class RayService:
         s3_access_key_id: str,
         s3_secret_access_key: str,
         s3_bucket: str,
-        s3_prefix: str = "images/",
+        s3_prefix: str = "",
         collection: str,
+        image_embedding_config: ImageEmbeddingConfig | None = None,
+        image_max_items: int | None = None,
+        image_page_size: int | None = None,
     ) -> str:
         """Submit a Ray job to process S3 images and store embeddings in vector DB image collections.
 
@@ -189,8 +191,11 @@ class RayService:
             s3_access_key_id: S3 access key.
             s3_secret_access_key: S3 secret key.
             s3_bucket: S3 bucket name containing images.
-            s3_prefix: S3 prefix to process (default: "images/").
+            s3_prefix: S3 prefix to process (default: "" for bucket root).
             collection: Base collection name (image collections: {collection}_images).
+            image_embedding_config: Image embedding configuration. If None, loaded from env.
+            image_max_items: Optional limit on number of images to process.
+            image_page_size: Optional S3 listing page size override.
 
         Returns:
             Ray job ID (e.g., "raysubmit_1234567890").
@@ -204,41 +209,29 @@ class RayService:
                 "RAY_DASHBOARD_ADDRESS not configured. Cannot submit image job to Ray cluster."
             )
 
+        if image_embedding_config is None:
+            image_embedding_config = ImageEmbeddingConfig.from_env(namespace)
+
         dashboard_address = ray_config.dashboard_address
         logger.info(
             "Submitting Ray image job",
             extra={"s3_bucket": s3_bucket, "s3_prefix": s3_prefix, "dashboard_address": dashboard_address},
         )
 
-        env_vars = {
-            "K8S_NAMESPACE": namespace,
-            "S3_PREFIX": s3_prefix,
-            "S3_ENDPOINT": s3_endpoint,
-            "S3_ACCESS_KEY_ID": s3_access_key_id,
-            "S3_SECRET_ACCESS_KEY": s3_secret_access_key,
-            "S3_BUCKET": s3_bucket,
-            "VECTOR_DB_COLLECTION": collection,
-        }
-        if os.getenv("QDRANT_URL"):
-            env_vars["QDRANT_URL"] = os.getenv("QDRANT_URL")
-        if os.getenv("QDRANT_API_KEY"):
-            env_vars["QDRANT_API_KEY"] = os.getenv("QDRANT_API_KEY")
-        if os.getenv("WEAVIATE_URL"):
-            env_vars["WEAVIATE_URL"] = os.getenv("WEAVIATE_URL")
-        if os.getenv("WEAVIATE_API_KEY"):
-            env_vars["WEAVIATE_API_KEY"] = os.getenv("WEAVIATE_API_KEY")
-        if os.getenv("WEAVIATE_GRPC_HOST"):
-            env_vars["WEAVIATE_GRPC_HOST"] = os.getenv("WEAVIATE_GRPC_HOST")
-        if os.getenv("CLIP_URL"):
-            env_vars["CLIP_URL"] = os.getenv("CLIP_URL")
-        if os.getenv("OLLAMA_BASE_URL"):
-            env_vars["OLLAMA_BASE_URL"] = os.getenv("OLLAMA_BASE_URL")
-        if os.getenv("CLIP_MODEL"):
-            env_vars["CLIP_MODEL"] = os.getenv("CLIP_MODEL")
-        if os.getenv("CLIP_BACKEND"):
-            env_vars["CLIP_BACKEND"] = os.getenv("CLIP_BACKEND")
-        if os.getenv("VECTOR_DB_TARGETS"):
-            env_vars["VECTOR_DB_TARGETS"] = os.getenv("VECTOR_DB_TARGETS")
+        env_vars = build_image_ingestion_env(
+            namespace=namespace,
+            s3_endpoint=s3_endpoint,
+            s3_access_key_id=s3_access_key_id,
+            s3_secret_access_key=s3_secret_access_key,
+            s3_bucket=s3_bucket,
+            s3_prefix=s3_prefix,
+            image_embedding_config=image_embedding_config,
+            collection=collection,
+        )
+        if image_max_items is not None:
+            env_vars["IMAGE_MAX_ITEMS"] = str(image_max_items)
+        if image_page_size is not None:
+            env_vars["IMAGE_PAGE_SIZE"] = str(image_page_size)
 
         try:
             client = JobSubmissionClient(dashboard_address)
