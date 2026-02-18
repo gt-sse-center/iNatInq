@@ -71,6 +71,7 @@ class RayImageProcessingConfig:
     retry_min_wait: float = 1.0
     retry_max_wait: float = 10.0
     image_preprocess_max_size: int = DEFAULT_IMAGE_PREPROCESS_MAX_SIZE
+    s3_fetch_concurrency: int = 20
 
 
 # =============================================================================
@@ -119,8 +120,6 @@ class ImageProcessingPipeline:
         if not keys:
             return []
 
-        targets = self._config.ingestion_targets
-
         s3 = S3ClientWrapper(
             endpoint_url=self._config.s3_endpoint,
             access_key_id=self._config.s3_access_key,
@@ -164,6 +163,43 @@ class ImageProcessingPipeline:
             if weaviate_db is not None:
                 weaviate_db.close()
             session.close()
+
+    async def _fetch_and_process_async(
+        self,
+        s3: S3ClientWrapper,
+        clip_client: CLIPClient,
+        qdrant_db: VectorDBProvider | None,
+        weaviate_db: VectorDBProvider | None,
+        keys: list[str],
+    ) -> list[ProcessingResult]:
+        """Fetch images from S3 and process through embedding pipeline.
+
+        Combines async S3 fetch with async embed+upsert in a single
+        event loop for maximum throughput.
+
+        Args:
+            s3: S3 client wrapper.
+            clip_client: CLIP embedding client.
+            qdrant_db: Qdrant vector database provider (or None).
+            weaviate_db: Weaviate vector database provider (or None).
+            keys: List of S3 object keys.
+
+        Returns:
+            List of processing results.
+        """
+        try:
+            fetcher = ImageContentFetcher(s3, self._config.s3_bucket)
+            images, fetch_failures = await fetcher.fetch_all_async(
+                keys, with_dimensions=True, max_concurrent=self._config.s3_fetch_concurrency
+            )
+
+            if not images:
+                return fetch_failures
+
+            process_results = await self._process_images_async(images, clip_client, qdrant_db, weaviate_db)
+            return fetch_failures + process_results
+        finally:
+            await clip_client.close_async()
 
     async def _process_images_async(  # noqa: PLR0912
         self,
@@ -222,15 +258,24 @@ class ImageProcessingPipeline:
         weaviate_image_class = WeaviateClientWrapper._collection_to_image_class_name(collection)
         vector_size = clip_client.vector_size
 
-        # Ensure image collections exist for targeted DBs
+        # Ensure image collections exist for targeted DBs (parallel)
+        ensure_tasks = []
         if qdrant_db is not None:
-            ensure_qdrant = getattr(qdrant_db, "ensure_image_collection_async", None)
-            if callable(ensure_qdrant):
-                await ensure_qdrant(collection=collection, vector_size=vector_size)
+            ensure_fn = getattr(qdrant_db, "ensure_image_collection_async", None)
+            if callable(ensure_fn):
+                ensure_tasks.append(ensure_fn(collection=collection, vector_size=vector_size))
         if weaviate_db is not None:
-            ensure_weaviate = getattr(weaviate_db, "ensure_image_collection_async", None)
-            if callable(ensure_weaviate):
-                await ensure_weaviate(collection=collection, vector_size=vector_size)
+            ensure_fn = getattr(weaviate_db, "ensure_image_collection_async", None)
+            if callable(ensure_fn):
+                ensure_tasks.append(ensure_fn(collection=collection, vector_size=vector_size))
+        if ensure_tasks:
+            ensure_results = await asyncio.gather(*ensure_tasks, return_exceptions=True)
+            for result in ensure_results:
+                if isinstance(result, Exception):
+                    logger.error(
+                        "Failed to ensure image collection",
+                        extra={"error": str(result), "error_type": type(result).__name__},
+                    )
 
         # Build Qdrant points and Weaviate objects for targeted DBs
         qdrant_points: list[PointStruct] = []
@@ -262,49 +307,57 @@ class ImageProcessingPipeline:
                 for i in range(len(images))
             ]
 
-        # Upsert to targeted DBs
+        # Upsert to targeted DBs (parallel)
+        upsert_tasks: list[asyncio.Task] = []
+        upsert_labels: list[str] = []
+
         if qdrant_db is not None and qdrant_points:
-            try:
-                await qdrant_db.batch_upsert_async(
-                    collection=qdrant_image_collection,
-                    points=qdrant_points,
-                    vector_size=vector_size,
+            upsert_tasks.append(
+                asyncio.ensure_future(
+                    qdrant_db.batch_upsert_async(
+                        collection=qdrant_image_collection,
+                        points=qdrant_points,
+                        vector_size=vector_size,
+                    )
                 )
-            except Exception as e:
-                logger.exception(
-                    "Qdrant image batch upsert failed",
-                    extra={"error": str(e), "collection": qdrant_image_collection},
-                )
-                return [
-                    ProcessingResult.failure_result(images[i].s3_key, f"Qdrant upsert: {e}")
-                    for i in range(len(images))
-                ]
+            )
+            upsert_labels.append("qdrant")
 
         if weaviate_db is not None and weaviate_objects:
-            try:
-                await weaviate_db.batch_upsert_async(
-                    collection=weaviate_image_class,
-                    points=weaviate_objects,
-                    vector_size=vector_size,
+            upsert_tasks.append(
+                asyncio.ensure_future(
+                    weaviate_db.batch_upsert_async(
+                        collection=weaviate_image_class,
+                        points=weaviate_objects,
+                        vector_size=vector_size,
+                    )
                 )
-            except Exception as e:
-                logger.exception(
-                    "Weaviate image batch upsert failed",
-                    extra={"error": str(e), "class": weaviate_image_class},
-                )
-                return [
-                    ProcessingResult.failure_result(images[i].s3_key, f"Weaviate upsert: {e}")
-                    for i in range(len(images))
-                ]
+            )
+            upsert_labels.append("weaviate")
 
-        # Success for all processed images
-        success_keys = {images[i].s3_key for i in valid_indices}
+        failed_dbs: list[str] = []
+        if upsert_tasks:
+            upsert_results = await asyncio.gather(*upsert_tasks, return_exceptions=True)
+            for label, result in zip(upsert_labels, upsert_results, strict=True):
+                if isinstance(result, Exception):
+                    failed_dbs.append(label)
+                    logger.exception(
+                        "%s image batch upsert failed",
+                        label.capitalize(),
+                        extra={"error": str(result), "collection": collection},
+                    )
+
+        # Build results per image
+        upserted_keys = {images[i].s3_key for i in valid_indices}
         results: list[ProcessingResult] = []
         for img in images:
-            if img.s3_key in success_keys:
-                results.append(ProcessingResult.success_result(img.s3_key))
-            else:
+            if img.s3_key not in upserted_keys:
                 results.append(ProcessingResult.failure_result(img.s3_key, "Not in valid embed batch"))
+            elif failed_dbs:
+                error_msg = f"Upsert failed for: {', '.join(failed_dbs)}"
+                results.append(ProcessingResult.failure_result(img.s3_key, error_msg))
+            else:
+                results.append(ProcessingResult.success_result(img.s3_key))
         return results
 
 

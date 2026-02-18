@@ -920,7 +920,7 @@ class TestQdrantClientWrapperAdditional:
         """Test that disable_indexing raises UpstreamError on exception."""
         mock_async_client.update_collection.side_effect = Exception("API Error")
 
-        with pytest.raises(UpstreamError, match="Failed to disable indexing"):
+        with pytest.raises(UpstreamError, match="Qdrant disable_indexing failed"):
             await qdrant_client.disable_indexing(collection="test-collection")
 
     @pytest.mark.asyncio
@@ -930,7 +930,7 @@ class TestQdrantClientWrapperAdditional:
         """Test that enable_indexing raises UpstreamError on exception."""
         mock_async_client.update_collection.side_effect = Exception("API Error")
 
-        with pytest.raises(UpstreamError, match="Failed to enable indexing"):
+        with pytest.raises(UpstreamError, match="Qdrant enable_indexing failed"):
             await qdrant_client.enable_indexing(collection="test-collection")
 
     @pytest.mark.asyncio
@@ -945,47 +945,36 @@ class TestQdrantClientWrapperAdditional:
         with pytest.raises(UpstreamError, match="Qdrant batch upsert failed"):
             await qdrant_client.batch_upsert_async(collection="test-collection", points=points, vector_size=2)
 
-    def test_close_with_running_loop(
+    def test_close_calls_asyncio_run(
         self,
         qdrant_client: QdrantClientWrapper,
     ) -> None:
-        """Test that close handles running event loop."""
-        with patch("asyncio.get_event_loop") as mock_get_loop:
-            mock_loop = MagicMock()
-            mock_loop.is_running.return_value = True
-            mock_loop.create_task = MagicMock()
-            mock_get_loop.return_value = mock_loop
-
+        """Test that close calls asyncio.run with close_async_resource."""
+        with patch("clients.qdrant.asyncio.run") as mock_run:
             qdrant_client.close()
 
-            mock_loop.create_task.assert_called_once()
+            mock_run.assert_called_once()
 
-    def test_close_without_running_loop(
+    def test_close_sets_client_to_none(
         self,
         qdrant_client: QdrantClientWrapper,
     ) -> None:
-        """Test that close handles non-running event loop."""
-        with patch("asyncio.get_event_loop") as mock_get_loop:
-            mock_loop = MagicMock()
-            mock_loop.is_running.return_value = False
-            mock_loop.run_until_complete = MagicMock()
-            mock_get_loop.return_value = mock_loop
-
+        """Test that close sets _client to None."""
+        with patch("clients.qdrant.asyncio.run"):
             qdrant_client.close()
 
-            mock_loop.run_until_complete.assert_called_once()
+        assert qdrant_client._client is None
 
-    def test_close_without_event_loop(
+    def test_close_is_idempotent(
         self,
         qdrant_client: QdrantClientWrapper,
     ) -> None:
-        """Test that close handles missing event loop."""
-        with patch("asyncio.get_event_loop") as mock_get_loop:
-            mock_get_loop.side_effect = RuntimeError("No event loop")
-            with patch("asyncio.run") as mock_run:
-                qdrant_client.close()
+        """Test that close is safe to call multiple times."""
+        with patch("clients.qdrant.asyncio.run") as mock_run:
+            qdrant_client.close()
+            qdrant_client.close()  # second call is a no-op
 
-                mock_run.assert_called_once()
+            mock_run.assert_called_once()
 
     def test_close_with_none_client(self) -> None:
         """Test that close handles None client gracefully."""
