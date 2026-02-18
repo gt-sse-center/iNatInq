@@ -39,17 +39,11 @@ def _configure_component_debug_loggers() -> None:
         return
 
     if raw_value == "all":
-        logger_names = {
-            logger_name
-            for names in _COMPONENT_LOGGERS.values()
-            for logger_name in names
-        }
+        logger_names = {logger_name for names in _COMPONENT_LOGGERS.values() for logger_name in names}
     else:
         selected = {item.strip() for item in raw_value.split(",") if item.strip()}
         logger_names = {
-            logger_name
-            for component in selected
-            for logger_name in _COMPONENT_LOGGERS.get(component, ())
+            logger_name for component in selected for logger_name in _COMPONENT_LOGGERS.get(component, ())
         }
 
     for logger_name in logger_names:
