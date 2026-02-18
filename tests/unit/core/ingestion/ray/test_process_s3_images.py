@@ -8,8 +8,8 @@ in vector databases.
 
 The tests cover:
   - main() function lifecycle (init, process, shutdown)
-  - S3 object listing and image key filtering
-  - Error handling (S3 errors, strategy init errors, unexpected exceptions)
+  - Streaming S3 pagination via iter_image_batches
+  - Error handling (strategy init errors, unexpected exceptions)
   - Environment variable configuration (S3_PREFIX, VECTOR_DB_COLLECTION)
   - Batch processing and result aggregation
   - Graceful shutdown on errors
@@ -19,7 +19,6 @@ The tests cover:
 Run with: uv run pytest tests/unit/core/ingestion/ray/test_process_s3_images.py
 """
 
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -34,9 +33,12 @@ class TestRayImageJobMain:
 
     @pytest.fixture
     def mock_dependencies(self, mock_ray):
-        """Set up common mocks for main() tests."""
+        """Set up common mocks for main() tests.
+
+        Mocks iter_image_batches to yield no batches by default.
+        Individual tests override via the returned mock.
+        """
         mock_s3 = MagicMock()
-        mock_s3.list_objects.return_value = []
 
         mock_strategy = MagicMock()
         mock_strategy.init = MagicMock()
@@ -47,41 +49,60 @@ class TestRayImageJobMain:
                 with patch(
                     "core.ingestion.ray.process_s3_images.ImageEmbeddingConfig.from_env"
                 ) as mock_embed_cfg:
-                    with patch("core.ingestion.ray.process_s3_images.LocalRayStrategy") as mock_strat_cls:
-                        with patch("core.ingestion.ray.process_s3_images.S3ClientWrapper") as mock_s3_cls:
-                            mock_ray_cfg.return_value = MagicMock(
-                                num_workers=4,
-                                image_batch_size=50,
-                                image_embed_batch_size=8,
-                                task_num_cpus=1,
-                                task_max_retries=3,
-                                wait_batch_size=10,
-                                wait_timeout=1.0,
-                                pipeline_concurrency=10,
-                                circuit_breaker_threshold=5,
-                                circuit_breaker_timeout=30,
-                                embedding_timeout=120,
-                                upsert_timeout=60,
-                                retry_max_attempts=3,
-                                retry_min_wait=1.0,
-                                retry_max_wait=10.0,
-                            )
-                            mock_minio_cfg.return_value = MagicMock(
-                                endpoint_url="http://minio:9000",
-                                access_key_id="access",
-                                secret_access_key="secret",
-                                bucket="test-bucket",
-                            )
-                            mock_embed_cfg.return_value = MagicMock()
-                            mock_strat_cls.from_env.return_value = mock_strategy
-                            mock_s3_cls.return_value = mock_s3
+                    with patch(
+                        "core.ingestion.ray.process_s3_images.VectorDBConfig.from_env"
+                    ) as mock_vector_cfg:
+                        with patch("core.ingestion.ray.process_s3_images.LocalRayStrategy") as mock_strat_cls:
+                            with patch("core.ingestion.ray.process_s3_images.S3ClientWrapper") as mock_s3_cls:
+                                with patch(
+                                    "core.ingestion.ray.process_s3_images.iter_image_batches"
+                                ) as mock_iter:
+                                    mock_ray_cfg.return_value = MagicMock(
+                                        num_workers=4,
+                                        image_batch_size=50,
+                                        image_embed_batch_size=8,
+                                        task_num_cpus=1,
+                                        task_max_retries=3,
+                                        wait_batch_size=10,
+                                        wait_timeout=1.0,
+                                        pipeline_concurrency=10,
+                                        circuit_breaker_threshold=5,
+                                        circuit_breaker_timeout=30,
+                                        embedding_timeout=120,
+                                        upsert_timeout=60,
+                                        retry_max_attempts=3,
+                                        retry_min_wait=1.0,
+                                        retry_max_wait=10.0,
+                                        checkpoint_enabled=False,
+                                        checkpoint_dir="/tmp/checkpoints",
+                                        s3_prefix="",
+                                        image_max_items=None,
+                                        image_page_size=1000,
+                                    )
+                                    mock_minio_cfg.return_value = MagicMock(
+                                        endpoint_url="http://minio:9000",
+                                        access_key_id="access",
+                                        secret_access_key="secret",
+                                        bucket="test-bucket",
+                                    )
+                                    mock_embed_cfg.return_value = MagicMock()
+                                    mock_vector_cfg.return_value = MagicMock(
+                                        collection="documents",
+                                        ingestion_targets=frozenset({"qdrant", "weaviate"}),
+                                    )
+                                    mock_strat_cls.from_env.return_value = mock_strategy
+                                    mock_s3_cls.return_value = mock_s3
+                                    # Default: no batches (empty bucket)
+                                    mock_iter.return_value = iter([])
 
-                            yield {
-                                "ray_cfg": mock_ray_cfg,
-                                "minio_cfg": mock_minio_cfg,
-                                "strategy": mock_strategy,
-                                "s3": mock_s3,
-                            }
+                                    yield {
+                                        "ray_cfg": mock_ray_cfg,
+                                        "minio_cfg": mock_minio_cfg,
+                                        "vector_cfg": mock_vector_cfg,
+                                        "strategy": mock_strategy,
+                                        "s3": mock_s3,
+                                        "iter_batches": mock_iter,
+                                    }
 
     def test_main_initializes_and_shuts_down_cluster(self, mock_dependencies, mock_ray):
         """Test that main() properly initializes and shuts down the Ray cluster.
@@ -103,47 +124,24 @@ class TestRayImageJobMain:
         mock_dependencies["strategy"].init.assert_called_once()
         mock_dependencies["strategy"].shutdown.assert_called_once()
 
-    def test_main_returns_early_when_no_keys(self, mock_dependencies, mock_ray):
-        """Test that main() returns early when no S3 keys are found.
+    def test_main_completes_when_no_batches(self, mock_dependencies, mock_ray):
+        """Test that main() completes cleanly when iter_image_batches yields nothing.
 
         **Why this test is important:**
           - Avoids unnecessary processing when bucket is empty
           - Ensures clean exit without errors
-          - Validates early-exit optimization
+          - Validates behavior with streaming generator
 
         **What it tests:**
-          - Empty key list triggers early return
+          - Empty generator triggers zero-batch processing
           - Shutdown is still called for cleanup
         """
         from core.ingestion.ray.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = []
+        mock_dependencies["iter_batches"].return_value = iter([])
 
         with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
             main()
-
-        mock_dependencies["strategy"].shutdown.assert_called_once()
-
-    def test_main_returns_early_when_no_image_keys(self, mock_dependencies, mock_ray):
-        """Test that main() returns early when no image keys remain after filtering.
-
-        **Why this test is important:**
-          - Non-image files should be filtered out
-          - Avoids processing unsupported file types
-          - Validates the image extension filter
-
-        **What it tests:**
-          - Non-image files (txt, pdf) are filtered out
-          - Empty filtered list triggers early return
-        """
-        from core.ingestion.ray.process_s3_images import main
-
-        mock_dependencies["s3"].list_objects.return_value = ["file1.txt", "file2.pdf"]
-
-        with patch("core.ingestion.ray.process_s3_images.ImageContentFetcher") as mock_fetcher:
-            mock_fetcher.filter_image_keys.return_value = []
-            with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
-                main()
 
         mock_dependencies["strategy"].shutdown.assert_called_once()
 
@@ -156,51 +154,22 @@ class TestRayImageJobMain:
           - Ensures results are collected properly
 
         **What it tests:**
-          - Image keys are passed to Ray tasks
+          - Image batches from generator are passed to Ray tasks
           - Results are collected via ray.wait/ray.get
           - Shutdown occurs after processing
         """
         from core.ingestion.ray.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = ["img1.jpg", "img2.png"]
+        mock_dependencies["iter_batches"].return_value = iter([["img1.jpg", "img2.png"]])
 
         mock_ray.wait.return_value = ([MagicMock()], [])
         mock_ray.get.return_value = [[("img1.jpg", True, ""), ("img2.png", True, "")]]
 
-        with patch("core.ingestion.ray.process_s3_images.ImageContentFetcher") as mock_fetcher:
-            mock_fetcher.filter_image_keys.return_value = ["img1.jpg", "img2.png"]
-            with patch("core.ingestion.ray.process_s3_images.process_image_batch_ray") as mock_task:
-                mock_task.options.return_value.remote.return_value = MagicMock()
-                with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
-                    main()
-
-        mock_dependencies["strategy"].shutdown.assert_called_once()
-
-    def test_main_handles_s3_error(self, mock_dependencies, mock_ray):
-        """Test that main() exits with code 1 when S3 listing fails.
-
-        **Why this test is important:**
-          - S3 connectivity issues are common in production
-          - Must exit cleanly with proper error code
-          - Shutdown must still be called for cleanup
-
-        **What it tests:**
-          - ClientError triggers sys.exit(1)
-          - Strategy shutdown is called despite error
-        """
-        from botocore.exceptions import ClientError
-
-        from core.ingestion.ray.process_s3_images import main
-
-        mock_dependencies["s3"].list_objects.side_effect = ClientError(
-            {"Error": {"Code": "500", "Message": "Error"}}, "ListObjects"
-        )
-
-        with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
-            with pytest.raises(SystemExit) as exc_info:
+        with patch("core.ingestion.ray.process_s3_images.process_image_batch_ray") as mock_task:
+            mock_task.options.return_value.remote.return_value = MagicMock()
+            with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
                 main()
 
-        assert exc_info.value.code == 1
         mock_dependencies["strategy"].shutdown.assert_called_once()
 
     def test_main_handles_strategy_init_error(self, mock_ray):
@@ -224,17 +193,17 @@ class TestRayImageJobMain:
         with patch("core.ingestion.ray.process_s3_images.RayJobConfig.from_env"):
             with patch("core.ingestion.ray.process_s3_images.MinIOConfig.from_env"):
                 with patch("core.ingestion.ray.process_s3_images.ImageEmbeddingConfig.from_env"):
-                    with patch("core.ingestion.ray.process_s3_images.LocalRayStrategy") as mock_strat_cls:
-                        mock_strat_cls.from_env.return_value = mock_strategy
+                    with patch("core.ingestion.ray.process_s3_images.VectorDBConfig.from_env"):
+                        with patch("core.ingestion.ray.process_s3_images.LocalRayStrategy") as mock_strat_cls:
+                            mock_strat_cls.from_env.return_value = mock_strategy
 
-                        with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
                             with pytest.raises(SystemExit) as exc_info:
                                 main()
 
         assert exc_info.value.code == 1
 
-    def test_main_uses_s3_prefix_from_env(self, mock_dependencies, mock_ray):
-        """Test that main() uses S3_PREFIX environment variable.
+    def test_main_passes_prefix_to_iter_image_batches(self, mock_dependencies, mock_ray):
+        """Test that main() passes s3_prefix from config to iter_image_batches.
 
         **Why this test is important:**
           - S3_PREFIX controls which objects to process
@@ -242,22 +211,19 @@ class TestRayImageJobMain:
           - Critical for multi-tenant setups
 
         **What it tests:**
-          - S3_PREFIX env var is passed to list_objects
-          - Custom prefix is used correctly
+          - ray_cfg.s3_prefix is forwarded to iter_image_batches
         """
         from core.ingestion.ray.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = []
+        mock_dependencies["ray_cfg"].return_value.s3_prefix = "custom/images/"
+        main()
 
-        with patch.dict("os.environ", {"S3_PREFIX": "custom/images/"}, clear=False):
-            main()
-
-        mock_dependencies["s3"].list_objects.assert_called_once()
-        call_kwargs = mock_dependencies["s3"].list_objects.call_args[1]
+        mock_dependencies["iter_batches"].assert_called_once()
+        call_kwargs = mock_dependencies["iter_batches"].call_args[1]
         assert call_kwargs["prefix"] == "custom/images/"
 
-    def test_main_uses_collection_from_env(self, mock_dependencies, mock_ray):
-        """Test that main() uses VECTOR_DB_COLLECTION environment variable.
+    def test_main_uses_collection_from_config(self, mock_dependencies, mock_ray):
+        """Test that main() uses collection from VectorDBConfig.
 
         **Why this test is important:**
           - Collection name determines where embeddings are stored
@@ -265,45 +231,40 @@ class TestRayImageJobMain:
           - Enables separation of different embedding types
 
         **What it tests:**
-          - VECTOR_DB_COLLECTION env var is read
+          - vector_cfg.collection is used for the collection name
           - Collection is passed to processing tasks
         """
         from core.ingestion.ray.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = ["img1.jpg"]
+        mock_dependencies["vector_cfg"].return_value.collection = "my_images"
+        mock_dependencies["iter_batches"].return_value = iter([["img1.jpg"]])
 
         mock_ray.wait.return_value = ([MagicMock()], [])
         mock_ray.get.return_value = [[("img1.jpg", True, "")]]
 
-        with patch("core.ingestion.ray.process_s3_images.ImageContentFetcher") as mock_fetcher:
-            mock_fetcher.filter_image_keys.return_value = ["img1.jpg"]
-            with patch("core.ingestion.ray.process_s3_images.process_image_batch_ray") as mock_task:
-                mock_task.options.return_value.remote.return_value = MagicMock()
-                with patch.dict(
-                    "os.environ",
-                    {"S3_PREFIX": "images/", "VECTOR_DB_COLLECTION": "my_images"},
-                    clear=False,
-                ):
-                    main()
+        with patch("core.ingestion.ray.process_s3_images.process_image_batch_ray") as mock_task:
+            mock_task.options.return_value.remote.return_value = MagicMock()
+            main()
 
         mock_task.options.assert_called()
 
     def test_main_batches_keys_correctly(self, mock_dependencies, mock_ray):
-        """Test that main() batches keys according to image_batch_size.
+        """Test that main() submits each batch from the generator as a Ray task.
 
         **Why this test is important:**
           - Batch size affects memory usage and parallelism
-          - Must split large key lists into manageable batches
+          - Must submit separate Ray tasks per batch
           - Critical for processing large datasets
 
         **What it tests:**
-          - 75 keys with batch_size=50 creates 2 batches
-          - Each batch is submitted as a separate Ray task
+          - Two batches from generator create two Ray tasks
+          - Each batch is submitted separately
         """
         from core.ingestion.ray.process_s3_images import main
 
-        keys = [f"img{i}.jpg" for i in range(75)]
-        mock_dependencies["s3"].list_objects.return_value = keys
+        batch1 = [f"img{i}.jpg" for i in range(50)]
+        batch2 = [f"img{i}.jpg" for i in range(50, 75)]
+        mock_dependencies["iter_batches"].return_value = iter([batch1, batch2])
 
         future1, future2 = MagicMock(), MagicMock()
 
@@ -316,12 +277,10 @@ class TestRayImageJobMain:
             [[("img50.jpg", True, "")] * 25],
         ]
 
-        with patch("core.ingestion.ray.process_s3_images.ImageContentFetcher") as mock_fetcher:
-            mock_fetcher.filter_image_keys.return_value = keys
-            with patch("core.ingestion.ray.process_s3_images.process_image_batch_ray") as mock_task:
-                mock_task.options.return_value.remote.side_effect = [future1, future2]
-                with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
-                    main()
+        with patch("core.ingestion.ray.process_s3_images.process_image_batch_ray") as mock_task:
+            mock_task.options.return_value.remote.side_effect = [future1, future2]
+            with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
+                main()
 
         assert mock_task.options.return_value.remote.call_count == 2
 
@@ -360,13 +319,11 @@ class TestRayImageJobMain:
         """
         from core.ingestion.ray.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = ["img1.jpg"]
+        mock_dependencies["iter_batches"].side_effect = RuntimeError("Unexpected error")
 
-        with patch("core.ingestion.ray.process_s3_images.ImageContentFetcher") as mock_fetcher:
-            mock_fetcher.filter_image_keys.side_effect = RuntimeError("Unexpected error")
-            with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
-                with pytest.raises(RuntimeError, match="Unexpected error"):
-                    main()
+        with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
+            with pytest.raises(RuntimeError, match="Unexpected error"):
+                main()
 
         mock_dependencies["strategy"].shutdown.assert_called_once()
 
@@ -385,7 +342,7 @@ class TestRayImageJobMain:
         """
         from core.ingestion.ray.process_s3_images import main
 
-        mock_dependencies["s3"].list_objects.return_value = ["img1.jpg", "img2.png", "img3.gif"]
+        mock_dependencies["iter_batches"].return_value = iter([["img1.jpg", "img2.png", "img3.gif"]])
 
         future_mock = MagicMock()
         mock_ray.wait.return_value = ([future_mock], [])
@@ -397,11 +354,29 @@ class TestRayImageJobMain:
             ]
         ]
 
-        with patch("core.ingestion.ray.process_s3_images.ImageContentFetcher") as mock_fetcher:
-            mock_fetcher.filter_image_keys.return_value = ["img1.jpg", "img2.png", "img3.gif"]
-            with patch("core.ingestion.ray.process_s3_images.process_image_batch_ray") as mock_task:
-                mock_task.options.return_value.remote.return_value = future_mock
-                with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
-                    main()
+        with patch("core.ingestion.ray.process_s3_images.process_image_batch_ray") as mock_task:
+            mock_task.options.return_value.remote.return_value = future_mock
+            with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
+                main()
 
         mock_dependencies["strategy"].shutdown.assert_called_once()
+
+    def test_main_passes_image_page_size_to_iter_batches(self, mock_dependencies, mock_ray):
+        """Test that main() passes image_page_size from config to iter_image_batches.
+
+        **Why this test is important:**
+          - IMAGE_PAGE_SIZE controls S3 pagination size for image listing
+          - Must be configurable to tune performance per deployment
+          - Defaults to 1000 but should honor config overrides
+
+        **What it tests:**
+          - ray_cfg.image_page_size is forwarded as page_size
+        """
+        from core.ingestion.ray.process_s3_images import main
+
+        mock_dependencies["ray_cfg"].return_value.image_page_size = 200
+        main()
+
+        mock_dependencies["iter_batches"].assert_called_once()
+        call_kwargs = mock_dependencies["iter_batches"].call_args[1]
+        assert call_kwargs["page_size"] == 200

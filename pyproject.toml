@@ -77,7 +77,7 @@ filterwarnings = [
 line-length = 110
 
 [tool.ruff.lint]
-exclude = ["tests/**", "configs/**"]
+exclude = ["tests/**", "configs/**", "scripts/**"]
 
 select = ["ALL"]
 

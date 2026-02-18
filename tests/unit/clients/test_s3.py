@@ -225,6 +225,89 @@ class TestS3ClientWrapperBucket:
         mock_boto3_client.head_bucket.assert_called_once_with(Bucket="test-bucket")
         mock_boto3_client.create_bucket.assert_not_called()
 
+    def test_ensure_bucket_creates_on_404(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that ensure_bucket creates bucket when head_bucket returns 404 error code.
+
+        **Why this test is important:**
+          - Validates the error-code branch of the ensure_bucket fix
+          - Error code "404" from head_bucket must trigger bucket creation
+          - Ensures the conditional properly matches string error codes
+
+        **What it tests:**
+          - head_bucket raises ClientError with Code "404"
+          - create_bucket is called to create the missing bucket
+        """
+        mock_boto3_client.head_bucket.side_effect = ClientError(
+            {
+                "Error": {"Code": "404", "Message": "Not Found"},
+                "ResponseMetadata": {"HTTPStatusCode": 404},
+            },
+            "HeadBucket",
+        )
+
+        s3_client.ensure_bucket("test-bucket")
+
+        mock_boto3_client.head_bucket.assert_called_once_with(Bucket="test-bucket")
+        mock_boto3_client.create_bucket.assert_called_once_with(Bucket="test-bucket")
+
+    def test_ensure_bucket_creates_on_no_such_bucket(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that ensure_bucket creates bucket when head_bucket returns NoSuchBucket.
+
+        **Why this test is important:**
+          - Some S3-compatible backends return "NoSuchBucket" instead of "404"
+          - Validates the error-code branch handles the named error code
+          - Ensures both numeric and named error codes trigger creation
+
+        **What it tests:**
+          - head_bucket raises ClientError with Code "NoSuchBucket"
+          - create_bucket is called to create the missing bucket
+        """
+        mock_boto3_client.head_bucket.side_effect = ClientError(
+            {
+                "Error": {"Code": "NoSuchBucket", "Message": "The specified bucket does not exist"},
+                "ResponseMetadata": {"HTTPStatusCode": 404},
+            },
+            "HeadBucket",
+        )
+
+        s3_client.ensure_bucket("test-bucket")
+
+        mock_boto3_client.head_bucket.assert_called_once_with(Bucket="test-bucket")
+        mock_boto3_client.create_bucket.assert_called_once_with(Bucket="test-bucket")
+
+    def test_ensure_bucket_reraises_on_403(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that ensure_bucket re-raises non-404 ClientErrors instead of creating bucket.
+
+        **Why this test is important:**
+          - Permission errors (403/AccessDenied) must not be silently swallowed
+          - Before the fix, any ClientError from head_bucket triggered create_bucket
+          - Validates that only 404/NoSuchBucket errors lead to bucket creation
+          - Critical for security: access-denied must propagate, not create a new bucket
+
+        **What it tests:**
+          - head_bucket raises ClientError with Code "AccessDenied" and HTTP 403
+          - The error is re-raised (not caught), surfacing as UpstreamError via retry wrapper
+          - create_bucket is never called
+        """
+        mock_boto3_client.head_bucket.side_effect = ClientError(
+            {
+                "Error": {"Code": "AccessDenied", "Message": "Access Denied"},
+                "ResponseMetadata": {"HTTPStatusCode": 403},
+            },
+            "HeadBucket",
+        )
+
+        with pytest.raises(UpstreamError, match="S3 ensure_bucket failed"):
+            s3_client.ensure_bucket("test-bucket")
+
+        mock_boto3_client.create_bucket.assert_not_called()
+
     def test_ensure_bucket_handles_circuit_breaker_open(
         self,
         s3_client: S3ClientWrapper,
@@ -699,3 +782,149 @@ class TestS3ClientWrapperAsync:
 
         assert result == b"test-data"
         mock_boto3_client.get_object.assert_called_once_with(Bucket="test-bucket", Key="test-key")
+
+
+# =============================================================================
+# Streaming Iteration Tests
+# =============================================================================
+
+
+class TestS3ClientWrapperIterObjects:
+    """Test suite for S3ClientWrapper.iter_objects method."""
+
+    def test_iter_objects_yields_pages(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that iter_objects yields one list per S3 response page.
+
+        **What it tests:**
+          - Two pages with Contents yield two separate lists
+          - Keys within each page are preserved in order
+        """
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = [
+            {"Contents": [{"Key": "a"}, {"Key": "b"}]},
+            {"Contents": [{"Key": "c"}]},
+        ]
+        mock_boto3_client.get_paginator.return_value = mock_paginator
+
+        pages = list(s3_client.iter_objects(bucket="test-bucket", prefix="pfx/"))
+
+        assert pages == [["a", "b"], ["c"]]
+        mock_boto3_client.get_paginator.assert_called_once_with("list_objects_v2")
+        mock_paginator.paginate.assert_called_once_with(Bucket="test-bucket", Prefix="pfx/")
+
+    def test_iter_objects_skips_empty_pages(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that pages without Contents key are silently skipped.
+
+        **What it tests:**
+          - A page missing the Contents key does not yield anything
+          - Subsequent pages still yield their keys
+        """
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = [
+            {},  # empty page
+            {"Contents": [{"Key": "x"}]},
+        ]
+        mock_boto3_client.get_paginator.return_value = mock_paginator
+
+        pages = list(s3_client.iter_objects(bucket="b"))
+
+        assert pages == [["x"]]
+
+    def test_iter_objects_empty_bucket(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that an empty bucket yields nothing.
+
+        **What it tests:**
+          - No pages with Contents → generator is exhausted immediately
+        """
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = [{}]
+        mock_boto3_client.get_paginator.return_value = mock_paginator
+
+        pages = list(s3_client.iter_objects(bucket="b"))
+
+        assert pages == []
+
+    def test_iter_objects_propagates_client_error(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that ClientError from paginator propagates to caller.
+
+        **What it tests:**
+          - No circuit breaker or retry wrapping — errors propagate directly
+          - Caller is responsible for catching at the iteration site
+        """
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = iter(
+            [ClientError({"Error": {"Code": "AccessDenied", "Message": "denied"}}, "ListObjects")]
+        )
+
+        # Make iterating raise the error
+        def _raise_on_iterate(**_kwargs):
+            raise ClientError({"Error": {"Code": "AccessDenied", "Message": "denied"}}, "ListObjects")
+
+        mock_paginator.paginate.side_effect = _raise_on_iterate
+        mock_boto3_client.get_paginator.return_value = mock_paginator
+
+        with pytest.raises(ClientError, match="AccessDenied"):
+            list(s3_client.iter_objects(bucket="b"))
+
+    def test_iter_objects_default_prefix(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that default prefix is empty string.
+
+        **What it tests:**
+          - Calling without prefix passes empty string to paginator
+        """
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = []
+        mock_boto3_client.get_paginator.return_value = mock_paginator
+
+        list(s3_client.iter_objects(bucket="b"))
+
+        mock_paginator.paginate.assert_called_once_with(Bucket="b", Prefix="")
+
+    def test_iter_objects_custom_page_size(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that a non-default page_size adds PaginationConfig to paginator kwargs.
+
+        **What it tests:**
+          - Passing page_size != 1000 includes PaginationConfig={"PageSize": <value>}
+          - Keys are still yielded correctly
+        """
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = [
+            {"Contents": [{"Key": "a"}]},
+        ]
+        mock_boto3_client.get_paginator.return_value = mock_paginator
+
+        pages = list(s3_client.iter_objects(bucket="b", prefix="p/", page_size=50))
+
+        assert pages == [["a"]]
+        mock_paginator.paginate.assert_called_once_with(
+            Bucket="b", Prefix="p/", PaginationConfig={"PageSize": 50}
+        )
+
+    def test_iter_objects_default_page_size_omits_pagination_config(
+        self, s3_client: S3ClientWrapper, mock_boto3_client: MagicMock
+    ) -> None:
+        """Test that default page_size=1000 does NOT add PaginationConfig.
+
+        **What it tests:**
+          - Calling with page_size=1000 (the default) omits PaginationConfig from kwargs
+          - Ensures backward-compatible behavior with existing S3 pagination defaults
+        """
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = []
+        mock_boto3_client.get_paginator.return_value = mock_paginator
+
+        list(s3_client.iter_objects(bucket="b", page_size=1000))
+
+        mock_paginator.paginate.assert_called_once_with(Bucket="b", Prefix="")

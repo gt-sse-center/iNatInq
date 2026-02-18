@@ -18,6 +18,7 @@ and the Ray distributed processing function.
 
 import asyncio
 import os
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -414,16 +415,16 @@ class TestImageProcessingPipelineAsync:
 
     @pytest.mark.asyncio
     async def test_process_images_async_handles_qdrant_upsert_failure(self, config):
-        """Verify _process_images_async handles Qdrant upsert failures.
+        """Verify _process_images_async handles Qdrant upsert failures as partial success.
 
         **Why this test is important:**
         - Database failures should not crash the pipeline
-        - Users need clear error messages identifying Qdrant as the failure point
+        - When one DB fails but another succeeds, the result is partial success
         - Pipeline should handle vector DB errors gracefully
 
         **What it tests:**
         - Qdrant batch_upsert_async exception is caught
-        - Result is marked as failure with Qdrant mentioned in error
+        - Result is marked as SUCCESS because Weaviate upsert succeeded (partial failure)
         - Pipeline completes without raising exception
         """
         pipeline = ImageProcessingPipeline(config)
@@ -453,7 +454,7 @@ class TestImageProcessingPipelineAsync:
             results = await pipeline._process_images_async([image], mock_clip, mock_qdrant, mock_weaviate)
 
         assert len(results) == 1
-        assert results[0].success is False
+        assert results[0].success is True
 
     @pytest.mark.asyncio
     async def test_process_images_async_uses_s3_uri_when_source_uri_provided(self, config):
@@ -491,6 +492,158 @@ class TestImageProcessingPipelineAsync:
         call_kwargs = mock_qdrant.batch_upsert_async.await_args.kwargs
         points = call_kwargs["points"]
         assert points[0].payload["s3_uri"] == "s3://photos/21213/medium.jpg"
+
+    @pytest.mark.asyncio
+    async def test_deterministic_uuid_from_s3_key(self, config):
+        """Verify that the same S3 key always produces the same UUID via uuid5.
+
+        **Why this test is important:**
+        - Deterministic UUIDs ensure idempotent upserts (same image → same point ID)
+        - Re-running ingestion for the same S3 key must overwrite, not duplicate
+        - Documents the UUID generation contract: uuid5(NAMESPACE_URL, s3_key)
+
+        **What it tests:**
+        - Two runs with the same S3 key produce identical UUIDs in the Qdrant payload
+        - The UUID matches uuid.uuid5(uuid.NAMESPACE_URL, s3_key)
+        """
+        pipeline = ImageProcessingPipeline(config)
+
+        mock_clip = MagicMock()
+        mock_clip.embed_image_batch_async = AsyncMock(return_value=[[0.1] * 512])
+        mock_clip.vector_size = 512
+
+        mock_qdrant = MagicMock()
+        mock_qdrant.batch_upsert_async = AsyncMock()
+        mock_qdrant.ensure_image_collection_async = AsyncMock()
+
+        mock_weaviate = MagicMock()
+        mock_weaviate.batch_upsert_async = AsyncMock()
+        mock_weaviate.ensure_image_collection_async = AsyncMock()
+
+        s3_key = "photos/12345/medium.jpg"
+        image = ImageContentResult(
+            s3_key=s3_key,
+            image_bytes=b"image_data",
+            format="jpeg",
+            size_bytes=10,
+            width=100,
+            height=100,
+        )
+
+        with patch("core.ingestion.tasks.image_processing.resize_for_embedding", return_value=b"resized"):
+            # Run twice with the same key
+            await pipeline._process_images_async([image], mock_clip, mock_qdrant, mock_weaviate)
+            first_call_points = mock_qdrant.batch_upsert_async.await_args.kwargs["points"]
+            first_uuid = first_call_points[0].id
+
+            mock_qdrant.batch_upsert_async.reset_mock()
+            await pipeline._process_images_async([image], mock_clip, mock_qdrant, mock_weaviate)
+            second_call_points = mock_qdrant.batch_upsert_async.await_args.kwargs["points"]
+            second_uuid = second_call_points[0].id
+
+        expected_uuid = str(uuid.uuid5(uuid.NAMESPACE_URL, s3_key))
+        assert first_uuid == expected_uuid
+        assert second_uuid == expected_uuid
+        assert first_uuid == second_uuid
+
+    @pytest.mark.asyncio
+    async def test_partial_upsert_marks_success_when_one_db_succeeds(self, config):
+        """Verify that partial upsert failure still marks images as success.
+
+        **Why this test is important:**
+        - Partial failures should not discard work that succeeded in other DBs
+        - Users can repair the failed DB later without re-ingesting
+        - Documents the new partial-success semantics
+
+        **What it tests:**
+        - Qdrant upsert succeeds, Weaviate upsert fails
+        - Images are marked as SUCCESS (not failure)
+        """
+        pipeline = ImageProcessingPipeline(config)
+
+        mock_clip = MagicMock()
+        mock_clip.embed_image_batch_async = AsyncMock(return_value=[[0.1] * 512, [0.2] * 512])
+        mock_clip.vector_size = 512
+
+        mock_qdrant = MagicMock()
+        mock_qdrant.batch_upsert_async = AsyncMock()
+        mock_qdrant.ensure_image_collection_async = AsyncMock()
+
+        mock_weaviate = MagicMock()
+        mock_weaviate.batch_upsert_async = AsyncMock(side_effect=Exception("Weaviate timeout"))
+        mock_weaviate.ensure_image_collection_async = AsyncMock()
+
+        images = [
+            ImageContentResult(
+                s3_key="img1.jpg",
+                image_bytes=b"data1",
+                format="jpeg",
+                size_bytes=5,
+                width=100,
+                height=100,
+            ),
+            ImageContentResult(
+                s3_key="img2.jpg",
+                image_bytes=b"data2",
+                format="png",
+                size_bytes=6,
+                width=200,
+                height=200,
+            ),
+        ]
+
+        with patch("core.ingestion.tasks.image_processing.resize_for_embedding", return_value=b"resized"):
+            results = await pipeline._process_images_async(images, mock_clip, mock_qdrant, mock_weaviate)
+
+        assert len(results) == 2
+        assert results[0].success is True
+        assert results[1].success is True
+
+    @pytest.mark.asyncio
+    async def test_all_db_failure_marks_failure(self, config):
+        """Verify that images are marked as failure when ALL DB upserts fail.
+
+        **Why this test is important:**
+        - If no DB accepted the data, the image truly failed to ingest
+        - Error messages must identify all failed DBs for debugging
+        - Differentiates total failure from partial failure
+
+        **What it tests:**
+        - Both Qdrant and Weaviate upsert fail
+        - Images are marked as FAILURE
+        - Error message contains all failed DB names
+        """
+        pipeline = ImageProcessingPipeline(config)
+
+        mock_clip = MagicMock()
+        mock_clip.embed_image_batch_async = AsyncMock(return_value=[[0.1] * 512])
+        mock_clip.vector_size = 512
+
+        mock_qdrant = MagicMock()
+        mock_qdrant.batch_upsert_async = AsyncMock(side_effect=Exception("Qdrant connection refused"))
+        mock_qdrant.ensure_image_collection_async = AsyncMock()
+
+        mock_weaviate = MagicMock()
+        mock_weaviate.batch_upsert_async = AsyncMock(side_effect=Exception("Weaviate timeout"))
+        mock_weaviate.ensure_image_collection_async = AsyncMock()
+
+        image = ImageContentResult(
+            s3_key="image.jpg",
+            image_bytes=b"image_data",
+            format="jpeg",
+            size_bytes=10,
+            width=100,
+            height=100,
+        )
+
+        with patch("core.ingestion.tasks.image_processing.resize_for_embedding", return_value=b"resized"):
+            results = await pipeline._process_images_async([image], mock_clip, mock_qdrant, mock_weaviate)
+
+        assert len(results) == 1
+        assert results[0].success is False
+        assert "Upsert failed for all DBs" in results[0].error_message
+        assert "qdrant" in results[0].error_message
+        assert "weaviate" in results[0].error_message
 
 
 class TestProcessImageBatchRay:
