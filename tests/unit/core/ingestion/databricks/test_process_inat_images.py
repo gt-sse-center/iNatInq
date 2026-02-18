@@ -5,6 +5,28 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+class TestIterTaskPayloadBatches:
+    """Tests for _iter_task_payload_batches helper."""
+
+    def test_respects_max_items(self) -> None:
+        """Batching should stop after max_items records are yielded."""
+        from core.ingestion.databricks.process_inat_images import _iter_task_payload_batches
+
+        records = [
+            MagicMock(photo_id="1", extension="jpg", photo_url="https://example.com/photos/1/medium.jpg"),
+            MagicMock(photo_id="2", extension="png", photo_url="https://example.com/photos/2/medium.png"),
+            MagicMock(photo_id="3", extension="jpg", photo_url="https://example.com/photos/3/medium.jpg"),
+            MagicMock(photo_id="4", extension="jpg", photo_url="https://example.com/photos/4/medium.jpg"),
+        ]
+
+        batches = list(_iter_task_payload_batches(records, image_size="medium", batch_size=2, max_items=2))
+
+        assert len(batches) == 1, "Only 1 batch should be yielded when max_items equals batch_size"
+        assert len(batches[0]) == 2, "The single batch should contain exactly 2 items"
+        assert batches[0][0]["photo_id"] == "1"
+        assert batches[0][1]["photo_id"] == "2"
+
+
 class TestDatabricksINatImageJobMain:
     """Tests for main() in process_inat_images."""
 
@@ -20,6 +42,7 @@ class TestDatabricksINatImageJobMain:
         mock_inat_client.close = MagicMock()
 
         with (
+            patch("core.ingestion.databricks.process_inat_images.INatConfig.from_env") as mock_inat_cfg,
             patch("core.ingestion.databricks.process_inat_images.RayJobConfig.from_env") as mock_ray_cfg,
             patch(
                 "core.ingestion.databricks.process_inat_images.ImageEmbeddingConfig.from_env"
@@ -45,9 +68,23 @@ class TestDatabricksINatImageJobMain:
                 retry_min_wait=1.0,
                 retry_max_wait=10.0,
             )
+            inat_cfg = MagicMock(
+                image_size="medium",
+                max_rows=50,
+                metadata_url="",
+                photo_base_url="https://inaturalist-open-data.s3.amazonaws.com/photos",
+                timeout_s=120,
+                cb_failure_threshold=5,
+                cb_recovery_timeout_s=30,
+                image_max_items=None,
+            )
+            mock_inat_cfg.return_value = inat_cfg
             mock_ray_cfg.return_value = ray_cfg
             mock_embed_cfg.return_value = MagicMock()
-            mock_vector_cfg.return_value = MagicMock(ingestion_targets=frozenset({"qdrant", "weaviate"}))
+            mock_vector_cfg.return_value = MagicMock(
+                collection="documents",
+                ingestion_targets=frozenset({"qdrant", "weaviate"}),
+            )
             mock_strat_cls.from_env.return_value = mock_strategy
             mock_inat_cls.return_value = mock_inat_client
 
@@ -55,23 +92,27 @@ class TestDatabricksINatImageJobMain:
                 "strategy": mock_strategy,
                 "inat_client": mock_inat_client,
                 "inat_cls": mock_inat_cls,
+                "inat_cfg": inat_cfg,
                 "ray_cfg": ray_cfg,
                 "vector_cfg": mock_vector_cfg.return_value,
             }
 
-    def test_main_requires_inat_max_rows(self, mock_dependencies, mock_ray) -> None:
+    def test_main_requires_inat_max_rows(self, mock_ray) -> None:
         """main() should fail fast when INAT_MAX_ROWS is missing."""
-        from core.ingestion.databricks.process_inat_images import main
+        from config import INatConfig
 
         with (
             patch.dict("os.environ", {}, clear=True),
             pytest.raises(RuntimeError, match="INAT_MAX_ROWS is required"),
         ):
-            main()
+            INatConfig.from_env()
 
     def test_main_reads_metadata_and_submits_batches(self, mock_dependencies, mock_ray) -> None:
         """main() reads iNat records and submits batch processing tasks."""
         from core.ingestion.databricks.process_inat_images import main
+
+        mock_dependencies["inat_cfg"].metadata_url = "https://example.com/photos.tsv"
+        mock_dependencies["inat_cfg"].max_rows = 50
 
         record1 = MagicMock(
             photo_id="1", extension="jpg", photo_url="https://example.com/photos/1/medium.jpg"
@@ -87,12 +128,7 @@ class TestDatabricksINatImageJobMain:
 
         with patch("core.ingestion.databricks.process_inat_images.process_inat_photo_batch_ray") as mock_task:
             mock_task.options.return_value.remote.return_value = future_mock
-            with patch.dict(
-                "os.environ",
-                {"INAT_METADATA_URL": "https://example.com/photos.tsv", "INAT_MAX_ROWS": "50"},
-                clear=False,
-            ):
-                main()
+            main()
 
         mock_dependencies["inat_client"].iter_photo_records.assert_called_once_with(
             metadata_url="https://example.com/photos.tsv",
@@ -110,29 +146,27 @@ class TestDatabricksINatImageJobMain:
         """main() should return gracefully when metadata yields zero records."""
         from core.ingestion.databricks.process_inat_images import main
 
+        mock_dependencies["inat_cfg"].metadata_url = "https://example.com/photos.tsv"
+        mock_dependencies["inat_cfg"].max_rows = 25
         mock_dependencies["inat_client"].iter_photo_records.return_value = iter(())
 
-        with patch.dict(
-            "os.environ",
-            {"INAT_METADATA_URL": "https://example.com/photos.tsv", "INAT_MAX_ROWS": "25"},
-            clear=False,
-        ):
-            main()
+        main()
 
         mock_dependencies["strategy"].shutdown.assert_called_once()
         mock_ray.wait.assert_not_called()
 
     def test_main_defaults_metadata_url_from_client(self, mock_dependencies, mock_ray) -> None:
-        """main() should use client default metadata URL when env var is missing."""
+        """main() should use client default metadata URL when config has empty string."""
         from core.ingestion.databricks.process_inat_images import main
 
+        mock_dependencies["inat_cfg"].metadata_url = ""
+        mock_dependencies["inat_cfg"].max_rows = 15
         mock_dependencies[
             "inat_client"
         ].build_metadata_s3_uri.return_value = "s3://inaturalist-open-data/photos.csv.gz"
         mock_dependencies["inat_client"].iter_photo_records.return_value = iter(())
 
-        with patch.dict("os.environ", {"INAT_MAX_ROWS": "15"}, clear=False):
-            main()
+        main()
 
         mock_dependencies["inat_client"].build_metadata_s3_uri.assert_called_once_with(
             dataset="photos",
@@ -145,14 +179,14 @@ class TestDatabricksINatImageJobMain:
         )
 
     def test_main_applies_python_params(self, mock_dependencies, mock_ray) -> None:
-        """main() should apply INAT_METADATA_URL from sys.argv KEY=VALUE params."""
+        """main() should apply sys.argv KEY=VALUE params before config parsing."""
         from core.ingestion.databricks.process_inat_images import main
 
+        mock_dependencies["inat_cfg"].metadata_url = "https://example.com/photos.tsv"
+        mock_dependencies["inat_cfg"].max_rows = 10
+
         with (
-            patch(
-                "sys.argv",
-                ["script.py", "INAT_METADATA_URL=https://example.com/photos.tsv", "INAT_MAX_ROWS=10"],
-            ),
+            patch("sys.argv", ["script.py", "INAT_MAX_ROWS=10"]),
             patch.dict("os.environ", {}, clear=False),
         ):
             main()
@@ -169,6 +203,8 @@ class TestDatabricksINatImageJobMain:
 
         mock_dependencies["ray_cfg"].num_workers = 1
         mock_dependencies["ray_cfg"].image_batch_size = 1
+        mock_dependencies["inat_cfg"].metadata_url = "https://example.com/photos.tsv"
+        mock_dependencies["inat_cfg"].max_rows = 3
 
         records = [
             MagicMock(photo_id="1", extension="jpg", photo_url="https://example.com/photos/1/medium.jpg"),
@@ -191,12 +227,7 @@ class TestDatabricksINatImageJobMain:
 
         with patch("core.ingestion.databricks.process_inat_images.process_inat_photo_batch_ray") as mock_task:
             mock_task.options.return_value.remote.side_effect = futures
-            with patch.dict(
-                "os.environ",
-                {"INAT_METADATA_URL": "https://example.com/photos.tsv", "INAT_MAX_ROWS": "3"},
-                clear=False,
-            ):
-                main()
+            main()
 
         assert mock_task.options.return_value.remote.call_count == 3
         assert mock_ray.wait.call_count >= 3

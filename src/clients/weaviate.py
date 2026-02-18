@@ -65,6 +65,7 @@ from foundation.retry import HTTPErrorClassifier, async_retry_call, create_retry
 from .base import VectorDBClientBase
 from .interfaces.vector_db import VectorDBProvider
 
+logger = logging.getLogger("clients.weaviate")
 _retry_logger = logging.getLogger("clients.weaviate.retry")
 
 
@@ -350,8 +351,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             except Exception as e:
                 if "already exists" in str(e).lower() or "duplicate" in str(e).lower():
                     return
-                msg = f"Weaviate collection creation failed: {e}"
-                raise UpstreamError(msg) from e
+                raise  # Let async_retry_call classify the native exception
 
         await async_retry_call(
             _do_ensure,
@@ -458,8 +458,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             except Exception as e:
                 if "already exists" in str(e).lower() or "duplicate" in str(e).lower():
                     return
-                msg = f"Weaviate image collection creation failed: {e}"
-                raise UpstreamError(msg) from e
+                raise  # Let async_retry_call classify the native exception
 
         await async_retry_call(
             _do_ensure_image,
@@ -581,7 +580,15 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
                     for obj in points
                 ]
 
-                await collection_obj.data.insert_many(objects_to_insert)
+                result = await collection_obj.data.insert_many(objects_to_insert)
+                if hasattr(result, "has_errors") and result.has_errors:
+                    error_details = {str(k): str(v) for k, v in list(result.errors.items())[:5]}
+                    msg = (
+                        f"Weaviate insert_many partial failure: "
+                        f"{len(result.errors)}/{len(objects_to_insert)} failed"
+                    )
+                    logger.warning(msg, extra={"errors": error_details})
+                    raise UpstreamError(msg)
 
         await async_retry_call(
             _do_upsert,
