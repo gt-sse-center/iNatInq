@@ -902,6 +902,19 @@ class RayJobConfig(BaseModel):
     All settings are loaded from environment variables with sensible defaults.
     This allows fine-tuning Ray job performance without code changes.
 
+    Throughput Tuning Notes:
+        - RAY_TASK_NUM_CPUS=0.5: Embedding tasks are I/O-bound (waiting on
+          Ollama). Requesting 0.5 CPU allows Ray to schedule 2x more tasks
+          per worker node.
+        - RAY_WAIT_BATCH_SIZE=50: For large jobs (1000+ keys), reduces
+          driver-side scheduling overhead.
+        - RAY_OLLAMA_REQUESTS_PER_SECOND: With batch embedding API, each
+          request embeds embed_batch_max texts. Consider increasing from 5
+          to match desired throughput (5 RPS * 8 texts/request = 40
+          embeddings/sec).
+        - RAY_S3_BATCH_SIZE: Can increase from 50 to 100+ now that S3 fetch
+          is parallel. More work per task = less Ray scheduling overhead.
+
     Attributes:
         num_workers: Number of Ray worker processes. Default: 0
             (auto-scale based on cluster resources when using external
