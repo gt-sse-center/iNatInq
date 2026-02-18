@@ -427,7 +427,7 @@ class DatabricksImageJobRequest(BaseModel):
 
     Attributes:
         source: Image source to ingest ("s3" or "inat").
-        s3_prefix: S3 prefix to process (required when source is "s3").
+        s3_prefix: Optional S3 prefix to process (empty string means bucket root).
         collection: Vector DB base collection name.
         image_max_items: Optional limit on number of images to process.
         image_page_size: Optional S3 listing page size override.
@@ -444,9 +444,9 @@ class DatabricksImageJobRequest(BaseModel):
 
     source: Literal["s3", "inat"] = Field("s3", description="Image source type")
     s3_prefix: str | None = Field(
-        None,
+        "",
         json_schema_extra={"example": "images/"},
-        description="S3 prefix to process (required when source='s3')",
+        description="Optional S3 prefix to process (empty string for bucket root)",
     )
     collection: str = Field(
         ...,
