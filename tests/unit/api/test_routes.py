@@ -885,25 +885,38 @@ class TestDatabricksJobEndpoints:
         )
         mock_service.submit_image_job.assert_not_called()
 
-    def test_submit_databricks_image_job_s3_requires_s3_prefix(self, test_client: TestClient) -> None:
-        """Test S3 image submission validates that s3_prefix is present."""
+    def test_submit_databricks_image_job_s3_defaults_empty_prefix(self, test_client: TestClient) -> None:
+        """Test S3 image submission defaults missing s3_prefix to bucket root."""
         with patch("api.routes.DatabricksRayService") as mock_service_cls:
             mock_service = MagicMock()
+            mock_service.submit_image_job.return_value = 987
             mock_service_cls.return_value = mock_service
 
-            response = test_client.post(
-                "/databricks/jobs/images",
-                json={
-                    "source": "s3",
-                    "collection": "documents",
-                },
-            )
+            with patch("api.routes.get_settings") as mock_settings:
+                mock_settings.return_value.k8s_namespace = "ml-system"
+                with patch("api.routes.MinIOConfig.from_env") as mock_minio:
+                    mock_minio.return_value.endpoint_url = "http://minio:9000"
+                    mock_minio.return_value.access_key_id = "minioadmin"
+                    mock_minio.return_value.secret_access_key = "minioadmin"
+                    mock_minio.return_value.bucket = "pipeline"
+                    with patch("api.routes.ImageEmbeddingConfig.from_env") as mock_embed_cfg:
+                        mock_embed_cfg.return_value = MagicMock()
+                        response = test_client.post(
+                            "/databricks/jobs/images",
+                            json={
+                                "source": "s3",
+                                "collection": "documents",
+                            },
+                        )
 
-        assert response.status_code == 400
+        assert response.status_code == 202
         data = response.json()
-        assert data["error"] == "Bad Request"
-        assert data["message"] == "s3_prefix is required when source='s3'"
-        mock_service.submit_image_job.assert_not_called()
+        assert data["run_id"] == "987"
+        assert data["source"] == "s3"
+        assert data["s3_prefix"] == ""
+        mock_service.submit_image_job.assert_called_once()
+        call_kw = mock_service.submit_image_job.call_args.kwargs
+        assert call_kw["s3_prefix"] == ""
         mock_service.submit_inat_image_job.assert_not_called()
 
     def test_get_databricks_job_status_success(self, test_client: TestClient) -> None:
