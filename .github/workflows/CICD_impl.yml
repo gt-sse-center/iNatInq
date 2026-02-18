@@ -88,7 +88,7 @@ jobs:
         run: uv run pre-commit run --verbose --hook-stage pre-commit
 
       - name: Validate Unit Tests
-        run: uv run pytest ${{ inputs.unit_tests_path }}
+        run: COVERAGE_FILE=.coverage.unit uv run pytest ${{ inputs.unit_tests_path }} --cov-fail-under=0 --cov-report=
       
       - name: Build pipeline base image
         if: ${{ matrix.os == 'ubuntu-latest' }}
@@ -120,4 +120,9 @@ jobs:
 
       - name: Validate Integration Tests
         if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: uv run pytest ${{ inputs.integration_tests_path }} -v -m integration -n auto
+        run: COVERAGE_FILE=.coverage.integration uv run pytest ${{ inputs.integration_tests_path }} -v -m integration -n auto --cov-fail-under=0 --cov-report=
+
+      - name: Coverage report (combined)
+        run: |
+          uv run coverage combine
+          uv run coverage report --fail-under=70
