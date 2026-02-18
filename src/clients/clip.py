@@ -1,3 +1,5 @@
+# ruff: noqa: S110, SIM105
+
 """CLIP client class for generating image and text embeddings.
 
 This module provides a CLIP client class that generates embeddings for images

@@ -7,6 +7,16 @@ on:
         type: string
         description: "The path to the tests diretory to be executed."
         required: true
+      
+      unit_tests_path:
+        type: string
+        description: "The path to the unit tests directory to be executed."
+        required: true
+
+      integration_tests_path:
+        type: string
+        description: "The path to the integration tests directory to be executed."
+        required: true
 
       operating_system_json_string:
         type: string
@@ -75,64 +85,17 @@ jobs:
         run: uv sync --locked --all-packages --dev
 
       - name: Run pre-commit scripts
-        run: uv run pre-commit run --verbose
+        run: uv run pre-commit run --verbose --hook-stage pre-commit
 
-      - name: Validate Tests
-        run: uv run pytest ${{ inputs.tests_path }}
-        env:
-          COVERAGE_FILE: .coverage.${{ matrix.os }}.${{ matrix.python_version }}
+      - name: Validate Unit Tests
+        run: uv run pytest ${{ inputs.unit_tests_path }}
+      
+      - name: Setup Docker
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        run: docker compose -f zarf/compose/dev/docker-compose.yaml up -d --wait
 
-      - name: Upload Coverage Data
-        uses: actions/upload-artifact@v4
-        with:
-          name: .coverage.${{ matrix.os }}.${{ matrix.python_version }}
-          path: .coverage.${{ matrix.os }}.${{ matrix.python_version }}
-          include-hidden-files: true
 
-  # ----------------------------------------------------------------------
-  package_coverage:
-    needs: validate
+      - name: Validate Integration Tests
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        run: uv run pytest ${{ inputs.integration_tests_path }} -v -m integration -n auto
 
-    name: Postprocess Coverage Info
-    runs-on: ubuntu-latest
-
-    outputs:
-      coverage_total: ${{ steps.combine_coverage_data.outputs.coverage_total }}
-
-    permissions:
-      contents: read
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv and python
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - name: Install Dependencies
-        run: uv sync --frozen
-
-      - name: Download Coverage Data
-        uses: actions/download-artifact@v4
-        with:
-          merge-multiple: true
-
-      - name: Combine Coverage Data
-        id: combine_coverage_data
-        shell: bash
-        run: |
-          uv run coverage combine .
-          uv run coverage report --ignore-errors --show-missing --skip-covered
-          uv run coverage json --ignore-errors -o .coverage.json
-
-          export TOTAL=$(uv run python -c "import json;print(json.load(open('.coverage.json'))['totals']['percent_covered_display'])")
-          echo "coverage_total=${TOTAL}" >> $GITHUB_OUTPUT
-          echo "**Total coverage:** ${TOTAL}%" >> $GITHUB_STEP_SUMMARY
-
-      - name: Upload Coverage Data
-        uses: actions/upload-artifact@v4
-        with:
-          name: .coverage.json
-          path: .coverage.json
-          include-hidden-files: true
