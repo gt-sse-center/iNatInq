@@ -20,7 +20,7 @@ from urllib.parse import urlparse
 import ray
 
 from clients.inaturalist_open_data import INaturalistOpenDataClient, INaturalistPhotoRecord
-from config import ImageEmbeddingConfig, RayJobConfig, VectorDBConfig
+from config import INatConfig, ImageEmbeddingConfig, RayJobConfig, VectorDBConfig
 from core.ingestion.databricks.batch_runner import run_ray_batch_processing
 from core.ingestion.databricks.runtime import apply_python_params as _apply_python_params
 from core.ingestion.interfaces.operations import detect_image_format
@@ -32,20 +32,6 @@ from foundation.logger import LOGGING_CONFIG
 dictConfig(LOGGING_CONFIG)
 
 logger = logging.getLogger("pipeline.ray.databricks")
-
-
-def _parse_required_positive_int_env(name: str) -> int:
-    """Parse a required positive integer environment variable."""
-    raw = os.environ.get(name, "").strip()
-    if not raw:
-        raise RuntimeError(f"{name} is required and must be a positive integer")
-    try:
-        value = int(raw)
-    except ValueError:
-        raise RuntimeError(f"{name} must be a positive integer") from None
-    if value <= 0:
-        raise RuntimeError(f"{name} must be a positive integer")
-    return value
 
 
 def _record_to_task_payload(record: INaturalistPhotoRecord, image_size: str) -> dict[str, str]:
@@ -68,15 +54,28 @@ def _iter_task_payload_batches(
     *,
     image_size: str,
     batch_size: int,
+    max_items: int | None = None,
 ) -> Iterator[list[dict[str, str]]]:
-    """Yield serialized task payload batches from a streaming record iterator."""
+    """Yield serialized task payload batches from a streaming record iterator.
+
+    Args:
+        records: Streaming iterator of photo records.
+        image_size: Image size variant for URL construction.
+        batch_size: Number of records per yielded batch.
+        max_items: Optional cap on total records yielded. ``None`` means no
+            limit (all records from the iterator are consumed).
+    """
     resolved_batch_size = max(1, batch_size)
     batch: list[dict[str, str]] = []
+    total_yielded = 0
     for record in records:
         batch.append(_record_to_task_payload(record, image_size))
         if len(batch) >= resolved_batch_size:
+            total_yielded += len(batch)
             yield batch
             batch = []
+            if max_items is not None and total_yielded >= max_items:
+                return
     if batch:
         yield batch
 
@@ -181,30 +180,22 @@ def main() -> None:
 
     _apply_python_params(sys.argv[1:])
 
-    vector_db_provider = (os.environ.get("VECTOR_DB_PROVIDER") or "").strip().lower()
-    if not vector_db_provider:
-        os.environ["VECTOR_DB_PROVIDER"] = "qdrant"
-        job_logger.warning(
-            "VECTOR_DB_PROVIDER not set; defaulting to qdrant",
-            extra={"vector_db_provider": "qdrant"},
-        )
-
     namespace = os.environ.get("K8S_NAMESPACE", "ml-system")
-    collection = os.environ.get("VECTOR_DB_COLLECTION", "documents")
-    image_size = (os.environ.get("INAT_IMAGE_SIZE") or "medium").strip().lower()
-    max_rows = _parse_required_positive_int_env("INAT_MAX_ROWS")
-    metadata_url = (os.environ.get("INAT_METADATA_URL") or "").strip()
 
-    inat_photo_base_url = (
-        os.environ.get("INAT_PHOTO_BASE_URL") or "https://inaturalist-open-data.s3.amazonaws.com/photos"
-    ).strip()
-    inat_timeout_s = int((os.environ.get("INAT_TIMEOUT_S") or "120").strip())
-    inat_cb_failure_threshold = int((os.environ.get("INAT_CB_FAILURE_THRESHOLD") or "5").strip())
-    inat_cb_recovery_timeout_s = int((os.environ.get("INAT_CB_RECOVERY_TIMEOUT_S") or "30").strip())
-
+    inat_cfg = INatConfig.from_env()
     ray_cfg = RayJobConfig.from_env(namespace)
     embed_cfg = ImageEmbeddingConfig.from_env(namespace)
     vector_cfg = VectorDBConfig.from_env(namespace)
+
+    collection = vector_cfg.collection
+    image_size = inat_cfg.image_size
+    max_rows = inat_cfg.max_rows
+    metadata_url = inat_cfg.metadata_url
+    inat_photo_base_url = inat_cfg.photo_base_url
+    inat_timeout_s = inat_cfg.timeout_s
+    inat_cb_failure_threshold = inat_cfg.cb_failure_threshold
+    inat_cb_recovery_timeout_s = inat_cfg.cb_recovery_timeout_s
+    image_max_items = inat_cfg.image_max_items
     ingestion_targets = vector_cfg.ingestion_targets
 
     job_logger.info(
@@ -218,6 +209,7 @@ def main() -> None:
             "metadata_url": metadata_url or "default:s3://inaturalist-open-data/photos.csv.gz",
             "image_size": image_size,
             "max_rows": max_rows,
+            "image_max_items": image_max_items,
         },
     )
 
@@ -287,7 +279,12 @@ def main() -> None:
             )
 
         stats = run_ray_batch_processing(
-            batches=_iter_task_payload_batches(records, image_size=image_size, batch_size=image_batch_size),
+            batches=_iter_task_payload_batches(
+                records,
+                image_size=image_size,
+                batch_size=image_batch_size,
+                max_items=image_max_items,
+            ),
             submit_batch=_submit_batch,
             wait_batch_size=ray_cfg.wait_batch_size,
             wait_timeout=ray_cfg.wait_timeout,

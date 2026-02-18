@@ -7,7 +7,7 @@ authors = [
     { name = "Varun Agrawal", email = "varunagrawal@gatech.edu" },
     { name = "Ketan Bhardwaj", email = "ketanbj@cc.gatech.edu" },
 ]
-requires-python = ">= 3.11, < 3.13"
+requires-python = ">= 3.11"
 
 dependencies = [
     "aiobreaker>=1.2.0",
@@ -30,6 +30,7 @@ dependencies = [
     "tqdm>=4.67.1",
     "uvicorn>=0.32.0",
     "weaviate-client>=4.9.3",
+    "pre-commit>=4.5.1",
 ]
 
 classifiers = [
@@ -49,11 +50,13 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "ijson>=3.4.0.post0",
     "pytest>=8.4.2",
     "pytest-asyncio>=0.25.2",
     "pytest-cov>=7.0.0",
     "pytest-mock>=3.15.1",
     "pytest-xdist>=3.5.0",
+    "ruff>=0.15.1",
     "testcontainers[minio,qdrant]>=4.10.0",
 ]
 
@@ -77,7 +80,7 @@ filterwarnings = [
 line-length = 110
 
 [tool.ruff.lint]
-exclude = ["tests/**", "configs/**"]
+exclude = ["tests/**", "configs/**", "scripts/**"]
 
 select = ["ALL"]
 

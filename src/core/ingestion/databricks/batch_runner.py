@@ -21,6 +21,7 @@ class BatchRunStats:
     completed_records: int = 0
     successful: int = 0
     failed: int = 0
+    successful_keys: set[str] = attrs.field(factory=set)
 
 
 def _drain_ready_futures(
@@ -45,8 +46,12 @@ def _drain_ready_futures(
     batch_results = ray.get(ready)
     for batch_result in batch_results:
         stats.completed_records += len(batch_result)
-        stats.successful += sum(1 for _, ok, _ in batch_result if ok)
-        stats.failed += sum(1 for _, ok, _ in batch_result if not ok)
+        for key, ok, _ in batch_result:
+            if ok:
+                stats.successful += 1
+                stats.successful_keys.add(key)
+            else:
+                stats.failed += 1
 
     if total_expected_records is None:
         job_logger.info(

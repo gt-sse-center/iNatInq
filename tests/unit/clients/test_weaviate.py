@@ -648,7 +648,7 @@ class TestWeaviateClientWrapperEnsureImageCollection:
         mock_weaviate_client.__aenter__ = AsyncMock(return_value=mock_weaviate_client)
         mock_weaviate_client.__aexit__ = AsyncMock(return_value=None)
 
-        with pytest.raises(UpstreamError, match="Weaviate image collection creation failed"):
+        with pytest.raises(UpstreamError, match="Weaviate ensure_image_collection failed"):
             await weaviate_client.ensure_image_collection_async(collection="documents")
 
 
@@ -956,6 +956,49 @@ class TestWeaviateClientWrapperBatchUpsert:
             )
 
     @pytest.mark.asyncio
+    async def test_batch_upsert_detects_insert_many_partial_failure(
+        self, weaviate_client: WeaviateClientWrapper, mock_weaviate_client: AsyncMock
+    ) -> None:
+        """Test that batch_upsert raises UpstreamError on insert_many partial failure.
+
+        **Why this test is important:**
+          - insert_many can partially succeed — some objects inserted, some failed
+          - Partial failures must be detected and reported as UpstreamError
+          - Critical for data integrity: callers must know about failed inserts
+          - Validates the has_errors / errors inspection path
+
+        **What it tests:**
+          - insert_many returns an object with has_errors=True and an errors dict
+          - UpstreamError is raised with "insert_many partial failure" in the message
+        """
+        mock_weaviate_client.collections.exists.return_value = True
+        mock_weaviate_client.__aenter__ = AsyncMock(return_value=mock_weaviate_client)
+        mock_weaviate_client.__aexit__ = AsyncMock(return_value=None)
+
+        mock_collection = MagicMock()
+        mock_data = MagicMock()
+
+        # Simulate insert_many returning partial failure
+        mock_result = MagicMock()
+        mock_result.has_errors = True
+        mock_result.errors = {0: "object validation failed"}
+        mock_data.insert_many = AsyncMock(return_value=mock_result)
+        mock_collection.data = mock_data
+        mock_weaviate_client.collections.get.return_value = mock_collection
+
+        points = [
+            WeaviateDataObject(uuid="uuid-1", properties={"text": "hello"}, vector=[0.1, 0.2]),
+        ]
+
+        with (
+            patch("clients.weaviate.logger", create=True),
+            pytest.raises(UpstreamError, match="insert_many partial failure"),
+        ):
+            await weaviate_client.batch_upsert_async(
+                collection="test-collection", points=points, vector_size=768
+            )
+
+    @pytest.mark.asyncio
     async def test_batch_upsert_handles_circuit_breaker_open(
         self,
         weaviate_client: WeaviateClientWrapper,
@@ -1032,7 +1075,7 @@ class TestWeaviateClientWrapperAdditional:
         mock_weaviate_client.collections.exists.return_value = False
         mock_weaviate_client.collections.create.side_effect = Exception("API Error")
 
-        with pytest.raises(UpstreamError, match="Weaviate collection creation failed"):
+        with pytest.raises(UpstreamError, match="Weaviate ensure_collection failed"):
             await weaviate_client.ensure_collection_async(collection="TestCollection", vector_size=768)
 
     def test_close_with_client(self, weaviate_client: WeaviateClientWrapper) -> None:

@@ -7,10 +7,12 @@ Training images metadata: https://ml-inat-competition-datasets.s3.amazonaws.com/
 
 import os
 import json
+import mimetypes
 import logging
 import sys
 import tempfile
 from pathlib import Path
+import ijson  # pyright: ignore[reportMissingTypeStubs]
 import boto3  # pyright: ignore[reportMissingTypeStubs]
 from botocore.config import Config  # pyright: ignore[reportMissingTypeStubs]
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
@@ -18,18 +20,18 @@ from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 logging.basicConfig(level=logging.INFO, format="%(filename)s:%(lineno)d [%(levelname)s] %(message)s")
 
 
-BUCKET = "inquire-train-data"
-ENDPOINT = "https://localhost:9000"
+BUCKET = ""
+ENDPOINT = ""
 SECRET_KEY_ID = ""
 SECRET_ACCESS_KEY = ""
 REGION = ""
 
 IMAGES_DIR = ""
-METADATA_FILE = "train.json"
+METADATA_FILE = ""
 SUCCESSFUL_FILE = "successful-uploads.json"
 
-# Max number of images to process per script execution
-MAX_IMAGE_UPLOADS = 1000
+# Number of images to upload per batch
+BATCH_SIZE = 5_000
 
 
 class S3Client:
@@ -51,30 +53,38 @@ class S3Client:
         """Raises if upload fails."""
         abs_file_path = str(image_path.absolute())
 
-        self.client.upload_file(abs_file_path, BUCKET, image_id)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+        content_type, _ = mimetypes.guess_type(abs_file_path)
+        content_type = content_type or "application/octet-stream"
+
+        self.client.upload_file(abs_file_path, BUCKET, image_id, ExtraArgs={"ContentType": content_type})  # pyright: ignore[reportUnknownMemberType]
 
 
 def build_image_id_mapping(path: Path) -> dict[str, str]:
-    """Returns mapping of file names to image ids."""
-    with open(path) as f:
-        obj: dict[str, object] = json.load(f)
-    images: list[dict[str, str]] = obj.get("images", None)  # pyright: ignore[reportAssignmentType]
-    if not images:
-        raise Exception("no images field in metadata json file")
-
     image_id_map: dict[str, str] = {}
-    for image in images:
-        file_name = image.get("file_name", None)
-        if file_name is None:
-            raise Exception("no file_name in image entry")
-        assert file_name not in image_id_map
+    seen_ids = set[str]()
 
-        image_id = image.get("id", None)
-        if image_id is None:
-            raise Exception("no id in image entry")
+    with open(path, "rb") as f:
+        for image in ijson.items(f, "images.item"):
+            file_name = image.get("file_name")
+            if file_name is None:
+                raise Exception("no file_name in image entry")
 
-        image_id_map[file_name] = image_id
+            image_id = image.get("id")
+            if image_id is None:
+                raise Exception("no id in image entry")
 
+            if file_name in image_id_map:
+                raise Exception(f"duplicate file_name: {file_name}")
+
+            id = str(image_id)
+            image_id_map[file_name] = id
+            if id in seen_ids:
+                logging.warning(
+                    f"ID {image_id} already seen - this indicates IDs in the metada are not unique"
+                )
+            seen_ids.add(id)
+
+    logging.info(f"Total unique id count: {len(seen_ids)}")
     return image_id_map
 
 
@@ -101,8 +111,46 @@ def save_successful_set(successful: set[str]):
             succ_list = list(successful)
             json.dump(succ_list, f)
         os.replace(tmp_path, SUCCESSFUL_FILE)
+        logging.info(f"Saved successful uploads list to {SUCCESSFUL_FILE} with count {len(succ_list)}")
     except Exception as e:
         logging.error(f"Failed to save successful uploads list: {e}")
+
+
+def resolve_batch(
+    futures_with_file_name: dict[Future[None], str],
+    successful_uploads: set[str],
+    resolved_count: int,
+    fail_count: int,
+) -> tuple[int, int]:
+    """
+    Drains a batch of image upload futures, mutating successful_uploads set and futures_with_file_name dictionary in place.
+
+    Returns tuple containing the new (resolved_count, fail_count) values.
+
+    Does not raise.
+    """
+    try:
+        for future in as_completed(futures_with_file_name):
+            resolved_count += 1
+            file_name = "unknown_file_name"
+            try:
+                mapped_file_name = futures_with_file_name.get(future, None)
+                assert mapped_file_name is not None
+                file_name = mapped_file_name
+                future.result()
+                successful_uploads.add(file_name)
+            except Exception as e:
+                logging.error(f"Upload failed for {file_name}: {e}")
+                fail_count += 1
+    except Exception as e:
+        logging.error(e)
+    logging.info(
+        f"Uploaded image #{resolved_count}",
+        extra={"successful (all time)": len(successful_uploads), "failed": fail_count},
+    )
+    save_successful_set(successful_uploads)
+    futures_with_file_name.clear()
+    return resolved_count, fail_count
 
 
 def main():
@@ -121,13 +169,15 @@ def main():
     client = S3Client()
 
     successful_uploads = load_successful_set()
+    logging.info(f"Loaded list of previously uploaded images with count {len(successful_uploads)}")
 
     image_id_map = build_image_id_mapping(Path(METADATA_FILE))
-    logging.info(f"Read metadata for {len(image_id_map)} images...")
+    logging.info(f"Read metadata for {len(image_id_map)} images")
 
     fail_count = 0
+    resolved_count = 0
     try:
-        with ThreadPoolExecutor(max_workers=16) as pool:
+        with ThreadPoolExecutor(max_workers=10) as pool:
             # Submit upload tasks to worker pool
             submitted_count = 0
             futures_with_file_name: dict[Future[None], str] = {}
@@ -142,9 +192,6 @@ def main():
                     if file_name in successful_uploads:
                         continue
 
-                    if submitted_count >= MAX_IMAGE_UPLOADS:
-                        break
-
                     image_id = image_id_map.get(file_name, None)
                     if image_id is None:
                         raise Exception(f"no image_id found for file: {file_name}")
@@ -156,33 +203,22 @@ def main():
                     logging.error(f"Upload failed for {file_name}: {e}")
                     fail_count += 1
 
-            # Process resolved tasks
-            resolved_count = 0
-            for future in as_completed(futures_with_file_name):
-                resolved_count += 1
-                file_name = "unknown_file_name"
-                try:
-                    mapped_file_name = futures_with_file_name.get(future, None)
-                    assert mapped_file_name is not None
-                    file_name = mapped_file_name
-                    future.result()
-                    successful_uploads.add(file_name)
-                except Exception as e:
-                    logging.error(f"Upload failed for {file_name}: {e}")
-                    fail_count += 1
-                finally:
-                    if resolved_count % min(MAX_IMAGE_UPLOADS // 2, 1_000) == 0:
-                        logging.info(
-                            f"Uploading image #{resolved_count}",
-                            extra={"successful (all time)": len(successful_uploads), "failed": fail_count},
-                        )
-                        save_successful_set(successful_uploads)
+                # If we've reached the maximum batch size, resolve current futures
+                if len(futures_with_file_name) >= BATCH_SIZE:
+                    resolved_count, fail_count = resolve_batch(
+                        futures_with_file_name, successful_uploads, resolved_count, fail_count
+                    )
+
+            # Process any remaining futures
+            resolved_count, fail_count = resolve_batch(
+                futures_with_file_name, successful_uploads, resolved_count, fail_count
+            )
 
     except Exception as e:
         logging.error(e)
 
     finally:
-        logging.info(f"Finished execution of {MAX_IMAGE_UPLOADS} file uploads...")
+        logging.info(f"Finished execution of {resolved_count} file uploads...")
         logging.info(f"Success count: {len(successful_uploads)}")
         logging.info(f"Fail count: {fail_count}")
         save_successful_set(successful_uploads)

@@ -247,7 +247,11 @@ class RayJobRequest(BaseModel):
         ```
     """
 
-    s3_prefix: str = Field(..., json_schema_extra={"example": "inputs/"}, description="S3 prefix to process")
+    s3_prefix: str = Field(
+        default="",
+        json_schema_extra={"example": "inputs/"},
+        description="S3 prefix to process (empty string for bucket root)",
+    )
     collection: str = Field(
         ..., json_schema_extra={"example": "documents"}, description="Vector DB collection"
     )
@@ -315,6 +319,8 @@ class RayImageJobRequest(BaseModel):
         s3_bucket: S3 bucket containing images.
         s3_prefix: S3 prefix to process (e.g., "images/").
         collection: Base collection name (image collections created as {collection}_images).
+        image_max_items: Optional limit on number of images to process.
+        image_page_size: Optional S3 listing page size override.
 
     Example:
         ```json
@@ -329,9 +335,23 @@ class RayImageJobRequest(BaseModel):
     s3_bucket: str = Field(
         ..., json_schema_extra={"example": "pipeline"}, description="S3 bucket containing images"
     )
-    s3_prefix: str = Field(..., json_schema_extra={"example": "images/"}, description="S3 prefix to process")
+    s3_prefix: str = Field(
+        default="",
+        json_schema_extra={"example": "images/"},
+        description="S3 prefix to process (empty string for bucket root)",
+    )
     collection: str = Field(
         ..., json_schema_extra={"example": "documents"}, description="Vector DB base collection name"
+    )
+    image_max_items: int | None = Field(
+        default=None,
+        gt=0,
+        description="Optional limit on number of images to process",
+    )
+    image_page_size: int | None = Field(
+        default=None,
+        gt=0,
+        description="Optional S3 listing page size override",
     )
 
 
@@ -367,6 +387,7 @@ class RayImageJobResponse(BaseModel):
     s3_bucket: str
     s3_prefix: str
     collection: str
+    image_max_items: int | None = None
     submitted_at: str
 
 
@@ -391,7 +412,11 @@ class DatabricksJobRequest(BaseModel):
         ```
     """
 
-    s3_prefix: str = Field(..., json_schema_extra={"example": "inputs/"}, description="S3 prefix to process")
+    s3_prefix: str = Field(
+        default="",
+        json_schema_extra={"example": "inputs/"},
+        description="S3 prefix to process (empty string for bucket root)",
+    )
     collection: str = Field(
         ..., json_schema_extra={"example": "documents"}, description="Vector DB collection"
     )
@@ -402,8 +427,10 @@ class DatabricksImageJobRequest(BaseModel):
 
     Attributes:
         source: Image source to ingest ("s3" or "inat").
-        s3_prefix: S3 prefix to process (required when source is "s3").
+        s3_prefix: Optional S3 prefix to process (empty string means bucket root).
         collection: Vector DB base collection name.
+        image_max_items: Optional limit on number of images to process.
+        image_page_size: Optional S3 listing page size override.
 
     Example:
         ```json
@@ -417,14 +444,24 @@ class DatabricksImageJobRequest(BaseModel):
 
     source: Literal["s3", "inat"] = Field("s3", description="Image source type")
     s3_prefix: str | None = Field(
-        None,
+        "",
         json_schema_extra={"example": "images/"},
-        description="S3 prefix to process (required when source='s3')",
+        description="Optional S3 prefix to process (empty string for bucket root)",
     )
     collection: str = Field(
         ...,
         json_schema_extra={"example": "documents"},
         description="Vector DB base collection name",
+    )
+    image_max_items: int | None = Field(
+        default=None,
+        gt=0,
+        description="Optional limit on number of images to process",
+    )
+    image_page_size: int | None = Field(
+        default=None,
+        gt=0,
+        description="Optional S3 listing page size override",
     )
 
 

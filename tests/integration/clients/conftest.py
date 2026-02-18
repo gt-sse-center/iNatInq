@@ -306,7 +306,7 @@ def clip_container():
     logger.info("Starting CLIP container (ai4all/clip)...")
     container = DockerContainer("ai4all/clip:latest").with_exposed_ports(8000)
     container.start()
-    _wait_for_clip_health(container)
+    _wait_for_clip_health(container, timeout=240)
     logger.info("CLIP container started", extra={"url": _get_clip_url(container)})
     yield container
     logger.info("Stopping CLIP container...")
