@@ -1,3 +1,5 @@
+# ruff: noqa: S110, SIM105
+
 """Ollama client class for generating text embeddings.
 
 This module provides an Ollama client class that encapsulates configuration
