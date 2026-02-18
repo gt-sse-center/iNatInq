@@ -50,6 +50,7 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "ijson>=3.4.0.post0",
     "pytest>=8.4.2",
     "pytest-asyncio>=0.25.2",
     "pytest-cov>=7.0.0",
