@@ -98,10 +98,25 @@ jobs:
         if: ${{ matrix.os == 'ubuntu-latest' }}
         run: |
           docker compose -f zarf/compose/dev/docker-compose.yaml up -d
-          # Wait for init containers to complete
-          timeout 300 bash -c 'until docker wait minio-init ollama-init 2>/dev/null; do sleep 1; done' || true
-          # Wait for main services to be healthy
-          timeout 300 bash -c 'until docker compose -f zarf/compose/dev/docker-compose.yaml ps --format json | jq -e ".[] | select(.Service | test(\"minio-init|ollama-init\") | not) | .Health == \"healthy\"" | all; do sleep 2; done'
+          # Wait for init containers to finish (they will exit 0 on success)
+          echo "Waiting for init containers..."
+          docker wait minio-init ollama-init || true
+
+          echo "Waiting for core services to be up..."
+          # crude but robust: try the key health endpoints a few times
+          for i in {1..60}; do
+            if curl -sf http://localhost:9000/minio/health/live \
+              && curl -sf http://localhost:6333/healthz \
+              && curl -sf http://localhost:8080/v1/.well-known/ready \
+              && curl -sf http://localhost:11434/api/version \
+              && curl -sf http://localhost:8001/ \
+              && curl -sf http://localhost:8000/healthz; then
+              echo "All core services are responding"
+              break
+            fi
+            echo "Services not ready yet, retrying..."
+            sleep 5
+          done
 
       - name: Validate Integration Tests
         if: ${{ matrix.os == 'ubuntu-latest' }}
