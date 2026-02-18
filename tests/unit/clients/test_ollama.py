@@ -755,7 +755,11 @@ class TestOllamaClientEmbedAsync:
     async def test_embed_async_raises_on_http_status_error(
         self, mock_async_client_cls: MagicMock, ollama_client: OllamaClient
     ) -> None:
-        """Test that embed_async raises UpstreamError on HTTP status error."""
+        """Test that embed_async raises UpstreamError on HTTP status error.
+
+        Note: 500 errors are retriable, so the error message comes from the
+        retry wrapper after all retries are exhausted.
+        """
         import httpx
 
         mock_response = MagicMock()
@@ -770,7 +774,7 @@ class TestOllamaClientEmbedAsync:
         mock_client.__aexit__.return_value = None
         mock_async_client_cls.return_value = mock_client
 
-        with pytest.raises(UpstreamError, match="Ollama error 500"):
+        with pytest.raises(UpstreamError, match="Ollama embed_async failed after"):
             await ollama_client.embed_async("hello world")
 
     @patch("clients.ollama.httpx.AsyncClient")
@@ -778,7 +782,11 @@ class TestOllamaClientEmbedAsync:
     async def test_embed_async_raises_on_request_error(
         self, mock_async_client_cls: MagicMock, ollama_client: OllamaClient
     ) -> None:
-        """Test that embed_async raises UpstreamError on request error."""
+        """Test that embed_async raises UpstreamError on request error.
+
+        Note: RequestError (base class, not ConnectError) is non-retriable
+        so the error wraps immediately via async_retry_call.
+        """
         import httpx
 
         mock_client = AsyncMock()
@@ -787,7 +795,7 @@ class TestOllamaClientEmbedAsync:
         mock_client.__aexit__.return_value = None
         mock_async_client_cls.return_value = mock_client
 
-        with pytest.raises(UpstreamError, match="Ollama request failed"):
+        with pytest.raises(UpstreamError, match="Ollama embed_async failed"):
             await ollama_client.embed_async("hello world")
 
     @patch("clients.ollama.httpx.AsyncClient")

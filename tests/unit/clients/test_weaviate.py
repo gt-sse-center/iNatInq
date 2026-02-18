@@ -225,6 +225,49 @@ class TestWeaviateClientWrapperInit:
         )
         assert client_custom.timeout_s == 600
 
+    @patch("clients.weaviate.WeaviateAsyncClient")
+    def test_timeout_passed_to_weaviate_async_client(self, mock_weaviate_async_client: MagicMock) -> None:
+        """Test that timeout_s is passed to WeaviateAsyncClient via AdditionalConfig.
+
+        **Why this test is important:**
+          - Without explicit timeout config, Weaviate uses library defaults
+          - Ensures the configured timeout_s actually controls request timeouts
+          - Critical for consistent timeout behavior across all clients
+
+        **What it tests:**
+          - WeaviateAsyncClient receives additional_config with Timeout
+          - Timeout init/query/insert all use timeout_s value
+        """
+        mock_weaviate_async_client.return_value = AsyncMock()
+
+        WeaviateClientWrapper(url="http://weaviate.example.com:8080", timeout_s=120)
+
+        mock_weaviate_async_client.assert_called_once()
+        call_kwargs = mock_weaviate_async_client.call_args.kwargs
+        additional_config = call_kwargs["additional_config"]
+        assert additional_config.timeout.init == 120
+        assert additional_config.timeout.query == 120
+        assert additional_config.timeout.insert == 120
+
+    @patch("clients.weaviate.WeaviateAsyncClient")
+    def test_default_timeout_passed_to_weaviate_async_client(
+        self, mock_weaviate_async_client: MagicMock
+    ) -> None:
+        """Test that default timeout_s (300) is passed to WeaviateAsyncClient.
+
+        **What it tests:**
+          - Default timeout_s of 300 is applied to WeaviateAsyncClient
+        """
+        mock_weaviate_async_client.return_value = AsyncMock()
+
+        WeaviateClientWrapper(url="http://weaviate.example.com:8080")
+
+        call_kwargs = mock_weaviate_async_client.call_args.kwargs
+        additional_config = call_kwargs["additional_config"]
+        assert additional_config.timeout.init == 300
+        assert additional_config.timeout.query == 300
+        assert additional_config.timeout.insert == 300
+
     def test_from_config_creates_client(self) -> None:
         """Test that from_config factory creates client correctly.
 
@@ -699,6 +742,37 @@ class TestWeaviateClientWrapperSearch:
         assert result.total == 2
 
     @pytest.mark.asyncio
+    async def test_search_targets_named_vector(
+        self, weaviate_client: WeaviateClientWrapper, mock_weaviate_client: AsyncMock
+    ) -> None:
+        """Test that search specifies target_vector='default' for named vector collections.
+
+        **Why this test is important:**
+          - Collections use Configure.Vectors.self_provided() which creates a named
+            vector config. The near_vector query must specify target_vector='default'
+            to search the correct HNSW index.
+
+        **What it tests:**
+          - near_vector is called with target_vector="default"
+        """
+        mock_response = MagicMock()
+        mock_response.objects = []
+
+        mock_collection = MagicMock()
+        mock_query = MagicMock()
+        mock_query.near_vector = AsyncMock(return_value=mock_response)
+        mock_collection.query = mock_query
+        mock_weaviate_client.collections.get.return_value = mock_collection
+        mock_weaviate_client.__aenter__ = AsyncMock(return_value=mock_weaviate_client)
+        mock_weaviate_client.__aexit__ = AsyncMock(return_value=None)
+
+        await weaviate_client.search_async(collection="test-collection", query_vector=[0.1, 0.2], limit=5)
+
+        mock_query.near_vector.assert_called_once()
+        call_kwargs = mock_query.near_vector.call_args[1]
+        assert call_kwargs["target_vector"] == "default"
+
+    @pytest.mark.asyncio
     async def test_search_raises_upstream_error_on_failure(
         self, weaviate_client: WeaviateClientWrapper, mock_weaviate_client: AsyncMock
     ) -> None:
@@ -798,6 +872,41 @@ class TestWeaviateClientWrapperBatchUpsert:
         mock_data.insert_many.assert_called_once()
         call_args = mock_data.insert_many.call_args[0]
         assert len(call_args[0]) == 2  # Two objects
+
+    @pytest.mark.asyncio
+    async def test_batch_upsert_uses_named_vectors(
+        self, weaviate_client: WeaviateClientWrapper, mock_weaviate_client: AsyncMock
+    ) -> None:
+        """Test that batch_upsert stores vectors using named vector format.
+
+        **Why this test is important:**
+          - Weaviate v4 collections created with Configure.Vectors.self_provided()
+            use named vectors. Vectors must be stored as {"default": [...]} to
+            populate the HNSW index correctly. Legacy format (plain list) puts
+            vectors in the wrong slot, causing search to return 0 results.
+
+        **What it tests:**
+          - DataObject.vector is a dict with key "default"
+          - Vector values are correctly passed through
+        """
+        mock_weaviate_client.collections.exists.return_value = True
+        mock_weaviate_client.__aenter__ = AsyncMock(return_value=mock_weaviate_client)
+        mock_weaviate_client.__aexit__ = AsyncMock(return_value=None)
+
+        mock_collection = MagicMock()
+        mock_data = MagicMock()
+        mock_data.insert_many = AsyncMock(return_value=None)
+        mock_collection.data = mock_data
+        mock_weaviate_client.collections.get.return_value = mock_collection
+
+        points = [
+            WeaviateDataObject(uuid="uuid-1", properties={"text": "hello"}, vector=[0.1, 0.2]),
+        ]
+
+        await weaviate_client.batch_upsert_async(collection="test-collection", points=points, vector_size=768)
+
+        inserted_objects = mock_data.insert_many.call_args[0][0]
+        assert inserted_objects[0].vector == {"default": [0.1, 0.2]}
 
     @pytest.mark.asyncio
     async def test_batch_upsert_skips_empty_list(

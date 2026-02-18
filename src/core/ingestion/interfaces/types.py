@@ -280,6 +280,7 @@ class ProcessingConfig:
     upsert_batch_size: int = 200
     namespace: str = attrs.field(factory=lambda: os.getenv("K8S_NAMESPACE", "ml-system"))
     ingestion_targets: frozenset[str] = frozenset({"qdrant", "weaviate"})
+    s3_fetch_concurrency: int = 20
 
 
 @attrs.define(frozen=True, slots=True)
@@ -346,6 +347,20 @@ class ProcessingClients:
             except Exception as e:
                 logger.warning("Error closing Weaviate client", extra={"error": str(e)})
 
+        # Close async HTTP client on embedder if it has one
+        close_async_fn = getattr(self.embedder, "close_async", None)
+        if callable(close_async_fn):
+            try:
+                import asyncio
+
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.run_until_complete(close_async_fn())
+                except RuntimeError:
+                    asyncio.run(close_async_fn())
+            except Exception as e:
+                logger.warning("Error closing embedder async client", extra={"error": str(e)})
+
         try:
             self.session.close()
         except Exception as e:
@@ -371,8 +386,16 @@ class ProcessingClients:
             except Exception as e:
                 logger.warning("Error closing Weaviate async client", extra={"error": str(e)})
 
-        # Close HTTP session (aiohttp-style close)
+        # Close async HTTP client on embedder if it has one
+        close_async_fn = getattr(self.embedder, "close_async", None)
+        if callable(close_async_fn):
+            try:
+                await close_async_fn()
+            except Exception as e:
+                logger.warning("Error closing embedder async client", extra={"error": str(e)})
+
+        # Close HTTP session (requests.Session.close() is synchronous)
         try:
-            await self.session.close()
+            self.session.close()
         except Exception as e:
             logger.warning("Error closing HTTP session", extra={"error": str(e)})
