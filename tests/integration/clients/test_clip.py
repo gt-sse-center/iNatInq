@@ -78,7 +78,7 @@ SAMPLE_IMAGE_2 = _create_solid_color_png((0, 0, 255))  # Blue image (different f
 # =============================================================================
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def clip_client(clip_container) -> CLIPClient:
     """Create a CLIPClient connected to the ai4all/clip container.
 

@@ -30,6 +30,7 @@ dependencies = [
     "tqdm>=4.67.1",
     "uvicorn>=0.32.0",
     "weaviate-client>=4.9.3",
+    "pre-commit>=4.5.1",
 ]
 
 classifiers = [
@@ -79,7 +80,7 @@ filterwarnings = [
 line-length = 110
 
 [tool.ruff.lint]
-exclude = ["tests/**", "configs/**"]
+exclude = ["tests/**", "configs/**", "scripts/**"]
 
 select = ["ALL"]
 
