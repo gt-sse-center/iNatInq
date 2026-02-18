@@ -199,9 +199,11 @@ class TestRayProcessingPipeline:
         mock_clients.close_sync = MagicMock()
 
         mock_fetcher = MagicMock()
-        mock_fetcher.fetch_all.return_value = (
-            [],  # no contents
-            [ProcessingResult.failure_result("key1.txt", "S3 error")],
+        mock_fetcher.fetch_all_async = AsyncMock(
+            return_value=(
+                [],  # no contents
+                [ProcessingResult.failure_result("key1.txt", "S3 error")],
+            )
         )
 
         with patch.object(pipeline._clients_factory, "create", return_value=mock_clients):
@@ -238,7 +240,7 @@ class TestRayProcessingPipeline:
 
         content = ContentResult(s3_key="key1.txt", content="Hello world")
         mock_fetcher = MagicMock()
-        mock_fetcher.fetch_all.return_value = ([content], [])
+        mock_fetcher.fetch_all_async = AsyncMock(return_value=([content], []))
 
         with patch.object(pipeline._clients_factory, "create", return_value=mock_clients):
             with patch(

@@ -8,7 +8,7 @@ with Spark implementation.
 
 import asyncio
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import attrs
 import ray  # type: ignore[import-untyped]
@@ -25,6 +25,9 @@ from core.ingestion.interfaces import (
     VectorDBUpserter,
     VectorPointFactory,
 )
+
+if TYPE_CHECKING:
+    from core.ingestion.interfaces.types import ProcessingClients
 from core.ingestion.shared import RayActorRateLimiter, get_ray_logger
 from foundation.rate_limiter import RateLimiter
 
@@ -106,6 +109,9 @@ class RayProcessingPipeline:
     def process_keys_sync(self, keys: list[str]) -> list[ProcessingResult]:
         """Process S3 keys synchronously (for Ray remote functions).
 
+        Uses a single asyncio.run() block for both S3 fetch and processing
+        to enable parallel S3 fetching and avoid event loop recreation.
+
         Args:
             keys: List of S3 object keys to process.
 
@@ -118,20 +124,37 @@ class RayProcessingPipeline:
         clients = self._clients_factory.create(self._config)
 
         try:
-            # Phase 1: Fetch S3 content
-            fetcher = S3ContentFetcher(clients.s3, self._config.s3_bucket)
-            contents, fetch_failures = fetcher.fetch_all(keys)
-
-            if not contents:
-                return fetch_failures
-
-            # Phase 2: Process content (embed + upsert)
-            process_results = asyncio.run(self._process_contents_async(contents, clients))
-
-            return fetch_failures + process_results
-
+            return asyncio.run(self._process_all_async(keys, clients))
         finally:
             clients.close_sync()
+
+    async def _process_all_async(
+        self,
+        keys: list[str],
+        clients: "ProcessingClients",
+    ) -> list[ProcessingResult]:
+        """Fetch S3 content and process through embedding/upsert pipeline.
+
+        Combines async S3 fetch with async embed+upsert in a single
+        event loop for maximum throughput.
+
+        Args:
+            keys: List of S3 object keys.
+            clients: Processing clients bundle.
+
+        Returns:
+            List of processing results.
+        """
+        fetcher = S3ContentFetcher(clients.s3, self._config.s3_bucket)
+        contents, fetch_failures = await fetcher.fetch_all_async(
+            keys, max_concurrent=self._config.s3_fetch_concurrency
+        )
+
+        if not contents:
+            return fetch_failures
+
+        process_results = await self._process_contents_async(contents, clients)
+        return fetch_failures + process_results
 
     async def _process_contents_async(
         self,
@@ -139,6 +162,9 @@ class RayProcessingPipeline:
         clients: Any,
     ) -> list[ProcessingResult]:
         """Process contents through embedding and upsert pipeline.
+
+        Splits contents into fixed-size batches and dispatches all concurrently
+        via asyncio.gather, bounded by a semaphore for concurrency control.
 
         Args:
             contents: List of S3 content to process.
@@ -162,37 +188,26 @@ class RayProcessingPipeline:
             collection=self._config.collection,
         )
 
-        # Process in batches
+        # Split into fixed batches and process concurrently
         semaphore = asyncio.Semaphore(self._config.max_concurrency)
-        results: list[ProcessingResult] = []
         batch_size = self._config.embed_batch_size
+        batches = [contents[i : i + batch_size] for i in range(0, len(contents), batch_size)]
 
-        buffer: list[ContentResult] = []
-        for content in contents:
-            buffer.append(content)
-
-            if len(buffer) >= batch_size:
-                batch = buffer[:batch_size]
-                buffer = buffer[batch_size:]
-
-                batch_results, batch_size = await processor.process_batch_async(
+        async def _process_one_batch(batch: list[ContentResult]) -> list[ProcessingResult]:
+            async with semaphore:
+                batch_results, _ = await processor.process_batch_async(
                     batch,
-                    semaphore,
+                    None,  # Semaphore is applied at this level
                     batch_size,
                     min_batch_size=1,
-                    max_batch_size=self._config.embed_batch_size,
+                    max_batch_size=batch_size,
                 )
-                results.extend(batch_results)
+                return batch_results
 
-        # Process remaining buffer
-        if buffer:
-            batch_results, _ = await processor.process_batch_async(
-                buffer,
-                semaphore,
-                batch_size,
-                min_batch_size=1,
-                max_batch_size=self._config.embed_batch_size,
-            )
+        batch_results_list = await asyncio.gather(*[_process_one_batch(b) for b in batches])
+
+        results: list[ProcessingResult] = []
+        for batch_results in batch_results_list:
             results.extend(batch_results)
 
         return results

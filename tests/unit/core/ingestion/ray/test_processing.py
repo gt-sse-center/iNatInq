@@ -511,7 +511,7 @@ class TestEmbeddingGenerator:
           - generate_batch_async returns list of vectors
         """
         mock_embedder = MagicMock()
-        mock_embedder.embed_async = AsyncMock(side_effect=[[0.1, 0.2], [0.3, 0.4]])
+        mock_embedder.embed_batch_async = AsyncMock(return_value=[[0.1, 0.2], [0.3, 0.4]])
 
         generator = EmbeddingGenerator(mock_embedder)
         batch = [
