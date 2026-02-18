@@ -833,7 +833,6 @@ class TestProcessingClients:
         mock_weaviate._client = MagicMock()
         mock_weaviate._client.close = AsyncMock()
         mock_session = MagicMock()
-        mock_session.close = AsyncMock()
 
         clients = ProcessingClients(
             s3=mock_s3,
@@ -847,4 +846,5 @@ class TestProcessingClients:
 
         mock_qdrant._client.close.assert_awaited_once()
         mock_weaviate._client.close.assert_awaited_once()
-        mock_session.close.assert_awaited_once()
+        # session.close() is synchronous (requests.Session), not awaited
+        mock_session.close.assert_called_once()

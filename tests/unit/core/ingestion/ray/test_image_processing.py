@@ -116,23 +116,26 @@ class TestImageProcessingPipeline:
         with (
             patch("core.ingestion.tasks.image_processing.S3ClientWrapper"),
             patch("core.ingestion.tasks.image_processing.create_retry_session"),
-            patch("core.ingestion.tasks.image_processing.CLIPClient"),
+            patch("core.ingestion.tasks.image_processing.CLIPClient") as mock_clip_cls,
             patch(
                 "core.ingestion.tasks.image_processing.create_vector_db_provider",
                 side_effect=[MagicMock(), MagicMock()],
             ),
             patch("core.ingestion.tasks.image_processing.VectorDBConfigFactory") as mock_factory,
         ):
+            mock_clip_cls.from_config.return_value = MagicMock(close_async=AsyncMock())
             mock_factory.return_value.create_both.return_value = (
                 MagicMock(),
                 MagicMock(),
             )
             mock_fetcher = MagicMock()
-            mock_fetcher.fetch_all.return_value = (
-                [],  # no images
-                [
-                    ProcessingResult.failure_result("a.jpg", "Image fetch/validation failed"),
-                ],
+            mock_fetcher.fetch_all = MagicMock(
+                return_value=(
+                    [],  # no images
+                    [
+                        ProcessingResult.failure_result("a.jpg", "Image fetch/validation failed"),
+                    ],
+                )
             )
             with patch(
                 "core.ingestion.tasks.image_processing.ImageContentFetcher",
