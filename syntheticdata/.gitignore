@@ -1,3 +1,6 @@
 # Generated data (reproducible from seeds)
 data/imgs/
 data/txts/
+
+# INQUIRE benchmark fixtures are committed (not reproducible from seeds)
+!data/inquire/

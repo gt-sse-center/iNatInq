@@ -20,6 +20,10 @@ htmlcov/
 
 # Data directory
 data/
+# INQUIRE benchmark fixtures (committed, not reproducible)
+!syntheticdata/data/
+!syntheticdata/data/inquire/
+!syntheticdata/data/inquire/**
 
 **/.DS_Store
 
