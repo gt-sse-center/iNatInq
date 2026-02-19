@@ -148,6 +148,7 @@ class RayService:
                         "pydantic",
                         "pydantic-settings",
                         "httpx",
+                        "pillow",
                         "qdrant-client>=1.12.0,<1.13.0",
                         "weaviate-client",
                         "tenacity",
