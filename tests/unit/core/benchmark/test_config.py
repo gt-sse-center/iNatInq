@@ -62,27 +62,27 @@ class TestBenchmarkConfig:
 
     def test_invalid_k_values_empty(self):
         """Empty k_values raises ValidationError."""
-        with pytest.raises(ValidationError, match="k_values must not be empty"):
+        with pytest.raises(ValidationError, match="too_short"):
             BenchmarkConfig(k_values=[])
 
     def test_invalid_k_values_negative(self):
         """Negative k_values raises ValidationError."""
-        with pytest.raises(ValidationError, match="k_values must be positive"):
+        with pytest.raises(ValidationError, match="greater_than_equal"):
             BenchmarkConfig(k_values=[-1])
 
     def test_invalid_k_values_zero(self):
         """Zero k_values raises ValidationError."""
-        with pytest.raises(ValidationError, match="k_values must be positive"):
+        with pytest.raises(ValidationError, match="greater_than_equal"):
             BenchmarkConfig(k_values=[0])
 
     def test_invalid_warmup_negative(self):
         """Negative warmup_queries raises ValidationError."""
-        with pytest.raises(ValidationError, match="warmup_queries must be non-negative"):
+        with pytest.raises(ValidationError, match="greater_than_equal"):
             BenchmarkConfig(warmup_queries=-1)
 
     def test_invalid_concurrent_zero(self):
         """Zero concurrent_queries raises ValidationError."""
-        with pytest.raises(ValidationError, match="concurrent_queries must be at least 1"):
+        with pytest.raises(ValidationError, match="greater_than_equal"):
             BenchmarkConfig(concurrent_queries=0)
 
     def test_invalid_output_format(self):

@@ -19,9 +19,9 @@ Example:
 from __future__ import annotations
 
 from pathlib import Path  # noqa: TC003 - required at runtime by Pydantic
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
@@ -45,7 +45,7 @@ class BenchmarkConfig(BaseSettings):
 
     model_config = {"env_prefix": "BENCHMARK_"}
 
-    k_values: list[int] = [5, 10, 20]
+    k_values: Annotated[list[Annotated[int, Field(ge=1)]], Field(min_length=1)] = [5, 10, 20]
     metrics: list[str] = [
         "precision@k",
         "recall@k",
@@ -53,40 +53,9 @@ class BenchmarkConfig(BaseSettings):
         "ndcg",
         "mrr",
     ]
-    warmup_queries: int = 5
+    warmup_queries: Annotated[int, Field(ge=0)] = 5
     cooldown_seconds: float = 0.1
-    concurrent_queries: int = 1
+    concurrent_queries: Annotated[int, Field(ge=1)] = 1
     output_format: Literal["console", "json", "both"] = "console"
     output_path: Path | None = None
     providers: list[str] = []
-
-    @field_validator("k_values")
-    @classmethod
-    def k_values_must_be_positive(cls, v: list[int]) -> list[int]:
-        """Validate that all K values are positive integers."""
-        if not v:
-            msg = "k_values must not be empty"
-            raise ValueError(msg)
-        for k in v:
-            if k < 1:
-                msg = f"k_values must be positive, got {k}"
-                raise ValueError(msg)
-        return v
-
-    @field_validator("warmup_queries")
-    @classmethod
-    def warmup_must_be_non_negative(cls, v: int) -> int:
-        """Validate that warmup_queries is non-negative."""
-        if v < 0:
-            msg = f"warmup_queries must be non-negative, got {v}"
-            raise ValueError(msg)
-        return v
-
-    @field_validator("concurrent_queries")
-    @classmethod
-    def concurrent_must_be_positive(cls, v: int) -> int:
-        """Validate that concurrent_queries is at least 1."""
-        if v < 1:
-            msg = f"concurrent_queries must be at least 1, got {v}"
-            raise ValueError(msg)
-        return v
