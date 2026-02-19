@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from foundation.async_utils import close_async_resource
+from foundation.async_utils import close_async_resource, run_coroutine_sync
 
 
 class TestCloseAsyncResourceSuccess:
@@ -242,3 +242,40 @@ class TestCloseAsyncResourceEdgeCases:
             asyncio.run(close_async_resource(mock_resource, "run_resource"))
 
         assert close_called
+
+
+class TestRunCoroutineSync:
+    """Tests for run_coroutine_sync helper."""
+
+    def test_returns_coroutine_result_from_sync_context(self):
+        """Verify coroutine runs and returns its value from a sync context."""
+
+        async def coro():
+            return 42
+
+        assert run_coroutine_sync(coro()) == 42
+
+    def test_works_inside_running_event_loop(self):
+        """Verify coroutine runs when called from within a running event loop.
+
+        This simulates the Databricks / Jupyter scenario where asyncio.run()
+        would normally raise RuntimeError.
+        """
+
+        async def outer():
+            async def inner():
+                return "ok"
+
+            return run_coroutine_sync(inner())
+
+        result = asyncio.run(outer())
+        assert result == "ok"
+
+    def test_propagates_exception(self):
+        """Verify exceptions from the coroutine propagate to the caller."""
+
+        async def failing():
+            raise ValueError("boom")
+
+        with pytest.raises(ValueError, match="boom"):
+            run_coroutine_sync(failing())

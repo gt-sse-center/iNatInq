@@ -28,7 +28,6 @@ The client wrapper:
 - Uses attrs for concise, correct class definition
 """
 
-import asyncio
 import logging
 from typing import Any, Literal
 
@@ -44,7 +43,7 @@ from qdrant_client.models import PointStruct  # Qdrant's native point type
 from config import VectorDBConfig
 from core.exceptions import UpstreamError
 from core.models import SearchResultItem, SearchResults
-from foundation.async_utils import close_async_resource
+from foundation.async_utils import close_async_resource, run_coroutine_sync
 from foundation.circuit_breaker import create_async_circuit_breaker, with_circuit_breaker_async
 from foundation.retry import HTTPErrorClassifier, async_retry_call, create_retry_logger
 
@@ -599,6 +598,6 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         if self._client is not None:
             client_to_close = self._client
             self._client = None
-            asyncio.run(
+            run_coroutine_sync(
                 close_async_resource(client_to_close, "qdrant_async_client"),
             )

@@ -945,12 +945,12 @@ class TestQdrantClientWrapperAdditional:
         with pytest.raises(UpstreamError, match="Qdrant batch upsert failed"):
             await qdrant_client.batch_upsert_async(collection="test-collection", points=points, vector_size=2)
 
-    def test_close_calls_asyncio_run(
+    def test_close_calls_run_coroutine_sync(
         self,
         qdrant_client: QdrantClientWrapper,
     ) -> None:
-        """Test that close calls asyncio.run with close_async_resource."""
-        with patch("clients.qdrant.asyncio.run") as mock_run:
+        """Test that close calls run_coroutine_sync with close_async_resource."""
+        with patch("clients.qdrant.run_coroutine_sync") as mock_run:
             qdrant_client.close()
 
             mock_run.assert_called_once()
@@ -960,7 +960,7 @@ class TestQdrantClientWrapperAdditional:
         qdrant_client: QdrantClientWrapper,
     ) -> None:
         """Test that close sets _client to None."""
-        with patch("clients.qdrant.asyncio.run"):
+        with patch("clients.qdrant.run_coroutine_sync"):
             qdrant_client.close()
 
         assert qdrant_client._client is None
@@ -970,7 +970,7 @@ class TestQdrantClientWrapperAdditional:
         qdrant_client: QdrantClientWrapper,
     ) -> None:
         """Test that close is safe to call multiple times."""
-        with patch("clients.qdrant.asyncio.run") as mock_run:
+        with patch("clients.qdrant.run_coroutine_sync") as mock_run:
             qdrant_client.close()
             qdrant_client.close()  # second call is a no-op
 

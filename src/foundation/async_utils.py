@@ -4,10 +4,41 @@ This module provides utilities for handling async resources, particularly
 focused on properly closing async clients across different event loop scenarios.
 """
 
+import asyncio
 import logging
-from typing import Any
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+def run_coroutine_sync(coro: Any) -> Any:
+    """Run an async coroutine from synchronous code, even inside a running event loop.
+
+    Environments like Databricks notebooks and Jupyter run an event loop in the
+    background, which makes ``asyncio.run()`` raise
+    ``RuntimeError: asyncio.run() cannot be called from a running event loop``.
+
+    This helper detects that situation and offloads the coroutine to a dedicated
+    thread with its own event loop, avoiding the conflict.
+
+    Args:
+        coro: An awaitable coroutine object.
+
+    Returns:
+        The value returned by the coroutine.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    # Already inside a running loop (Databricks / Jupyter / IPython).
+    # Run the coroutine in a fresh event loop on a worker thread.
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
 
 
 async def close_async_resource(resource: Any, resource_name: str, close_method: str = "close") -> None:
