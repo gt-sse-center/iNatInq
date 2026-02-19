@@ -872,6 +872,62 @@ class TestVectorDBConfigIngestionTargets:
 
 
 # =============================================================================
+# VectorDBConfig qdrant_disable_indexing_during_ingest Tests
+# =============================================================================
+
+
+class TestVectorDBConfigQdrantDisableIndexingDuringIngest:
+    """Test suite for VectorDBConfig.qdrant_disable_indexing_during_ingest."""
+
+    @patch.dict(
+        os.environ,
+        {"VECTOR_DB_PROVIDER": "qdrant", "QDRANT_URL": "http://qdrant:6333"},
+        clear=False,
+    )
+    @patch("config._is_in_cluster", return_value=False)
+    def test_default_false_when_unset(self, mock_cluster) -> None:
+        """Default is False when QDRANT_DISABLE_INDEXING_DURING_INGEST is unset."""
+        from config import VectorDBConfig
+
+        config = VectorDBConfig.from_env()
+        assert config.qdrant_disable_indexing_during_ingest is False
+
+    @patch.dict(
+        os.environ,
+        {
+            "VECTOR_DB_PROVIDER": "qdrant",
+            "QDRANT_URL": "http://qdrant:6333",
+            "QDRANT_DISABLE_INDEXING_DURING_INGEST": "true",
+        },
+        clear=False,
+    )
+    @patch("config._is_in_cluster", return_value=False)
+    def test_true_when_env_true(self, mock_cluster) -> None:
+        """qdrant_disable_indexing_during_ingest is True when env is true."""
+        from config import VectorDBConfig
+
+        config = VectorDBConfig.from_env()
+        assert config.qdrant_disable_indexing_during_ingest is True
+
+    @patch.dict(
+        os.environ,
+        {
+            "VECTOR_DB_PROVIDER": "qdrant",
+            "QDRANT_URL": "http://qdrant:6333",
+            "QDRANT_DISABLE_INDEXING_DURING_INGEST": "false",
+        },
+        clear=False,
+    )
+    @patch("config._is_in_cluster", return_value=False)
+    def test_false_when_env_false(self, mock_cluster) -> None:
+        """qdrant_disable_indexing_during_ingest is False when env is false."""
+        from config import VectorDBConfig
+
+        config = VectorDBConfig.from_env()
+        assert config.qdrant_disable_indexing_during_ingest is False
+
+
+# =============================================================================
 # RayJobConfig Image Pipeline Fields Tests
 # =============================================================================
 

@@ -19,7 +19,7 @@ checkpoint functionality.
 """
 
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -140,7 +140,11 @@ class TestRayJobMain:
                                     secret_access_key="secret",
                                     bucket="test-bucket",
                                 )
-                                mock_vector_cfg.return_value = MagicMock(collection="test")
+                                mock_vector_cfg.return_value = MagicMock(
+                                    collection="test",
+                                    ingestion_targets=frozenset({"qdrant", "weaviate"}),
+                                    qdrant_disable_indexing_during_ingest=False,
+                                )
                                 mock_embed_cfg.return_value = MagicMock()
                                 mock_strat_cls.from_env.return_value = mock_strategy
                                 mock_s3_cls.return_value = mock_s3
@@ -412,3 +416,116 @@ class TestRayJobMain:
 
         mock_checkpoint.load.assert_called_once()
         mock_checkpoint.save.assert_called_once()
+
+    def test_main_calls_disable_and_enable_indexing_when_flag_true(self, mock_ray):
+        """Test that main() calls disable_indexing before and enable_indexing after when flag is true.
+
+        **Why this test is important:**
+
+        - Validates Qdrant indexing is disabled during bulk ingestion when configured
+        - Ensures indexing is re-enabled in finally for collection availability
+        - Confirms the toggle is only used when qdrant is in ingestion targets
+
+        **What it tests:**
+
+        - disable_indexing is called once before processing when flag is true
+        - enable_indexing is called once in finally when flag is true
+        """
+        from core.ingestion.ray.process_s3_to_vector_dbs import main
+
+        mock_s3 = MagicMock()
+        mock_s3.list_objects.return_value = ["file1.txt"]
+
+        mock_strategy = MagicMock()
+        mock_qdrant = MagicMock()
+        mock_qdrant.disable_indexing = AsyncMock()
+        mock_qdrant.enable_indexing = AsyncMock()
+
+        mock_ray.wait.return_value = ([MagicMock()], [])
+        mock_ray.get.return_value = [[("file1.txt", True, "")]]
+
+        with patch("core.ingestion.ray.process_s3_to_vector_dbs.RayJobConfig.from_env") as mock_ray_cfg:
+            mock_ray_cfg.return_value = MagicMock(
+                num_workers=4,
+                s3_batch_size=50,
+                embed_batch_max=8,
+                batch_upsert_size=200,
+                checkpoint_enabled=False,
+                ollama_requests_per_second=5,
+                task_num_cpus=1,
+                task_max_retries=3,
+                wait_batch_size=10,
+                wait_timeout=1.0,
+                progress_log_interval=100,
+                pipeline_concurrency=10,
+                circuit_breaker_threshold=5,
+                circuit_breaker_timeout=30,
+                embedding_timeout=120,
+                upsert_timeout=60,
+                retry_max_attempts=3,
+                retry_min_wait=1.0,
+                retry_max_wait=10.0,
+            )
+            with patch("core.ingestion.ray.process_s3_to_vector_dbs.MinIOConfig.from_env") as mock_minio_cfg:
+                mock_minio_cfg.return_value = MagicMock(
+                    endpoint_url="http://minio:9000",
+                    access_key_id="access",
+                    secret_access_key="secret",
+                    bucket="bucket",
+                )
+                with patch(
+                    "core.ingestion.ray.process_s3_to_vector_dbs.VectorDBConfig.from_env"
+                ) as mock_vector_cfg:
+                    mock_vector_cfg.return_value = MagicMock(
+                        collection="documents",
+                        ingestion_targets=frozenset({"qdrant"}),
+                        qdrant_disable_indexing_during_ingest=True,
+                    )
+                    with patch("core.ingestion.ray.process_s3_to_vector_dbs.EmbeddingConfig.from_env"):
+                        with patch(
+                            "core.ingestion.ray.process_s3_to_vector_dbs.LocalRayStrategy"
+                        ) as mock_strat_cls:
+                            mock_strat_cls.from_env.return_value = mock_strategy
+                            with patch(
+                                "core.ingestion.ray.process_s3_to_vector_dbs.S3ClientWrapper",
+                                return_value=mock_s3,
+                            ):
+                                with patch(
+                                    "core.ingestion.ray.process_s3_to_vector_dbs.QdrantClientWrapper"
+                                ) as mock_qdrant_cls:
+                                    mock_qdrant_cls.from_config.return_value = mock_qdrant
+                                    with patch(
+                                        "core.ingestion.ray.process_s3_to_vector_dbs.RateLimiterActor"
+                                    ) as mock_rate:
+                                        mock_rate.remote.return_value = MagicMock()
+                                        with patch(
+                                            "core.ingestion.ray.process_s3_to_vector_dbs.process_s3_batch_ray"
+                                        ) as mock_task:
+                                            mock_task.options.return_value.remote.return_value = MagicMock()
+                                            with patch.dict(
+                                                "os.environ", {"S3_PREFIX": "inputs/"}, clear=False
+                                            ):
+                                                main()
+
+        mock_qdrant.disable_indexing.assert_called_once_with(collection="documents")
+        mock_qdrant.enable_indexing.assert_called_once_with(collection="documents")
+
+    def test_main_skips_indexing_toggle_when_flag_false(self, mock_dependencies, mock_ray):
+        """Test that main() does not call disable_indexing or enable_indexing when flag is false."""
+        from core.ingestion.ray.process_s3_to_vector_dbs import main
+
+        mock_dependencies["s3"].list_objects.return_value = ["file1.txt"]
+        mock_ray.wait.return_value = ([MagicMock()], [])
+        mock_ray.get.return_value = [[("file1.txt", True, "")]]
+
+        with patch("core.ingestion.ray.process_s3_to_vector_dbs.QdrantClientWrapper") as mock_qdrant_cls:
+            with patch.dict("os.environ", {"S3_PREFIX": "inputs/"}, clear=False):
+                with patch("core.ingestion.ray.process_s3_to_vector_dbs.RateLimiterActor") as mock_rate:
+                    mock_rate.remote.return_value = MagicMock()
+                    with patch(
+                        "core.ingestion.ray.process_s3_to_vector_dbs.process_s3_batch_ray"
+                    ) as mock_task:
+                        mock_task.options.return_value.remote.return_value = MagicMock()
+                        main()
+
+        mock_qdrant_cls.from_config.assert_not_called()

@@ -44,6 +44,9 @@ defaults):
   (default: `60`)
 - `QDRANT_PREFER_GRPC`: Whether to prefer gRPC over HTTP
   (default: `false`)
+- `QDRANT_DISABLE_INDEXING_DURING_INGEST`: When true, the ingestion driver
+  disables Qdrant indexing for the target collection before processing and
+  re-enables it after all batches complete (default: `false`)
 
 **S3/MinIO (Object Storage)**
 - `S3_ENDPOINT`: S3-compatible service endpoint. Auto-detected based
@@ -755,6 +758,9 @@ class VectorDBConfig(BaseModel):
             Default: 3.
         weaviate_circuit_breaker_timeout: Circuit recovery timeout in seconds.
             Default: 60.
+        qdrant_disable_indexing_during_ingest: If True, disable Qdrant indexing
+            for the target collection during ingestion and re-enable it after
+            all batches have completed. Default: False.
     """
 
     provider_type: Literal["qdrant", "weaviate"]
@@ -767,6 +773,7 @@ class VectorDBConfig(BaseModel):
     qdrant_timeout: int = 300
     qdrant_circuit_breaker_threshold: int = 3
     qdrant_circuit_breaker_timeout: int = 60
+    qdrant_disable_indexing_during_ingest: bool = False
 
     # Weaviate settings
     weaviate_url: str | None = None
@@ -854,6 +861,10 @@ class VectorDBConfig(BaseModel):
                 qdrant_timeout=int(os.getenv("QDRANT_TIMEOUT", "300")),
                 qdrant_circuit_breaker_threshold=int(os.getenv("QDRANT_CIRCUIT_BREAKER_THRESHOLD", "3")),
                 qdrant_circuit_breaker_timeout=int(os.getenv("QDRANT_CIRCUIT_BREAKER_TIMEOUT", "60")),
+                qdrant_disable_indexing_during_ingest=os.getenv(
+                    "QDRANT_DISABLE_INDEXING_DURING_INGEST", "false"
+                ).lower()
+                == "true",
             )
 
         # Weaviate is the only other valid option

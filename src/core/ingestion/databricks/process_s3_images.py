@@ -7,6 +7,7 @@ of ray/process_s3_images.py but uses Databricks cluster initialization.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import sys
@@ -14,6 +15,7 @@ import time
 from logging.config import dictConfig
 from typing import Any
 
+from clients.qdrant import QdrantClientWrapper
 from clients.s3 import S3ClientWrapper
 from config import ImageEmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
 from core.ingestion.databricks.batch_runner import run_ray_batch_processing
@@ -56,6 +58,11 @@ def main() -> None:
     image_max_items = ray_cfg.image_max_items
     image_page_size = ray_cfg.image_page_size
 
+    qdrant_client: QdrantClientWrapper | None = None
+    should_disable_indexing = (
+        vector_cfg.qdrant_disable_indexing_during_ingest and "qdrant" in ingestion_targets
+    )
+
     job_logger.info(
         "Configuration loaded",
         extra={
@@ -76,6 +83,21 @@ def main() -> None:
     strategy.init()
 
     try:
+        if should_disable_indexing:
+            try:
+                qdrant_client = QdrantClientWrapper.from_config(vector_cfg)
+                job_logger.info(
+                    "Disabling Qdrant indexing for image collection before ingestion",
+                    extra={"collection": collection},
+                )
+                asyncio.run(qdrant_client.disable_indexing(collection=collection))
+            except Exception as e:
+                job_logger.error(
+                    "Failed to disable Qdrant indexing before image ingestion",
+                    extra={"collection": collection, "error": str(e)},
+                    exc_info=True,
+                )
+
         s3 = S3ClientWrapper(
             endpoint_url=minio_cfg.endpoint_url,
             access_key_id=minio_cfg.access_key_id,
@@ -190,6 +212,21 @@ def main() -> None:
         )
         raise
     finally:
+        if should_disable_indexing and qdrant_client is not None:
+            try:
+                job_logger.info(
+                    "Re-enabling Qdrant indexing for image collection after ingestion",
+                    extra={"collection": collection},
+                )
+                asyncio.run(qdrant_client.enable_indexing(collection=collection))
+            except Exception as e:
+                job_logger.error(
+                    "Failed to re-enable Qdrant indexing after image ingestion",
+                    extra={"collection": collection, "error": str(e)},
+                    exc_info=True,
+                )
+            finally:
+                qdrant_client.close()
         strategy.shutdown()
 
 

@@ -303,6 +303,9 @@ Key variables to know (see `src/config.py` for full list):
 - **`CLIP_BACKEND`**: `ollama`, `clip` (default: `ollama`)
 - **`OLLAMA_BASE_URL`**: Auto-detected based on environment
 - **`QDRANT_URL`**: Auto-detected based on environment
+- **`QDRANT_DISABLE_INDEXING_DURING_INGEST`**: When true, driver disables Qdrant
+  indexing for the collection during ingestion and re-enables after batches
+  complete (default: `false`)
 - **`S3_ENDPOINT`**: Auto-detected based on environment
 - **`RAY_S3_BATCH_SIZE`**: Keys per Ray task (default: `50`)
 - **`RAY_CHECKPOINT_ENABLED`**: Enable checkpointing (default: `true`)

@@ -18,6 +18,7 @@ import ray
 from botocore.exceptions import ClientError
 
 from clients.s3 import S3ClientWrapper
+from clients.qdrant import QdrantClientWrapper
 from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
 from core.ingestion.databricks.runtime import apply_python_params as _apply_python_params
 from core.ingestion.strategies import DatabricksStrategy
@@ -48,6 +49,10 @@ def main() -> None:
     embed_cfg = EmbeddingConfig.from_env(namespace)
 
     ingestion_targets = vector_cfg.ingestion_targets
+    qdrant_client: QdrantClientWrapper | None = None
+    should_disable_indexing = (
+        vector_cfg.qdrant_disable_indexing_during_ingest and "qdrant" in ingestion_targets
+    )
     job_logger.info(
         "Configuration loaded",
         extra={
@@ -62,6 +67,22 @@ def main() -> None:
     strategy.init()
 
     try:
+        if should_disable_indexing:
+            try:
+                qdrant_client = QdrantClientWrapper.from_config(vector_cfg)
+                job_logger.info(
+                    "Disabling Qdrant indexing for collection before ingestion",
+                    extra={"collection": vector_cfg.collection},
+                )
+                import asyncio
+
+                asyncio.run(qdrant_client.disable_indexing(collection=vector_cfg.collection))
+            except Exception as e:
+                job_logger.error(
+                    "Failed to disable Qdrant indexing before ingestion",
+                    extra={"collection": vector_cfg.collection, "error": str(e)},
+                    exc_info=True,
+                )
         s3 = S3ClientWrapper(
             endpoint_url=minio_cfg.endpoint_url,
             access_key_id=minio_cfg.access_key_id,
@@ -218,6 +239,23 @@ def main() -> None:
             extra={"success": success, "failed": failed, "elapsed_seconds": elapsed},
         )
     finally:
+        if should_disable_indexing and qdrant_client is not None:
+            try:
+                job_logger.info(
+                    "Re-enabling Qdrant indexing for collection after ingestion",
+                    extra={"collection": vector_cfg.collection},
+                )
+                import asyncio
+
+                asyncio.run(qdrant_client.enable_indexing(collection=vector_cfg.collection))
+            except Exception as e:
+                job_logger.error(
+                    "Failed to re-enable Qdrant indexing after ingestion",
+                    extra={"collection": vector_cfg.collection, "error": str(e)},
+                    exc_info=True,
+                )
+            finally:
+                qdrant_client.close()
         logger.info("Databricks Ray job completed; shutting down Ray")
         strategy.shutdown()
 
