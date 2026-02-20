@@ -35,7 +35,7 @@ class TestSampleDataset:
         """Dataset contains exactly 10 queries."""
         assert len(dataset) == 10
 
-    def test_all_queries_have_relevant(self, dataset: JSONDataset):
+    def test_all_queries_have_relevant_docs(self, dataset: JSONDataset):
         """Every query has at least one relevant document."""
         for query in dataset.queries():
             assert len(query.relevant) >= 1, f"Query {query.id} has no relevant documents"
