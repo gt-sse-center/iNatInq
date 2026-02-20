@@ -685,7 +685,7 @@ class EmbeddingGenerator:
             Embedding vector, or None if failed.
         """
         try:
-            return await self.embedder.embed_async(text)
+            return await self.embedder.embed_text(text)
         except (UpstreamError, ClientError, OSError, ValueError) as e:
             logger.warning(
                 "Embedding failed",
@@ -720,7 +720,7 @@ class EmbeddingGenerator:
         async def _generate() -> list[list[float]] | None:
             try:
                 texts = [c.content for c in batch]
-                vectors = await self.embedder.embed_batch_async(texts)
+                vectors = await self.embedder.embed_text_batch(texts)
                 return list(vectors)
             except (UpstreamError, ClientError, OSError, ValueError) as e:
                 logger.warning(

@@ -19,6 +19,7 @@ Note: These tests require significant resources (~4GB RAM, 4 CPUs).
 
 import io
 import uuid
+import asyncio
 
 import pytest
 from PIL import Image
@@ -83,7 +84,7 @@ class TestImagePipelineIntegration:
         assert retrieved == image_bytes
 
     # TODO: replace text embedding with image embedding
-    # this will be updated once Ollama client is refactored
+    # this will be updated once Ollama client is refactored to implement image embedding
     def test_qdrant_upsert_and_search(
         self,
         qdrant_client,
@@ -102,7 +103,6 @@ class TestImagePipelineIntegration:
           - Similar queries return relevant results
           - Payload is preserved
         """
-        import asyncio
 
         from qdrant_client.models import PointStruct
 
@@ -114,7 +114,7 @@ class TestImagePipelineIntegration:
         ]
 
         # Generate embeddings
-        embeddings = [ollama_client.embed(doc) for doc in docs]
+        embeddings = asyncio.run(ollama_client.embed_text_batch(docs))
         vector_size = len(embeddings[0])
 
         # Create points
@@ -137,7 +137,7 @@ class TestImagePipelineIntegration:
         )
 
         # Search for similar documents
-        query_embedding = ollama_client.embed("fox jumping")
+        query_embedding = asyncio.run(ollama_client.embed_text("fox jumping"))
         results = asyncio.run(
             qdrant_client.search_async(
                 collection=test_collection,
@@ -167,7 +167,7 @@ class TestImagePipelineIntegration:
         """
         text = "The quick brown fox jumps over the lazy dog."
 
-        embedding = ollama_client.embed(text)
+        embedding = asyncio.run(ollama_client.embed_text(text))
 
         # all-minilm produces 384-dimensional embeddings
         assert len(embedding) == 384
@@ -391,7 +391,7 @@ class TestFullPipelineIntegration:
 
             content = minio_client.get_object(bucket=test_bucket, key=key)
             text = content.decode("utf-8")
-            embedding = ollama_client.embed(text)
+            embedding = asyncio.run(ollama_client.embed_text(text))
 
             points.append(
                 PointStruct(
@@ -412,7 +412,7 @@ class TestFullPipelineIntegration:
         )
 
         # Step 4: Search and validate
-        query_embedding = ollama_client.embed("artificial intelligence")
+        query_embedding = asyncio.run(ollama_client.embed_text("artificial intelligence"))
         results = asyncio.run(
             qdrant_client.search_async(
                 collection=test_collection,

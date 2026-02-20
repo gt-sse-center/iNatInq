@@ -3,15 +3,9 @@
 This module defines the `EmbeddingProvider` ABC and factory functions for embedding
 providers. Configuration classes are in `pipeline.config`.
 Concrete implementations live in the parent `clients` package (e.g., `OllamaClient`).
-
-Also defines `ImageEmbeddingProvider` protocol for multi-modal image embedding
-providers (e.g., CLIP, LLaVA) that can generate embeddings from image data.
 """
 
 from abc import ABC, abstractmethod
-from typing import Protocol, runtime_checkable
-
-import requests
 
 from config import EmbeddingConfig
 
@@ -20,49 +14,18 @@ class EmbeddingProvider(ABC):
     """Abstract base class for embedding generation providers.
 
     This class defines the interface that all embedding providers must implement.
-    Each provider (OllamaClient, OpenAIClient, etc.) inherits from this class and
+    Each provider (OllamaClient, CLIPClient, etc.) inherits from this class and
     implements the required methods.
 
-    Example:
-        ```python
-        class MyEmbeddingClient(EmbeddingProvider):
-            def embed(self, text: str) -> list[float]:
-                # Implementation
-                return [0.1, 0.2, ...]
-
-            async def embed_async(self, text: str) -> list[float]:
-                # Async implementation
-                return [0.1, 0.2, ...]
-
-            @property
-            def vector_size(self) -> int:
-                return 768
-
-            def close(self) -> None:
-                # Close HTTP sessions and cleanup resources
-                pass
-        ```
+    Note:
+        - For image embedding, image bytes should be in a supported format (JPEG, PNG, WebP, GIF)
+        - Image preprocessing (resize, normalize) is typically handled by the provider
+        - Vector dimensions vary by model (CLIP ViT-B/32: 512, ViT-L/14: 768)
     """
 
     @abstractmethod
-    def embed(self, text: str) -> list[float]:
+    async def embed_text(self, text: str) -> list[float]:
         """Generate embedding for a single text.
-
-        Args:
-            text: Input text to embed.
-
-        Returns:
-            List of floats representing the embedding vector. The dimension
-            depends on the provider/model (e.g., 768 for nomic-embed-text).
-
-        Raises:
-            UpstreamError: If the embedding service is unreachable or returns
-                an error.
-        """
-
-    @abstractmethod
-    async def embed_async(self, text: str) -> list[float]:
-        """Generate embedding for a single text (async).
 
         Args:
             text: Input text to embed.
@@ -76,42 +39,8 @@ class EmbeddingProvider(ABC):
         """
 
     @abstractmethod
-    def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """Generate embeddings for multiple texts in one call.
-
-        This method batches multiple texts into a single API call for better
-        performance. Providers that support batch embeddings (e.g., Ollama)
-        can process multiple texts more efficiently than individual calls.
-
-        Args:
-            texts: List of input texts to embed.
-
-        Returns:
-            List of embedding vectors, one per input text. Each vector is a
-            list of floats with the same dimension as single embeddings.
-
-        Raises:
-            UpstreamError: If the embedding service is unreachable or returns
-                an error.
-            ValueError: If texts is empty.
-
-        Example:
-            ```python
-            vectors = provider.embed_batch(["hello", "world", "test"])
-            # Returns: [[0.1, 0.2, ...], [0.3, 0.4, ...], [0.5, 0.6, ...]]
-            ```
-
-        Note:
-            For providers that don't natively support batch embeddings,
-            the default implementation falls back to individual calls.
-        """
-
-    @abstractmethod
-    async def embed_batch_async(self, texts: list[str]) -> list[list[float]]:
+    async def embed_text_batch(self, texts: list[str]) -> list[list[float]]:
         """Generate embeddings for multiple texts in one call (async).
-
-        This is the async version of embed_batch(). Use this method when you
-        need non-blocking batch embedding generation.
 
         Args:
             texts: List of input texts to embed.
@@ -131,135 +60,8 @@ class EmbeddingProvider(ABC):
             ```
         """
 
-    @property
     @abstractmethod
-    def vector_size(self) -> int:
-        """Return the dimension of vectors produced by this provider.
-
-        Returns:
-            Vector dimension (e.g., 768 for nomic-embed-text, 1536 for
-            text-embedding-ada-002).
-        """
-
-    def close(self) -> None:  # noqa: B027
-        """Close HTTP sessions and cleanup resources.
-
-        This method should be called when the provider is no longer needed
-        to properly release HTTP connections and prevent resource leaks.
-
-        Note:
-            This is not an abstract method because some providers may not
-            need cleanup. Subclasses should override if they maintain resources.
-        """
-        # Default no-op implementation
-
-    @classmethod
-    @abstractmethod
-    def from_config(
-        cls, config: EmbeddingConfig, session: requests.Session | None = None
-    ) -> "EmbeddingProvider":
-        """Create provider instance from EmbeddingConfig.
-
-        Each provider class must implement this class method to construct itself
-        from the configuration. This allows the factory to instantiate providers
-        without knowing provider-specific construction details.
-
-        Args:
-            config: Embedding configuration.
-            session: Optional requests session for connection pooling.
-
-        Returns:
-            Configured EmbeddingProvider instance.
-
-        Raises:
-            ValueError: If config is invalid or missing required fields.
-        """
-
-
-@runtime_checkable
-class ImageEmbeddingProvider(Protocol):
-    """Protocol for image embedding providers (CLIP, LLaVA, etc.).
-
-    This protocol defines the interface for providers that generate embeddings
-    from image data. Unlike the text-based `EmbeddingProvider`, this interface
-    accepts raw image bytes and produces vector embeddings suitable for
-    image similarity search.
-
-    Multi-modal models like CLIP can embed both images and text into the same
-    vector space, enabling cross-modal search (e.g., finding images matching
-    a text description).
-
-    Example:
-        ```python
-        class CLIPClient(ImageEmbeddingProvider):
-            @property
-            def vector_size(self) -> int:
-                return 512  # CLIP ViT-B/32
-
-            def embed_image(self, image_bytes: bytes, text: str | None = None) -> list[float]:
-                # Encode image with CLIP (text parameter can be used for multi-modal)
-                return [0.1, 0.2, ...]
-
-            async def embed_image_async(self, image_bytes: bytes, text: str | None = None) -> list[float]:
-                # Async version
-                return [0.1, 0.2, ...]
-
-            def embed_image_batch(
-                self, images: list[bytes], texts: list[str] | None = None
-            ) -> list[list[float]]:
-                # Batch encode multiple images (texts can be used for multi-modal)
-                return [[0.1, ...], [0.2, ...]]
-
-            async def embed_image_batch_async(
-                self, images: list[bytes], texts: list[str] | None = None
-            ) -> list[list[float]]:
-                # Async batch version
-                return [[0.1, ...], [0.2, ...]]
-        ```
-
-    Note:
-        - Image bytes should be in a supported format (JPEG, PNG, WebP, GIF)
-        - Preprocessing (resize, normalize) is typically handled by the provider
-        - Vector dimensions vary by model (CLIP ViT-B/32: 512, ViT-L/14: 768)
-    """
-
-    @property
-    def vector_size(self) -> int:
-        """Return the dimension of vectors produced by this provider.
-
-        Returns:
-            Vector dimension. Common sizes:
-            - CLIP ViT-B/32: 512
-            - CLIP ViT-B/16: 512
-            - CLIP ViT-L/14: 768
-            - OpenCLIP ViT-H/14: 1024
-        """
-        ...
-
-    def embed_image(self, image_bytes: bytes, text: str | None = None) -> list[float]:
-        """Generate embedding for a single image.
-
-        Args:
-            image_bytes: Raw image bytes (JPEG, PNG, WebP, or GIF format).
-                The image will be preprocessed (resized, normalized) by the
-                provider before encoding.
-            text: Optional text to embed alongside the image. This enables
-                multi-modal embeddings where both image and text are encoded
-                into the same vector space. Implementations can ignore this
-                parameter if not supported. Useful for future filter support
-                and combined image+metadata embeddings.
-
-        Returns:
-            List of floats representing the image embedding vector.
-
-        Raises:
-            UpstreamError: If the embedding service is unreachable or returns
-                an error.
-            ValueError: If image_bytes is empty or not a valid image format.
-        """
-        ...
-
-    async def embed_image_async(self, image_bytes: bytes, text: str | None = None) -> list[float]:
+    async def embed_image(self, image_bytes: bytes, text: str | None = None) -> list[float]:
         """Generate embedding for a single image (async).
 
         Args:
@@ -278,50 +80,12 @@ class ImageEmbeddingProvider(Protocol):
                 an error.
             ValueError: If image_bytes is empty or not a valid image format.
         """
-        ...
 
-    def embed_image_batch(self, images: list[bytes], texts: list[str] | None = None) -> list[list[float]]:
-        """Generate embeddings for multiple images in one call.
-
-        This method batches multiple images into a single API call for better
-        performance. Note that image batches are typically smaller than text
-        batches due to memory constraints (10-20 images vs 100+ texts).
-
-        Args:
-            images: List of raw image bytes to embed.
-            texts: Optional list of text strings to embed alongside images.
-                If provided, must have the same length as images. Each text
-                will be embedded with its corresponding image. Implementations
-                can ignore this parameter if not supported. Useful for future
-                filter support and combined image+metadata embeddings.
-
-        Returns:
-            List of embedding vectors, one per input image. Each vector is a
-            list of floats with the same dimension as single embeddings.
-
-        Raises:
-            UpstreamError: If the embedding service is unreachable or returns
-                an error.
-            ValueError: If images is empty or contains invalid image data, or
-                if texts is provided but has a different length than images.
-
-        Example:
-            ```python
-            with open("cat.jpg", "rb") as f1, open("dog.jpg", "rb") as f2:
-                images = [f1.read(), f2.read()]
-            vectors = provider.embed_image_batch(images)
-            # Returns: [[0.1, 0.2, ...], [0.3, 0.4, ...]]
-            ```
-        """
-        ...
-
-    async def embed_image_batch_async(
+    @abstractmethod
+    async def embed_image_batch(
         self, images: list[bytes], texts: list[str] | None = None
     ) -> list[list[float]]:
         """Generate embeddings for multiple images in one call (async).
-
-        This is the async version of embed_image_batch(). Use this method
-        when you need non-blocking batch image embedding generation.
 
         Args:
             images: List of raw image bytes to embed.
@@ -340,7 +104,50 @@ class ImageEmbeddingProvider(Protocol):
             ValueError: If images is empty or contains invalid image data, or
                 if texts is provided but has a different length than images.
         """
-        ...
+
+    @property
+    @abstractmethod
+    def vector_size(self) -> int:
+        """Return the dimension of vectors produced by this provider.
+
+        Returns:
+            Vector dimension (e.g., 768 for nomic-embed-text, 1536 for
+            text-embedding-ada-002).
+        """
+
+    async def close(self) -> None:  # noqa: B027
+        """Close HTTP sessions and cleanup resources.
+
+        This method should be called when the provider is no longer needed
+        to properly release HTTP connections and prevent resource leaks.
+
+        Note:
+            This is not an abstract method because some providers may not
+            need cleanup. Subclasses should override if they maintain resources.
+        """
+        ...  # noqa: PIE790
+
+    @classmethod
+    @abstractmethod
+    def from_config(
+        cls,
+        config: EmbeddingConfig,
+    ) -> "EmbeddingProvider":
+        """Create provider instance from EmbeddingConfig.
+
+        Each provider class must implement this class method to construct itself
+        from the configuration. This allows the factory to instantiate providers
+        without knowing provider-specific construction details.
+
+        Args:
+            config: Embedding configuration.
+
+        Returns:
+            Configured EmbeddingProvider instance.
+
+        Raises:
+            ValueError: If config is invalid or missing required fields.
+        """
 
 
 # Provider registry: maps provider_type to provider class
@@ -373,7 +180,6 @@ def register_provider(provider_type: str, provider_class: type[EmbeddingProvider
 
 def create_embedding_provider(
     config: EmbeddingConfig,
-    session: requests.Session | None = None,
 ) -> "EmbeddingProvider":
     """Create an embedding provider based on configuration.
 
@@ -383,8 +189,6 @@ def create_embedding_provider(
 
     Args:
         config: Embedding configuration.
-        session: Optional requests session for connection pooling (used by
-            HTTP-based providers like Ollama).
 
     Returns:
         EmbeddingProvider instance (OllamaClient, OpenAIClient, etc.).
@@ -412,4 +216,4 @@ def create_embedding_provider(
     # Instantiate provider - each provider class knows how to construct itself from config
     # This delegates the construction logic to the provider class
     # Since from_config is abstract, all registered providers must implement it
-    return provider_class.from_config(config, session=session)
+    return provider_class.from_config(config)

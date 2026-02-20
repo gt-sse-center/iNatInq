@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pybreaker
 import pytest
-import requests
 
 from clients.ollama import OllamaClient
 from clients.qdrant import QdrantClientWrapper
@@ -42,34 +41,31 @@ def mock_circuit_breaker() -> MagicMock:
 
 
 @pytest.fixture
-def mock_session() -> MagicMock:
-    """Create a mock requests.Session for testing Ollama client.
+def mock_httpx_async_client() -> AsyncMock:
+    """Create a mock httpx.AsyncClient for testing Ollama client.
 
     Returns:
-        MagicMock: A mock requests.Session with post method.
+        AsyncMock: A mock httpx.AsyncClient with post and aclose methods.
     """
-    session = MagicMock(spec=requests.Session)
-    session.post = MagicMock()
-    return session
+    client = AsyncMock()
+    client.post = AsyncMock()
+    client.aclose = AsyncMock()
+    client.is_closed = False
+    return client
 
 
 @pytest.fixture
-def ollama_client(mock_session: MagicMock) -> OllamaClient:
-    """Create an OllamaClient instance with mocked session.
-
-    Args:
-        mock_session: Mock requests.Session fixture.
+def ollama_client() -> OllamaClient:
+    """Create an OllamaClient instance for testing.
 
     Returns:
-        OllamaClient: Configured client with mocked session.
+        OllamaClient: Configured client instance.
     """
-    client = OllamaClient(
+    return OllamaClient(
         base_url="http://ollama.example.com:11434",
         model="nomic-embed-text",
         timeout_s=60,
     )
-    client.set_session(mock_session)
-    return client
 
 
 # =============================================================================

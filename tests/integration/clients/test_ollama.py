@@ -62,7 +62,8 @@ class TestHappyPath:
     under normal conditions with a healthy container.
     """
 
-    def test_embed_returns_vector(self, ollama_client: OllamaClient) -> None:
+    @pytest.mark.asyncio
+    async def test_embed_text_returns_vector(self, ollama_client: OllamaClient) -> None:
         """Test that embed() returns a valid embedding vector.
 
         **Why this test is important:**
@@ -76,13 +77,16 @@ class TestHappyPath:
         - Embedding vector has correct dimension (384 for all-minilm)
         - Vector contains valid floating-point values
         """
-        result = ollama_client.embed("hello world")
+        result = await ollama_client.embed_text("hello world")
 
         assert isinstance(result, list)
         assert len(result) == 384  # all-minilm dimension
         assert all(isinstance(x, float) for x in result)
 
-    def test_embed_different_texts_produce_different_vectors(self, ollama_client: OllamaClient) -> None:
+    @pytest.mark.asyncio
+    async def test_embed_text_different_texts_produce_different_vectors(
+        self, ollama_client: OllamaClient
+    ) -> None:
         """Test that different texts produce different embeddings.
 
         **Why this test is important:**
@@ -93,30 +97,11 @@ class TestHappyPath:
         - Two different texts produce different embedding vectors
         - The vectors are not identical (semantic differentiation works)
         """
-        result1 = ollama_client.embed("hello world")
-        result2 = ollama_client.embed("quantum physics experiments")
+        result1 = await ollama_client.embed_text("hello world")
+        result2 = await ollama_client.embed_text("quantum physics experiments")
 
         # Vectors should be different for semantically different texts
         assert result1 != result2
-
-    @pytest.mark.asyncio
-    async def test_embed_async_returns_vector(self, ollama_client: OllamaClient) -> None:
-        """Test that embed_async() returns a valid embedding vector.
-
-        **Why this test is important:**
-        Async embedding is critical for high-throughput pipelines where
-        we need to parallelize multiple embedding requests.
-
-        **What it tests:**
-        - Async HTTP request completes successfully
-        - Response is parsed correctly in async context
-        - Embedding vector has correct dimension
-        """
-        result = await ollama_client.embed_async("hello world")
-
-        assert isinstance(result, list)
-        assert len(result) == 384
-        assert all(isinstance(x, float) for x in result)
 
 
 # =============================================================================
@@ -132,7 +117,8 @@ class TestBatchOperations:
     when embedding multiple texts.
     """
 
-    def test_embed_batch_returns_multiple_vectors(self, ollama_client: OllamaClient) -> None:
+    @pytest.mark.asyncio
+    async def test_embed_batch_returns_multiple_vectors(self, ollama_client: OllamaClient) -> None:
         """Test that embed_batch() returns vectors for all input texts.
 
         **Why this test is important:**
@@ -145,30 +131,11 @@ class TestBatchOperations:
         - Each vector has correct dimension
         """
         texts = ["hello", "world", "test"]
-        result = ollama_client.embed_batch(texts)
+        result = await ollama_client.embed_text_batch(texts)
 
         assert len(result) == 3
         assert all(len(v) == 384 for v in result)
         assert all(isinstance(x, float) for v in result for x in v)
-
-    @pytest.mark.asyncio
-    async def test_embed_batch_async_returns_multiple_vectors(self, ollama_client: OllamaClient) -> None:
-        """Test that embed_batch_async() returns vectors for all input texts.
-
-        **Why this test is important:**
-        Async batch embedding combines the benefits of batching and
-        async operations for maximum throughput.
-
-        **What it tests:**
-        - Async batch API endpoint works
-        - Correct number of vectors returned
-        - Vectors are correctly parsed in async context
-        """
-        texts = ["hello", "world"]
-        result = await ollama_client.embed_batch_async(texts)
-
-        assert len(result) == 2
-        assert all(len(v) == 384 for v in result)
 
 
 # =============================================================================
@@ -184,20 +151,6 @@ class TestCircuitBreaker:
     when a service is degraded.
     """
 
-    def test_sync_circuit_breaker_starts_closed(self, ollama_client: OllamaClient) -> None:
-        """Test that sync circuit breaker starts in closed state.
-
-        **Why this test is important:**
-        The circuit breaker must start closed to allow normal operation.
-        A breaker that starts open would block all requests.
-
-        **What it tests:**
-        - Sync circuit breaker (_breaker) exists
-        - Initial state is CLOSED
-        """
-        assert ollama_client._breaker is not None
-        assert ollama_client._breaker.current_state == pybreaker.STATE_CLOSED
-
     def test_async_circuit_breaker_starts_closed(self, ollama_client: OllamaClient) -> None:
         """Test that async circuit breaker starts in closed state.
 
@@ -212,7 +165,8 @@ class TestCircuitBreaker:
         assert ollama_client._async_breaker is not None
         assert ollama_client._async_breaker.current_state == aiobreaker.state.CircuitBreakerState.CLOSED
 
-    def test_sync_circuit_breaker_tracks_successes(self, ollama_client: OllamaClient) -> None:
+    @pytest.mark.asyncio
+    async def test_async_circuit_breaker_tracks_successes(self, ollama_client: OllamaClient) -> None:
         """Test that successful calls don't affect circuit breaker.
 
         **Why this test is important:**
@@ -225,11 +179,11 @@ class TestCircuitBreaker:
         - Failure counter stays at 0
         """
         # Make a successful call
-        ollama_client.embed("test")
+        _ = await ollama_client.embed_text("test")
 
         # Circuit breaker should still be closed
-        assert ollama_client._breaker.current_state == pybreaker.STATE_CLOSED
-        assert ollama_client._breaker.fail_counter == 0
+        assert ollama_client._async_breaker.current_state == aiobreaker.state.CircuitBreakerState.CLOSED
+        assert ollama_client._async_breaker.fail_counter == 0
 
 
 # =============================================================================
@@ -245,7 +199,8 @@ class TestErrorHandling:
     and raises appropriate exceptions.
     """
 
-    def test_empty_batch_raises_value_error(self, ollama_client: OllamaClient) -> None:
+    @pytest.mark.asyncio
+    async def test_empty_text_batch_raises_value_error(self, ollama_client: OllamaClient) -> None:
         """Test that empty batch raises ValueError.
 
         **Why this test is important:**
@@ -257,20 +212,7 @@ class TestErrorHandling:
         - Error message is descriptive
         """
         with pytest.raises(ValueError, match="texts list cannot be empty"):
-            ollama_client.embed_batch([])
-
-    @pytest.mark.asyncio
-    async def test_empty_batch_async_raises_value_error(self, ollama_client: OllamaClient) -> None:
-        """Test that empty async batch raises ValueError.
-
-        **Why this test is important:**
-        Async batch operations should have the same validation as sync.
-
-        **What it tests:**
-        - Empty texts list raises ValueError in async context
-        """
-        with pytest.raises(ValueError, match="texts list cannot be empty"):
-            await ollama_client.embed_batch_async([])
+            _ = await ollama_client.embed_text_batch([])
 
 
 # =============================================================================
@@ -286,7 +228,8 @@ class TestResourceCleanup:
     when closed.
     """
 
-    def test_close_is_idempotent(self, ollama_url: str) -> None:
+    @pytest.mark.asyncio
+    async def test_close_is_idempotent(self, ollama_url: str) -> None:
         """Test that close() can be called multiple times safely.
 
         **Why this test is important:**
@@ -301,14 +244,15 @@ class TestResourceCleanup:
         client = OllamaClient(base_url=ollama_url, model="all-minilm", timeout_s=30)
 
         # First close
-        client.close()
-        assert client._session is None
+        await client.close()
+        assert client._async_client is None
+        assert client._async_client_loop is None
 
         # Second close should not raise
-        client.close()
-        assert client._session is None
+        await client.close()
 
-    def test_client_usable_after_session_recreation(self, ollama_url: str) -> None:
+    @pytest.mark.asyncio
+    async def test_client_usable_after_session_recreation(self, ollama_url: str) -> None:
         """Test that client can recreate session after close.
 
         **Why this test is important:**
@@ -317,25 +261,27 @@ class TestResourceCleanup:
 
         **What it tests:**
         - Client can be closed
-        - Accessing session property recreates session
+        - Accessing property recreates session
         - Client is usable again
         """
         client = OllamaClient(base_url=ollama_url, model="all-minilm", timeout_s=30)
 
         # Use it
-        result1 = client.embed("hello")
+        result1 = await client.embed_text("hello")
         assert len(result1) == 384
+        assert client._async_client is not None
 
         # Close it
-        client.close()
-        assert client._session is None
+        await client.close()
+        assert client._async_client is None
 
         # Use it again - session should be recreated
-        result2 = client.embed("world")
+        result2 = await client.embed_text("world")
         assert len(result2) == 384
+        assert client._async_client is not None
 
         # Cleanup
-        client.close()
+        await client.close()
 
 
 # =============================================================================
@@ -350,7 +296,8 @@ class TestVectorSize:
     Vector size must be consistent with the model being used.
     """
 
-    def test_vector_size_matches_model(self, ollama_client: OllamaClient) -> None:
+    @pytest.mark.asyncio
+    async def test_vector_size_matches_model(self, ollama_client: OllamaClient) -> None:
         """Test that vector_size property matches model output.
 
         **Why this test is important:**
@@ -365,7 +312,7 @@ class TestVectorSize:
         assert ollama_client.vector_size == expected_size
 
         # Verify actual embedding matches
-        embedding = ollama_client.embed("test")
+        embedding = await ollama_client.embed_text("test")
         assert len(embedding) == expected_size
 
 
@@ -383,8 +330,8 @@ class TestConcurrentOperations:
     """
 
     @pytest.mark.asyncio
-    async def test_concurrent_embed_async(self, ollama_client: OllamaClient) -> None:
-        """Test that multiple embed_async calls can run concurrently.
+    async def test_concurrent_embed_text(self, ollama_client: OllamaClient) -> None:
+        """Test that multiple embed_text calls can run concurrently.
 
         **Why this test is important:**
         In production, we often need to embed multiple texts in parallel.
@@ -398,7 +345,7 @@ class TestConcurrentOperations:
         texts = ["hello", "world", "test", "concurrent"]
 
         # Run all embed_async calls concurrently
-        tasks = [ollama_client.embed_async(text) for text in texts]
+        tasks = [ollama_client.embed_text(text) for text in texts]
         results = await asyncio.gather(*tasks)
 
         assert len(results) == 4
@@ -419,7 +366,8 @@ class TestObservability:
     for debugging and monitoring.
     """
 
-    def test_embed_logs_on_success(
+    @pytest.mark.asyncio
+    async def test_embed_logs_on_success(
         self, ollama_client: OllamaClient, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Test that successful operations can be observed.
@@ -432,8 +380,8 @@ class TestObservability:
         - Normal operation completes without error logs
         - Client functions correctly (indirectly validates observability hooks)
         """
-        with caplog.at_level(logging.DEBUG):
-            result = ollama_client.embed("test")
+        with caplog.at_level(logging.ERROR):
+            result = await ollama_client.embed_text("test")
 
         assert len(result) == 384
         # No error logs for successful operations
@@ -452,7 +400,8 @@ class TestFromConfig:
     These tests verify that from_config correctly creates clients.
     """
 
-    def test_from_config_creates_working_client(self, ollama_url: str) -> None:
+    @pytest.mark.asyncio
+    async def test_from_config_creates_working_client(self, ollama_url: str) -> None:
         """Test that from_config creates a functional client.
 
         **Why this test is important:**
@@ -475,7 +424,7 @@ class TestFromConfig:
         client = OllamaClient.from_config(config)
 
         try:
-            result = client.embed("test")
+            result = await client.embed_text("test")
             assert len(result) == 384
         finally:
             client.close()

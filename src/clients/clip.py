@@ -34,7 +34,6 @@ text_vector = client.embed_text("a fluffy cat sitting on a couch")
 The client class:
 - Encapsulates configuration (base_url, model, timeout)
 - Provides sync and async methods for single and batch image/text embedding
-- Implements `ImageEmbeddingProvider` protocol
 - Handles errors consistently via `UpstreamError`
 - Uses circuit breaker pattern for resilience
 - Uses attrs for concise, correct class definition
@@ -160,9 +159,6 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             vector = client.embed_image(f.read())
         ```
 
-    Note:
-        This class implements the `ImageEmbeddingProvider` protocol and can be used
-        anywhere that protocol is expected.
     """
 
     # Required parameters
