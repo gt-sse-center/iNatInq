@@ -166,27 +166,28 @@ class DatabricksStrategy:
 
         Args:
             setup_fn: The setup_ray_cluster function from ray.util.spark.
-            max_workers: Maximum number of worker nodes.
+            max_workers: Maximum number of worker nodes (typically MAX_NUM_WORKER_NODES).
 
         Returns:
             Cluster handle from setup_ray_cluster().
         """
-        kwargs = {
-            "num_worker_nodes": self._config.num_workers,
-            "cpus_per_node": int(self._config.worker_cpus),
-            "memory_per_node": self._config.worker_memory,
+        kwargs: dict[str, Any] = {
+            "max_worker_nodes": max_workers,
+            "min_worker_nodes": self._config.num_workers or None,
+            "num_cpus_worker_node": int(self._config.worker_cpus) or None,
+            "heap_memory_worker_node": self._config.worker_memory or None,
         }
 
-        # Filter to only supported parameters
+        # Filter to only parameters accepted by setup_fn, dropping None values
         signature = inspect.signature(setup_fn)
-        filtered = {key: value for key, value in kwargs.items() if key in signature.parameters and value}
+        filtered = {k: v for k, v in kwargs.items() if k in signature.parameters and v is not None}
 
         logger.info(
             "Initializing Ray on Databricks",
             extra={"params": filtered},
         )
 
-        return setup_fn(max_worker_nodes=max_workers)
+        return setup_fn(**filtered)
 
     def _init_ray_client(self) -> None:
         """Initialize Ray client connection to Databricks cluster."""

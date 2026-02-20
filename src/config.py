@@ -1080,7 +1080,27 @@ class RayJobConfig(BaseModel):
     retry_min_wait: float = 1.0
     retry_max_wait: float = 10.0
 
+    # In-flight batch limit (None = auto-calculate from cluster capacity)
+    max_inflight_batches: int | None = None
+
     model_config = SettingsConfigDict(frozen=True)
+
+    def effective_max_inflight_batches(self) -> int:
+        """Compute effective max in-flight batches for streaming submission.
+
+        If RAY_MAX_INFLIGHT_BATCHES is explicitly set, use that value.
+        Otherwise, derive from cluster capacity:
+        ``num_workers * (worker_cpus / task_num_cpus)``.
+
+        Returns:
+            Positive integer for max concurrent batch futures.
+        """
+        if self.max_inflight_batches is not None:
+            return self.max_inflight_batches
+        if self.num_workers <= 0:
+            return 1
+        tasks_per_worker = max(1, int(self.worker_cpus / self.task_num_cpus))
+        return self.num_workers * tasks_per_worker
 
     @classmethod
     def from_env(cls, namespace: str | None = None) -> "RayJobConfig":
@@ -1169,6 +1189,8 @@ class RayJobConfig(BaseModel):
             retry_max_attempts=int(os.getenv("RAY_RETRY_MAX_ATTEMPTS", "3")),
             retry_min_wait=float(os.getenv("RAY_RETRY_MIN_WAIT", "1.0")),
             retry_max_wait=float(os.getenv("RAY_RETRY_MAX_WAIT", "10.0")),
+            # In-flight batch limit
+            max_inflight_batches=_parse_optional_positive_int("RAY_MAX_INFLIGHT_BATCHES"),
         )
 
 

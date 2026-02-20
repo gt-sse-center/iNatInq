@@ -128,7 +128,7 @@ def main() -> None:
 
         image_batch_size = ray_cfg.image_batch_size
         image_embed_batch_size = ray_cfg.image_embed_batch_size
-        max_inflight_batches = max(1, ray_cfg.num_workers)
+        max_inflight_batches = ray_cfg.effective_max_inflight_batches()
 
         batch_gen = iter_image_batches(
             s3=s3,

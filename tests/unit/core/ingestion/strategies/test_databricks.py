@@ -383,35 +383,76 @@ class TestDatabricksStrategyShutdown:
 class TestDatabricksStrategySetupCluster:
     """Tests for _setup_spark_cluster."""
 
-    def test_setup_spark_cluster_calls_setup_fn(self, ray_job_config: RayJobConfig):
-        """_setup_spark_cluster() calls the setup function.
+    def test_setup_spark_cluster_passes_filtered_params(self, ray_job_config: RayJobConfig):
+        """_setup_spark_cluster() passes all matching config params to setup_fn.
 
         **Why this test is important:**
-        - Verifies correct delegation to ray.util.spark setup
-        - Ensures max_worker_nodes parameter is passed correctly
+        - Verifies correct parameter name mapping to Ray's setup_ray_cluster API
+        - Ensures all config values (workers, CPUs, memory) are forwarded
 
         **What it tests:**
-        - Setup function is called with max_worker_nodes
+        - Setup function is called with max_worker_nodes, min_worker_nodes,
+          num_cpus_worker_node, and heap_memory_worker_node
         - Returns the cluster handle from setup function
         """
         config = RayJobConfig(
             ray_address="auto",
             num_workers=4,
-            worker_cpus="2",
-            worker_memory=4096,  # Memory in MB as int
+            worker_cpus=2.0,
+            worker_memory=4096,
         )
         strategy = DatabricksStrategy(config=config)
 
         mock_setup_fn = MagicMock(return_value="cluster_handle")
-        # Create a mock signature
         import inspect
 
         mock_setup_fn.__signature__ = inspect.Signature(
             parameters=[
                 inspect.Parameter("max_worker_nodes", inspect.Parameter.POSITIONAL_OR_KEYWORD),
-                inspect.Parameter("num_worker_nodes", inspect.Parameter.POSITIONAL_OR_KEYWORD),
-                inspect.Parameter("cpus_per_node", inspect.Parameter.POSITIONAL_OR_KEYWORD),
-                inspect.Parameter("memory_per_node", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+                inspect.Parameter("min_worker_nodes", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+                inspect.Parameter("num_cpus_worker_node", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+                inspect.Parameter("heap_memory_worker_node", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+            ]
+        )
+
+        result = strategy._setup_spark_cluster(mock_setup_fn, max_workers=10)
+
+        assert result == "cluster_handle"
+        mock_setup_fn.assert_called_once_with(
+            max_worker_nodes=10,
+            min_worker_nodes=4,
+            num_cpus_worker_node=2,
+            heap_memory_worker_node=4096,
+        )
+
+    def test_setup_spark_cluster_excludes_zero_and_none_values(self, ray_job_config: RayJobConfig):
+        """_setup_spark_cluster() excludes zero/None config values from the call.
+
+        **Why this test is important:**
+        - Zero num_workers or worker_cpus should not be passed to Ray
+        - Ensures only explicitly configured values reach setup_ray_cluster
+
+        **What it tests:**
+        - Parameters with zero/falsy values are excluded from the call
+        - max_worker_nodes is always included
+        """
+        config = RayJobConfig(
+            ray_address="auto",
+            num_workers=0,
+            worker_cpus=0.0,
+            worker_memory=0,
+        )
+        strategy = DatabricksStrategy(config=config)
+
+        mock_setup_fn = MagicMock(return_value="cluster_handle")
+        import inspect
+
+        mock_setup_fn.__signature__ = inspect.Signature(
+            parameters=[
+                inspect.Parameter("max_worker_nodes", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+                inspect.Parameter("min_worker_nodes", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+                inspect.Parameter("num_cpus_worker_node", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+                inspect.Parameter("heap_memory_worker_node", inspect.Parameter.POSITIONAL_OR_KEYWORD),
             ]
         )
 
