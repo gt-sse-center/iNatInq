@@ -38,8 +38,5 @@ data/
 # Documentation directory
 /docs/
 
-# MCP local config
-.mcp.json
-
 # Configuration files (WIP - remove when ready for production)
 /configs/
