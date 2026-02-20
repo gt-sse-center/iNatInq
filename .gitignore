@@ -35,9 +35,8 @@ data/
 *.npy
 .env.local
 
-# Documentation directory (allow benchmark docs)
-/docs/*
-!/docs/benchmark/
+# Documentation directory
+/docs/
 
 # MCP local config
 .mcp.json
