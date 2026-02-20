@@ -957,6 +957,7 @@ class RayJobConfig(BaseModel):
             (auto-scale based on cluster resources when using external
             Ray cluster).
         worker_cpus: Number of CPU cores per worker. Default: 1.0.
+        worker_gpus: Number of GPUs per worker. Default: 0.
         worker_memory: Memory per worker in bytes.
             Default: 500000000 (500MB).
         head_cpus: Number of CPU cores for head node. Default: 1.0.
@@ -1028,6 +1029,7 @@ class RayJobConfig(BaseModel):
     # Cluster configuration
     num_workers: int = 4
     worker_cpus: float = 1.0
+    worker_gpus: int = 0
     worker_memory: int = 2_000_000_000  # 2GB
     head_cpus: float = 1.0
     head_memory: int = 1_000_000_000  # 1GB
@@ -1147,6 +1149,7 @@ class RayJobConfig(BaseModel):
             # Cluster configuration
             num_workers=int(os.getenv("RAY_NUM_WORKERS", "0")),
             worker_cpus=float(os.getenv("RAY_WORKER_CPUS", "1.0")),
+            worker_gpus=int(os.getenv("RAY_WORKER_GPUS", "0")),
             worker_memory=int(os.getenv("RAY_WORKER_MEMORY", "500000000")),
             head_cpus=float(os.getenv("RAY_HEAD_CPUS", "1.0")),
             head_memory=int(os.getenv("RAY_HEAD_MEMORY", "200000000")),

@@ -174,9 +174,15 @@ class DatabricksStrategy:
         kwargs: dict[str, Any] = {
             "max_worker_nodes": max_workers,
             "min_worker_nodes": self._config.num_workers or None,
-            "num_cpus_worker_node": int(self._config.worker_cpus) or None,
             "heap_memory_worker_node": self._config.worker_memory or None,
         }
+
+        # num_cpus_worker_node and num_gpus_worker_node must be set together
+        # or unset together per the ray.util.spark API contract.
+        worker_cpus = int(self._config.worker_cpus)
+        if worker_cpus:
+            kwargs["num_cpus_worker_node"] = worker_cpus
+            kwargs["num_gpus_worker_node"] = int(self._config.worker_gpus)
 
         # Filter to only parameters accepted by setup_fn, dropping None values
         signature = inspect.signature(setup_fn)
