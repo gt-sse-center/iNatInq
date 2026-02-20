@@ -7,7 +7,6 @@ of ray/process_s3_images.py but uses Databricks cluster initialization.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import sys
@@ -23,6 +22,7 @@ from core.ingestion.databricks.runtime import apply_python_params as _apply_pyth
 from core.ingestion.shared.batching import iter_image_batches
 from core.ingestion.strategies import DatabricksStrategy
 from core.ingestion.tasks import process_image_batch_ray
+from foundation.async_utils import run_coroutine
 from foundation.checkpoint import CheckpointManager, is_s3_path
 from foundation.logger import LOGGING_CONFIG
 
@@ -90,7 +90,7 @@ def main() -> None:
                     "Disabling Qdrant indexing for image collection before ingestion",
                     extra={"collection": collection},
                 )
-                asyncio.run(qdrant_client.disable_indexing(collection=collection))
+                run_coroutine(qdrant_client.disable_indexing(collection=collection))
             except Exception as e:
                 job_logger.error(
                     "Failed to disable Qdrant indexing before image ingestion",
@@ -218,7 +218,7 @@ def main() -> None:
                     "Re-enabling Qdrant indexing for image collection after ingestion",
                     extra={"collection": collection},
                 )
-                asyncio.run(qdrant_client.enable_indexing(collection=collection))
+                run_coroutine(qdrant_client.enable_indexing(collection=collection))
             except Exception as e:
                 job_logger.error(
                     "Failed to re-enable Qdrant indexing after image ingestion",

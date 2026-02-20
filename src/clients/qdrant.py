@@ -28,7 +28,6 @@ The client wrapper:
 - Uses attrs for concise, correct class definition
 """
 
-import asyncio
 import logging
 from typing import Any, Literal
 
@@ -44,7 +43,7 @@ from qdrant_client.models import PointStruct  # Qdrant's native point type
 from config import VectorDBConfig
 from core.exceptions import UpstreamError
 from core.models import SearchResultItem, SearchResults
-from foundation.async_utils import close_async_resource
+from foundation.async_utils import close_async_resource, run_coroutine
 from foundation.circuit_breaker import create_async_circuit_breaker, with_circuit_breaker_async
 from foundation.retry import HTTPErrorClassifier, async_retry_call, create_retry_logger
 
@@ -562,20 +561,9 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
     def close(self) -> None:
         """Close the Qdrant async client and release resources.
 
-        The async client close operation uses the `close_async_resource`
-        utility which handles three scenarios automatically:
-
-        1. **Running event loop** (e.g., called from async context):
-           - Schedules close as a background task
-           - Errors are logged but don't propagate (since we can't await)
-
-        2. **Stopped event loop** (e.g., called during cleanup):
-           - Runs close synchronously using `run_until_complete()`
-           - Errors are caught and logged
-
-        3. **No event loop** (e.g., called from synchronous context):
-           - Creates a new event loop using `asyncio.run()`
-           - Errors are caught and logged
+        Uses ``run_coroutine`` so this works both from a plain synchronous
+        context (creates a new event loop) and from within an already-running
+        loop (e.g. Databricks / Jupyter notebooks).
 
         **Error Handling:**
         This method never raises exceptions. All errors are caught, logged with
@@ -599,6 +587,6 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         if self._client is not None:
             client_to_close = self._client
             self._client = None
-            asyncio.run(
+            run_coroutine(
                 close_async_resource(client_to_close, "qdrant_async_client"),
             )

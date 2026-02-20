@@ -6,6 +6,7 @@ application to safely close async resources.
 # Test Coverage
 
 - close_async_resource: Success path, error handling, custom close methods, edge cases
+- run_coroutine: No-loop fallback, nested-loop support, return values, error propagation
 
 # Running Tests
 
@@ -17,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from foundation.async_utils import close_async_resource
+from foundation.async_utils import close_async_resource, run_coroutine
 
 
 class TestCloseAsyncResourceSuccess:
@@ -242,3 +243,119 @@ class TestCloseAsyncResourceEdgeCases:
             asyncio.run(close_async_resource(mock_resource, "run_resource"))
 
         assert close_called
+
+
+class TestRunCoroutineNoLoop:
+    """Tests for run_coroutine when no event loop is running."""
+
+    def test_returns_coroutine_result(self):
+        """Verify run_coroutine returns the value produced by the coroutine.
+
+        **Why this test is important:**
+          - Callers rely on the return value for downstream logic.
+
+        **What it tests:**
+          - A coroutine that returns 42 is executed via run_coroutine
+          - The returned value is 42
+        """
+
+        async def compute():
+            return 42
+
+        assert run_coroutine(compute()) == 42
+
+    def test_propagates_exception(self):
+        """Verify exceptions raised inside the coroutine propagate to the caller.
+
+        **Why this test is important:**
+          - Errors must not be silently swallowed; callers need to handle them.
+
+        **What it tests:**
+          - A coroutine that raises ValueError
+          - run_coroutine re-raises the same ValueError
+        """
+
+        async def fail():
+            raise ValueError("boom")
+
+        with pytest.raises(ValueError, match="boom"):
+            run_coroutine(fail())
+
+    def test_executes_awaited_work(self):
+        """Verify the coroutine body actually runs (side-effect check).
+
+        **What it tests:**
+          - A coroutine that mutates external state via a list append
+          - The mutation is visible after run_coroutine returns
+        """
+        evidence: list[str] = []
+
+        async def work():
+            evidence.append("done")
+
+        run_coroutine(work())
+        assert evidence == ["done"]
+
+
+class TestRunCoroutineInsideRunningLoop:
+    """Tests for run_coroutine when an event loop is already running.
+
+    This simulates the Databricks / Jupyter notebook scenario where
+    ``asyncio.run()`` would fail with RuntimeError.
+    """
+
+    @pytest.mark.asyncio
+    async def test_returns_result_inside_running_loop(self):
+        """Verify run_coroutine succeeds when called from within a running loop.
+
+        **Why this test is important:**
+          - This is the exact scenario that triggers the Databricks bug.
+          - run_coroutine must apply nest_asyncio and complete the coroutine.
+
+        **What it tests:**
+          - run_coroutine called while an asyncio loop is already running
+          - The coroutine executes and its return value is propagated
+        """
+
+        async def compute():
+            return "hello"
+
+        result = run_coroutine(compute())
+        assert result == "hello"
+
+    @pytest.mark.asyncio
+    async def test_propagates_exception_inside_running_loop(self):
+        """Verify exceptions propagate when called from a running loop.
+
+        **What it tests:**
+          - run_coroutine called from a running loop with a failing coroutine
+          - The exception propagates to the caller
+        """
+
+        async def fail():
+            raise RuntimeError("nested failure")
+
+        with pytest.raises(RuntimeError, match="nested failure"):
+            run_coroutine(fail())
+
+    @pytest.mark.asyncio
+    async def test_multiple_calls_inside_running_loop(self):
+        """Verify run_coroutine can be called multiple times in the same loop.
+
+        **Why this test is important:**
+          - The Databricks entrypoints call run_coroutine for disable_indexing,
+            then enable_indexing, then close() — all in the same loop.
+
+        **What it tests:**
+          - Three sequential run_coroutine calls inside one running loop
+          - Each call completes independently and returns its result
+        """
+        results = []
+        for i in range(3):
+
+            async def compute(val=i):
+                return val * 10
+
+            results.append(run_coroutine(compute()))
+
+        assert results == [0, 10, 20]

@@ -24,6 +24,7 @@ from core.ingestion.databricks.runtime import apply_python_params as _apply_pyth
 from core.ingestion.strategies import DatabricksStrategy
 from core.ingestion.tasks import process_s3_batch_ray
 from core.ingestion.shared import RateLimiterActor
+from foundation.async_utils import run_coroutine
 from foundation.checkpoint import CheckpointManager, is_s3_path
 from foundation.logger import LOGGING_CONFIG
 
@@ -74,9 +75,7 @@ def main() -> None:
                     "Disabling Qdrant indexing for collection before ingestion",
                     extra={"collection": vector_cfg.collection},
                 )
-                import asyncio
-
-                asyncio.run(qdrant_client.disable_indexing(collection=vector_cfg.collection))
+                run_coroutine(qdrant_client.disable_indexing(collection=vector_cfg.collection))
             except Exception as e:
                 job_logger.error(
                     "Failed to disable Qdrant indexing before ingestion",
@@ -245,9 +244,7 @@ def main() -> None:
                     "Re-enabling Qdrant indexing for collection after ingestion",
                     extra={"collection": vector_cfg.collection},
                 )
-                import asyncio
-
-                asyncio.run(qdrant_client.enable_indexing(collection=vector_cfg.collection))
+                run_coroutine(qdrant_client.enable_indexing(collection=vector_cfg.collection))
             except Exception as e:
                 job_logger.error(
                     "Failed to re-enable Qdrant indexing after ingestion",

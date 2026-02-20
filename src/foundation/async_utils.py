@@ -4,10 +4,40 @@ This module provides utilities for handling async resources, particularly
 focused on properly closing async clients across different event loop scenarios.
 """
 
+import asyncio
 import logging
-from typing import Any
+from collections.abc import Coroutine
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+def run_coroutine(coro: Coroutine[Any, Any, T]) -> T:
+    """Run a coroutine from sync code, safe for both bare and nested event loops.
+
+    When no event loop is running (normal script execution), this delegates to
+    ``asyncio.run()``.  When a loop is already running (e.g. Databricks /
+    Jupyter notebooks), it applies ``nest_asyncio`` to the current loop and
+    uses ``loop.run_until_complete()`` so the coroutine can execute without
+    raising ``RuntimeError``.
+
+    Args:
+        coro: The coroutine to execute.
+
+    Returns:
+        The value returned by the coroutine.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    import nest_asyncio
+
+    nest_asyncio.apply(loop)
+    return loop.run_until_complete(coro)
 
 
 async def close_async_resource(resource: Any, resource_name: str, close_method: str = "close") -> None:
@@ -23,10 +53,10 @@ async def close_async_resource(resource: Any, resource_name: str, close_method: 
 
     Example:
         ```python
-        # Called via asyncio.run from a synchronous close() method
+        # Called via run_coroutine from a synchronous close() method
         def close(self) -> None:
             if self._async_client is not None:
-                asyncio.run(close_async_resource(
+                run_coroutine(close_async_resource(
                     self._async_client,
                     "my_client",
                     "close"
