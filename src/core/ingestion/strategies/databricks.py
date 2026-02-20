@@ -131,7 +131,9 @@ class DatabricksStrategy:
             ) from e
 
         # Setup Ray-on-Spark cluster
-        self._cluster = self._setup_spark_cluster(setup_ray_cluster, MAX_NUM_WORKER_NODES)
+        self._cluster = self._setup_spark_cluster(
+            setup_ray_cluster, MAX_NUM_WORKER_NODES, sentinel=MAX_NUM_WORKER_NODES
+        )
 
         # Initialize Ray client
         self._init_ray_client()
@@ -161,19 +163,27 @@ class DatabricksStrategy:
                     )
             self._cluster = None
 
-    def _setup_spark_cluster(self, setup_fn: Any, max_workers: int) -> Any:
+    def _setup_spark_cluster(self, setup_fn: Any, max_workers: int, *, sentinel: int | None = None) -> Any:
         """Setup Ray-on-Spark cluster.
 
         Args:
             setup_fn: The setup_ray_cluster function from ray.util.spark.
             max_workers: Maximum number of worker nodes (typically MAX_NUM_WORKER_NODES).
+            sentinel: The MAX_NUM_WORKER_NODES sentinel value. When max_workers
+                equals this value, min_worker_nodes must be omitted because Ray
+                forbids autoscaling parameters with the "use all slots" sentinel.
 
         Returns:
             Cluster handle from setup_ray_cluster().
         """
+        # Ray forbids min_worker_nodes when max_worker_nodes is the
+        # MAX_NUM_WORKER_NODES sentinel (means "use all Spark slots").
+        use_all_slots = sentinel is not None and max_workers == sentinel
+        min_workers = None if use_all_slots else (self._config.num_workers or None)
+
         kwargs: dict[str, Any] = {
             "max_worker_nodes": max_workers,
-            "min_worker_nodes": self._config.num_workers or None,
+            "min_worker_nodes": min_workers,
             "heap_memory_worker_node": self._config.worker_memory or None,
         }
 

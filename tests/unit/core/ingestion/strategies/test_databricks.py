@@ -511,6 +511,51 @@ class TestDatabricksStrategySetupCluster:
             heap_memory_worker_node=4096,
         )
 
+    def test_setup_spark_cluster_omits_min_workers_when_max_is_sentinel(self, ray_job_config: RayJobConfig):
+        """_setup_spark_cluster() omits min_worker_nodes when max equals sentinel.
+
+        **Why this test is important:**
+        - ray.util.spark forbids min_worker_nodes when max_worker_nodes is
+          MAX_NUM_WORKER_NODES (the "use all Spark slots" sentinel)
+        - Without this guard the job crashes on Databricks
+
+        **What it tests:**
+        - min_worker_nodes is NOT passed when max_workers == sentinel
+        - Other parameters (CPUs, GPUs, memory) are still forwarded
+        """
+        _SENTINEL = 999
+
+        config = RayJobConfig(
+            ray_address="auto",
+            num_workers=32,
+            worker_cpus=4.0,
+            worker_memory=4096,
+        )
+        strategy = DatabricksStrategy(config=config)
+
+        mock_setup_fn = MagicMock(return_value="cluster_handle")
+        import inspect
+
+        mock_setup_fn.__signature__ = inspect.Signature(
+            parameters=[
+                inspect.Parameter("max_worker_nodes", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+                inspect.Parameter("min_worker_nodes", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+                inspect.Parameter("num_cpus_worker_node", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+                inspect.Parameter("num_gpus_worker_node", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+                inspect.Parameter("heap_memory_worker_node", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+            ]
+        )
+
+        result = strategy._setup_spark_cluster(mock_setup_fn, max_workers=_SENTINEL, sentinel=_SENTINEL)
+
+        assert result == "cluster_handle"
+        mock_setup_fn.assert_called_once_with(
+            max_worker_nodes=_SENTINEL,
+            num_cpus_worker_node=4,
+            num_gpus_worker_node=0,
+            heap_memory_worker_node=4096,
+        )
+
 
 class TestDatabricksStrategyInitRayClient:
     """Tests for _init_ray_client."""
