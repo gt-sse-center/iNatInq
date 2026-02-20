@@ -385,20 +385,20 @@ class TestMeanAveragePrecision:
 
         # Precision at doc1 (rank 1) = 1/1 = 1.0
         # Precision at doc3 (rank 3) = 2/3 ≈ 0.667
-        # MAP = (1.0 + 0.667) / 3 ≈ 0.556
-        expected = (1.0 + 2 / 3) / 3
+        # AP = (1.0 + 0.667) / min(3, 5) = 5/9 ≈ 0.556
+        expected = (1.0 + 2 / 3) / min(3, 5)
         assert result == pytest.approx(expected)
 
     def test_map_perfect_ranking(self):
-        """Test MAP when all relevant docs are ranked first.
+        """Test AP when all relevant docs are ranked first.
 
         **Why this test is important:**
           - Validates perfect ranking scenario
-          - MAP should be 1.0 when ranking is optimal
+          - AP should be 1.0 when ranking is optimal
 
         **What it tests:**
           - All 3 relevant docs in positions 1, 2, 3
-          - MAP = (1/1 + 2/2 + 3/3) / 3 = 1.0
+          - AP = (1/1 + 2/2 + 3/3) / min(3, 5) = 1.0
         """
         map_metric = MeanAveragePrecision()
         retrieved = ["doc1", "doc2", "doc3", "doc4", "doc5"]
@@ -407,15 +407,15 @@ class TestMeanAveragePrecision:
         result = map_metric.compute(retrieved, relevant)
 
         # Precision at each position: 1/1, 2/2, 3/3 = 1.0, 1.0, 1.0
-        # MAP = (1.0 + 1.0 + 1.0) / 3 = 1.0
+        # AP = (1.0 + 1.0 + 1.0) / min(3, 5) = 1.0
         assert result == pytest.approx(1.0)
 
     def test_map_worst_ranking(self):
-        """Test MAP when relevant docs are ranked last.
+        """Test AP when relevant docs are ranked last.
 
         **Why this test is important:**
           - Validates worst-case ranking scenario
-          - MAP should be low but non-zero
+          - AP should be low but non-zero
 
         **What it tests:**
           - Relevant docs at positions 4 and 5
@@ -428,8 +428,8 @@ class TestMeanAveragePrecision:
 
         # Precision at doc4 (rank 4) = 1/4 = 0.25
         # Precision at doc5 (rank 5) = 2/5 = 0.4
-        # MAP = (0.25 + 0.4) / 2 = 0.325
-        expected = (1 / 4 + 2 / 5) / 2
+        # AP = (0.25 + 0.4) / min(2, 5) = 0.325
+        expected = (1 / 4 + 2 / 5) / min(2, 5)
         assert result == pytest.approx(expected)
 
     def test_map_no_relevant_docs_found(self):
@@ -507,6 +507,31 @@ class TestMeanAveragePrecision:
         # Precision at doc5 (rank 5) = 1/5 = 0.2
         # MAP = 0.2 / 1 = 0.2
         assert result == pytest.approx(0.2)
+
+    def test_map_inquire_normalization_count_pos_greater_than_k(self):
+        """Test AP uses min(count_pos, k) normalization per INQUIRE.
+
+        **Why this test is important:**
+          - INQUIRE normalizes AP by min(count_pos, k) instead of count_pos
+          - When count_pos > k, dividing by k gives a higher score than
+            dividing by count_pos (standard AP)
+
+        **What it tests:**
+          - 10 relevant docs total, only 3 retrieved, 2 hits
+          - AP = (1/1 + 2/3) / min(10, 3) = 5/9 ≈ 0.556
+            NOT (1/1 + 2/3) / 10 = 0.167
+        """
+        map_metric = MeanAveragePrecision()
+        retrieved = ["doc1", "doc2", "doc3"]
+        relevant = {f"doc{i}" for i in range(1, 11)}  # 10 relevant docs
+
+        result = map_metric.compute(retrieved, relevant)
+
+        # Hits: doc1 at rank 1 (P=1/1), doc2 at rank 2 (P=2/2), doc3 at rank 3 (P=3/3)
+        # Sum of precisions = 1.0 + 1.0 + 1.0 = 3.0
+        # INQUIRE normalization: 3.0 / min(10, 3) = 3.0 / 3 = 1.0
+        expected = (1.0 + 1.0 + 1.0) / min(10, 3)
+        assert result == pytest.approx(expected)
 
     def test_map_auto_registers_with_registry(self):
         """Test MeanAveragePrecision auto-registers with MetricRegistry.

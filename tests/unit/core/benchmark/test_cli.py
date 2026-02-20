@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -108,33 +109,34 @@ class TestCompareCommand:
         assert result.exit_code != 0
         assert "provider" in result.output.lower()
 
-    def test_valid_args(self, valid_dataset):
-        """compare succeeds with valid arguments."""
+    @patch("core.benchmark.provider_factory.resolve_search_pipeline")
+    def test_valid_args_runs_benchmark(self, mock_resolve, valid_dataset):
+        """compare with valid args resolves provider and runs benchmark."""
+        mock_provider = AsyncMock()
+        mock_pipeline = AsyncMock()
+        from core.benchmark.search_pipeline import SearchPipelineResult
+        from core.models import SearchResults
+
+        mock_pipeline.search.return_value = SearchPipelineResult(
+            doc_ids=["d1"], raw_results=SearchResults(items=[], total=0)
+        )
+        mock_resolve.return_value = (mock_provider, mock_pipeline)
+
         runner = CliRunner()
         result = runner.invoke(app, ["compare", "--dataset", str(valid_dataset), "--provider", "qdrant"])
         assert result.exit_code == 0
-        assert "qdrant" in result.output
+        assert "complete" in result.output.lower()
+        mock_resolve.assert_called()
 
-    def test_multiple_providers(self, valid_dataset):
-        """compare accepts multiple --provider flags."""
-        runner = CliRunner()
-        result = runner.invoke(
-            app,
-            ["compare", "--dataset", str(valid_dataset), "--provider", "qdrant", "--provider", "weaviate"],
-        )
-        assert result.exit_code == 0
-        assert "qdrant" in result.output
-        assert "weaviate" in result.output
+    @patch("core.benchmark.provider_factory.resolve_search_pipeline")
+    def test_provider_resolution_error(self, mock_resolve, valid_dataset):
+        """compare exits with error when provider resolution fails."""
+        mock_resolve.side_effect = ValueError("Unknown provider")
 
-    def test_format_option(self, valid_dataset):
-        """compare accepts --format option."""
         runner = CliRunner()
-        result = runner.invoke(
-            app,
-            ["compare", "--dataset", str(valid_dataset), "--provider", "qdrant", "--format", "json"],
-        )
-        assert result.exit_code == 0
-        assert "json" in result.output
+        result = runner.invoke(app, ["compare", "--dataset", str(valid_dataset), "--provider", "bad"])
+        assert result.exit_code != 0
+        assert "error" in result.output.lower()
 
 
 class TestRunCommand:
@@ -154,15 +156,67 @@ class TestRunCommand:
         assert result.exit_code != 0
         assert "provider" in result.output.lower()
 
-    def test_valid_args(self, valid_dataset):
-        """run succeeds with valid arguments."""
+    @patch("core.benchmark.provider_factory.resolve_search_pipeline")
+    def test_valid_args_runs_benchmark(self, mock_resolve, valid_dataset):
+        """run with valid args resolves provider and runs benchmark."""
+        mock_provider = AsyncMock()
+        mock_pipeline = AsyncMock()
+        from core.benchmark.search_pipeline import SearchPipelineResult
+        from core.models import SearchResults
+
+        mock_pipeline.search.return_value = SearchPipelineResult(
+            doc_ids=["d1"], raw_results=SearchResults(items=[], total=0)
+        )
+        mock_resolve.return_value = (mock_provider, mock_pipeline)
+
         runner = CliRunner()
         result = runner.invoke(app, ["run", "--dataset", str(valid_dataset), "--provider", "qdrant"])
         assert result.exit_code == 0
-        assert "qdrant" in result.output
+        assert "complete" in result.output.lower()
+        mock_resolve.assert_called()
 
-    def test_custom_limit_and_warmup(self, valid_dataset):
+    @patch("core.benchmark.provider_factory.resolve_search_pipeline")
+    def test_collection_option(self, mock_resolve, valid_dataset):
+        """run passes --collection to resolve_search_pipeline."""
+        mock_provider = AsyncMock()
+        mock_pipeline = AsyncMock()
+        from core.benchmark.search_pipeline import SearchPipelineResult
+        from core.models import SearchResults
+
+        mock_pipeline.search.return_value = SearchPipelineResult(
+            doc_ids=["d1"], raw_results=SearchResults(items=[], total=0)
+        )
+        mock_resolve.return_value = (mock_provider, mock_pipeline)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "--dataset",
+                str(valid_dataset),
+                "--provider",
+                "qdrant",
+                "--collection",
+                "my-collection",
+            ],
+        )
+        assert result.exit_code == 0
+        mock_resolve.assert_called_once_with("qdrant", collection="my-collection")
+
+    @patch("core.benchmark.provider_factory.resolve_search_pipeline")
+    def test_custom_limit_and_warmup(self, mock_resolve, valid_dataset):
         """run accepts --limit and --warmup options."""
+        mock_provider = AsyncMock()
+        mock_pipeline = AsyncMock()
+        from core.benchmark.search_pipeline import SearchPipelineResult
+        from core.models import SearchResults
+
+        mock_pipeline.search.return_value = SearchPipelineResult(
+            doc_ids=["d1"], raw_results=SearchResults(items=[], total=0)
+        )
+        mock_resolve.return_value = (mock_provider, mock_pipeline)
+
         runner = CliRunner()
         result = runner.invoke(
             app,
@@ -179,5 +233,13 @@ class TestRunCommand:
             ],
         )
         assert result.exit_code == 0
-        assert "20" in result.output
-        assert "10" in result.output
+
+    @patch("core.benchmark.provider_factory.resolve_search_pipeline")
+    def test_provider_resolution_error(self, mock_resolve, valid_dataset):
+        """run exits with error when provider resolution fails."""
+        mock_resolve.side_effect = ValueError("clip_url is required")
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["run", "--dataset", str(valid_dataset), "--provider", "qdrant"])
+        assert result.exit_code != 0
+        assert "error" in result.output.lower()

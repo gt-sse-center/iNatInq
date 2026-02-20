@@ -45,7 +45,7 @@ class BenchmarkConfig(BaseSettings):
 
     model_config = {"env_prefix": "BENCHMARK_"}
 
-    k_values: Annotated[list[Annotated[int, Field(ge=1)]], Field(min_length=1)] = [5, 10, 20]
+    k_values: Annotated[list[Annotated[int, Field(ge=1)]], Field(min_length=1)] = [50]
     metrics: list[str] = [
         "precision@k",
         "recall@k",

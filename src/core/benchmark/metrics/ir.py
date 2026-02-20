@@ -131,15 +131,23 @@ class RecallAtK(Metric):
 
 
 class MeanAveragePrecision(Metric):
-    """Mean Average Precision (MAP) metric.
+    """Average Precision (AP) metric following INQUIRE benchmark convention.
 
-    MAP computes the average of precision values at each position where
-    a relevant document is found. It rewards systems that return relevant
-    documents earlier in the ranking.
+    Computes AP using the INQUIRE normalization: the sum of precision
+    values at each relevant hit is divided by ``min(count_pos, k)``
+    instead of the total number of relevant documents. This avoids
+    penalizing queries for relevant documents that cannot appear in
+    the top-k window.
 
-    MAP = (1/|relevant|) * Σ(Precision@k * rel(k))
+    AP = Σ(Precision@i * rel(i)) / min(|relevant|, k)
 
-    where rel(k) = 1 if document at rank k is relevant, 0 otherwise.
+    where k = len(retrieved) and rel(i) = 1 if document at rank i
+    is relevant, 0 otherwise.
+
+    Reference:
+        Vendrow et al., "INQUIRE: A Natural World Text-to-Image Retrieval
+        Benchmark", NeurIPS 2024. See supplementary material for AP
+        normalization discussion.
 
     Attributes:
         name: Metric identifier for registry ("map").
@@ -147,7 +155,7 @@ class MeanAveragePrecision(Metric):
     """
 
     name: str = "map"
-    description: str = "Mean Average Precision - average precision at each relevant hit"
+    description: str = "Average Precision (INQUIRE normalization) at each relevant hit"
 
     def compute(
         self,
@@ -155,7 +163,7 @@ class MeanAveragePrecision(Metric):
         relevant: set[str],
         graded: dict[str, int] | None = None,
     ) -> float:
-        """Compute Mean Average Precision.
+        """Compute Average Precision with INQUIRE normalization.
 
         Args:
             retrieved: Ordered sequence of retrieved document IDs.
@@ -163,13 +171,14 @@ class MeanAveragePrecision(Metric):
             graded: Unused (included for interface compatibility).
 
         Returns:
-            MAP score between 0.0 and 1.0.
+            AP score between 0.0 and 1.0.
             Returns 0.0 if no relevant documents exist.
         """
         if len(relevant) == 0:
             return 0.0
 
         retrieved_list = list(retrieved)
+        k = len(retrieved_list)
         precision_sum = 0.0
         relevant_found = 0
 
@@ -180,7 +189,9 @@ class MeanAveragePrecision(Metric):
                 precision_at_i = relevant_found / (i + 1)
                 precision_sum += precision_at_i
 
-        return precision_sum / len(relevant)
+        # INQUIRE normalization: divide by min(count_pos, k)
+        normalizer = min(len(relevant), k)
+        return precision_sum / normalizer if normalizer > 0 else 0.0
 
 
 class MRR(Metric):
