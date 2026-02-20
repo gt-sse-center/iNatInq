@@ -18,6 +18,7 @@ import pytest
 
 from clients.s3 import S3ClientWrapper
 from core.benchmark.cli import app as benchmark_app
+from typer.testing import CliRunner
 from core.benchmark.datasets.base import Dataset, Query
 from core.benchmark.datasets.json_dataset import JSONDataset
 from core.benchmark.metrics.base import Metric
@@ -317,40 +318,44 @@ class TestBenchmarkE2E:
 class TestCLIWithRealDatasets:
     """Exercise CLI ``validate`` and ``metrics`` commands against real files."""
 
-    def test_validate_inquire_val(self, cli_runner):
+    def test_validate_inquire_val(self):
         """CLI validates inquire-val.json and reports dataset name and query count."""
         if not INQUIRE_VAL_PATH.exists():
             pytest.skip("inquire-val.json not found")
 
-        result = cli_runner.invoke(benchmark_app, ["validate", str(INQUIRE_VAL_PATH)])
+        runner = CliRunner()
+        result = runner.invoke(benchmark_app, ["validate", str(INQUIRE_VAL_PATH)])
 
         assert result.exit_code == 0
         assert "inquire-val" in result.output
         assert "50" in result.output
 
-    def test_validate_inquire_val_modality(self, cli_runner):
+    def test_validate_inquire_val_modality(self):
         """CLI validate output confirms image modality."""
         if not INQUIRE_VAL_PATH.exists():
             pytest.skip("inquire-val.json not found")
 
-        result = cli_runner.invoke(benchmark_app, ["validate", str(INQUIRE_VAL_PATH)])
+        runner = CliRunner()
+        result = runner.invoke(benchmark_app, ["validate", str(INQUIRE_VAL_PATH)])
 
         assert result.exit_code == 0
         assert "image" in result.output
 
-    def test_validate_sample_gold(self, cli_runner):
+    def test_validate_sample_gold(self):
         """CLI validates sample-gold.json successfully."""
         if not SAMPLE_GOLD_PATH.exists():
             pytest.skip("sample-gold.json not found")
 
-        result = cli_runner.invoke(benchmark_app, ["validate", str(SAMPLE_GOLD_PATH)])
+        runner = CliRunner()
+        result = runner.invoke(benchmark_app, ["validate", str(SAMPLE_GOLD_PATH)])
 
         assert result.exit_code == 0
         assert "inat-sample-gold" in result.output
 
-    def test_metrics_command(self, cli_runner):
+    def test_metrics_command(self):
         """CLI lists all registered IR metrics."""
-        result = cli_runner.invoke(benchmark_app, ["metrics"])
+        runner = CliRunner()
+        result = runner.invoke(benchmark_app, ["metrics"])
 
         assert result.exit_code == 0
         for metric_name in ("precision@k", "recall@k", "map", "ndcg", "mrr"):

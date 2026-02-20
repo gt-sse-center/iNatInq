@@ -93,16 +93,3 @@ def inquire_bucket(
 
     logger.info("Finished uploading %d images", len(jpgs))
     return INQUIRE_BUCKET
-
-
-# ---------------------------------------------------------------------------
-# CLI runner
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def cli_runner():
-    """Create a Typer CLI test runner."""
-    from typer.testing import CliRunner
-
-    return CliRunner()
