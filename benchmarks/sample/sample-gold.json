@@ -1,0 +1,72 @@
+{
+  "name": "inat-sample-gold",
+  "description": "Sample gold standard dataset with 10 iNaturalist-style queries and graded relevance judgments for benchmarking vector database providers.",
+  "modality": "text",
+  "queries": [
+    {
+      "id": "q01",
+      "text": "red cardinal bird perched on branch",
+      "relevant": ["obs_101", "obs_102", "obs_103"],
+      "graded_relevance": {"obs_101": 3, "obs_102": 2, "obs_103": 1}
+    },
+    {
+      "id": "q02",
+      "text": "monarch butterfly on milkweed",
+      "relevant": ["obs_201", "obs_202", "obs_203", "obs_204"],
+      "graded_relevance": {"obs_201": 3, "obs_202": 3, "obs_203": 2, "obs_204": 1}
+    },
+    {
+      "id": "q03",
+      "text": "eastern box turtle in forest",
+      "relevant": ["obs_301", "obs_302"],
+      "graded_relevance": {"obs_301": 3, "obs_302": 2}
+    },
+    {
+      "id": "q04",
+      "text": "white-tailed deer grazing in meadow",
+      "relevant": ["obs_401", "obs_402", "obs_403"],
+      "graded_relevance": {"obs_401": 3, "obs_402": 2, "obs_403": 1}
+    },
+    {
+      "id": "q05",
+      "text": "great blue heron standing in water",
+      "relevant": ["obs_501", "obs_502"],
+      "graded_relevance": {"obs_501": 3, "obs_502": 2}
+    },
+    {
+      "id": "q06",
+      "text": "poison dart frog on leaf",
+      "relevant": ["obs_601", "obs_602", "obs_603"],
+      "graded_relevance": {"obs_601": 3, "obs_602": 2, "obs_603": 1}
+    },
+    {
+      "id": "q07",
+      "text": "bald eagle soaring over lake",
+      "relevant": ["obs_701", "obs_702"],
+      "graded_relevance": {"obs_701": 3, "obs_702": 1}
+    },
+    {
+      "id": "q08",
+      "text": "chanterelle mushroom in oak forest",
+      "relevant": ["obs_801", "obs_802", "obs_803"],
+      "graded_relevance": {"obs_801": 3, "obs_802": 2, "obs_803": 2}
+    },
+    {
+      "id": "q09",
+      "text": "green tree python coiled on branch",
+      "relevant": ["obs_901", "obs_902"],
+      "graded_relevance": {"obs_901": 3, "obs_902": 1}
+    },
+    {
+      "id": "q10",
+      "text": "sunflower field at sunset",
+      "relevant": ["obs_1001", "obs_1002", "obs_1003", "obs_1004"],
+      "graded_relevance": {"obs_1001": 3, "obs_1002": 3, "obs_1003": 2, "obs_1004": 1}
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-01-15",
+    "annotators": ["expert-a", "expert-b"],
+    "agreement_threshold": 0.8
+  }
+}
