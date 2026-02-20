@@ -47,8 +47,8 @@ help:
 	@echo "│ make logs-qdrant       Tail qdrant logs                                     │"
 	@echo "│ make logs-ray          Tail ray-head logs                                   │"
 	@echo "│ make logs-minio        Tail minio logs                                      │"
-	@echo "│ make logs-weaviate     Tail weaviate logs                                  │"
-	@echo "│ make logs-clip         Tail clip logs                                      │"
+	@echo "│ make logs-weaviate     Tail weaviate logs                                   │"
+	@echo "│ make logs-clip         Tail clip logs                                       │"
 	@echo "├── Docker Shell Access ──────────────────────────────────────────────────────┤"
 	@echo "│ make shell-pipeline    Shell into pipeline container                        │"
 	@echo "│ make shell-ollama      Shell into ollama container                          │"
@@ -61,21 +61,15 @@ help:
 	@echo "│ make ui-minio          Open MinIO Console                                   │"
 	@echo "│ make ui-qdrant         Open Qdrant Dashboard                                │"
 	@echo "│ make ui-ray            Open Ray Dashboard                                   │"
-	@echo "│ make ui-weaviate       Open Weaviate Console                                 │"
+	@echo "│ make ui-weaviate       Open Weaviate Console                                │"
 	@echo "├── Docker Scaling ───────────────────────────────────────────────────────────┤"
 	@echo "│ make ray-scale N=3     Scale Ray workers to N replicas                      │"
-	@echo "├── Synthetic Data (Text) ────────────────────────────────────────────────────┤"
-	@echo "│ make synthetic-text-generate  Generate test documents from Moby Dick        │"
-	@echo "│ make synthetic-text-upload    Upload documents to MinIO                      │"
-	@echo "│ make synthetic-text-setup     Generate and upload in one step                │"
-	@echo "│ make synthetic-text-clean     Remove generated documents                     │"
-	@echo "├── Synthetic Images ──────────────────────────────────────────────────────────┤"
+	@echo "├── Synthetic Images ─────────────────────────────────────────────────────────┤"
 	@echo "│ make synthetic-images-generate Generate test images with shapes/colors      │"
 	@echo "│ make synthetic-images-upload   Upload images to MinIO                       │"
 	@echo "│ make synthetic-images-setup    Generate and upload images                   │"
 	@echo "│ make synthetic-images-clean    Remove generated images                      │"
-	@echo "│ make synthetic-clean-all       Remove both text and images                  │"
-	@echo "├── Image Pipeline ────────────────────────────────────────────────────────────┤"
+	@echo "├── Image Pipeline ───────────────────────────────────────────────────────────┤"
 	@echo "│ make ray-image-job-submit     Submit image processing Ray job               │"
 	@echo "│ make count-images-qdrant      Count images in Qdrant                        │"
 	@echo "│ make count-images-weaviate    Count images in Weaviate                      │"
@@ -463,31 +457,6 @@ IMAGE_PREFIX ?= images/
 IMAGE_COLLECTION ?= documents
 IMAGE_QUERY ?= red circle
 
-# --- Text Generation ---
-.PHONY: synthetic-text-generate
-synthetic-text-generate:
-	@uv run python syntheticdata/synthetic_data.py generate-text \
-		--count $(COUNT) \
-		--chunk-size $(CHUNK_SIZE)
-
-.PHONY: synthetic-text-upload
-synthetic-text-upload:
-	@uv run python syntheticdata/synthetic_data.py upload-text \
-		--endpoint $(MINIO_ENDPOINT)
-
-.PHONY: synthetic-text-setup
-synthetic-text-setup:
-	@uv run python syntheticdata/synthetic_data.py setup-text \
-		--count $(COUNT) \
-		--chunk-size $(CHUNK_SIZE) \
-		--endpoint $(MINIO_ENDPOINT)
-
-.PHONY: synthetic-text-clean
-synthetic-text-clean:
-	@echo "Removing generated synthetic documents..."
-	@rm -rf syntheticdata/data/txts
-	@echo "✅ Cleaned syntheticdata/data/txts/"
-
 # --- Image Generation ---
 .PHONY: synthetic-images-generate
 synthetic-images-generate:
@@ -515,16 +484,6 @@ synthetic-images-clean:
 	@rm -rf syntheticdata/data/imgs
 	@echo "✅ Cleaned syntheticdata/data/imgs/"
 
-.PHONY: synthetic-clean-all
-synthetic-clean-all: synthetic-text-clean synthetic-images-clean
-	@echo "✅ All synthetic data cleaned"
-
-# --- Backwards-compatible aliases ---
-.PHONY: syntheticdata-generate syntheticdata-upload syntheticdata-setup syntheticdata-clean
-syntheticdata-generate: synthetic-text-generate
-syntheticdata-upload: synthetic-text-upload
-syntheticdata-setup: synthetic-text-setup
-syntheticdata-clean: synthetic-text-clean
 
 .PHONY: syntheticimages-generate syntheticimages-upload syntheticimages-setup syntheticimages-clean
 syntheticimages-generate: synthetic-images-generate
@@ -536,15 +495,8 @@ syntheticimages-clean: synthetic-images-clean
 # Ray Job Operations
 # =============================================================================
 
-S3_PREFIX ?= inputs/
+S3_PREFIX ?= images/
 COLLECTION ?= documents
-
-.PHONY: ray-job-submit
-ray-job-submit:
-	@echo "Submitting Ray job to process S3 prefix: $(S3_PREFIX)"
-	@curl -sf -X POST "http://localhost:8000/ray/jobs" \
-		-H "Content-Type: application/json" \
-		-d '{"s3_prefix": "$(S3_PREFIX)", "collection": "$(COLLECTION)"}' | python3 -c "import sys, json; d=json.load(sys.stdin); print('Job ID:', d.get('job_id', 'N/A'))"
 
 .PHONY: ray-job-status
 ray-job-status:
@@ -733,36 +685,6 @@ weaviate-clear-images:
 .PHONY: vectordb-clear-images
 vectordb-clear-images: qdrant-clear-images weaviate-clear-images
 	@echo "✅ Both image collections cleared"
-
-# =============================================================================
-# End-to-End Pipeline
-# =============================================================================
-
-.PHONY: e2e-test
-e2e-test:
-	@echo "╔══════════════════════════════════════════════════════════════════════════╗"
-	@echo "║                         End-to-End Pipeline Test                         ║"
-	@echo "╚══════════════════════════════════════════════════════════════════════════╝"
-	@echo ""
-	@echo "Step 1: Clear vector DBs..."
-	@$(MAKE) vectordb-clear COLLECTION=$(COLLECTION)
-	@echo ""
-	@echo "Step 2: Seed S3 with $(COUNT) documents..."
-	@$(MAKE) synthetic-text-setup COUNT=$(COUNT)
-	@echo ""
-	@echo "Step 3: Submit Ray job..."
-	@$(MAKE) ray-job-submit S3_PREFIX=$(S3_PREFIX) COLLECTION=$(COLLECTION)
-	@echo ""
-	@echo "Waiting 30 seconds for job to complete..."
-	@sleep 30
-	@echo ""
-	@echo "Step 4: Check document counts..."
-	@$(MAKE) count-all COLLECTION=$(COLLECTION)
-	@echo ""
-	@echo "Step 5: Test search..."
-	@$(MAKE) search-compare QUERY="$(QUERY)"
-	@echo ""
-	@echo "✅ End-to-end test complete!"
 
 # =============================================================================
 # End-to-End Image Pipeline

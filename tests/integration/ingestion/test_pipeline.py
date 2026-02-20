@@ -6,7 +6,6 @@ Ray + MinIO + Qdrant + Ollama/CLIP.
 # Test Coverage
 
 The tests cover:
-  - Text processing pipeline: S3 → Ollama → Qdrant
   - Image processing pipeline: S3 → CLIP → Qdrant
   - Checkpoint management: Save/load with real storage
   - Error recovery: Failed items, retries, circuit breaker
@@ -44,20 +43,20 @@ def create_test_image(width: int = 100, height: int = 100) -> bytes:
 
 
 # =============================================================================
-# Text Pipeline Integration Tests
+# Image Pipeline Integration Tests
 # =============================================================================
 
 
 @pytest.mark.integration
-class TestTextPipelineIntegration:
-    """Integration tests for text processing pipeline."""
+class TestImagePipelineIntegration:
+    """Integration tests for image processing pipeline."""
 
-    def test_text_upload_and_retrieve(
+    def test_image_upload_and_retrieve(
         self,
         minio_client,
         test_bucket: str,
     ) -> None:
-        """Test uploading and retrieving text from S3.
+        """Test uploading and retrieving images from S3.
 
         **Why this test is important:**
           - S3 is the data source for pipeline
@@ -65,47 +64,26 @@ class TestTextPipelineIntegration:
           - Ensures data integrity
 
         **What it tests:**
-          - Text can be uploaded to S3
-          - Text can be retrieved from S3
-          - Content matches original
+          - Image can be uploaded to S3
+          - Image can be retrieved from S3
+          - Binary content matches original
         """
-        key = f"test-{uuid.uuid4().hex}.txt"
-        content = "This is test content for the pipeline."
+        key = f"images/test-{uuid.uuid4().hex}.jpg"
+        image_bytes = create_test_image(200, 200)
 
         # Upload
         minio_client.put_object(
             bucket=test_bucket,
             key=key,
-            body=create_test_text_file(content),
+            body=image_bytes,
         )
 
         # Retrieve
         retrieved = minio_client.get_object(bucket=test_bucket, key=key)
-        assert retrieved.decode("utf-8") == content
+        assert retrieved == image_bytes
 
-    def test_ollama_embedding_generation(self, ollama_client) -> None:
-        """Test generating embeddings with Ollama.
-
-        **Why this test is important:**
-          - Embeddings are core to semantic search
-          - Validates Ollama integration
-          - Ensures correct dimensions
-
-        **What it tests:**
-          - Ollama generates embeddings
-          - Embedding has expected dimensions
-          - Values are normalized floats
-        """
-        text = "The quick brown fox jumps over the lazy dog."
-
-        embedding = ollama_client.embed(text)
-
-        # all-minilm produces 384-dimensional embeddings
-        assert len(embedding) == 384
-        assert all(isinstance(v, float) for v in embedding)
-        # Check embedding is non-zero
-        assert any(v != 0.0 for v in embedding)
-
+    # TODO: replace text embedding with image embedding
+    # this will be updated once Ollama client is refactored
     def test_qdrant_upsert_and_search(
         self,
         qdrant_client,
@@ -174,46 +152,28 @@ class TestTextPipelineIntegration:
         first_text = results.items[0].payload.get("text", "")
         assert "fox" in first_text.lower()
 
-
-# =============================================================================
-# Image Pipeline Integration Tests
-# =============================================================================
-
-
-@pytest.mark.integration
-class TestImagePipelineIntegration:
-    """Integration tests for image processing pipeline."""
-
-    def test_image_upload_and_retrieve(
-        self,
-        minio_client,
-        test_bucket: str,
-    ) -> None:
-        """Test uploading and retrieving images from S3.
+    def test_ollama_embedding_generation(self, ollama_client) -> None:
+        """Test generating embeddings with Ollama.
 
         **Why this test is important:**
-          - S3 is the data source for images
-          - Validates binary data handling
-          - Ensures image integrity
+          - Embeddings are core to semantic search
+          - Validates Ollama integration
+          - Ensures correct dimensions
 
         **What it tests:**
-          - Image can be uploaded to S3
-          - Image can be retrieved from S3
-          - Binary content matches original
+          - Ollama generates embeddings
+          - Embedding has expected dimensions
+          - Values are normalized floats
         """
-        key = f"images/test-{uuid.uuid4().hex}.jpg"
-        image_bytes = create_test_image(200, 200)
+        text = "The quick brown fox jumps over the lazy dog."
 
-        # Upload
-        minio_client.put_object(
-            bucket=test_bucket,
-            key=key,
-            body=image_bytes,
-        )
+        embedding = ollama_client.embed(text)
 
-        # Retrieve
-        retrieved = minio_client.get_object(bucket=test_bucket, key=key)
-        assert retrieved == image_bytes
+        # all-minilm produces 384-dimensional embeddings
+        assert len(embedding) == 384
+        assert all(isinstance(v, float) for v in embedding)
+        # Check embedding is non-zero
+        assert any(v != 0.0 for v in embedding)
 
     def test_image_validation(self) -> None:
         """Test image validation utility.
@@ -377,7 +337,9 @@ class TestFullPipelineIntegration:
     They test the complete flow from S3 through embedding to vector DB.
     """
 
-    def test_text_document_full_pipeline(
+    # TODO: update test to process images rather than text files.
+    # When the OllamaClient is refactored to provide image embedding methods, this can be refactored.
+    def test_full_ingestion_pipeline(
         self,
         minio_client,
         ollama_client,
@@ -385,7 +347,7 @@ class TestFullPipelineIntegration:
         test_bucket: str,
         test_collection: str,
     ) -> None:
-        """Test complete text document processing pipeline.
+        """Test complete ingestion pipeline.
 
         **Why this test is important:**
           - Validates end-to-end flow

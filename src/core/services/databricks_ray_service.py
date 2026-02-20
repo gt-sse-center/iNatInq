@@ -17,13 +17,12 @@ from logging.config import dictConfig
 import attrs
 from databricks.sdk import WorkspaceClient
 
-from config import DatabricksRayJobConfig, EmbeddingConfig, ImageEmbeddingConfig
+from config import DatabricksRayJobConfig, ImageEmbeddingConfig
 from core.exceptions import UpstreamError
 from core.services.ingestion_params import (
     add_ray_tuning_env,
     build_image_ingestion_env,
     build_inat_image_ingestion_env,
-    build_ingestion_env,
 )
 from foundation.logger import LOGGING_CONFIG
 
@@ -34,26 +33,7 @@ logger = logging.getLogger("pipeline.databricks.ray.service")
 
 @attrs.define(frozen=True, slots=True)
 class DatabricksRayService:
-    """Service for submitting Ray ingestion jobs via Databricks Jobs API.
-
-    Example:
-        ```python
-        from core.services.databricks_ray_service import DatabricksRayService
-        from config import EmbeddingConfig
-
-        service = DatabricksRayService()
-        run_id = service.submit_s3_to_vector_dbs(
-            namespace="ml-system",
-            s3_endpoint="http://minio.ml-system:9000",
-            s3_access_key_id="minioadmin",
-            s3_secret_access_key="minioadmin",
-            s3_bucket="pipeline",
-            s3_prefix="inputs/",
-            embedding_config=EmbeddingConfig.from_env(),
-            collection="documents",
-        )
-        ```
-    """
+    """Service for submitting Ray ingestion jobs via Databricks Jobs API."""
 
     @staticmethod
     def _submit_python_job(
@@ -70,70 +50,6 @@ class DatabricksRayService:
             python_params=python_params,
         )
         return int(response.run_id)
-
-    def submit_s3_to_vector_dbs(
-        self,
-        *,
-        namespace: str,
-        s3_endpoint: str,
-        s3_access_key_id: str,
-        s3_secret_access_key: str,
-        s3_bucket: str,
-        s3_prefix: str = "inputs/",
-        embedding_config: EmbeddingConfig,
-        collection: str,
-    ) -> int:
-        """Submit a Databricks job to process S3 data and store embeddings.
-
-        This method submits a run for a configured Databricks Job. Parameters
-        are passed as env-style `KEY=VALUE` strings so the job entrypoint can
-        use the same configuration logic as Ray workers.
-
-        Args:
-            namespace: Kubernetes namespace (used for service discovery).
-            s3_endpoint: S3 service endpoint URL.
-            s3_access_key_id: S3 access key.
-            s3_secret_access_key: S3 secret key.
-            s3_bucket: S3 bucket name to read from.
-            s3_prefix: S3 prefix to filter objects (default: `inputs/`).
-            embedding_config: Embedding provider configuration.
-            collection: Vector DB collection name.
-
-        Returns:
-            Databricks run ID for the submitted job.
-
-        Raises:
-            UpstreamError: If submission fails.
-        """
-        databricks_config = DatabricksRayJobConfig.from_env()
-        env_vars = build_ingestion_env(
-            namespace=namespace,
-            s3_endpoint=s3_endpoint,
-            s3_access_key_id=s3_access_key_id,
-            s3_secret_access_key=s3_secret_access_key,
-            s3_bucket=s3_bucket,
-            s3_prefix=s3_prefix,
-            embedding_config=embedding_config,
-            collection=collection,
-            extra_env_keys=("INATINQ_SRC_DIR",),
-        )
-        add_ray_tuning_env(env_vars)
-        python_params = [f"{key}={value}" for key, value in env_vars.items()]
-
-        try:
-            logger.info(
-                "Submitting Databricks job",
-                extra={"job_id": databricks_config.job_id, "s3_prefix": s3_prefix},
-            )
-            return self._submit_python_job(
-                host=databricks_config.host,
-                token=databricks_config.token,
-                job_id=databricks_config.job_id,
-                python_params=python_params,
-            )
-        except Exception as e:
-            logger.exception("Failed to submit Databricks job", extra={"error": str(e)})
-            raise UpstreamError(f"Failed to submit Databricks job: {e}") from e
 
     def submit_image_job(
         self,

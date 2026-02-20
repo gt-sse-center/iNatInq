@@ -228,7 +228,7 @@ class TestMiddlewareIntegration:
         client = TestClient(app)
 
         # Trigger an error by searching with empty query
-        response = client.get("/search?q=")
+        response = client.get("/search/images?q=")
 
         assert response.status_code == 400
         data = response.json()
@@ -299,5 +299,6 @@ class TestOpenAPIRouteRegistration:
 
         # Verify key endpoints are documented
         assert "/healthz" in paths
-        assert "/search" in paths
-        assert "/ray/jobs" in paths
+        assert "/search/images" in paths
+        assert "/ray/jobs/images" in paths
+        assert "/databricks/jobs/images" in paths

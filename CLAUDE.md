@@ -73,11 +73,11 @@ make logs-ollama
 ### End-to-End Testing
 
 ```bash
-# Generate synthetic data and upload to MinIO
-make synthetic-text-setup COUNT=100
+# Generate synthetic images and upload to MinIO
+make synthetic-images-setup IMAGE_COUNT=100
 
-# Submit Ray ingestion job
-make ray-job-submit S3_PREFIX=inputs/ COLLECTION=documents
+# Submit Ray image ingestion job
+make ray-image-job-submit IMAGE_PREFIX=images/ IMAGE_COLLECTION=documents
 
 # Check document counts
 make count-all COLLECTION=documents

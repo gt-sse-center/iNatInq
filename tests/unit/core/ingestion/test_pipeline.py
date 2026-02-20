@@ -13,7 +13,6 @@ for distributed processing.
 - Error handling and cleanup guarantees
 - Batch creation and processing
 - Checkpoint loading and saving
-- Content type routing (text vs images)
 
 # Running Tests
 
@@ -259,7 +258,7 @@ class TestIngestionPipelineRun:
         mock_s3.list_objects.return_value = []
 
         with patch("core.ingestion.pipeline.S3ClientWrapper", return_value=mock_s3):
-            result = mock_pipeline.run(s3_prefix="inputs/", content_type="text")
+            result = mock_pipeline.run(s3_prefix="inputs/")
 
         mock_pipeline.cluster_strategy.init.assert_called_once()
         mock_pipeline.cluster_strategy.shutdown.assert_called_once()
@@ -283,7 +282,7 @@ class TestIngestionPipelineRun:
         mock_s3.list_objects.return_value = []
 
         with patch("core.ingestion.pipeline.S3ClientWrapper", return_value=mock_s3):
-            result = mock_pipeline.run(s3_prefix="inputs/", content_type="text")
+            result = mock_pipeline.run(s3_prefix="inputs/")
 
         assert isinstance(result, JobResult)
         assert result.total == 0
@@ -309,7 +308,7 @@ class TestIngestionPipelineRun:
 
         with patch("core.ingestion.pipeline.S3ClientWrapper", return_value=mock_s3):
             with pytest.raises(Exception, match="S3 error"):
-                mock_pipeline.run(s3_prefix="inputs/", content_type="text")
+                mock_pipeline.run(s3_prefix="inputs/")
 
         mock_pipeline.cluster_strategy.shutdown.assert_called_once()
 
@@ -330,20 +329,20 @@ class TestIngestionPipelineRun:
         - Total matches the number of input keys
         """
         mock_s3 = MagicMock()
-        mock_s3.list_objects.return_value = ["file1.txt", "file2.txt", "file3.txt"]
+        mock_s3.list_objects.return_value = ["image1.png", "image2.png", "image3.png"]
 
         # Mock ray functions
         mock_ray_module.wait.return_value = ([MagicMock()], [])
         mock_ray_module.get.return_value = [
-            [("file1.txt", True, ""), ("file2.txt", True, ""), ("file3.txt", False, "error")]
+            [("image1.png", True, ""), ("image2.png", True, ""), ("image3.png", False, "error")]
         ]
 
         with patch("core.ingestion.pipeline.S3ClientWrapper", return_value=mock_s3):
             with patch("core.ingestion.pipeline.RateLimiterActor") as mock_rate:
                 mock_rate.remote.return_value = MagicMock()
-                with patch("core.ingestion.pipeline.process_s3_batch_ray") as mock_task:
+                with patch("core.ingestion.pipeline.process_image_batch_ray") as mock_task:
                     mock_task.options.return_value.remote.return_value = MagicMock()
-                    result = mock_pipeline.run(s3_prefix="inputs/", content_type="text")
+                    result = mock_pipeline.run(s3_prefix="inputs/")
 
         assert result.successful == 2
         assert result.failed == 1
@@ -552,110 +551,3 @@ class TestIngestionPipelineCheckpoint:
             processed, checkpoint_path = pipeline._load_checkpoint(mock_s3, ["key1"])
 
         assert processed == {"key1", "key2", "key3"}
-
-
-class TestIngestionPipelineContentType:
-    """Tests for content type handling."""
-
-    @pytest.fixture
-    def mock_cluster_strategy(self):
-        """Create a mock cluster strategy."""
-        strategy = MagicMock()
-        strategy.init = MagicMock()
-        strategy.shutdown = MagicMock()
-        return strategy
-
-    @pytest.fixture
-    def pipeline(self, mock_cluster_strategy):
-        """Create pipeline for testing."""
-        ray_config = RayJobConfig(
-            ray_address="ray://localhost:10001",
-            s3_batch_size=10,
-            checkpoint_enabled=False,
-        )
-        minio_config = MinIOConfig(
-            endpoint_url="http://minio:9000",
-            access_key_id="minioadmin",
-            secret_access_key="minioadmin",
-            bucket="test-bucket",
-        )
-        vector_config = VectorDBConfig(
-            provider_type="qdrant",
-            qdrant_url="http://qdrant:6333",
-            collection="test-collection",
-        )
-        embed_config = EmbeddingConfig(
-            provider_type="ollama",
-            ollama_url="http://ollama:11434",
-            ollama_model="nomic-embed-text",
-        )
-
-        return IngestionPipeline(
-            cluster_strategy=mock_cluster_strategy,
-            ray_config=ray_config,
-            minio_config=minio_config,
-            vector_config=vector_config,
-            embed_config=embed_config,
-        )
-
-    @patch("core.ingestion.pipeline.ray")
-    def test_run_uses_text_task_for_text_content(self, mock_ray_module: MagicMock, pipeline):
-        """Verify run() uses process_s3_batch_ray for text content.
-
-        **Why this test is important:**
-
-        - Text and image content require different processing pipelines
-        - Using wrong task type leads to processing failures
-        - Ensures content_type parameter controls task selection
-
-        **What it tests:**
-
-        - process_s3_batch_ray is called for content_type="text"
-        - process_s3_image_batch_ray is NOT called for text content
-        """
-        mock_s3 = MagicMock()
-        mock_s3.list_objects.return_value = ["file.txt"]
-        mock_ray_module.wait.return_value = ([MagicMock()], [])
-        mock_ray_module.get.return_value = [[("file.txt", True, "")]]
-
-        with patch("core.ingestion.pipeline.S3ClientWrapper", return_value=mock_s3):
-            with patch("core.ingestion.pipeline.RateLimiterActor") as mock_rate:
-                mock_rate.remote.return_value = MagicMock()
-                with patch("core.ingestion.pipeline.process_s3_batch_ray") as mock_text_task:
-                    with patch("core.ingestion.pipeline.process_s3_image_batch_ray") as mock_image_task:
-                        mock_text_task.options.return_value.remote.return_value = MagicMock()
-                        pipeline.run(s3_prefix="inputs/", content_type="text")
-
-                        mock_text_task.options.assert_called_once()
-                        mock_image_task.options.assert_not_called()
-
-    @patch("core.ingestion.pipeline.ray")
-    def test_run_uses_image_task_for_image_content(self, mock_ray_module: MagicMock, pipeline):
-        """Verify run() uses process_s3_image_batch_ray for image content.
-
-        **Why this test is important:**
-
-        - Image processing requires specialized embedding and chunking
-        - Mixing up task types causes data corruption or failures
-        - Validates the content_type routing logic works bidirectionally
-
-        **What it tests:**
-
-        - process_s3_image_batch_ray is called for content_type="images"
-        - process_s3_batch_ray is NOT called for image content
-        """
-        mock_s3 = MagicMock()
-        mock_s3.list_objects.return_value = ["file.jpg"]
-        mock_ray_module.wait.return_value = ([MagicMock()], [])
-        mock_ray_module.get.return_value = [[("file.jpg", True, "")]]
-
-        with patch("core.ingestion.pipeline.S3ClientWrapper", return_value=mock_s3):
-            with patch("core.ingestion.pipeline.RateLimiterActor") as mock_rate:
-                mock_rate.remote.return_value = MagicMock()
-                with patch("core.ingestion.pipeline.process_s3_batch_ray") as mock_text_task:
-                    with patch("core.ingestion.pipeline.process_s3_image_batch_ray") as mock_image_task:
-                        mock_image_task.options.return_value.remote.return_value = MagicMock()
-                        pipeline.run(s3_prefix="images/", content_type="images")
-
-                        mock_image_task.options.assert_called_once()
-                        mock_text_task.options.assert_not_called()
