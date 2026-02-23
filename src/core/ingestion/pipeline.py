@@ -14,11 +14,8 @@ from core.ingestion.strategies import LocalRayStrategy
 strategy = LocalRayStrategy.from_env()
 pipeline = IngestionPipeline.from_env(cluster_strategy=strategy)
 
-# Run text ingestion
-result = pipeline.run(s3_prefix="inputs/", content_type="text")
-
 # Run image ingestion
-result = pipeline.run(s3_prefix="images/", content_type="images")
+result = pipeline.run(s3_prefix="images/")
 ```
 
 ## Design
@@ -36,7 +33,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import attrs
 import ray
@@ -46,7 +43,7 @@ from clients.s3 import S3ClientWrapper
 from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
 from foundation.checkpoint import CheckpointManager, is_s3_path
 from core.ingestion.shared import RateLimiterActor
-from core.ingestion.tasks import process_s3_batch_ray, process_s3_image_batch_ray
+from core.ingestion.tasks import process_image_batch_ray
 
 if TYPE_CHECKING:
     from core.ingestion.strategies.base import ClusterStrategy
@@ -75,7 +72,7 @@ class JobResult:
 
 @attrs.define
 class IngestionPipeline:
-    """Unified ingestion pipeline for text and image processing.
+    """Unified ingestion pipeline for image processing.
 
     This class orchestrates the ingestion workflow:
     1. Initialize Ray cluster via strategy
@@ -126,13 +123,11 @@ class IngestionPipeline:
     def run(
         self,
         s3_prefix: str,
-        content_type: Literal["text", "images"] = "text",
     ) -> JobResult:
-        """Execute the ingestion pipeline.
+        """Execute the image ingestion pipeline.
 
         Args:
             s3_prefix: S3 prefix to process (e.g., "inputs/", "images/").
-            content_type: Type of content - "text" for documents, "images" for images.
 
         Returns:
             JobResult with success/failure counts and timing.
@@ -144,20 +139,19 @@ class IngestionPipeline:
         job_logger = logging.getLogger("pipeline.ingestion.job")
         job_logger.info(
             "Ingestion job started",
-            extra={"content_type": content_type, "s3_prefix": s3_prefix},
+            extra={"s3_prefix": s3_prefix},
         )
         start = time.time()
 
         self.cluster_strategy.init()
         try:
-            return self._execute(s3_prefix, content_type, job_logger, start)
+            return self._execute(s3_prefix, job_logger, start)
         finally:
             self.cluster_strategy.shutdown()
 
     def _execute(
         self,
         s3_prefix: str,
-        content_type: Literal["text", "images"],
         job_logger: logging.Logger,
         start: float,
     ) -> JobResult:
@@ -216,7 +210,6 @@ class IngestionPipeline:
                 "total_keys": total_keys,
                 "num_batches": total_batches,
                 "num_workers": self.ray_config.num_workers,
-                "content_type": content_type,
             },
         )
 
@@ -226,7 +219,6 @@ class IngestionPipeline:
         futures = self._submit_tasks(
             key_batches=key_batches,
             total_batches=total_batches,
-            content_type=content_type,
             rate_limiter=rate_limiter,
         )
 
@@ -275,7 +267,7 @@ class IngestionPipeline:
     def _load_checkpoint(
         self,
         s3: S3ClientWrapper,
-        keys: list[str],
+        _keys: list[str],  # will this be used in the future?
     ) -> tuple[set[str], str | None]:
         """Load checkpoint and return processed keys and checkpoint path."""
         processed: set[str] = set()
@@ -299,15 +291,12 @@ class IngestionPipeline:
         self,
         key_batches: list[list[str]],
         total_batches: int,
-        content_type: Literal["text", "images"],
         rate_limiter: ray.ObjectRef,
     ) -> list[ray.ObjectRef]:
         """Submit Ray tasks for all batches."""
-        # Select task function based on content type
-        base_task = process_s3_image_batch_ray if content_type == "images" else process_s3_batch_ray
 
         # Configure task with dynamic options
-        task_fn = base_task.options(
+        task_fn = process_image_batch_ray.options(
             num_cpus=self.ray_config.task_num_cpus,
             max_retries=self.ray_config.task_max_retries,
         )

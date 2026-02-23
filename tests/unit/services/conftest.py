@@ -14,10 +14,10 @@ import pytest
 from clients.clip import CLIPClient
 from clients.interfaces.embedding import EmbeddingProvider
 from clients.interfaces.vector_db import VectorDBProvider
-from config import EmbeddingConfig, RayJobConfig, VectorDBConfig
+from config import EmbeddingConfig, ImageEmbeddingConfig, RayJobConfig, VectorDBConfig
 from core.models import SearchResultItem, SearchResults
 from core.services.ray_service import RayService
-from core.services.search_service import ImageSearchService, SearchService
+from core.services.search_service import ImageSearchService
 
 # =============================================================================
 # Mock Clients
@@ -88,21 +88,6 @@ def mock_vector_db_provider() -> MagicMock:
 
 
 @pytest.fixture
-def embedding_config() -> EmbeddingConfig:
-    """Create an EmbeddingConfig for testing.
-
-    Returns:
-        EmbeddingConfig: Test embedding configuration.
-    """
-    return EmbeddingConfig(
-        provider_type="ollama",
-        ollama_url="http://ollama.test:11434",
-        ollama_model="nomic-embed-text",
-        vector_size=768,
-    )
-
-
-@pytest.fixture
 def vector_db_config() -> VectorDBConfig:
     """Create a VectorDBConfig for testing.
 
@@ -137,23 +122,6 @@ def ray_service() -> RayService:
         RayService: Configured service for testing.
     """
     return RayService()
-
-
-@pytest.fixture
-def search_service(mock_embedding_provider: MagicMock, mock_vector_db_provider: MagicMock) -> SearchService:
-    """Create a SearchService instance with mocked providers.
-
-    Args:
-        mock_embedding_provider: Mock EmbeddingProvider fixture.
-        mock_vector_db_provider: Mock VectorDBProvider fixture.
-
-    Returns:
-        SearchService: Configured service with mocked providers.
-    """
-    return SearchService(
-        embedding_provider=mock_embedding_provider,
-        vector_db_provider=mock_vector_db_provider,
-    )
 
 
 @pytest.fixture

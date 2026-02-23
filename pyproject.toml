@@ -158,5 +158,9 @@ packages = ["src/foundation"]
 [tool.mypy]
 ignore_missing_imports = true
 
+[tool.basedpyright]
+typeChecking = "strict"
+reportMissingTypeStubs = false
+
 [tool.uv.build-backend]
 module-name = "foundation"
