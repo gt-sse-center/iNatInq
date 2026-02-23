@@ -42,7 +42,7 @@ from botocore.exceptions import ClientError
 from clients.s3 import S3ClientWrapper
 from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
 from foundation.checkpoint import CheckpointManager, is_s3_path
-from core.ingestion.shared import RateLimiterActor
+from core.ingestion.shared import RateLimiterActor, disable_qdrant_indexing, enable_qdrant_indexing
 from core.ingestion.tasks import process_image_batch_ray
 
 if TYPE_CHECKING:
@@ -216,19 +216,36 @@ class IngestionPipeline:
         # Create rate limiter and submit tasks
         rate_limiter = RateLimiterActor.remote(rate_per_sec=self.ray_config.ollama_requests_per_second)
 
-        futures = self._submit_tasks(
-            key_batches=key_batches,
-            total_batches=total_batches,
-            rate_limiter=rate_limiter,
+        collection_name = f"{self.vector_config.collection}_images"
+        should_disable_indexing = (
+            self.ray_config.disable_indexing_during_ingest
+            and "qdrant" in self.vector_config.ingestion_targets
         )
 
-        # Collect results with progress tracking
-        results = self._collect_results(
-            futures=futures,
-            total_keys=total_keys,
-            job_logger=job_logger,
-            start=start,
-        )
+        if should_disable_indexing:
+            disable_qdrant_indexing(
+                self.vector_config.qdrant_url, self.vector_config.qdrant_api_key, collection_name
+            )
+
+        try:
+            futures = self._submit_tasks(
+                key_batches=key_batches,
+                total_batches=total_batches,
+                rate_limiter=rate_limiter,
+            )
+
+            # Collect results with progress tracking
+            results = self._collect_results(
+                futures=futures,
+                total_keys=total_keys,
+                job_logger=job_logger,
+                start=start,
+            )
+        finally:
+            if should_disable_indexing:
+                enable_qdrant_indexing(
+                    self.vector_config.qdrant_url, self.vector_config.qdrant_api_key, collection_name
+                )
 
         # Calculate statistics
         success = sum(1 for _, ok, _ in results if ok)

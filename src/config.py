@@ -1012,6 +1012,10 @@ class RayJobConfig(BaseModel):
             Default: 1.0.
         retry_max_wait: Maximum wait between retries in seconds.
             Default: 10.0.
+        disable_indexing_during_ingest: Whether to disable Qdrant HNSW
+            indexing before bulk ingestion and re-enable it after all
+            batches are uploaded. Improves throughput for large loads.
+            Default: False.
     """
 
     # Cluster configuration
@@ -1068,6 +1072,9 @@ class RayJobConfig(BaseModel):
     retry_max_attempts: int = 3
     retry_min_wait: float = 1.0
     retry_max_wait: float = 10.0
+
+    # Qdrant indexing
+    disable_indexing_during_ingest: bool = False
 
     model_config = SettingsConfigDict(frozen=True)
 
@@ -1158,6 +1165,9 @@ class RayJobConfig(BaseModel):
             retry_max_attempts=int(os.getenv("RAY_RETRY_MAX_ATTEMPTS", "3")),
             retry_min_wait=float(os.getenv("RAY_RETRY_MIN_WAIT", "1.0")),
             retry_max_wait=float(os.getenv("RAY_RETRY_MAX_WAIT", "10.0")),
+            # Qdrant indexing
+            disable_indexing_during_ingest=os.getenv("DISABLE_INDEXING_DURING_INGEST", "false").lower()
+            == "true",
         )
 
 
