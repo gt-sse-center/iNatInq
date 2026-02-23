@@ -577,7 +577,7 @@ QUERY ?= What is the story about?
 search-qdrant:
 	@echo "Searching Qdrant for: '$(QUERY)'"
 	@ENCODED_QUERY=$$(python3 -c 'import urllib.parse; print(urllib.parse.quote_plus("$(QUERY)"))'); \
-	curl -sf "http://localhost:8000/search?query=$$ENCODED_QUERY&provider=qdrant&limit=3" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); \
+	curl -sf "http://localhost:8000/search?q=$$ENCODED_QUERY&provider=qdrant&limit=3" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); \
 		print('Results:', len(d.get('results', []))); \
 		[print(f\"  - {r.get('payload', {}).get('text', '')[:100]}...\") for r in d.get('results', [])[:3]]" 2>/dev/null || echo "Search failed or service unavailable"
 
@@ -585,7 +585,7 @@ search-qdrant:
 search-weaviate:
 	@echo "Searching Weaviate for: '$(QUERY)'"
 	@ENCODED_QUERY=$$(python3 -c 'import urllib.parse; print(urllib.parse.quote_plus("$(QUERY)"))'); \
-	curl -sf "http://localhost:8000/search?query=$$ENCODED_QUERY&provider=weaviate&limit=3" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); \
+	curl -sf "http://localhost:8000/search?q=$$ENCODED_QUERY&provider=weaviate&limit=3" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); \
 		print('Results:', len(d.get('results', []))); \
 		[print(f\"  - {r.get('payload', {}).get('text', '')[:100]}...\") for r in d.get('results', [])[:3]]" 2>/dev/null || echo "Search failed or service unavailable"
 
