@@ -40,3 +40,7 @@ data/
 
 # Configuration files (WIP - remove when ready for production)
 /configs/
+/clip-model
+deploy.yml
+endpoint.yml
+model.yml
