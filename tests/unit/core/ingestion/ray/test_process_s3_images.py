@@ -54,9 +54,17 @@ class TestRayImageJobMain:
                     ) as mock_vector_cfg:
                         with patch("core.ingestion.ray.process_s3_images.LocalRayStrategy") as mock_strat_cls:
                             with patch("core.ingestion.ray.process_s3_images.S3ClientWrapper") as mock_s3_cls:
-                                with patch(
-                                    "core.ingestion.ray.process_s3_images.iter_image_batches"
-                                ) as mock_iter:
+                                with (
+                                    patch(
+                                        "core.ingestion.ray.process_s3_images.iter_image_batches"
+                                    ) as mock_iter,
+                                    patch(
+                                        "core.ingestion.ray.process_s3_images.disable_qdrant_indexing"
+                                    ) as mock_disable_idx,
+                                    patch(
+                                        "core.ingestion.ray.process_s3_images.enable_qdrant_indexing"
+                                    ) as mock_enable_idx,
+                                ):
                                     mock_ray_cfg.return_value = MagicMock(
                                         num_workers=4,
                                         image_batch_size=50,
@@ -78,6 +86,7 @@ class TestRayImageJobMain:
                                         s3_prefix="",
                                         image_max_items=None,
                                         image_page_size=1000,
+                                        disable_indexing_during_ingest=False,
                                     )
                                     mock_minio_cfg.return_value = MagicMock(
                                         endpoint_url="http://minio:9000",
@@ -89,6 +98,8 @@ class TestRayImageJobMain:
                                     mock_vector_cfg.return_value = MagicMock(
                                         collection="documents",
                                         ingestion_targets=frozenset({"qdrant", "weaviate"}),
+                                        qdrant_url="http://localhost:6333",
+                                        qdrant_api_key=None,
                                     )
                                     mock_strat_cls.from_env.return_value = mock_strategy
                                     mock_s3_cls.return_value = mock_s3
@@ -102,6 +113,8 @@ class TestRayImageJobMain:
                                         "strategy": mock_strategy,
                                         "s3": mock_s3,
                                         "iter_batches": mock_iter,
+                                        "disable_indexing": mock_disable_idx,
+                                        "enable_indexing": mock_enable_idx,
                                     }
 
     def test_main_initializes_and_shuts_down_cluster(self, mock_dependencies, mock_ray):
@@ -380,3 +393,31 @@ class TestRayImageJobMain:
         mock_dependencies["iter_batches"].assert_called_once()
         call_kwargs = mock_dependencies["iter_batches"].call_args[1]
         assert call_kwargs["page_size"] == 200
+
+    def test_main_disables_and_reenables_qdrant_indexing(self, mock_dependencies, mock_ray):
+        """main() disables indexing before processing and re-enables it after.
+
+        **Why this test is important:**
+          - Disabling HNSW indexing during bulk uploads improves throughput
+          - Indexing must be re-enabled after processing completes
+          - Both operations must use the correct collection name and credentials
+
+        **What it tests:**
+          - disable_qdrant_indexing is called with correct args when flag is True
+          - enable_qdrant_indexing is called with correct args in the finally block
+        """
+        from core.ingestion.ray.process_s3_images import main
+
+        mock_dependencies["ray_cfg"].return_value.disable_indexing_during_ingest = True
+        mock_dependencies["vector_cfg"].return_value.qdrant_url = "http://qdrant:6333"
+        mock_dependencies["vector_cfg"].return_value.qdrant_api_key = "test-key"
+
+        with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
+            main()
+
+        mock_dependencies["disable_indexing"].assert_called_once_with(
+            "http://qdrant:6333", "test-key", "documents_images"
+        )
+        mock_dependencies["enable_indexing"].assert_called_once_with(
+            "http://qdrant:6333", "test-key", "documents_images"
+        )
