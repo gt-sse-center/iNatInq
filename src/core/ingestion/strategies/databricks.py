@@ -172,9 +172,9 @@ class DatabricksStrategy:
             Cluster handle from setup_ray_cluster().
         """
         kwargs = {
-            "num_worker_nodes": self._config.num_workers,
-            "cpus_per_node": int(self._config.worker_cpus),
-            "memory_per_node": self._config.worker_memory,
+            "max_worker_nodes": self._config.num_workers,
+            "num_cpus_worker_node": int(self._config.worker_cpus),
+            "memory_worker_node": self._config.worker_memory,
         }
 
         # Filter to only supported parameters
