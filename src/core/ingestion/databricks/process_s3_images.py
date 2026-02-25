@@ -19,6 +19,7 @@ from config import ImageEmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConf
 from core.ingestion.databricks.batch_runner import run_ray_batch_processing
 from core.ingestion.databricks.runtime import apply_python_params as _apply_python_params
 from core.ingestion.shared.batching import iter_image_batches
+from core.ingestion.shared.qdrant_indexing import disable_qdrant_indexing, enable_qdrant_indexing
 from core.ingestion.strategies import DatabricksStrategy
 from core.ingestion.tasks import process_image_batch_ray
 from foundation.checkpoint import CheckpointManager, is_s3_path
@@ -143,16 +144,26 @@ def main() -> None:
                 ingestion_targets=ingestion_targets,
             )
 
-        stats = run_ray_batch_processing(
-            batches=batch_gen,
-            submit_batch=_submit_batch,
-            wait_batch_size=ray_cfg.wait_batch_size,
-            wait_timeout=ray_cfg.wait_timeout,
-            max_inflight_batches=max_inflight_batches,
-            job_logger=job_logger,
-            progress_label="Image batch progress",
-            total_expected_records=None,
-        )
+        collection_name = f"{collection}_images"
+        should_disable_indexing = ray_cfg.disable_indexing_during_ingest and "qdrant" in ingestion_targets
+
+        if should_disable_indexing:
+            disable_qdrant_indexing(vector_cfg.qdrant_url, vector_cfg.qdrant_api_key, collection_name)
+
+        try:
+            stats = run_ray_batch_processing(
+                batches=batch_gen,
+                submit_batch=_submit_batch,
+                wait_batch_size=ray_cfg.wait_batch_size,
+                wait_timeout=ray_cfg.wait_timeout,
+                max_inflight_batches=max_inflight_batches,
+                job_logger=job_logger,
+                progress_label="Image batch progress",
+                total_expected_records=None,
+            )
+        finally:
+            if should_disable_indexing:
+                enable_qdrant_indexing(vector_cfg.qdrant_url, vector_cfg.qdrant_api_key, collection_name)
 
         success = stats.successful
         failed = stats.failed
