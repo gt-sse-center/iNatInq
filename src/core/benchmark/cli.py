@@ -14,9 +14,11 @@ Example:
 
 from __future__ import annotations
 
+import asyncio
 import json
+import sys
 from enum import StrEnum
-from pathlib import Path  # noqa: TC003 - required at runtime for typer get_type_hints()
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -74,12 +76,45 @@ def metrics() -> None:
         typer.echo(f"  {name}: {description}")
 
 
+def _build_reporters(
+    output_format: OutputFormat,
+    output_path: Path | None,
+) -> list:
+    """Build reporter instances from CLI options.
+
+    Args:
+        output_format: Desired output format.
+        output_path: File path for JSON output.
+
+    Returns:
+        List of Reporter instances.
+    """
+    from core.benchmark.reporters.console import ConsoleReporter
+    from core.benchmark.reporters.json_reporter import JSONReporter
+
+    reporters: list = []
+
+    if output_format in (OutputFormat.console, OutputFormat.both):
+        reporters.append(ConsoleReporter(stream=sys.stdout))
+
+    if output_format in (OutputFormat.json, OutputFormat.both):
+        path = output_path or Path("benchmark-results.json")
+        reporters.append(JSONReporter(output_path=path))
+
+    return reporters
+
+
 @app.command()
 def compare(
     dataset_path: Annotated[Path | None, typer.Option("--dataset", help="Path to dataset JSON file.")] = None,
     providers: Annotated[
         list[str] | None, typer.Option("--provider", help="Provider name(s) to benchmark.")
     ] = None,
+    collection: Annotated[
+        str | None, typer.Option("--collection", help="Qdrant collection name override.")
+    ] = None,
+    limit: Annotated[int, typer.Option("--limit", help="Number of results per query.")] = 10,
+    warmup: Annotated[int, typer.Option("--warmup", help="Number of warmup queries.")] = 5,
     output_path: Annotated[Path | None, typer.Option("--output", help="Output file path.")] = None,
     output_format: Annotated[
         OutputFormat, typer.Option("--format", help="Output format.")
@@ -87,8 +122,8 @@ def compare(
 ) -> None:
     """Compare multiple providers on a benchmark dataset.
 
-    Provider resolution is not yet implemented. This command currently
-    validates arguments and reports configuration.
+    Resolves each provider via ``resolve_search_pipeline``, runs benchmarks,
+    and reports results.
     """
     if not dataset_path:
         typer.echo("Error: --dataset is required.", err=True)
@@ -98,12 +133,52 @@ def compare(
         typer.echo("Error: at least one --provider is required.", err=True)
         raise typer.Exit(code=1)
 
-    typer.echo(f"Dataset:  {dataset_path}")
-    typer.echo(f"Providers: {', '.join(providers)}")
-    typer.echo(f"Format:   {output_format.value}")
-    if output_path:
-        typer.echo(f"Output:   {output_path}")
-    typer.echo("Note: Provider resolution not yet implemented.")
+    from core.benchmark.config import BenchmarkConfig
+    from core.benchmark.metrics.builder import build_metrics_from_config
+    from core.benchmark.provider_factory import resolve_search_pipeline
+    from core.benchmark.runner.base import BenchmarkResult  # noqa: TC001
+    from core.benchmark.runner.default import DefaultBenchmarkRunner
+
+    try:
+        dataset = JSONDataset.from_file(dataset_path)
+    except Exception as e:
+        typer.echo(f"Error loading dataset: {e}", err=True)
+        raise typer.Exit(code=1) from None
+
+    config = BenchmarkConfig()
+    active_metrics = build_metrics_from_config(config)
+    reporters = _build_reporters(output_format, output_path)
+
+    async def _run_compare() -> dict[str, BenchmarkResult]:
+        results: dict[str, BenchmarkResult] = {}
+        for provider_name in providers:  # type: ignore[union-attr]
+            try:
+                provider, pipeline = resolve_search_pipeline(provider_name, collection=collection)
+            except (ValueError, Exception) as e:
+                typer.echo(f"Error resolving provider '{provider_name}': {e}", err=True)
+                raise typer.Exit(code=1) from None
+
+            runner = DefaultBenchmarkRunner(
+                search_pipeline=pipeline,
+                collection=collection,
+            )
+            result = await runner.run(
+                provider=provider,
+                dataset=dataset,
+                metrics=active_metrics,
+                limit=limit,
+                warmup_queries=warmup,
+            )
+            results[provider_name] = result
+
+        for reporter in reporters:
+            await reporter.report(results)
+
+        return results
+
+    asyncio.run(_run_compare())
+
+    typer.echo(f"Benchmark complete for providers: {', '.join(providers)}")
 
 
 @app.command()
@@ -112,13 +187,20 @@ def run(
     provider_name: Annotated[
         str | None, typer.Option("--provider", help="Provider name to benchmark.")
     ] = None,
+    collection: Annotated[
+        str | None, typer.Option("--collection", help="Qdrant collection name override.")
+    ] = None,
     limit: Annotated[int, typer.Option("--limit", help="Number of results per query.")] = 10,
     warmup: Annotated[int, typer.Option("--warmup", help="Number of warmup queries.")] = 5,
+    output_path: Annotated[Path | None, typer.Option("--output", help="Output file path.")] = None,
+    output_format: Annotated[
+        OutputFormat, typer.Option("--format", help="Output format.")
+    ] = OutputFormat.console,
 ) -> None:
     """Run a benchmark against a single provider.
 
-    Provider resolution is not yet implemented. This command currently
-    validates arguments and reports configuration.
+    Resolves the provider via ``resolve_search_pipeline``, runs the benchmark,
+    and reports results.
     """
     if not dataset_path:
         typer.echo("Error: --dataset is required.", err=True)
@@ -128,11 +210,47 @@ def run(
         typer.echo("Error: --provider is required.", err=True)
         raise typer.Exit(code=1)
 
-    typer.echo(f"Dataset:  {dataset_path}")
-    typer.echo(f"Provider: {provider_name}")
-    typer.echo(f"Limit:    {limit}")
-    typer.echo(f"Warmup:   {warmup}")
-    typer.echo("Note: Provider resolution not yet implemented.")
+    from core.benchmark.config import BenchmarkConfig
+    from core.benchmark.metrics.builder import build_metrics_from_config
+    from core.benchmark.provider_factory import resolve_search_pipeline
+    from core.benchmark.runner.default import DefaultBenchmarkRunner
+
+    try:
+        dataset = JSONDataset.from_file(dataset_path)
+    except Exception as e:
+        typer.echo(f"Error loading dataset: {e}", err=True)
+        raise typer.Exit(code=1) from None
+
+    try:
+        provider, pipeline = resolve_search_pipeline(provider_name, collection=collection)
+    except (ValueError, Exception) as e:
+        typer.echo(f"Error resolving provider '{provider_name}': {e}", err=True)
+        raise typer.Exit(code=1) from None
+
+    config = BenchmarkConfig()
+    active_metrics = build_metrics_from_config(config)
+    reporters = _build_reporters(output_format, output_path)
+
+    async def _run_benchmark() -> None:
+        runner = DefaultBenchmarkRunner(
+            search_pipeline=pipeline,
+            collection=collection,
+        )
+        result = await runner.run(
+            provider=provider,
+            dataset=dataset,
+            metrics=active_metrics,
+            limit=limit,
+            warmup_queries=warmup,
+        )
+
+        results = {provider_name: result}  # type: ignore[dict-item]
+        for reporter in reporters:
+            await reporter.report(results)
+
+    asyncio.run(_run_benchmark())
+
+    typer.echo(f"Benchmark complete for provider: {provider_name}")
 
 
 if __name__ == "__main__":

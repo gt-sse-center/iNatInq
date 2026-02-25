@@ -17,7 +17,7 @@ class TestBenchmarkConfig:
         """BenchmarkConfig has sensible defaults."""
         config = BenchmarkConfig()
 
-        assert config.k_values == [5, 10, 20]
+        assert config.k_values == [50]
         assert "precision@k" in config.metrics
         assert "recall@k" in config.metrics
         assert "map" in config.metrics

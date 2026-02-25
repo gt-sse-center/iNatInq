@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from clients.interfaces.vector_db import VectorDBProvider
     from core.benchmark.datasets.base import Dataset, Query
     from core.benchmark.metrics.base import Metric
+    from core.benchmark.search_pipeline import CLIPSearchPipeline, SearchPipelineResult
     from core.models import SearchResults
 
 logger = logging.getLogger("benchmark.runner.default")
@@ -52,19 +53,34 @@ class DefaultBenchmarkRunner(BenchmarkRunner):
     Queries are consumed lazily from the dataset iterator in batches to
     avoid materializing all queries into memory at once.
 
-    The runner uses the provider's ``search_async`` method for text
-    modality datasets and ``search_images_async`` (if available) for
-    image modality datasets, falling back to ``search_async``.
+    When a ``search_pipeline`` is provided, queries are embedded via CLIP
+    and searched through the pipeline. Otherwise, the runner falls back
+    to the provider's ``search_async`` with a placeholder vector.
     """
 
-    def __init__(self, *, batch_size: int = 100) -> None:
+    def __init__(
+        self,
+        *,
+        batch_size: int = 100,
+        search_pipeline: CLIPSearchPipeline | None = None,
+        collection: str | None = None,
+    ) -> None:
         """Initialize the runner.
 
         Args:
             batch_size: Number of queries to process per batch during
                 the measurement phase (default: 100).
+            search_pipeline: Optional CLIPSearchPipeline for embed→search→map.
+                When set, queries are embedded via CLIP and searched through
+                the pipeline. When None, falls back to provider.search_async
+                with a placeholder vector.
+            collection: Optional collection name override. When set, this
+                overrides ``dataset.name`` as the Qdrant collection name.
+                Useful when the collection name differs from the dataset name.
         """
         self._batch_size = batch_size
+        self._search_pipeline = search_pipeline
+        self._collection = collection
 
     async def run(
         self,
@@ -90,11 +106,13 @@ class DefaultBenchmarkRunner(BenchmarkRunner):
         """
         query_iter: Iterator[Query] = dataset.queries()
 
+        collection = self._collection or dataset.name
+
         # Warmup phase — pull warmup queries lazily from the iterator
         warmup_count = min(warmup_queries, len(dataset))
         warmup_batch = list(islice(query_iter, warmup_count))
         for query in warmup_batch:
-            await self._execute_query(provider, dataset, query, limit)
+            await self._execute_query(provider, dataset, query, limit, collection)
 
         logger.info(
             "Warmup complete",
@@ -110,11 +128,15 @@ class DefaultBenchmarkRunner(BenchmarkRunner):
         while batch := list(islice(measurement_iter, self._batch_size)):
             for query in batch:
                 start = time.perf_counter()
-                results = await self._execute_query(provider, dataset, query, limit)
+                results = await self._execute_query(provider, dataset, query, limit, collection)
                 elapsed = time.perf_counter() - start
                 latency_stats.add_sample(elapsed)
 
-                retrieved = [item.point_id for item in results.items]
+                if isinstance(results, tuple):
+                    # Pipeline returns (SearchResults, list[str])
+                    _, retrieved = results
+                else:
+                    retrieved = [item.point_id for item in results.items]
 
                 for metric in metrics:
                     score = metric.compute(
@@ -137,33 +159,43 @@ class DefaultBenchmarkRunner(BenchmarkRunner):
             config={"limit": limit, "warmup_queries": warmup_queries, "batch_size": self._batch_size},
         )
 
-    @staticmethod
     async def _execute_query(
+        self,
         provider: VectorDBProvider,
         dataset: Dataset,
         query: Query,
         limit: int,
-    ) -> SearchResults:
+        collection: str,
+    ) -> SearchResults | tuple[SearchResults, list[str]]:
         """Execute a single search query against the provider.
 
-        Uses search_images_async for image datasets if available,
-        otherwise falls back to search_async. Requires the provider
-        to expose an ``embed_query`` or similar method — for now we
-        delegate directly to search_async with a dummy vector.
+        When ``search_pipeline`` is set, uses it to embed the query via
+        CLIP, search the vector DB, and map point IDs to document IDs.
+        Returns a ``(SearchResults, doc_ids)`` tuple.
 
-        Note:
-            This implementation assumes the provider's search_async
-            accepts a text query embedding. In a full implementation,
-            the query text would first be embedded via the appropriate
-            embedding client. For benchmarking, we pass the query text
-            through a text embedding step external to this runner.
+        Without a pipeline, falls back to ``provider.search_async`` with
+        a placeholder vector and returns raw ``SearchResults``.
+
+        Args:
+            provider: Vector DB provider.
+            dataset: Benchmark dataset.
+            query: Query to execute.
+            limit: Maximum results to retrieve.
+            collection: Collection name to search.
+
+        Returns:
+            SearchResults (no pipeline) or (SearchResults, doc_ids) tuple.
         """
-        # The provider interface expects a query_vector (list[float]).
-        # In a real benchmark, an embedding client would convert query.text
-        # to a vector. For now we use the provider's search_async with
-        # the collection from the dataset name.
+        if self._search_pipeline is not None:
+            pipeline_result: SearchPipelineResult = await self._search_pipeline.search(
+                query.text,
+                collection=collection,
+                limit=limit,
+            )
+            return pipeline_result.raw_results, pipeline_result.doc_ids
+
         return await provider.search_async(
-            collection=dataset.name,
+            collection=collection,
             query_vector=[],  # placeholder — real impl needs embedding client
             limit=limit,
         )
