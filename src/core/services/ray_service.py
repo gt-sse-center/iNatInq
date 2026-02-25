@@ -21,9 +21,9 @@ from typing import Any
 import attrs
 from ray.job_submission import JobSubmissionClient
 
-from config import EmbeddingConfig, ImageEmbeddingConfig, RayJobConfig
+from config import ImageEmbeddingConfig, RayJobConfig
 from core.exceptions import UpstreamError
-from core.services.ingestion_params import build_image_ingestion_env, build_ingestion_env
+from core.services.ingestion_params import build_image_ingestion_env
 
 logger = logging.getLogger("pipeline.ray.service")
 
@@ -35,135 +35,7 @@ class RayService:
     This service uses the Ray Jobs API to submit and monitor jobs running
     on a Ray cluster. Jobs are submitted directly to the Ray cluster without
     using Kubernetes Jobs.
-
-    Example:
-        ```python
-        from core.services.ray_service import RayService
-        from config import EmbeddingConfig
-
-        service = RayService()
-
-        job_name = service.submit_s3_to_vector_dbs(
-            namespace="ml-system",
-            s3_endpoint="http://minio.ml-system:9000",
-            s3_access_key_id="minioadmin",
-            s3_secret_access_key="minioadmin",
-            s3_bucket="pipeline",
-            s3_prefix="inputs/",
-            embedding_config=EmbeddingConfig.from_env(),
-            collection="documents",
-        )
-        ```
     """
-
-    def submit_s3_to_vector_dbs(
-        self,
-        *,
-        namespace: str,
-        s3_endpoint: str,
-        s3_access_key_id: str,
-        s3_secret_access_key: str,
-        s3_bucket: str,
-        s3_prefix: str = "inputs/",
-        embedding_config: EmbeddingConfig,
-        collection: str,
-    ) -> str:
-        """Submit a Ray job to process S3 data and store embeddings in vector database.
-
-        This method submits a job to the Ray cluster and returns immediately with a job ID.
-        The job runs asynchronously on the Ray cluster.
-
-        Args:
-            namespace: Kubernetes namespace.
-            s3_endpoint: S3 service endpoint URL.
-            s3_access_key_id: S3 access key.
-            s3_secret_access_key: S3 secret key.
-            s3_bucket: S3 bucket name to read from.
-            s3_prefix: S3 prefix to filter objects (default: `inputs/`).
-            embedding_config: Embedding provider configuration.
-            collection: Collection name.
-
-        Returns:
-            Ray job ID (e.g., "raysubmit_1234567890").
-
-        Raises:
-            UpstreamError: If job submission fails.
-
-        Example:
-            ```python
-            service = RayService()
-            job_id = service.submit_s3_to_vector_dbs(
-                namespace="ml-system",
-                s3_endpoint="http://minio.ml-system:9000",
-                s3_access_key_id="minioadmin",
-                s3_secret_access_key="minioadmin",
-                s3_bucket="pipeline",
-                s3_prefix="inputs/",
-                embedding_config=EmbeddingConfig.from_env(),
-                collection="documents",
-            )
-            # Later: check status with get_job_status(job_id)
-            ```
-        """
-        # Get Ray configuration with dashboard address
-        ray_config = RayJobConfig.from_env(namespace)
-        if not ray_config.dashboard_address:
-            raise UpstreamError("RAY_DASHBOARD_ADDRESS not configured. Cannot submit job to Ray cluster.")
-
-        dashboard_address = ray_config.dashboard_address
-        logger.info(
-            "Submitting Ray job",
-            extra={"s3_prefix": s3_prefix, "dashboard_address": dashboard_address},
-        )
-
-        # Build environment variables for the job.
-        # Ray jobs index BOTH Qdrant and Weaviate simultaneously via create_both().
-        env_vars = build_ingestion_env(
-            namespace=namespace,
-            s3_endpoint=s3_endpoint,
-            s3_access_key_id=s3_access_key_id,
-            s3_secret_access_key=s3_secret_access_key,
-            s3_bucket=s3_bucket,
-            s3_prefix=s3_prefix,
-            embedding_config=embedding_config,
-            collection=collection,
-        )
-
-        try:
-            # Create job submission client
-            client = JobSubmissionClient(dashboard_address)
-
-            # Submit the job with runtime environment
-            # Dependencies are installed on Ray workers; code is mounted at /app/src
-            job_id = client.submit_job(
-                entrypoint="python -m core.ingestion.ray.process_s3_to_vector_dbs",
-                runtime_env={
-                    "env_vars": {
-                        **env_vars,
-                        "PYTHONPATH": "/app/src",
-                    },
-                    "pip": [
-                        "boto3",
-                        "attrs",
-                        "pydantic",
-                        "pydantic-settings",
-                        "httpx",
-                        "qdrant-client>=1.12.0,<1.13.0",
-                        "weaviate-client",
-                        "tenacity",
-                        "pybreaker",
-                        "aiobreaker",
-                    ],
-                },
-            )
-
-            logger.info("Ray job submitted", extra={"job_id": job_id})
-
-            return str(job_id)
-
-        except Exception as e:
-            logger.exception("Failed to submit Ray job", extra={"error": str(e)})
-            raise UpstreamError(f"Failed to submit Ray job: {e}") from e
 
     def submit_image_job(
         self,

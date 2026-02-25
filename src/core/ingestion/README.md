@@ -1,6 +1,6 @@
 # Ingestion Pipeline
 
-Distributed document and image ingestion from S3 to vector databases using Ray.
+Distributed image ingestion from S3 to vector databases using Ray.
 
 ## Current Architecture
 
@@ -8,16 +8,16 @@ Distributed document and image ingestion from S3 to vector databases using Ray.
 ingestion/
 ├── ray/
 │   ├── process_s3_to_vector_dbs.py    # Local Ray entrypoint
-│   ├── process_s3_images.py       # Image pipeline entrypoint
-│   ├── processing.py              # Core batch processing logic (@ray.remote)
-│   ├── image_processing.py        # Image batch processing (@ray.remote)
-│   ├── ray_cluster.py             # Local Ray init/shutdown
-│   └── rate_limiter.py            # Ollama rate limiting actor
+│   ├── process_s3_images.py           # Image pipeline entrypoint
+│   ├── ray_cluster.py                 # Local Ray init/shutdown
+│   └── rate_limiter.py                # CLIP rate limiting actor
 ├── databricks/
-│   ├── process_s3_to_vector_dbs.py    # Databricks entrypoint (duplicates ray/)
-│   └── run_ingest.py              # Databricks job runner
-├── checkpoint.py                  # Shared checkpoint logic
-└── image_utils.py                 # Shared image preprocessing
+│   ├── process_s3_to_vector_dbs.py    # Databricks entrypoint
+│   └── run_ingest.py                  # Databricks job runner
+├── tasks/
+│   └── image_processing.py            # @ray.remote for images
+├── checkpoint.py                      # Shared checkpoint logic
+└── image_utils.py                     # Shared image preprocessing
 ```
 
 ## Pipeline Flow
@@ -28,7 +28,7 @@ Both Ray (local) and Databricks environments follow the same flow:
 2. **List** → Enumerate S3 objects from prefix
 3. **Checkpoint** → Filter already-processed keys
 4. **Batch** → Split keys into configurable batch sizes
-5. **Distribute** → Submit `process_s3_batch_ray.remote()` tasks to workers
+5. **Distribute** → Submit `process_image_batch_ray.remote()` tasks to workers
 6. **Collect** → `ray.wait()` loop with progress logging
 7. **Checkpoint** → Persist successful keys
 8. **Shutdown** → Cleanup Ray resources
@@ -60,7 +60,6 @@ ingestion/
 │   ├── local_ray.py               # LocalRayStrategy
 │   └── databricks.py              # DatabricksStrategy
 ├── tasks/
-│   ├── text_processing.py         # @ray.remote for text
 │   └── image_processing.py        # @ray.remote for images
 ├── checkpoint.py
 └── image_utils.py
@@ -100,13 +99,11 @@ class IngestionPipeline:
     def run(
         self,
         s3_prefix: str,
-        content_type: Literal["text", "images"],
     ) -> JobResult:
-        """Execute the ingestion pipeline.
+        """Execute the image ingestion pipeline.
 
         Args:
-            s3_prefix: S3 prefix to process (e.g., "inputs/", "images/")
-            content_type: Type of content to process
+            s3_prefix: S3 prefix to process (e.g., "images/")
 
         Returns:
             JobResult with success/failure counts and timing
@@ -114,8 +111,7 @@ class IngestionPipeline:
         self.cluster_strategy.init()
         try:
             keys = self._list_and_filter(s3_prefix)
-            task_fn = self._get_task_fn(content_type)
-            results = self._process_batches(keys, task_fn)
+            results = self._process_batches(keys)
             return self._finalize(results)
         finally:
             self.cluster_strategy.shutdown()
@@ -162,7 +158,7 @@ def create_pipeline(
 2. **Abstract cluster lifecycle** → `ClusterStrategy` protocol for init/shutdown
 3. **Merge entrypoints** → Single `main()` that detects environment or accepts flag
 4. **Unify env handling** → Common config loader for env vars and Databricks `python_params`
-5. **Keep task functions** → `processing.py` and `image_processing.py` remain unchanged
+5. **Keep task functions** → `image_processing.py` remains unchanged
 
 ### Benefits
 
@@ -180,7 +176,6 @@ def create_pipeline(
 
 ```bash
 # Via Makefile
-make ray-job-submit S3_PREFIX=inputs/ COLLECTION=documents
 make ray-image-job-submit IMAGE_PREFIX=images/ IMAGE_COLLECTION=documents
 
 # Direct
@@ -205,7 +200,7 @@ Key environment variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `S3_PREFIX` | S3 prefix to process | `inputs/` |
+| `S3_PREFIX` | S3 prefix to process | `images/` |
 | `RAY_NUM_WORKERS` | Number of Ray workers | `4` |
 | `RAY_S3_BATCH_SIZE` | Keys per batch | `50` |
 | `RAY_EMBED_BATCH_MAX` | Embeddings per batch | `32` |

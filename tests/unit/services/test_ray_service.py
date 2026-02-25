@@ -27,7 +27,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from config import EmbeddingConfig
+from config import ImageEmbeddingConfig
 from core.exceptions import UpstreamError
 from core.services.ray_service import RayService
 
@@ -38,272 +38,6 @@ from core.services.ray_service import RayService
 
 class TestRayServiceSubmitJob:
     """Test suite for RayService.submit_s3_to_vector_dbs method."""
-
-    @patch("core.services.ray_service.RayJobConfig.from_env")
-    @patch("core.services.ray_service.JobSubmissionClient")
-    def test_submit_success(
-        self,
-        mock_client_cls: MagicMock,
-        mock_config: MagicMock,
-        ray_service: RayService,
-        embedding_config: EmbeddingConfig,
-    ) -> None:
-        """Test that submit_s3_to_vector_dbs submits job successfully.
-
-        **Why this test is important:**
-          - Job submission is the core functionality
-          - Validates Ray API interaction
-          - Ensures environment variables are constructed correctly
-          - Critical for job execution
-
-        **What it tests:**
-          - JobSubmissionClient is created with correct dashboard address
-          - Job is submitted with correct entrypoint
-          - Environment variables include all required config
-          - Job ID is returned
-        """
-        # Mock config with dashboard_address
-        mock_ray_config = MagicMock()
-        mock_ray_config.dashboard_address = "http://ray-head.test-namespace:8265"
-        mock_config.return_value = mock_ray_config
-
-        # Mock client
-        mock_client = MagicMock()
-        mock_client.submit_job.return_value = "raysubmit_test123"
-        mock_client_cls.return_value = mock_client
-
-        job_id = ray_service.submit_s3_to_vector_dbs(
-            namespace="test-namespace",
-            s3_endpoint="http://minio.test:9000",
-            s3_access_key_id="test-key",
-            s3_secret_access_key="test-secret",
-            s3_bucket="test-bucket",
-            s3_prefix="inputs/",
-            embedding_config=embedding_config,
-            collection="test-collection",
-        )
-
-        assert job_id == "raysubmit_test123"
-
-        # Verify client was created with correct dashboard address from config
-        mock_client_cls.assert_called_once_with("http://ray-head.test-namespace:8265")
-
-        # Verify job was submitted with correct entrypoint
-        mock_client.submit_job.assert_called_once()
-        call_kwargs = mock_client.submit_job.call_args[1]
-        assert call_kwargs["entrypoint"] == "python -m core.ingestion.ray.process_s3_to_vector_dbs"
-
-        # Verify environment variables
-        env_vars = call_kwargs["runtime_env"]["env_vars"]
-        assert env_vars["K8S_NAMESPACE"] == "test-namespace"
-        assert env_vars["S3_PREFIX"] == "inputs/"
-        assert env_vars["S3_ENDPOINT"] == "http://minio.test:9000"
-        assert env_vars["S3_ACCESS_KEY_ID"] == "test-key"
-        assert env_vars["S3_SECRET_ACCESS_KEY"] == "test-secret"
-        assert env_vars["S3_BUCKET"] == "test-bucket"
-        assert env_vars["VECTOR_DB_COLLECTION"] == "test-collection"
-        assert env_vars["EMBEDDING_PROVIDER"] == "ollama"
-
-    @patch.dict(
-        "os.environ",
-        {
-            "QDRANT_URL": "http://qdrant.test:6333",
-            "WEAVIATE_URL": "http://weaviate.test:8080",
-        },
-        clear=False,
-    )
-    @patch("core.services.ray_service.RayJobConfig.from_env")
-    @patch("core.services.ray_service.JobSubmissionClient")
-    def test_submit_includes_optional_config(
-        self,
-        mock_client_cls: MagicMock,
-        mock_config: MagicMock,
-        ray_service: RayService,
-    ) -> None:
-        """Test that submit includes optional configuration in env vars.
-
-        **Why this test is important:**
-          - Optional config enables flexibility
-          - Validates conditional env var inclusion
-          - Critical for advanced configuration
-          - Validates config forwarding
-
-        **What it tests:**
-          - Optional embedding config is included
-          - Vector DB env vars from environment are passed
-        """
-        # Mock config with dashboard_address
-        mock_ray_config = MagicMock()
-        mock_ray_config.dashboard_address = "http://ray-head.ml-system:8265"
-        mock_config.return_value = mock_ray_config
-
-        # Mock client
-        mock_client = MagicMock()
-        mock_client.submit_job.return_value = "raysubmit_test123"
-        mock_client_cls.return_value = mock_client
-
-        embedding_config = EmbeddingConfig(
-            provider_type="ollama",
-            ollama_url="http://ollama.test:11434",
-            ollama_model="nomic-embed-text",
-            vector_size=768,
-        )
-        ray_service.submit_s3_to_vector_dbs(
-            namespace="test-namespace",
-            s3_endpoint="http://minio.test:9000",
-            s3_access_key_id="test-key",
-            s3_secret_access_key="test-secret",
-            s3_bucket="test-bucket",
-            s3_prefix="inputs/",
-            embedding_config=embedding_config,
-            collection="test-collection",
-        )
-
-        call_kwargs = mock_client.submit_job.call_args[1]
-        env_vars = call_kwargs["runtime_env"]["env_vars"]
-        assert env_vars["EMBEDDING_VECTOR_SIZE"] == "768"
-        assert env_vars["OLLAMA_BASE_URL"] == "http://ollama.test:11434"
-        assert env_vars["OLLAMA_MODEL"] == "nomic-embed-text"
-        # Vector DB env vars come from environment (os.environ)
-        assert env_vars["QDRANT_URL"] == "http://qdrant.test:6333"
-        assert env_vars["WEAVIATE_URL"] == "http://weaviate.test:8080"
-
-    @patch.dict(
-        "os.environ",
-        {
-            "QDRANT_URL": "http://qdrant.test:6333",
-            "QDRANT_API_KEY": "qdrant-key",
-            "WEAVIATE_URL": "https://my-cluster.weaviate.cloud",
-            "WEAVIATE_API_KEY": "weaviate-key",
-            "WEAVIATE_GRPC_HOST": "grpc-my-cluster.weaviate.cloud",
-        },
-        clear=False,
-    )
-    @patch("core.services.ray_service.JobSubmissionClient")
-    def test_submit_passes_both_vector_db_env_vars(
-        self,
-        mock_client_class: MagicMock,
-        ray_service: RayService,
-    ) -> None:
-        """Test that both Qdrant and Weaviate env vars are passed to Ray jobs.
-
-        **Why this test is important:**
-          - Ray jobs index BOTH databases simultaneously via create_both()
-          - All database credentials must be passed to Ray workers
-          - Critical for dual-write architecture
-
-        **What it tests:**
-          - QDRANT_URL, QDRANT_API_KEY are passed
-          - WEAVIATE_URL, WEAVIATE_API_KEY, WEAVIATE_GRPC_HOST are passed
-        """
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
-        mock_client.submit_job.return_value = "job-123"
-
-        embedding_config = EmbeddingConfig(
-            provider_type="ollama",
-            ollama_url="http://ollama.test:11434",
-            ollama_model="nomic-embed-text",
-            vector_size=768,
-        )
-        ray_service.submit_s3_to_vector_dbs(
-            namespace="test-namespace",
-            s3_endpoint="http://minio.test:9000",
-            s3_access_key_id="test-key",
-            s3_secret_access_key="test-secret",
-            s3_bucket="test-bucket",
-            s3_prefix="inputs/",
-            embedding_config=embedding_config,
-            collection="test-collection",
-        )
-
-        call_kwargs = mock_client.submit_job.call_args[1]
-        env_vars = call_kwargs["runtime_env"]["env_vars"]
-        # Both Qdrant and Weaviate env vars should be passed
-        assert env_vars["QDRANT_URL"] == "http://qdrant.test:6333"
-        assert env_vars["QDRANT_API_KEY"] == "qdrant-key"
-        assert env_vars["WEAVIATE_URL"] == "https://my-cluster.weaviate.cloud"
-        assert env_vars["WEAVIATE_API_KEY"] == "weaviate-key"
-        assert env_vars["WEAVIATE_GRPC_HOST"] == "grpc-my-cluster.weaviate.cloud"
-
-    @patch("core.services.ray_service.RayJobConfig.from_env")
-    def test_submit_raises_on_missing_dashboard_address(
-        self,
-        mock_config: MagicMock,
-        ray_service: RayService,
-        embedding_config: EmbeddingConfig,
-    ) -> None:
-        """Test that submit raises UpstreamError when dashboard_address is missing.
-
-        **Why this test is important:**
-          - Configuration validation prevents runtime errors
-          - Clear error messages aid debugging
-          - Critical for error handling
-          - Validates config validation
-
-        **What it tests:**
-          - UpstreamError is raised when dashboard_address is None
-          - Error message is descriptive
-        """
-        # Mock config with missing dashboard_address
-        mock_ray_config = MagicMock()
-        mock_ray_config.dashboard_address = None
-        mock_config.return_value = mock_ray_config
-
-        with pytest.raises(UpstreamError, match="RAY_DASHBOARD_ADDRESS not configured"):
-            ray_service.submit_s3_to_vector_dbs(
-                namespace="test-namespace",
-                s3_endpoint="http://minio.test:9000",
-                s3_access_key_id="test-key",
-                s3_secret_access_key="test-secret",
-                s3_bucket="test-bucket",
-                s3_prefix="inputs/",
-                embedding_config=embedding_config,
-                collection="test-collection",
-            )
-
-    @patch("core.services.ray_service.RayJobConfig.from_env")
-    @patch("core.services.ray_service.JobSubmissionClient")
-    def test_submit_raises_on_client_error(
-        self,
-        mock_client_cls: MagicMock,
-        mock_config: MagicMock,
-        ray_service: RayService,
-        embedding_config: EmbeddingConfig,
-    ) -> None:
-        """Test that submit raises UpstreamError on client errors.
-
-        **Why this test is important:**
-          - Client errors should be wrapped consistently
-          - UpstreamError maps to HTTP 502 in API layer
-          - Critical for error propagation
-          - Validates error wrapping
-
-        **What it tests:**
-          - Client exceptions are wrapped in UpstreamError
-          - Error message includes context
-        """
-        # Mock config with dashboard_address
-        mock_ray_config = MagicMock()
-        mock_ray_config.dashboard_address = "http://ray-head.ml-system:8265"
-        mock_config.return_value = mock_ray_config
-
-        # Mock client with error
-        mock_client = MagicMock()
-        mock_client.submit_job.side_effect = Exception("Connection refused")
-        mock_client_cls.return_value = mock_client
-
-        with pytest.raises(UpstreamError, match="Failed to submit Ray job"):
-            ray_service.submit_s3_to_vector_dbs(
-                namespace="test-namespace",
-                s3_endpoint="http://minio.test:9000",
-                s3_access_key_id="test-key",
-                s3_secret_access_key="test-secret",
-                s3_bucket="test-bucket",
-                s3_prefix="inputs/",
-                embedding_config=embedding_config,
-                collection="test-collection",
-            )
 
 
 # =============================================================================
@@ -785,7 +519,6 @@ class TestRayServiceDashboardAddress:
         mock_client_cls: MagicMock,
         mock_config: MagicMock,
         ray_service: RayService,
-        embedding_config: EmbeddingConfig,
     ) -> None:
         """Test that dashboard address is taken from RayJobConfig.
 
@@ -809,14 +542,14 @@ class TestRayServiceDashboardAddress:
         mock_client.submit_job.return_value = "raysubmit_test123"
         mock_client_cls.return_value = mock_client
 
-        ray_service.submit_s3_to_vector_dbs(
+        ray_service.submit_image_job(
             namespace="custom-namespace",
             s3_endpoint="http://minio.test:9000",
             s3_access_key_id="test-key",
             s3_secret_access_key="test-secret",
             s3_bucket="test-bucket",
             s3_prefix="inputs/",
-            embedding_config=embedding_config,
+            image_embedding_config=ImageEmbeddingConfig(),
             collection="test-collection",
         )
 
@@ -830,7 +563,6 @@ class TestRayServiceDashboardAddress:
         mock_client_cls: MagicMock,
         mock_config: MagicMock,
         ray_service: RayService,
-        embedding_config: EmbeddingConfig,
     ) -> None:
         """Test that Docker Compose style addresses work correctly.
 
@@ -853,14 +585,14 @@ class TestRayServiceDashboardAddress:
         mock_client.submit_job.return_value = "raysubmit_docker123"
         mock_client_cls.return_value = mock_client
 
-        job_id = ray_service.submit_s3_to_vector_dbs(
+        job_id = ray_service.submit_image_job(
             namespace="ml-system",
             s3_endpoint="http://minio:9000",
             s3_access_key_id="minioadmin",
             s3_secret_access_key="minioadmin",
             s3_bucket="pipeline",
             s3_prefix="inputs/",
-            embedding_config=embedding_config,
+            image_embedding_config=ImageEmbeddingConfig(),
             collection="documents",
         )
 

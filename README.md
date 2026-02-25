@@ -232,34 +232,34 @@ uv run uvicorn api.app:app --reload --port 8000
 
 ### End-to-End Testing
 
-Seed MinIO with synthetic data and run a complete ingestion + search test:
+Seed MinIO with synthetic images and run a complete ingestion + search test:
 
 ```bash
 # 1. Start all services
 make docker-up
 
-# 2. Generate & upload test documents (100 by default)
-make syntheticdata-setup COUNT=100
+# 2. Generate & upload test images (100 by default)
+make synthetic-images-setup IMAGE_COUNT=100
 
-# 3. Submit a Ray ingestion job
-curl -X POST http://localhost:8000/ray/jobs \
+# 3. Submit a Ray image ingestion job
+curl -X POST http://localhost:8000/ray/jobs/images \
   -H "Content-Type: application/json" \
-  -d '{"s3_prefix": "inputs/", "collection": "documents"}'
+  -d '{"s3_bucket": "pipeline", "s3_prefix": "images/", "collection": "documents"}'
 
 # 4. Check job status (use job_id from step 3)
 curl http://localhost:8000/ray/jobs/<job_id>
 
-# 5. Search the indexed documents
-curl "http://localhost:8000/search?q=whale&limit=5"
+# 5. Search the indexed images
+curl "http://localhost:8000/search/images?q=red+circle&limit=5"
 ```
 
 **One-liner** (generate + upload + ingest + search):
 
 ```bash
-make syntheticdata-setup COUNT=100 && \
-  curl -s -X POST http://localhost:8000/ray/jobs \
+make synthetic-images-setup IMAGE_COUNT=100 && \
+  curl -s -X POST http://localhost:8000/ray/jobs/images \
     -H "Content-Type: application/json" \
-    -d '{"s3_prefix": "inputs/", "collection": "documents"}' | jq .
+    -d '{"s3_bucket": "pipeline", "s3_prefix": "images/", "collection": "documents"}' | jq .
 ```
 
 See [syntheticdata/README.md](syntheticdata/README.md) for more options.

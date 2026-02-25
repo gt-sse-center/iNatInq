@@ -24,6 +24,6 @@ def _entrypoint_file() -> str:
 if __name__ == "__main__":
     bootstrap_runtime(sys.argv[1:], entrypoint_file=_entrypoint_file())
     # Deferred import: only valid after sys.path is set from INATINQ_SRC_DIR.
-    from core.ingestion.databricks.process_s3_to_vector_dbs import main
+    from core.ingestion.databricks.process_s3_images import main
 
     main()
