@@ -296,7 +296,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             ```python
             # Create image collection (base name)
             await client.ensure_image_collection_async(collection="photos")
-            # Creates collection named "photos_images" with 512-dimensional vectors
+            # Creates collection named "photos" with 512-dimensional vectors
 
             # Custom vector size and distance metric
             await client.ensure_image_collection_async(

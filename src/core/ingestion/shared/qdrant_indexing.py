@@ -13,13 +13,14 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
     from clients.qdrant import QdrantClientWrapper
 
 logger = logging.getLogger("pipeline.ingestion.qdrant_indexing")
 
 
 @contextmanager
-def qdrant_indexing_disabled(client: QdrantClientWrapper, collection: str):
+def qdrant_indexing_disabled(client: QdrantClientWrapper, collection: str) -> Generator[None, None, None]:
     """Disable HNSW indexing on *collection* for faster bulk uploads.
 
     Args:

@@ -124,7 +124,7 @@ async def search_images(
         {
             "query": "sunset over ocean",
             "model": "ViT-B/32",
-            "collection": "documents_images",
+            "collection": "documents",
             "provider": "qdrant",
             "results": [
                 {
