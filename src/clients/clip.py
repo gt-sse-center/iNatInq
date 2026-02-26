@@ -52,6 +52,7 @@ import requests
 
 from config import ImageEmbeddingConfig
 from core.exceptions import UpstreamError
+from core.metrics.decorators import with_client_metrics, with_client_metrics_async
 from foundation.circuit_breaker import (
     create_async_circuit_breaker,
     with_circuit_breaker,
@@ -676,6 +677,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             operation="CLIP embed_image_async",
         )
 
+    @with_client_metrics("clip", "embed_image")
     @with_circuit_breaker("clip")
     def embed_image(self, image_bytes: bytes, text: str | None = None) -> list[float]:
         """Generate embedding for a single image.
@@ -698,6 +700,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         image_b64 = self._encode_image(image_bytes)
         return self._make_embed_request(image_b64, text)
 
+    @with_client_metrics_async("clip", "embed_image_async")
     @with_circuit_breaker_async("clip")
     async def embed_image_async(self, image_bytes: bytes, text: str | None = None) -> list[float]:
         """Generate embedding for a single image (async).
@@ -720,6 +723,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         image_b64 = self._encode_image(image_bytes)
         return await self._make_embed_request_async(image_b64, text)
 
+    @with_client_metrics("clip", "embed_image_batch")
     @with_circuit_breaker("clip")
     def embed_image_batch(self, images: list[bytes], texts: list[str] | None = None) -> list[list[float]]:
         """Generate embeddings for multiple images.
@@ -784,6 +788,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
         return results
 
+    @with_client_metrics_async("clip", "embed_image_batch_async")
     @with_circuit_breaker_async("clip")
     async def embed_image_batch_async(
         self, images: list[bytes], texts: list[str] | None = None
@@ -1035,6 +1040,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             operation="CLIP embed_text_async",
         )
 
+    @with_client_metrics("clip", "embed_text")
     @with_circuit_breaker("clip")
     def embed_text(self, text: str) -> list[float]:
         """Generate embedding for a text query.
@@ -1057,6 +1063,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             raise ValueError(msg)
         return self._make_text_embed_request(text)
 
+    @with_client_metrics_async("clip", "embed_text_async")
     @with_circuit_breaker_async("clip")
     async def embed_text_async(self, text: str) -> list[float]:
         """Generate embedding for a text query (async).
@@ -1079,6 +1086,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             raise ValueError(msg)
         return await self._make_text_embed_request_async(text)
 
+    @with_client_metrics("clip", "embed_text_batch")
     @with_circuit_breaker("clip")
     def embed_text_batch(self, texts: list[str]) -> list[list[float]]:
         """Generate embeddings for multiple text queries.
@@ -1128,6 +1136,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
         return results
 
+    @with_client_metrics_async("clip", "embed_text_batch_async")
     @with_circuit_breaker_async("clip")
     async def embed_text_batch_async(self, texts: list[str]) -> list[list[float]]:
         """Generate embeddings for multiple text queries (async).
