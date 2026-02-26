@@ -28,7 +28,7 @@ def qdrant_indexing_disabled(url: str, api_key: str | None, collection: str):
         collection: Collection to modify.
     """
     index_disabled = False
-    # TODO: reset collection parameters to config values rather than using defaults
+
     try:
         original_params = disable_qdrant_indexing(url, api_key, collection)
         index_disabled = True
