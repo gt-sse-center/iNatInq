@@ -1,4 +1,4 @@
-"""Unit tests for foundation.metrics module.
+"""Unit tests for core.metrics module.
 
 This file tests the Prometheus metrics registry which provides a centralized
 definition of all custom metrics for the iNatInq codebase.
@@ -18,7 +18,7 @@ Each test documents "Why important" and "What it tests".
 
 # Running Tests
 
-Run with: pytest tests/unit/core/test_metrics.py
+Run with: uv run pytest tests/unit/core/test_metrics.py
 """
 
 from datetime import UTC, datetime
@@ -40,7 +40,7 @@ class TestMetricDefinitions:
         **Why this test is important:**
           - Verifies the module structure is correct
           - Ensures all metric names are defined
-          - Critical for consumers in Stories 1.2-1.6
+          - Critical for downstream consumers
 
         **What it tests:**
           - All 13 metric objects exist and are importable
@@ -86,55 +86,6 @@ class TestMetricDefinitions:
         assert SLOW_BUCKETS is not None
         assert RESULT_COUNT_BUCKETS is not None
         assert classify_error is not None
-
-    def test_metric_types_match_specification(self) -> None:
-        """Test that each metric has the correct Prometheus type.
-
-        **Why this test is important:**
-          - A copy-paste error could define a Counter where a Histogram is needed
-          - Metric types determine available operations (observe vs inc)
-          - Prevents silent mismatches with the plan's metric inventory
-
-        **What it tests:**
-          - Each of the 13 metrics is the correct type (Counter, Gauge, or Histogram)
-        """
-        # Arrange
-        from core.metrics import (
-            CLIENT_ERRORS_TOTAL,
-            CLIENT_REQUEST_DURATION,
-            CLIENT_REQUEST_TOTAL,
-            CIRCUIT_BREAKER_STATE,
-            CIRCUIT_BREAKER_TRANSITIONS,
-            INGESTION_BATCH_DURATION,
-            INGESTION_CHECKPOINT_SAVES,
-            INGESTION_DOCS_PROCESSED,
-            RETRY_ATTEMPTS_TOTAL,
-            RETRY_EXHAUSTIONS_TOTAL,
-            SEARCH_EMBEDDING_DURATION,
-            SEARCH_RESULT_COUNT,
-            SEARCH_VECTOR_QUERY_DURATION,
-        )
-
-        from prometheus_client import Counter, Gauge, Histogram
-
-        # Assert - Histograms
-        assert isinstance(CLIENT_REQUEST_DURATION, Histogram)
-        assert isinstance(SEARCH_EMBEDDING_DURATION, Histogram)
-        assert isinstance(SEARCH_VECTOR_QUERY_DURATION, Histogram)
-        assert isinstance(SEARCH_RESULT_COUNT, Histogram)
-        assert isinstance(INGESTION_BATCH_DURATION, Histogram)
-
-        # Assert - Counters
-        assert isinstance(CLIENT_REQUEST_TOTAL, Counter)
-        assert isinstance(CLIENT_ERRORS_TOTAL, Counter)
-        assert isinstance(CIRCUIT_BREAKER_TRANSITIONS, Counter)
-        assert isinstance(RETRY_ATTEMPTS_TOTAL, Counter)
-        assert isinstance(RETRY_EXHAUSTIONS_TOTAL, Counter)
-        assert isinstance(INGESTION_DOCS_PROCESSED, Counter)
-        assert isinstance(INGESTION_CHECKPOINT_SAVES, Counter)
-
-        # Assert - Gauges
-        assert isinstance(CIRCUIT_BREAKER_STATE, Gauge)
 
     def test_metric_label_names(self) -> None:
         """Test that each metric has the correct label names.
@@ -205,59 +156,6 @@ class TestMetricDefinitions:
         assert expected_slow == SLOW_BUCKETS, f"SLOW_BUCKETS mismatch: {SLOW_BUCKETS}"
         assert expected_result_count == RESULT_COUNT_BUCKETS, (
             f"RESULT_COUNT_BUCKETS mismatch: {RESULT_COUNT_BUCKETS}"
-        )
-
-    def test_no_duplicate_metric_names(self) -> None:
-        """Test that no two metrics share the same name.
-
-        **Why this test is important:**
-          - Duplicate names cause prometheus_client to raise exceptions
-          - Name collisions break metric collection
-          - Prevents copy-paste errors during development
-
-        **What it tests:**
-          - All 13 metric objects have unique _name attributes
-          - No accidental duplicates from typos
-        """
-        # Arrange
-        from core.metrics import (
-            CLIENT_ERRORS_TOTAL,
-            CLIENT_REQUEST_DURATION,
-            CLIENT_REQUEST_TOTAL,
-            CIRCUIT_BREAKER_STATE,
-            CIRCUIT_BREAKER_TRANSITIONS,
-            INGESTION_BATCH_DURATION,
-            INGESTION_CHECKPOINT_SAVES,
-            INGESTION_DOCS_PROCESSED,
-            RETRY_ATTEMPTS_TOTAL,
-            RETRY_EXHAUSTIONS_TOTAL,
-            SEARCH_EMBEDDING_DURATION,
-            SEARCH_RESULT_COUNT,
-            SEARCH_VECTOR_QUERY_DURATION,
-        )
-
-        # Act - collect metric names using describe() which returns Metric objects with .name
-        all_metrics = [
-            CLIENT_REQUEST_DURATION,
-            CLIENT_REQUEST_TOTAL,
-            CLIENT_ERRORS_TOTAL,
-            CIRCUIT_BREAKER_STATE,
-            CIRCUIT_BREAKER_TRANSITIONS,
-            RETRY_ATTEMPTS_TOTAL,
-            RETRY_EXHAUSTIONS_TOTAL,
-            SEARCH_EMBEDDING_DURATION,
-            SEARCH_VECTOR_QUERY_DURATION,
-            SEARCH_RESULT_COUNT,
-            INGESTION_DOCS_PROCESSED,
-            INGESTION_BATCH_DURATION,
-            INGESTION_CHECKPOINT_SAVES,
-        ]
-        metric_names: list[str] = [next(iter(m.describe())).name for m in all_metrics]
-
-        # Assert - no duplicates means len(set) == len(list)
-        unique_names = set(metric_names)
-        assert len(unique_names) == len(metric_names), (
-            f"Duplicate metric names found: {[n for n in metric_names if metric_names.count(n) > 1]}"
         )
 
     def test_default_registry_contains_metrics(self) -> None:

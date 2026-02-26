@@ -24,7 +24,7 @@ SLOW_BUCKETS = (0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0)
 RESULT_COUNT_BUCKETS = (0, 1, 5, 10, 25, 50, 100, 250, 500, 1000)
 
 # =============================================================================
-# Client Request Metrics (Story 1.2)
+# Client Request Metrics Client Request Metrics
 # =============================================================================
 
 CLIENT_REQUEST_DURATION = Histogram(
@@ -47,7 +47,7 @@ CLIENT_ERRORS_TOTAL = Counter(
 )
 
 # =============================================================================
-# Circuit Breaker Metrics (Story 1.3)
+# Circuit Breaker Metrics Circuit Breaker Metrics
 # =============================================================================
 
 CIRCUIT_BREAKER_STATE = Gauge(
@@ -63,7 +63,7 @@ CIRCUIT_BREAKER_TRANSITIONS = Counter(
 )
 
 # =============================================================================
-# Retry Metrics (Story 1.4)
+# Retry Metrics Retry Metrics
 # =============================================================================
 
 RETRY_ATTEMPTS_TOTAL = Counter(
@@ -79,7 +79,7 @@ RETRY_EXHAUSTIONS_TOTAL = Counter(
 )
 
 # =============================================================================
-# Search Endpoint Metrics (Story 1.5)
+# Search Endpoint Metrics Search Endpoint Metrics
 # =============================================================================
 
 SEARCH_EMBEDDING_DURATION = Histogram(
@@ -104,7 +104,7 @@ SEARCH_RESULT_COUNT = Histogram(
 )
 
 # =============================================================================
-# Ingestion Pipeline Metrics (Story 1.6)
+# Ingestion Pipeline Metrics Ingestion Pipeline Metrics
 # =============================================================================
 
 INGESTION_DOCS_PROCESSED = Counter(

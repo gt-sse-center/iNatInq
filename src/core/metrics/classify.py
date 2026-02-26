@@ -10,6 +10,7 @@ before the builtin ``OSError`` catch-all.
 """
 
 import asyncio
+from typing import Literal
 
 import aiobreaker
 import pybreaker
@@ -17,8 +18,10 @@ import requests.exceptions
 
 from foundation.exceptions import UpstreamError
 
+ErrorType = Literal["timeout", "connection", "upstream", "circuit_open", "unknown"]
 
-def classify_error(exc: BaseException) -> str:
+
+def classify_error(exc: BaseException) -> ErrorType:
     """Classify an exception into a bounded error_type label.
 
     Args:
