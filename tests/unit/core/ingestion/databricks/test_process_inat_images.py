@@ -51,9 +51,8 @@ class TestDatabricksINatImageJobMain:
             patch("core.ingestion.databricks.process_inat_images.DatabricksStrategy") as mock_strat_cls,
             patch("core.ingestion.databricks.process_inat_images.INaturalistOpenDataClient") as mock_inat_cls,
             patch(
-                "core.ingestion.databricks.process_inat_images.disable_qdrant_indexing"
-            ) as mock_disable_idx,
-            patch("core.ingestion.databricks.process_inat_images.enable_qdrant_indexing") as mock_enable_idx,
+                "core.ingestion.databricks.process_inat_images.qdrant_indexing_disabled"
+            ) as mock_indexing_disabled,
         ):
             ray_cfg = MagicMock(
                 num_workers=4,
@@ -102,8 +101,7 @@ class TestDatabricksINatImageJobMain:
                 "inat_cfg": inat_cfg,
                 "ray_cfg": ray_cfg,
                 "vector_cfg": mock_vector_cfg.return_value,
-                "disable_indexing": mock_disable_idx,
-                "enable_indexing": mock_enable_idx,
+                "qdrant_indexing_disabled": mock_indexing_disabled,
             }
 
     def test_main_requires_inat_max_rows(self, mock_ray) -> None:
@@ -242,7 +240,7 @@ class TestDatabricksINatImageJobMain:
         assert mock_ray.wait.call_count >= 3
 
     def test_main_disables_and_reenables_qdrant_indexing(self, mock_dependencies, mock_ray) -> None:
-        """main() disables indexing before processing and re-enables it after.
+        """main() uses qdrant_indexing_disabled context manager when flag is set.
 
         **Why this test is important:**
 
@@ -252,8 +250,8 @@ class TestDatabricksINatImageJobMain:
 
         **What it tests:**
 
-        - disable_qdrant_indexing is called with correct args when flag is True
-        - enable_qdrant_indexing is called with correct args in the finally block
+        - qdrant_indexing_disabled context manager is entered with correct args
+        - Context manager is only used when disable_indexing_during_ingest is True
         """
         from core.ingestion.databricks.process_inat_images import main
 
@@ -266,9 +264,6 @@ class TestDatabricksINatImageJobMain:
 
         main()
 
-        mock_dependencies["disable_indexing"].assert_called_once_with(
-            "http://qdrant:6333", "test-key", "documents_images"
-        )
-        mock_dependencies["enable_indexing"].assert_called_once_with(
-            "http://qdrant:6333", "test-key", "documents_images"
+        mock_dependencies["qdrant_indexing_disabled"].assert_called_once_with(
+            "http://qdrant:6333", "test-key", "documents"
         )
