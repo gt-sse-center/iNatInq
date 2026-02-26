@@ -160,7 +160,7 @@ def main() -> None:
         should_disable_indexing = ray_cfg.disable_indexing_during_ingest and "qdrant" in ingestion_targets
 
         with (
-            qdrant_indexing_disabled(vector_cfg.qdrant_url, vector_cfg.qdrant_api_key, collection)
+            qdrant_indexing_disabled(client=vector_cfg.qdrant_client, collection=collection)
             if should_disable_indexing
             else nullcontext()
         ):
@@ -203,7 +203,12 @@ def main() -> None:
         )
 
     except Exception as e:
-        job_logger.error("Unexpected error in Ray image job: %s", e, extra={"error": str(e)}, exc_info=True)
+        job_logger.error(
+            "Unexpected error in Ray image job: %s",
+            e,
+            extra={"error": str(e)},
+            exc_info=True,
+        )
         raise
     finally:
         strategy.shutdown()

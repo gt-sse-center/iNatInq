@@ -33,7 +33,7 @@ import aiobreaker
 import attrs
 import httpx
 import pybreaker
-from qdrant_client import AsyncQdrantClient
+from qdrant_client import AsyncQdrantClient, QdrantClient
 from qdrant_client.http import models as qmodels
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 from qdrant_client.models import PointStruct  # Qdrant's native point type
@@ -42,7 +42,12 @@ from config import VectorDBConfig
 from core.exceptions import UpstreamError
 from core.models import SearchResultItem, SearchResults
 from foundation.async_utils import close_async_resource
-from foundation.circuit_breaker import create_async_circuit_breaker, with_circuit_breaker_async
+from foundation.circuit_breaker import (
+    create_async_circuit_breaker,
+    create_circuit_breaker,
+    with_circuit_breaker_async,
+    with_circuit_breaker,
+)
 from foundation.retry import HTTPErrorClassifier, async_retry_call, create_retry_logger
 
 from .base import VectorDBClientBase
@@ -125,7 +130,8 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
     retry_min_wait: float = attrs.field(default=1.0)
     retry_max_wait: float = attrs.field(default=10.0)
     _client: AsyncQdrantClient = attrs.field(init=False, default=None)
-    _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
+    _sync_client: QdrantClient = attrs.field(init=False, default=None)
+    _sync_breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
     _async_breaker: aiobreaker.CircuitBreaker = attrs.field(init=False)
 
     def _circuit_breaker_config(self) -> tuple[str, int, int]:
@@ -141,6 +147,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
     def __attrs_post_init__(self) -> None:
         """Initialize the Qdrant async client and circuit breaker."""
         self._client = AsyncQdrantClient(url=self.url, api_key=self.api_key, timeout=self.timeout_s)
+        self._sync_client = QdrantClient(url=self.url, api_key=self.api_key, timeout=self.timeout_s)
 
         # Initialize circuit breaker from base class
         self._init_circuit_breaker()
@@ -153,10 +160,21 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             create_async_circuit_breaker(name, fail_max, timeout),
         )
 
+        object.__setattr__(
+            self,
+            "_sync_breaker",
+            create_circuit_breaker(name, fail_max, timeout),
+        )
+
     @property
     def client(self) -> AsyncQdrantClient:
         """Get the underlying AsyncQdrantClient instance."""
         return self._client
+
+    @property
+    def sync_client(self) -> QdrantClient:
+        """Get the underlying QdrantClient instance."""
+        return self._sync_client
 
     @classmethod
     def from_config(cls, config: VectorDBConfig) -> "QdrantClientWrapper":
@@ -384,31 +402,99 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             operation="Qdrant search",
         )
 
-    @with_circuit_breaker_async("qdrant")
-    async def disable_indexing(self, *, collection: str) -> None:
-        """Disable indexing for a collection during bulk operations.
+    @with_circuit_breaker("qdrant-sync")
+    def ensure_collection_sync(
+        self,
+        *,
+        collection: str,
+        vector_size: int = 512,
+        distance_metric: qmodels.Distance = qmodels.Distance.COSINE,
+    ) -> None:
+        """Create a Qdrant collection if it does not already exist (synchronous).
 
-        This method optimizes performance during bulk data ingestion by
-        disabling the HNSW index building. The index will be built after
-        re-enabling indexing.
+        Synchronous mirror of ``ensure_collection_async`` /
+        ``ensure_image_collection_async`` for use in sync pipeline contexts
+        (e.g. before disabling indexing for bulk ingestion).
 
         Args:
-            collection: Collection name to disable indexing for.
+            collection: Collection name to ensure exists.
+            vector_size: Dimension of vectors stored in the collection.
+                Default: 512 (common for CLIP ViT-B/32).
+            distance_metric: Distance metric for vector similarity. One of
+                ``"cosine"``, ``"euclidean"``, or ``"dot"``.
+                Default: ``"cosine"``.
 
         Raises:
             UpstreamError: If Qdrant operations fail.
-
-        Note:
-            This should be called before bulk operations and followed by
-            `enable_indexing()` after the bulk load is complete.
         """
+        try:
+            existing_collections = self._sync_client.get_collections()
+            existing = {c.name for c in existing_collections.collections}
+            if collection in existing:
+                return
+            try:
+                self._sync_client.create_collection(
+                    collection_name=collection,
+                    vectors_config=qmodels.VectorParams(
+                        size=vector_size,
+                        distance=distance_metric,
+                    ),
+                )
+                self._logger.info(  # type: ignore[attr-defined]
+                    "Created collection successfully",
+                    extra={
+                        "collection": collection,
+                        "vector_size": vector_size,
+                        "distance_metric": distance_metric,
+                    },
+                )
+            except Exception as e:
+                self._logger.exception(  # type: ignore[attr-defined]
+                    "Failed to create collection",
+                    extra={"collection": collection, "error": str(e)},
+                )
+                raise UpstreamError(f"Failed to create collection {collection}") from e
+        except Exception as e:
+            self._logger.exception(  # type: ignore[attr-defined]
+                "Failed to ensure collection",
+                extra={"collection": collection, "error": str(e)},
+            )
+            raise UpstreamError(f"Failed to ensure collection {collection}") from e
 
-        async def _do_disable() -> None:
-            await self._client.update_collection(
+    @with_circuit_breaker("qdrant-sync")
+    def disable_indexing_sync(
+        self,
+        *,
+        collection: str,
+        vector_size: int = 512,
+        distance_metric: qmodels.Distance = qmodels.Distance.COSINE,
+    ) -> qmodels.CollectionInfo:
+        """Disable HNSW indexing on a collection for faster bulk uploads.
+
+        Captures the original collection parameters, then sets
+        ``indexing_threshold=0`` and ``hnsw m=0`` to pause index building.
+        If the collection does not yet exist it is created automatically
+        via :meth:`ensure_collection_sync`.
+
+        Args:
+            collection: Collection name to disable indexing for.
+            vector_size: Vector dimension used when auto-creating the
+                collection. Default: 512.
+            distance_metric: Distance metric used when auto-creating the
+                collection. Default: ``"cosine"``.
+
+        Returns:
+            The original ``CollectionInfo`` before indexing was disabled.
+
+        Raises:
+            UpstreamError: If Qdrant operations fail.
+        """
+        try:
+            original_params = self._sync_client.get_collection(collection_name=collection)
+
+            self._sync_client.update_collection(
                 collection_name=collection,
-                optimizer_config=qmodels.OptimizersConfigDiff(
-                    indexing_threshold=0,
-                ),
+                optimizer_config=qmodels.OptimizersConfigDiff(indexing_threshold=0),
                 hnsw_config=qmodels.HnswConfigDiff(m=0),
             )
             self._logger.info(  # type: ignore[attr-defined]
@@ -416,43 +502,35 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
                 extra={"collection": collection},
             )
 
-        await async_retry_call(
-            _do_disable,
-            max_retries=self.max_retries,
-            min_wait=self.retry_min_wait,
-            max_wait=self.retry_max_wait,
-            is_retriable=_qdrant_classifier.is_retriable,
-            before_sleep=_qdrant_log_retry,
-            operation="Qdrant disable_indexing",
-        )
+            return original_params
+        except Exception as e:
+            self._logger.exception(  # type: ignore[attr-defined]
+                "Failed to disable indexing for collection",
+                extra={"collection": collection, "error": str(e)},
+            )
+            raise UpstreamError(f"Failed to disable indexing for collection {collection}") from e
 
-    @with_circuit_breaker_async("qdrant")
-    async def enable_indexing(
+    @with_circuit_breaker("qdrant-sync")
+    def enable_indexing_sync(
         self,
         *,
         collection: str,
-        indexing_threshold: int = 20000,
+        indexing_threshold: int = 20_000,
         hnsw_m: int = 16,
     ) -> None:
-        """Re-enable indexing for a collection after bulk operations.
-
-        This method re-enables indexing with default or custom parameters.
-        Qdrant will build the index in the background.
+        """Re-enable HNSW indexing on a collection after bulk uploads.
 
         Args:
             collection: Collection name to enable indexing for.
-            indexing_threshold: Number of points before indexing starts
-            (default: 20000).  hnsw_m: HNSW parameter m (default: 16).
+            indexing_threshold: Point count threshold before indexing
+                starts. Default: 20 000.
+            hnsw_m: HNSW graph connectivity parameter. Default: 16.
 
         Raises:
             UpstreamError: If Qdrant operations fail.
-
-        Note:
-            This should be called after bulk operations are complete.
         """
-
-        async def _do_enable() -> None:
-            await self._client.update_collection(
+        try:
+            self._sync_client.update_collection(
                 collection_name=collection,
                 optimizer_config=qmodels.OptimizersConfigDiff(indexing_threshold=indexing_threshold),
                 hnsw_config=qmodels.HnswConfigDiff(m=hnsw_m),
@@ -465,16 +543,12 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
                     "hnsw_m": hnsw_m,
                 },
             )
-
-        await async_retry_call(
-            _do_enable,
-            max_retries=self.max_retries,
-            min_wait=self.retry_min_wait,
-            max_wait=self.retry_max_wait,
-            is_retriable=_qdrant_classifier.is_retriable,
-            before_sleep=_qdrant_log_retry,
-            operation="Qdrant enable_indexing",
-        )
+        except Exception as e:
+            self._logger.exception(  # type: ignore[attr-defined]
+                "Failed to enable indexing for collection",
+                extra={"collection": collection, "error": str(e)},
+            )
+            raise UpstreamError(f"Failed to enable indexing for collection {collection}") from e
 
     @with_circuit_breaker_async("qdrant")
     async def _do_batch_upsert(self, *, collection: str, points: list[PointStruct]) -> None:
@@ -593,3 +667,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             asyncio.run(
                 close_async_resource(client_to_close, "qdrant_async_client"),
             )
+
+        if self._sync_client is not None:
+            self._sync_client.close()
+            self._sync_client = None

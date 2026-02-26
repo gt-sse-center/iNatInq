@@ -225,9 +225,8 @@ class IngestionPipeline:
 
         with (
             qdrant_indexing_disabled(
-                self.vector_config.qdrant_url,
-                self.vector_config.qdrant_api_key,
-                self.vector_config.collection,
+                client=self.vector_config.qdrant_client,
+                collection=self.vector_config.collection,
             )
             if should_disable_indexing
             else nullcontext()

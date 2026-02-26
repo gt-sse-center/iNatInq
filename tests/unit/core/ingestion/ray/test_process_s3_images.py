@@ -405,12 +405,11 @@ class TestRayImageJobMain:
         from core.ingestion.ray.process_s3_images import main
 
         mock_dependencies["ray_cfg"].return_value.disable_indexing_during_ingest = True
-        mock_dependencies["vector_cfg"].return_value.qdrant_url = "http://qdrant:6333"
-        mock_dependencies["vector_cfg"].return_value.qdrant_api_key = "test-key"
 
         with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
             main()
 
         mock_dependencies["qdrant_indexing_disabled"].assert_called_once_with(
-            "http://qdrant:6333", "test-key", "documents"
+            client=mock_dependencies["vector_cfg"].return_value.qdrant_client,
+            collection="documents",
         )

@@ -17,7 +17,9 @@ from typing import Any
 from clients.s3 import S3ClientWrapper
 from config import ImageEmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
 from core.ingestion.databricks.batch_runner import run_ray_batch_processing
-from core.ingestion.databricks.runtime import apply_python_params as _apply_python_params
+from core.ingestion.databricks.runtime import (
+    apply_python_params as _apply_python_params,
+)
 from core.ingestion.shared.batching import iter_image_batches
 from core.ingestion.shared.qdrant_indexing import qdrant_indexing_disabled
 from core.ingestion.strategies import DatabricksStrategy
@@ -148,7 +150,7 @@ def main() -> None:
         should_disable_indexing = ray_cfg.disable_indexing_during_ingest and "qdrant" in ingestion_targets
 
         with (
-            qdrant_indexing_disabled(vector_cfg.qdrant_url, vector_cfg.qdrant_api_key, collection)
+            qdrant_indexing_disabled(client=vector_cfg.qdrant_client, collection=collection)
             if should_disable_indexing
             else nullcontext()
         ):

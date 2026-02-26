@@ -823,11 +823,10 @@ class TestQdrantClientWrapperBatchUpsert:
 class TestQdrantClientWrapperIndexing:
     """Test suite for QdrantClientWrapper indexing operations."""
 
-    @pytest.mark.asyncio
-    async def test_disable_indexing_success(
-        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    def test_disable_indexing_success(
+        self, qdrant_client: QdrantClientWrapper, mock_sync_client: MagicMock
     ) -> None:
-        """Test that disable_indexing succeeds.
+        """Test that disable_indexing_sync succeeds.
 
         **Why this test is important:**
           - Indexing control optimizes bulk operations
@@ -839,19 +838,22 @@ class TestQdrantClientWrapperIndexing:
           - update_collection is called with correct parameters
           - Indexing threshold and HNSW m are set to 0
         """
-        mock_async_client.update_collection.return_value = None
+        mock_sync_client.get_collection.return_value = MagicMock()
+        mock_sync_client.update_collection.return_value = None
 
-        await qdrant_client.disable_indexing(collection="test-collection")
+        result = qdrant_client.disable_indexing_sync(collection="test-collection")
 
-        mock_async_client.update_collection.assert_called_once()
-        call_kwargs = mock_async_client.update_collection.call_args[1]
+        assert result is not None
+        mock_sync_client.update_collection.assert_called_once()
+        call_kwargs = mock_sync_client.update_collection.call_args[1]
         assert call_kwargs["collection_name"] == "test-collection"
+        assert call_kwargs["optimizer_config"].indexing_threshold == 0
+        assert call_kwargs["hnsw_config"].m == 0
 
-    @pytest.mark.asyncio
-    async def test_enable_indexing_success(
-        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    def test_enable_indexing_success(
+        self, qdrant_client: QdrantClientWrapper, mock_sync_client: MagicMock
     ) -> None:
-        """Test that enable_indexing succeeds.
+        """Test that enable_indexing_sync succeeds.
 
         **Why this test is important:**
           - Re-enabling indexing restores performance
@@ -863,19 +865,20 @@ class TestQdrantClientWrapperIndexing:
           - update_collection is called with correct parameters
           - Default indexing threshold and HNSW m are applied
         """
-        mock_async_client.update_collection.return_value = None
+        mock_sync_client.update_collection.return_value = None
 
-        await qdrant_client.enable_indexing(collection="test-collection")
+        qdrant_client.enable_indexing_sync(collection="test-collection")
 
-        mock_async_client.update_collection.assert_called_once()
-        call_kwargs = mock_async_client.update_collection.call_args[1]
+        mock_sync_client.update_collection.assert_called_once()
+        call_kwargs = mock_sync_client.update_collection.call_args[1]
         assert call_kwargs["collection_name"] == "test-collection"
+        assert call_kwargs["optimizer_config"].indexing_threshold == 20_000
+        assert call_kwargs["hnsw_config"].m == 16
 
-    @pytest.mark.asyncio
-    async def test_enable_indexing_with_custom_params(
-        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    def test_enable_indexing_with_custom_params(
+        self, qdrant_client: QdrantClientWrapper, mock_sync_client: MagicMock
     ) -> None:
-        """Test that enable_indexing accepts custom parameters.
+        """Test that enable_indexing_sync accepts custom parameters.
 
         **Why this test is important:**
           - Custom parameters allow tuning for different use cases
@@ -887,13 +890,15 @@ class TestQdrantClientWrapperIndexing:
           - Custom indexing_threshold is applied
           - Custom hnsw_m is applied
         """
-        mock_async_client.update_collection.return_value = None
+        mock_sync_client.update_collection.return_value = None
 
-        await qdrant_client.enable_indexing(collection="test-collection", indexing_threshold=10000, hnsw_m=32)
+        qdrant_client.enable_indexing_sync(collection="test-collection", indexing_threshold=10000, hnsw_m=32)
 
-        mock_async_client.update_collection.assert_called_once()
-        call_kwargs = mock_async_client.update_collection.call_args[1]
+        mock_sync_client.update_collection.assert_called_once()
+        call_kwargs = mock_sync_client.update_collection.call_args[1]
         assert call_kwargs["collection_name"] == "test-collection"
+        assert call_kwargs["optimizer_config"].indexing_threshold == 10000
+        assert call_kwargs["hnsw_config"].m == 32
 
 
 # =============================================================================
@@ -908,25 +913,23 @@ class TestQdrantClientWrapperAdditional:
         """Test that client property returns the async client."""
         assert qdrant_client.client is mock_async_client
 
-    @pytest.mark.asyncio
-    async def test_disable_indexing_raises_on_error(
-        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    def test_disable_indexing_raises_on_error(
+        self, qdrant_client: QdrantClientWrapper, mock_sync_client: MagicMock
     ) -> None:
-        """Test that disable_indexing raises UpstreamError on exception."""
-        mock_async_client.update_collection.side_effect = Exception("API Error")
+        """Test that disable_indexing_sync raises UpstreamError on exception."""
+        mock_sync_client.get_collection.side_effect = Exception("API Error")
 
-        with pytest.raises(UpstreamError, match="Qdrant disable_indexing failed"):
-            await qdrant_client.disable_indexing(collection="test-collection")
+        with pytest.raises(UpstreamError, match="Failed to disable indexing for collection"):
+            qdrant_client.disable_indexing_sync(collection="test-collection")
 
-    @pytest.mark.asyncio
-    async def test_enable_indexing_raises_on_error(
-        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    def test_enable_indexing_raises_on_error(
+        self, qdrant_client: QdrantClientWrapper, mock_sync_client: MagicMock
     ) -> None:
-        """Test that enable_indexing raises UpstreamError on exception."""
-        mock_async_client.update_collection.side_effect = Exception("API Error")
+        """Test that enable_indexing_sync raises UpstreamError on exception."""
+        mock_sync_client.update_collection.side_effect = Exception("API Error")
 
-        with pytest.raises(UpstreamError, match="Qdrant enable_indexing failed"):
-            await qdrant_client.enable_indexing(collection="test-collection")
+        with pytest.raises(UpstreamError, match="Failed to enable indexing for collection"):
+            qdrant_client.enable_indexing_sync(collection="test-collection")
 
     @pytest.mark.asyncio
     async def test_batch_upsert_raises_on_exception(

@@ -256,8 +256,6 @@ class TestDatabricksINatImageJobMain:
         from core.ingestion.databricks.process_inat_images import main
 
         mock_dependencies["ray_cfg"].disable_indexing_during_ingest = True
-        mock_dependencies["vector_cfg"].qdrant_url = "http://qdrant:6333"
-        mock_dependencies["vector_cfg"].qdrant_api_key = "test-key"
         mock_dependencies["inat_cfg"].metadata_url = "https://example.com/photos.tsv"
         mock_dependencies["inat_cfg"].max_rows = 10
         mock_dependencies["inat_client"].iter_photo_records.return_value = iter(())
@@ -265,5 +263,6 @@ class TestDatabricksINatImageJobMain:
         main()
 
         mock_dependencies["qdrant_indexing_disabled"].assert_called_once_with(
-            "http://qdrant:6333", "test-key", "documents"
+            client=mock_dependencies["vector_cfg"].qdrant_client,
+            collection="documents",
         )
