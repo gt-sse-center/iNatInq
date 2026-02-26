@@ -97,7 +97,7 @@ class TestImageSearchEndpoint:
         data = response.json()
         assert data["query"] == "sunset over ocean"
         assert data["provider"] == "qdrant"
-        assert data["collection"] == "documents_images"
+        assert data["collection"] == "documents"
         assert len(data["results"]) == 2
         assert data["results"][0]["score"] == 0.8234
         assert "s3_key" in data["results"][0]
@@ -231,7 +231,6 @@ class TestImageSearchEndpoint:
 
         **Why this test is important:**
           - Validates collection override capability
-          - Tests that image collection follows {collection}_images pattern
         """
         with patch(
             "api.routes.create_vector_db_provider",
@@ -241,8 +240,7 @@ class TestImageSearchEndpoint:
 
         assert response.status_code == 200
         data = response.json()
-        # Image collection should be {collection}_images
-        assert data["collection"] == "photos_images"
+        assert data["collection"] == "photos"
 
     def test_image_search_returns_clip_model_name(
         self,

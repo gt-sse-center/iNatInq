@@ -399,7 +399,7 @@ class TestQdrantClientWrapperEnsureCollection:
 
         **What it tests:**
           - get_collections is called to check existence
-          - create_collection is called with {collection}_images naming pattern
+          - create_collection is called with collection
           - Default vector_size is 512 (CLIP default)
         """
         mock_collections = MagicMock()
@@ -411,7 +411,7 @@ class TestQdrantClientWrapperEnsureCollection:
         mock_async_client.get_collections.assert_called_once()
         mock_async_client.create_collection.assert_called_once()
         call_kwargs = mock_async_client.create_collection.call_args[1]
-        assert call_kwargs["collection_name"] == "documents_images"
+        assert call_kwargs["collection_name"] == "documents"
         assert call_kwargs["vectors_config"].size == 512  # CLIP default
 
     @pytest.mark.asyncio
@@ -428,7 +428,6 @@ class TestQdrantClientWrapperEnsureCollection:
 
         **What it tests:**
           - Custom vector_size is applied correctly
-          - Collection name still uses _images suffix
         """
         mock_collections = MagicMock()
         mock_collections.collections = []
@@ -437,7 +436,7 @@ class TestQdrantClientWrapperEnsureCollection:
         await qdrant_client.ensure_image_collection_async(collection="photos", vector_size=768)
 
         call_kwargs = mock_async_client.create_collection.call_args[1]
-        assert call_kwargs["collection_name"] == "photos_images"
+        assert call_kwargs["collection_name"] == "photos"
         assert call_kwargs["vectors_config"].size == 768
 
     @pytest.mark.asyncio
@@ -462,7 +461,7 @@ class TestQdrantClientWrapperEnsureCollection:
         await qdrant_client.ensure_image_collection_async(collection="photos", distance_metric="euclidean")
 
         call_kwargs = mock_async_client.create_collection.call_args[1]
-        assert call_kwargs["collection_name"] == "photos_images"
+        assert call_kwargs["collection_name"] == "photos"
         assert call_kwargs["vectors_config"].distance == qmodels.Distance.EUCLID
 
     @pytest.mark.asyncio
@@ -494,15 +493,13 @@ class TestQdrantClientWrapperEnsureCollection:
           - Idempotent operations prevent errors
           - Avoids unnecessary API calls
           - Critical for efficiency
-          - Validates existence checking with _images suffix
 
         **What it tests:**
           - get_collections is called to check existence
           - create_collection is not called if collection exists
-          - Collection name includes _images suffix
         """
         mock_collection = MagicMock()
-        mock_collection.name = "documents_images"
+        mock_collection.name = "documents"
         mock_collections = MagicMock()
         mock_collections.collections = [mock_collection]
         mock_async_client.get_collections.return_value = mock_collections
@@ -519,13 +516,11 @@ class TestQdrantClientWrapperEnsureCollection:
         """Test that ensure_image_collection uses correct naming pattern.
 
         **Why this test is important:**
-          - Naming pattern must be consistent: {collection}_images
           - Ensures image collections are clearly distinguished from text collections
           - Critical for collection organization and management
           - Validates naming convention
 
         **What it tests:**
-          - Collection name is correctly formatted as {base_collection}_images
           - Different base collection names produce correct image collection names
         """
         mock_collections = MagicMock()
@@ -534,9 +529,9 @@ class TestQdrantClientWrapperEnsureCollection:
 
         # Test with different collection names
         test_cases = [
-            ("documents", "documents_images"),
-            ("photos", "photos_images"),
-            ("test", "test_images"),
+            ("documents", "documents"),
+            ("photos", "photos"),
+            ("test", "test"),
         ]
 
         for base_name, expected_name in test_cases:

@@ -14,7 +14,6 @@ ImageSearchService:
   - Async Search: Async operations, error handling
   - Input Validation: Empty queries, invalid limits
   - Error Handling: BadRequestError on validation, UpstreamError propagation
-  - Collection Naming: Automatic {collection}_images suffix
 
 # Test Structure
 
@@ -118,7 +117,6 @@ class TestImageSearchServiceSearchImages:
         **What it tests:**
           - CLIP client embed_text is called with query
           - Vector DB provider search is called with embedding
-          - Image collection naming follows {collection}_images pattern
           - Search results are returned correctly
         """
         result = image_search_service.search_images(
@@ -133,7 +131,7 @@ class TestImageSearchServiceSearchImages:
         # Verify vector DB was searched with image collection name
         image_search_service.vector_db_provider.search_async.assert_called_once()
         call_kwargs = image_search_service.vector_db_provider.search_async.call_args[1]
-        assert call_kwargs["collection"] == "documents_images"
+        assert call_kwargs["collection"] == "documents"
         assert call_kwargs["query_vector"] == [0.1, 0.2, 0.3]
         assert call_kwargs["limit"] == 10
 
@@ -315,7 +313,6 @@ class TestImageSearchServiceSearchImagesAsync:
         **What it tests:**
           - CLIP client embed_text_async is called with query
           - Vector DB provider search is called with embedding
-          - Image collection naming follows {collection}_images pattern
           - Search results are returned correctly
         """
         result = await image_search_service.search_images_async(
@@ -330,7 +327,7 @@ class TestImageSearchServiceSearchImagesAsync:
         # Verify vector DB was searched with image collection name
         image_search_service.vector_db_provider.search_async.assert_called_once()
         call_kwargs = image_search_service.vector_db_provider.search_async.call_args[1]
-        assert call_kwargs["collection"] == "photos_images"
+        assert call_kwargs["collection"] == "photos"
         assert call_kwargs["query_vector"] == [0.1, 0.2, 0.3]
         assert call_kwargs["limit"] == 10
 
@@ -522,7 +519,7 @@ class TestImageSearchServiceIntegration:
         # Verify vector DB search with image collection
         mock_image_vector_db_provider.search_async.assert_called_once()
         call_kwargs = mock_image_vector_db_provider.search_async.call_args[1]
-        assert call_kwargs["collection"] == "vacation_images"
+        assert call_kwargs["collection"] == "vacation"
         assert call_kwargs["query_vector"] == [0.5, 0.6, 0.7, 0.8]
         assert call_kwargs["limit"] == 5
 
@@ -594,7 +591,7 @@ class TestImageSearchServiceIntegration:
         # Verify vector DB search
         mock_image_vector_db_provider.search_async.assert_called_once()
         call_kwargs = mock_image_vector_db_provider.search_async.call_args[1]
-        assert call_kwargs["collection"] == "pets_images"
+        assert call_kwargs["collection"] == "pets"
 
         # Verify results
         assert results.total == 1

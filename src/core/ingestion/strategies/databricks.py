@@ -186,7 +186,7 @@ class DatabricksStrategy:
             extra={"params": filtered},
         )
 
-        return setup_fn(max_worker_nodes=max_workers)
+        return setup_fn(**filtered)
 
     def _init_ray_client(self) -> None:
         """Initialize Ray client connection to Databricks cluster."""

@@ -19,11 +19,12 @@ from config import ImageEmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConf
 from core.ingestion.databricks.batch_runner import run_ray_batch_processing
 from core.ingestion.databricks.runtime import apply_python_params as _apply_python_params
 from core.ingestion.shared.batching import iter_image_batches
-from core.ingestion.shared.qdrant_indexing import disable_qdrant_indexing, enable_qdrant_indexing
+from core.ingestion.shared.qdrant_indexing import qdrant_indexing_disabled
 from core.ingestion.strategies import DatabricksStrategy
 from core.ingestion.tasks import process_image_batch_ray
 from foundation.checkpoint import CheckpointManager, is_s3_path
 from foundation.logger import LOGGING_CONFIG
+from contextlib import nullcontext
 
 dictConfig(LOGGING_CONFIG)
 
@@ -90,7 +91,7 @@ def main() -> None:
             s3_client=s3 if is_s3_path(ray_cfg.checkpoint_dir) else None,
         )
         if ray_cfg.checkpoint_enabled:
-            checkpoint_path = f"{ray_cfg.checkpoint_dir}/{collection}_images.json"
+            checkpoint_path = f"{ray_cfg.checkpoint_dir}/{collection}.json"
             processed = checkpoint_manager.load(checkpoint_path)
 
         image_batch_size = ray_cfg.image_batch_size
@@ -144,13 +145,13 @@ def main() -> None:
                 ingestion_targets=ingestion_targets,
             )
 
-        collection_name = f"{collection}_images"
         should_disable_indexing = ray_cfg.disable_indexing_during_ingest and "qdrant" in ingestion_targets
 
-        if should_disable_indexing:
-            disable_qdrant_indexing(vector_cfg.qdrant_url, vector_cfg.qdrant_api_key, collection_name)
-
-        try:
+        with (
+            qdrant_indexing_disabled(vector_cfg.qdrant_url, vector_cfg.qdrant_api_key, collection)
+            if should_disable_indexing
+            else nullcontext()
+        ):
             stats = run_ray_batch_processing(
                 batches=batch_gen,
                 submit_batch=_submit_batch,
@@ -161,9 +162,6 @@ def main() -> None:
                 progress_label="Image batch progress",
                 total_expected_records=None,
             )
-        finally:
-            if should_disable_indexing:
-                enable_qdrant_indexing(vector_cfg.qdrant_url, vector_cfg.qdrant_api_key, collection_name)
 
         success = stats.successful
         failed = stats.failed

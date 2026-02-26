@@ -25,10 +25,11 @@ from core.ingestion.databricks.batch_runner import run_ray_batch_processing
 from core.ingestion.databricks.runtime import apply_python_params as _apply_python_params
 from core.ingestion.interfaces.operations import detect_image_format
 from core.ingestion.interfaces.types import ImageContentResult, ProcessingResult
-from core.ingestion.shared.qdrant_indexing import disable_qdrant_indexing, enable_qdrant_indexing
+from core.ingestion.shared.qdrant_indexing import qdrant_indexing_disabled
 from core.ingestion.strategies import DatabricksStrategy
 from core.ingestion.tasks.image_processing import ImageProcessingPipeline, RayImageProcessingConfig
 from foundation.logger import LOGGING_CONFIG
+from contextlib import nullcontext
 
 dictConfig(LOGGING_CONFIG)
 
@@ -279,13 +280,13 @@ def main() -> None:
                 inat_cb_recovery_timeout_s=inat_cb_recovery_timeout_s,
             )
 
-        collection_name = f"{collection}_images"
         should_disable_indexing = ray_cfg.disable_indexing_during_ingest and "qdrant" in ingestion_targets
 
-        if should_disable_indexing:
-            disable_qdrant_indexing(vector_cfg.qdrant_url, vector_cfg.qdrant_api_key, collection_name)
-
-        try:
+        with (
+            qdrant_indexing_disabled(vector_cfg.qdrant_url, vector_cfg.qdrant_api_key, collection)
+            if should_disable_indexing
+            else nullcontext()
+        ):
             stats = run_ray_batch_processing(
                 batches=_iter_task_payload_batches(
                     records,
@@ -301,9 +302,6 @@ def main() -> None:
                 progress_label="iNaturalist image batch progress",
                 total_expected_records=None,
             )
-        finally:
-            if should_disable_indexing:
-                enable_qdrant_indexing(vector_cfg.qdrant_url, vector_cfg.qdrant_api_key, collection_name)
 
         if stats.submitted_records == 0:
             job_logger.info("No iNaturalist image records to process")
