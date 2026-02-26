@@ -22,6 +22,8 @@ logger = logging.getLogger("pipeline.ingestion.qdrant_indexing")
 def qdrant_indexing_disabled(url: str, api_key: str | None, collection: str):
     """Disable HNSW indexing on *collection* for faster bulk uploads.
 
+    If the collection does not exist, it will be created with the default vector size and distance metric.
+
     Args:
         url: Qdrant server URL.
         api_key: Optional Qdrant API key.
@@ -53,11 +55,7 @@ def qdrant_indexing_disabled(url: str, api_key: str | None, collection: str):
             logger.exception("Failed to enable Qdrant indexing", extra={"error": str(e)})
 
 
-def disable_qdrant_indexing(
-    url: str,
-    api_key: str | None,
-    collection: str,
-) -> qmodels.CollectionInfo:
+def disable_qdrant_indexing(url: str, api_key: str | None, collection: str) -> qmodels.CollectionInfo:
     """Disable HNSW indexing on *collection* for faster bulk uploads.
 
     Args:
@@ -70,6 +68,7 @@ def disable_qdrant_indexing(
     """
     client = QdrantClient(url=url, api_key=api_key)
     try:
+        _ensure_collection_exists(client, collection)
         original_params = client.get_collection(collection_name=collection)
         client.update_collection(
             collection_name=collection,
@@ -105,6 +104,7 @@ def enable_qdrant_indexing(
     """
     client = QdrantClient(url=url, api_key=api_key)
     try:
+        _ensure_collection_exists(client, collection)
         client.update_collection(
             collection_name=collection,
             optimizer_config=qmodels.OptimizersConfigDiff(indexing_threshold=indexing_threshold),
@@ -120,3 +120,37 @@ def enable_qdrant_indexing(
         )
     finally:
         client.close()
+
+
+def _ensure_collection_exists(
+    client: QdrantClient,
+    collection: str,
+    *,
+    vector_size: int = 512,
+    distance_metric: qmodels.Distance = qmodels.Distance.COSINE,
+) -> None:
+    """Ensure that the collection exists. If it does not, it will be created with default vector size 512 and cosine distance metric.
+
+    Args:
+        client: Qdrant client.
+        collection: Collection to modify.
+        vector_size: Vector size to use for the collection.
+        distance_metric: Distance metric to use for the collection.
+    """
+    try:
+        existing_collections = client.get_collections()
+        existing = {c.name for c in existing_collections.collections}
+        if collection in existing:
+            return
+
+        client.create_collection(
+            collection_name=collection,
+            vectors_config=qmodels.VectorParams(size=vector_size, distance=distance_metric),
+        )
+
+        logger.info(
+            "Collection not found, creating with vector size and distance metric",
+            extra={"collection": collection, "vector_size": vector_size, "distance_metric": distance_metric},
+        )
+    except Exception as e:
+        logger.exception("Failed to ensure collection exists", extra={"error": str(e)})
