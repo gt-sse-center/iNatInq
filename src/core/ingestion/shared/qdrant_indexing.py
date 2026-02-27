@@ -43,8 +43,8 @@ def qdrant_indexing_disabled(
     finally:
         try:
             if index_disabled:
-                indexing_threshold = original_params.optimizer_config.indexing_threshold or None
-                hnsw_m = original_params.hnsw_config.m or None
+                indexing_threshold = original_params.optimizers_config.indexing_threshold or None
+                hnsw_m = original_params.optimizers_config.hnsw_config.m or None
                 client.enable_indexing_sync(
                     collection=collection, indexing_threshold=indexing_threshold, hnsw_m=hnsw_m
                 )
