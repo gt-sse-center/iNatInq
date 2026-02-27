@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 import ray
 
 from clients.inaturalist_open_data import INaturalistOpenDataClient, INaturalistPhotoRecord
+from clients.qdrant import QdrantClientWrapper
 from config import INatConfig, ImageEmbeddingConfig, RayJobConfig, VectorDBConfig
 from core.ingestion.databricks.batch_runner import run_ray_batch_processing
 from core.ingestion.databricks.runtime import apply_python_params as _apply_python_params
@@ -282,8 +283,10 @@ def main() -> None:
 
         should_disable_indexing = ray_cfg.disable_indexing_during_ingest and "qdrant" in ingestion_targets
 
+        qdrant_wrapper = QdrantClientWrapper.from_config(vector_cfg) if should_disable_indexing else None
+
         with (
-            qdrant_indexing_disabled(client=vector_cfg.qdrant_client, collection=collection)
+            qdrant_indexing_disabled(client=qdrant_wrapper, collection=collection)
             if should_disable_indexing
             else nullcontext()
         ):

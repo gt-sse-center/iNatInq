@@ -39,6 +39,7 @@ import attrs
 import ray
 from botocore.exceptions import ClientError
 
+from clients.qdrant import QdrantClientWrapper
 from clients.s3 import S3ClientWrapper
 from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
 from foundation.checkpoint import CheckpointManager, is_s3_path
@@ -223,9 +224,13 @@ class IngestionPipeline:
             and "qdrant" in self.vector_config.ingestion_targets
         )
 
+        qdrant_wrapper = (
+            QdrantClientWrapper.from_config(self.vector_config) if should_disable_indexing else None
+        )
+
         with (
             qdrant_indexing_disabled(
-                client=self.vector_config.qdrant_client,
+                client=qdrant_wrapper,
                 collection=self.vector_config.collection,
             )
             if should_disable_indexing
