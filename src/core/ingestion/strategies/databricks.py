@@ -173,8 +173,6 @@ class DatabricksStrategy:
         """
         kwargs = {
             "max_worker_nodes": max_workers,
-            # "num_cpus_worker_node": int(self._config.worker_cpus), # noqa: ERA001
-            # "memory_worker_node": self._config.worker_memory, # noqa: ERA001
         }
 
         # Filter to only supported parameters
