@@ -13,14 +13,18 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from qdrant_client.http import models as qmodels
     from collections.abc import Generator
     from clients.qdrant import QdrantClientWrapper
+
 
 logger = logging.getLogger("pipeline.ingestion.qdrant_indexing")
 
 
 @contextmanager
-def qdrant_indexing_disabled(client: QdrantClientWrapper, collection: str) -> Generator[None, None, None]:
+def qdrant_indexing_disabled(
+    client: QdrantClientWrapper, collection: str, *, vector_size: int, distance_metric: qmodels.Distance
+) -> Generator[None, None, None]:
     """Disable HNSW indexing on *collection* for faster bulk uploads.
 
     Args:
@@ -30,7 +34,9 @@ def qdrant_indexing_disabled(client: QdrantClientWrapper, collection: str) -> Ge
     index_disabled = False
 
     try:
-        original_params = client.disable_indexing_sync(collection=collection)
+        original_params = client.disable_indexing_sync(
+            collection=collection, vector_size=vector_size, distance_metric=distance_metric
+        )
         index_disabled = True
     except Exception as e:
         logger.exception("Failed to disable Qdrant indexing", extra={"error": str(e)})

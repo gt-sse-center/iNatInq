@@ -490,6 +490,9 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             UpstreamError: If Qdrant operations fail.
         """
         try:
+            self.ensure_collection_sync(
+                collection=collection, vector_size=vector_size, distance_metric=distance_metric
+            )
             original_params = self._sync_client.get_collection(collection_name=collection)
 
             self._sync_client.update_collection(
