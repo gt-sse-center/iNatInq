@@ -61,6 +61,9 @@ class TestRayImageJobMain:
                                     patch(
                                         "core.ingestion.ray.process_s3_images.qdrant_indexing_disabled"
                                     ) as mock_indexing_disabled,
+                                    patch(
+                                        "core.ingestion.ray.process_s3_images.QdrantClientWrapper"
+                                    ) as mock_qdrant_cls,
                                 ):
                                     mock_ray_cfg.return_value = MagicMock(
                                         num_workers=4,
@@ -91,7 +94,8 @@ class TestRayImageJobMain:
                                         secret_access_key="secret",
                                         bucket="test-bucket",
                                     )
-                                    mock_embed_cfg.return_value = MagicMock()
+                                    embed_cfg = MagicMock()
+                                    mock_embed_cfg.return_value = embed_cfg
                                     mock_vector_cfg.return_value = MagicMock(
                                         collection="documents",
                                         ingestion_targets=frozenset({"qdrant", "weaviate"}),
@@ -106,11 +110,13 @@ class TestRayImageJobMain:
                                     yield {
                                         "ray_cfg": mock_ray_cfg,
                                         "minio_cfg": mock_minio_cfg,
+                                        "embed_cfg": embed_cfg,
                                         "vector_cfg": mock_vector_cfg,
                                         "strategy": mock_strategy,
                                         "s3": mock_s3,
                                         "iter_batches": mock_iter,
                                         "qdrant_indexing_disabled": mock_indexing_disabled,
+                                        "qdrant_cls": mock_qdrant_cls,
                                     }
 
     def test_main_initializes_and_shuts_down_cluster(self, mock_dependencies, mock_ray):
@@ -410,6 +416,7 @@ class TestRayImageJobMain:
             main()
 
         mock_dependencies["qdrant_indexing_disabled"].assert_called_once_with(
-            client=mock_dependencies["vector_cfg"].return_value.qdrant_client,
+            client=mock_dependencies["qdrant_cls"].from_config.return_value,
             collection="documents",
+            vector_size=mock_dependencies["embed_cfg"].clip_vector_size,
         )
