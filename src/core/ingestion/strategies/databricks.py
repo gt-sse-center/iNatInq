@@ -172,7 +172,7 @@ class DatabricksStrategy:
             Cluster handle from setup_ray_cluster().
         """
         kwargs = {
-            # "max_worker_nodes": max_workers, # noqa: ERA001
+            "max_worker_nodes": max_workers,
             # "num_cpus_worker_node": int(self._config.worker_cpus), # noqa: ERA001
             # "memory_worker_node": self._config.worker_memory, # noqa: ERA001
         }
