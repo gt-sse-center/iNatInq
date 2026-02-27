@@ -155,8 +155,7 @@ def main() -> None:
             qdrant_indexing_disabled(
                 client=qdrant_wrapper,
                 collection=collection,
-                vector_size=vector_cfg.vector_size,
-                distance_metric=vector_cfg.distance_metric,
+                vector_size=embed_cfg.vector_size,
             )
             if should_disable_indexing
             else nullcontext()

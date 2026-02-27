@@ -232,8 +232,7 @@ class IngestionPipeline:
             qdrant_indexing_disabled(
                 client=qdrant_wrapper,
                 collection=self.vector_config.collection,
-                vector_size=self.vector_config.vector_size,
-                distance_metric=self.vector_config.distance_metric,
+                vector_size=self.embed_config.vector_size,
             )
             if should_disable_indexing
             else nullcontext()

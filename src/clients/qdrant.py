@@ -467,7 +467,6 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         *,
         collection: str,
         vector_size: int = 512,
-        distance_metric: qmodels.Distance = qmodels.Distance.COSINE,
     ) -> qmodels.CollectionInfo:
         """Disable HNSW indexing on a collection for faster bulk uploads.
 
@@ -480,8 +479,6 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             collection: Collection name to disable indexing for.
             vector_size: Vector dimension used when auto-creating the
                 collection. Default: 512.
-            distance_metric: Distance metric used when auto-creating the
-                collection. Default: ``"cosine"``.
 
         Returns:
             The original ``CollectionInfo`` before indexing was disabled.
@@ -491,7 +488,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         """
         try:
             self.ensure_collection_sync(
-                collection=collection, vector_size=vector_size, distance_metric=distance_metric
+                collection=collection, vector_size=vector_size, distance_metric=qmodels.Distance.COSINE
             )
             original_params = self._sync_client.get_collection(collection_name=collection)
 
