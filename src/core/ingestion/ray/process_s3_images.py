@@ -165,7 +165,7 @@ def main() -> None:
             qdrant_indexing_disabled(
                 client=qdrant_wrapper,
                 collection=collection,
-                vector_size=embed_cfg.vector_size,
+                vector_size=embed_cfg.clip_vector_size,
             )
             if should_disable_indexing
             else nullcontext()
