@@ -82,8 +82,11 @@ def with_client_metrics(client: str, operation: str):
 
                 return result
 
-            except BaseException as exc:
-                # Error path
+            except Exception as exc:
+                # Error path — catch Exception, not BaseException, so that
+                # cancellation/shutdown signals (KeyboardInterrupt, SystemExit,
+                # asyncio.CancelledError, GeneratorExit) propagate without
+                # being counted as client errors.
                 duration = time.perf_counter() - start_time
                 CLIENT_REQUEST_DURATION.labels(client=client, operation=operation, status="error").observe(
                     duration
@@ -97,7 +100,7 @@ def with_client_metrics(client: str, operation: str):
                 # Re-raise the original exception unchanged
                 raise
 
-        # Marker for introspection tests (Task 3: test_all_clients_instrumented)
+        # Marker for introspection tests (test_all_clients_instrumented)
         wrapper._client_metrics = (client, operation)  # type: ignore[attr-defined]
         return wrapper
 
@@ -147,8 +150,11 @@ def with_client_metrics_async(client: str, operation: str):
 
                 return result
 
-            except BaseException as exc:
-                # Error path
+            except Exception as exc:
+                # Error path — catch Exception, not BaseException, so that
+                # cancellation/shutdown signals (KeyboardInterrupt, SystemExit,
+                # asyncio.CancelledError, GeneratorExit) propagate without
+                # being counted as client errors.
                 duration = time.perf_counter() - start_time
                 CLIENT_REQUEST_DURATION.labels(client=client, operation=operation, status="error").observe(
                     duration
@@ -162,7 +168,7 @@ def with_client_metrics_async(client: str, operation: str):
                 # Re-raise the original exception unchanged
                 raise
 
-        # Marker for introspection tests (Task 3: test_all_clients_instrumented)
+        # Marker for introspection tests (test_all_clients_instrumented)
         wrapper._client_metrics = (client, operation)  # type: ignore[attr-defined]
         return wrapper
 

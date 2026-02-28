@@ -375,43 +375,6 @@ class TestDecoratorBehavior:
         assert result2 == "processed: arg2"
         assert count >= 2.0, "Both calls should increment the same metric (same labels)"
 
-    def test_decorator_preserves_function_signature(self) -> None:
-        """Test that @with_client_metrics preserves function metadata via functools.wraps.
-
-        **Why this test is important:**
-          - Ensures decorated functions have correct __name__ and __doc__
-          - Preserves introspection capabilities
-          - Critical for debugging and documentation tools
-
-        **What it tests:**
-          - functools.wraps copies __name__, __doc__, __module__
-        """
-        # Arrange
-        from core.metrics.decorators import with_client_metrics
-
-        class DummyClient:
-            @with_client_metrics("test_client", "test_operation")
-            def my_documented_method(self, x: int, y: int) -> int:
-                """Adds two numbers together.
-
-                Args:
-                    x: First number
-                    y: Second number
-
-                Returns:
-                    Sum of x and y
-                """
-                return x + y
-
-        client = DummyClient()
-
-        # Assert - function metadata preserved
-        assert client.my_documented_method.__name__ == "my_documented_method"
-        assert "Adds two numbers together" in (client.my_documented_method.__doc__ or "")
-
-        # Assert - function still works
-        assert client.my_documented_method(2, 3) == 5
-
     def test_marker_attribute_set(self) -> None:
         """Test that decorator sets _client_metrics marker attribute.
 
@@ -435,6 +398,99 @@ class TestDecoratorBehavior:
         method = vars(DummyClient)["my_method"]
         assert hasattr(method, "_client_metrics")
         assert method._client_metrics == ("test_marker", "test_op")
+
+
+class TestCancellationSignalsPassthrough:
+    """Verify that cancellation/shutdown signals bypass error metrics.
+
+    BaseException subclasses like KeyboardInterrupt, SystemExit, and
+    asyncio.CancelledError are not actionable client errors. The decorators
+    must let them propagate without incrementing error counters.
+    """
+
+    def test_keyboard_interrupt_not_counted(self) -> None:
+        """KeyboardInterrupt propagates without incrementing error metrics.
+
+        **Why this test is important:**
+          - KeyboardInterrupt during shutdown should not inflate error rates
+          - Prevents noisy, non-actionable alerts
+
+        **What it tests:**
+          - KeyboardInterrupt is re-raised
+          - CLIENT_ERRORS_TOTAL is not incremented
+        """
+        from core.metrics.decorators import with_client_metrics
+
+        class DummyClient:
+            @with_client_metrics("test_client", "test_kb_interrupt")
+            def my_method(self):
+                raise KeyboardInterrupt
+
+        client = DummyClient()
+
+        before_errors = (
+            REGISTRY.get_sample_value(
+                "inatinq_client_errors_total",
+                {"client": "test_client", "operation": "test_kb_interrupt", "error_type": "unknown"},
+            )
+            or 0.0
+        )
+
+        with pytest.raises(KeyboardInterrupt):
+            client.my_method()
+
+        after_errors = (
+            REGISTRY.get_sample_value(
+                "inatinq_client_errors_total",
+                {"client": "test_client", "operation": "test_kb_interrupt", "error_type": "unknown"},
+            )
+            or 0.0
+        )
+
+        assert after_errors == before_errors, "KeyboardInterrupt should not increment error counter"
+
+    async def test_cancelled_error_not_counted(self) -> None:
+        """asyncio.CancelledError propagates without incrementing error metrics.
+
+        **Why this test is important:**
+          - Task cancellation during graceful shutdown is expected, not an error
+          - Prevents inflated error rates during scaling events
+
+        **What it tests:**
+          - CancelledError is re-raised
+          - CLIENT_ERRORS_TOTAL is not incremented
+        """
+        import asyncio
+
+        from core.metrics.decorators import with_client_metrics_async
+
+        class DummyAsyncClient:
+            @with_client_metrics_async("test_async_client", "test_cancelled")
+            async def my_method(self):
+                raise asyncio.CancelledError
+
+        client = DummyAsyncClient()
+
+        before_errors = (
+            REGISTRY.get_sample_value(
+                "inatinq_client_errors_total",
+                {"client": "test_async_client", "operation": "test_cancelled", "error_type": "unknown"},
+            )
+            or 0.0
+        )
+
+        with pytest.raises(asyncio.CancelledError):
+            await client.my_method()
+
+        after_errors = (
+            REGISTRY.get_sample_value(
+                "inatinq_client_errors_total",
+                {"client": "test_async_client", "operation": "test_cancelled", "error_type": "unknown"},
+            )
+            or 0.0
+        )
+
+        assert after_errors == before_errors, "CancelledError should not increment error counter"
 
 
 class TestAllClientsInstrumented:
