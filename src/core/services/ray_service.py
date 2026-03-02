@@ -64,7 +64,7 @@ class RayService:
             s3_secret_access_key: S3 secret key.
             s3_bucket: S3 bucket name containing images.
             s3_prefix: S3 prefix to process (default: "" for bucket root).
-            collection: Base collection name (image collections: {collection}_images).
+            collection: Base collection name.
             image_embedding_config: Image embedding configuration. If None, loaded from env.
             image_max_items: Optional limit on number of images to process.
             image_page_size: Optional S3 listing page size override.

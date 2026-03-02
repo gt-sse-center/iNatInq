@@ -240,6 +240,16 @@ LOGGING_CONFIG = {
             "level": "INFO",
             "propagate": False,
         },
+        "py4j": {
+            "handlers": ["default"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "py4j.clientserver": {
+            "handlers": ["default"],
+            "level": "WARNING",
+            "propagate": False,
+        },
     },
     "root": {
         "handlers": ["default"],

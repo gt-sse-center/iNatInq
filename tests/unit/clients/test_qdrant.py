@@ -399,7 +399,7 @@ class TestQdrantClientWrapperEnsureCollection:
 
         **What it tests:**
           - get_collections is called to check existence
-          - create_collection is called with {collection}_images naming pattern
+          - create_collection is called with collection
           - Default vector_size is 512 (CLIP default)
         """
         mock_collections = MagicMock()
@@ -411,7 +411,7 @@ class TestQdrantClientWrapperEnsureCollection:
         mock_async_client.get_collections.assert_called_once()
         mock_async_client.create_collection.assert_called_once()
         call_kwargs = mock_async_client.create_collection.call_args[1]
-        assert call_kwargs["collection_name"] == "documents_images"
+        assert call_kwargs["collection_name"] == "documents"
         assert call_kwargs["vectors_config"].size == 512  # CLIP default
 
     @pytest.mark.asyncio
@@ -428,7 +428,6 @@ class TestQdrantClientWrapperEnsureCollection:
 
         **What it tests:**
           - Custom vector_size is applied correctly
-          - Collection name still uses _images suffix
         """
         mock_collections = MagicMock()
         mock_collections.collections = []
@@ -437,7 +436,7 @@ class TestQdrantClientWrapperEnsureCollection:
         await qdrant_client.ensure_image_collection_async(collection="photos", vector_size=768)
 
         call_kwargs = mock_async_client.create_collection.call_args[1]
-        assert call_kwargs["collection_name"] == "photos_images"
+        assert call_kwargs["collection_name"] == "photos"
         assert call_kwargs["vectors_config"].size == 768
 
     @pytest.mark.asyncio
@@ -462,7 +461,7 @@ class TestQdrantClientWrapperEnsureCollection:
         await qdrant_client.ensure_image_collection_async(collection="photos", distance_metric="euclidean")
 
         call_kwargs = mock_async_client.create_collection.call_args[1]
-        assert call_kwargs["collection_name"] == "photos_images"
+        assert call_kwargs["collection_name"] == "photos"
         assert call_kwargs["vectors_config"].distance == qmodels.Distance.EUCLID
 
     @pytest.mark.asyncio
@@ -494,15 +493,13 @@ class TestQdrantClientWrapperEnsureCollection:
           - Idempotent operations prevent errors
           - Avoids unnecessary API calls
           - Critical for efficiency
-          - Validates existence checking with _images suffix
 
         **What it tests:**
           - get_collections is called to check existence
           - create_collection is not called if collection exists
-          - Collection name includes _images suffix
         """
         mock_collection = MagicMock()
-        mock_collection.name = "documents_images"
+        mock_collection.name = "documents"
         mock_collections = MagicMock()
         mock_collections.collections = [mock_collection]
         mock_async_client.get_collections.return_value = mock_collections
@@ -519,13 +516,11 @@ class TestQdrantClientWrapperEnsureCollection:
         """Test that ensure_image_collection uses correct naming pattern.
 
         **Why this test is important:**
-          - Naming pattern must be consistent: {collection}_images
           - Ensures image collections are clearly distinguished from text collections
           - Critical for collection organization and management
           - Validates naming convention
 
         **What it tests:**
-          - Collection name is correctly formatted as {base_collection}_images
           - Different base collection names produce correct image collection names
         """
         mock_collections = MagicMock()
@@ -534,9 +529,9 @@ class TestQdrantClientWrapperEnsureCollection:
 
         # Test with different collection names
         test_cases = [
-            ("documents", "documents_images"),
-            ("photos", "photos_images"),
-            ("test", "test_images"),
+            ("documents", "documents"),
+            ("photos", "photos"),
+            ("test", "test"),
         ]
 
         for base_name, expected_name in test_cases:
@@ -828,11 +823,10 @@ class TestQdrantClientWrapperBatchUpsert:
 class TestQdrantClientWrapperIndexing:
     """Test suite for QdrantClientWrapper indexing operations."""
 
-    @pytest.mark.asyncio
-    async def test_disable_indexing_success(
-        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    def test_disable_indexing_success(
+        self, qdrant_client: QdrantClientWrapper, mock_sync_client: MagicMock
     ) -> None:
-        """Test that disable_indexing succeeds.
+        """Test that disable_indexing_sync succeeds.
 
         **Why this test is important:**
           - Indexing control optimizes bulk operations
@@ -844,19 +838,22 @@ class TestQdrantClientWrapperIndexing:
           - update_collection is called with correct parameters
           - Indexing threshold and HNSW m are set to 0
         """
-        mock_async_client.update_collection.return_value = None
+        mock_sync_client.get_collection.return_value = MagicMock()
+        mock_sync_client.update_collection.return_value = None
 
-        await qdrant_client.disable_indexing(collection="test-collection")
+        result = qdrant_client.disable_indexing_sync(collection="test-collection")
 
-        mock_async_client.update_collection.assert_called_once()
-        call_kwargs = mock_async_client.update_collection.call_args[1]
+        assert result is not None
+        mock_sync_client.update_collection.assert_called_once()
+        call_kwargs = mock_sync_client.update_collection.call_args[1]
         assert call_kwargs["collection_name"] == "test-collection"
+        assert call_kwargs["optimizer_config"].indexing_threshold == 0
+        assert call_kwargs["hnsw_config"].m == 0
 
-    @pytest.mark.asyncio
-    async def test_enable_indexing_success(
-        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    def test_enable_indexing_success(
+        self, qdrant_client: QdrantClientWrapper, mock_sync_client: MagicMock
     ) -> None:
-        """Test that enable_indexing succeeds.
+        """Test that enable_indexing_sync succeeds.
 
         **Why this test is important:**
           - Re-enabling indexing restores performance
@@ -868,19 +865,20 @@ class TestQdrantClientWrapperIndexing:
           - update_collection is called with correct parameters
           - Default indexing threshold and HNSW m are applied
         """
-        mock_async_client.update_collection.return_value = None
+        mock_sync_client.update_collection.return_value = None
 
-        await qdrant_client.enable_indexing(collection="test-collection")
+        qdrant_client.enable_indexing_sync(collection="test-collection")
 
-        mock_async_client.update_collection.assert_called_once()
-        call_kwargs = mock_async_client.update_collection.call_args[1]
+        mock_sync_client.update_collection.assert_called_once()
+        call_kwargs = mock_sync_client.update_collection.call_args[1]
         assert call_kwargs["collection_name"] == "test-collection"
+        assert call_kwargs["optimizer_config"].indexing_threshold == 20_000
+        assert call_kwargs["hnsw_config"].m == 16
 
-    @pytest.mark.asyncio
-    async def test_enable_indexing_with_custom_params(
-        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    def test_enable_indexing_with_custom_params(
+        self, qdrant_client: QdrantClientWrapper, mock_sync_client: MagicMock
     ) -> None:
-        """Test that enable_indexing accepts custom parameters.
+        """Test that enable_indexing_sync accepts custom parameters.
 
         **Why this test is important:**
           - Custom parameters allow tuning for different use cases
@@ -892,13 +890,15 @@ class TestQdrantClientWrapperIndexing:
           - Custom indexing_threshold is applied
           - Custom hnsw_m is applied
         """
-        mock_async_client.update_collection.return_value = None
+        mock_sync_client.update_collection.return_value = None
 
-        await qdrant_client.enable_indexing(collection="test-collection", indexing_threshold=10000, hnsw_m=32)
+        qdrant_client.enable_indexing_sync(collection="test-collection", indexing_threshold=10000, hnsw_m=32)
 
-        mock_async_client.update_collection.assert_called_once()
-        call_kwargs = mock_async_client.update_collection.call_args[1]
+        mock_sync_client.update_collection.assert_called_once()
+        call_kwargs = mock_sync_client.update_collection.call_args[1]
         assert call_kwargs["collection_name"] == "test-collection"
+        assert call_kwargs["optimizer_config"].indexing_threshold == 10000
+        assert call_kwargs["hnsw_config"].m == 32
 
 
 # =============================================================================
@@ -913,25 +913,23 @@ class TestQdrantClientWrapperAdditional:
         """Test that client property returns the async client."""
         assert qdrant_client.client is mock_async_client
 
-    @pytest.mark.asyncio
-    async def test_disable_indexing_raises_on_error(
-        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    def test_disable_indexing_raises_on_error(
+        self, qdrant_client: QdrantClientWrapper, mock_sync_client: MagicMock
     ) -> None:
-        """Test that disable_indexing raises UpstreamError on exception."""
-        mock_async_client.update_collection.side_effect = Exception("API Error")
+        """Test that disable_indexing_sync raises UpstreamError on exception."""
+        mock_sync_client.get_collection.side_effect = Exception("API Error")
 
-        with pytest.raises(UpstreamError, match="Qdrant disable_indexing failed"):
-            await qdrant_client.disable_indexing(collection="test-collection")
+        with pytest.raises(UpstreamError, match="Failed to disable indexing for collection"):
+            qdrant_client.disable_indexing_sync(collection="test-collection")
 
-    @pytest.mark.asyncio
-    async def test_enable_indexing_raises_on_error(
-        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    def test_enable_indexing_raises_on_error(
+        self, qdrant_client: QdrantClientWrapper, mock_sync_client: MagicMock
     ) -> None:
-        """Test that enable_indexing raises UpstreamError on exception."""
-        mock_async_client.update_collection.side_effect = Exception("API Error")
+        """Test that enable_indexing_sync raises UpstreamError on exception."""
+        mock_sync_client.update_collection.side_effect = Exception("API Error")
 
-        with pytest.raises(UpstreamError, match="Qdrant enable_indexing failed"):
-            await qdrant_client.enable_indexing(collection="test-collection")
+        with pytest.raises(UpstreamError, match="Failed to enable indexing for collection"):
+            qdrant_client.enable_indexing_sync(collection="test-collection")
 
     @pytest.mark.asyncio
     async def test_batch_upsert_raises_on_exception(

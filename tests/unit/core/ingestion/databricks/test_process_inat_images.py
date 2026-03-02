@@ -50,6 +50,10 @@ class TestDatabricksINatImageJobMain:
             patch("core.ingestion.databricks.process_inat_images.VectorDBConfig.from_env") as mock_vector_cfg,
             patch("core.ingestion.databricks.process_inat_images.DatabricksStrategy") as mock_strat_cls,
             patch("core.ingestion.databricks.process_inat_images.INaturalistOpenDataClient") as mock_inat_cls,
+            patch(
+                "core.ingestion.databricks.process_inat_images.qdrant_indexing_disabled"
+            ) as mock_indexing_disabled,
+            patch("core.ingestion.databricks.process_inat_images.QdrantClientWrapper") as mock_qdrant_cls,
         ):
             ray_cfg = MagicMock(
                 num_workers=4,
@@ -67,6 +71,7 @@ class TestDatabricksINatImageJobMain:
                 retry_max_attempts=3,
                 retry_min_wait=1.0,
                 retry_max_wait=10.0,
+                disable_indexing_during_ingest=False,
             )
             inat_cfg = MagicMock(
                 image_size="medium",
@@ -80,10 +85,13 @@ class TestDatabricksINatImageJobMain:
             )
             mock_inat_cfg.return_value = inat_cfg
             mock_ray_cfg.return_value = ray_cfg
-            mock_embed_cfg.return_value = MagicMock()
+            embed_cfg = MagicMock()
+            mock_embed_cfg.return_value = embed_cfg
             mock_vector_cfg.return_value = MagicMock(
                 collection="documents",
                 ingestion_targets=frozenset({"qdrant", "weaviate"}),
+                qdrant_url="http://localhost:6333",
+                qdrant_api_key=None,
             )
             mock_strat_cls.from_env.return_value = mock_strategy
             mock_inat_cls.return_value = mock_inat_client
@@ -94,7 +102,10 @@ class TestDatabricksINatImageJobMain:
                 "inat_cls": mock_inat_cls,
                 "inat_cfg": inat_cfg,
                 "ray_cfg": ray_cfg,
+                "embed_cfg": embed_cfg,
                 "vector_cfg": mock_vector_cfg.return_value,
+                "qdrant_indexing_disabled": mock_indexing_disabled,
+                "qdrant_cls": mock_qdrant_cls,
             }
 
     def test_main_requires_inat_max_rows(self, mock_ray) -> None:
@@ -231,3 +242,32 @@ class TestDatabricksINatImageJobMain:
 
         assert mock_task.options.return_value.remote.call_count == 3
         assert mock_ray.wait.call_count >= 3
+
+    def test_main_disables_and_reenables_qdrant_indexing(self, mock_dependencies, mock_ray) -> None:
+        """main() uses qdrant_indexing_disabled context manager when flag is set.
+
+        **Why this test is important:**
+
+        - Disabling HNSW indexing during bulk uploads improves throughput
+        - Indexing must be re-enabled after processing completes
+        - Both operations must use the correct collection name and credentials
+
+        **What it tests:**
+
+        - qdrant_indexing_disabled context manager is entered with correct args
+        - Context manager is only used when disable_indexing_during_ingest is True
+        """
+        from core.ingestion.databricks.process_inat_images import main
+
+        mock_dependencies["ray_cfg"].disable_indexing_during_ingest = True
+        mock_dependencies["inat_cfg"].metadata_url = "https://example.com/photos.tsv"
+        mock_dependencies["inat_cfg"].max_rows = 10
+        mock_dependencies["inat_client"].iter_photo_records.return_value = iter(())
+
+        main()
+
+        mock_dependencies["qdrant_indexing_disabled"].assert_called_once_with(
+            client=mock_dependencies["qdrant_cls"].from_config.return_value,
+            collection="documents",
+            vector_size=mock_dependencies["embed_cfg"].clip_vector_size,
+        )

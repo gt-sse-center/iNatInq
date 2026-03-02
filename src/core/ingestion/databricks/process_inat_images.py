@@ -20,14 +20,17 @@ from urllib.parse import urlparse
 import ray
 
 from clients.inaturalist_open_data import INaturalistOpenDataClient, INaturalistPhotoRecord
+from clients.qdrant import QdrantClientWrapper
 from config import INatConfig, ImageEmbeddingConfig, RayJobConfig, VectorDBConfig
 from core.ingestion.databricks.batch_runner import run_ray_batch_processing
 from core.ingestion.databricks.runtime import apply_python_params as _apply_python_params
 from core.ingestion.interfaces.operations import detect_image_format
 from core.ingestion.interfaces.types import ImageContentResult, ProcessingResult
+from core.ingestion.shared.qdrant_indexing import qdrant_indexing_disabled
 from core.ingestion.strategies import DatabricksStrategy
 from core.ingestion.tasks.image_processing import ImageProcessingPipeline, RayImageProcessingConfig
 from foundation.logger import LOGGING_CONFIG
+from contextlib import nullcontext
 
 dictConfig(LOGGING_CONFIG)
 
@@ -278,21 +281,34 @@ def main() -> None:
                 inat_cb_recovery_timeout_s=inat_cb_recovery_timeout_s,
             )
 
-        stats = run_ray_batch_processing(
-            batches=_iter_task_payload_batches(
-                records,
-                image_size=image_size,
-                batch_size=image_batch_size,
-                max_items=image_max_items,
-            ),
-            submit_batch=_submit_batch,
-            wait_batch_size=ray_cfg.wait_batch_size,
-            wait_timeout=ray_cfg.wait_timeout,
-            max_inflight_batches=max_inflight_batches,
-            job_logger=job_logger,
-            progress_label="iNaturalist image batch progress",
-            total_expected_records=None,
-        )
+        should_disable_indexing = ray_cfg.disable_indexing_during_ingest and "qdrant" in ingestion_targets
+
+        qdrant_wrapper = QdrantClientWrapper.from_config(vector_cfg) if should_disable_indexing else None
+
+        with (
+            qdrant_indexing_disabled(
+                client=qdrant_wrapper,
+                collection=collection,
+                vector_size=embed_cfg.clip_vector_size,
+            )
+            if should_disable_indexing
+            else nullcontext()
+        ):
+            stats = run_ray_batch_processing(
+                batches=_iter_task_payload_batches(
+                    records,
+                    image_size=image_size,
+                    batch_size=image_batch_size,
+                    max_items=image_max_items,
+                ),
+                submit_batch=_submit_batch,
+                wait_batch_size=ray_cfg.wait_batch_size,
+                wait_timeout=ray_cfg.wait_timeout,
+                max_inflight_batches=max_inflight_batches,
+                job_logger=job_logger,
+                progress_label="iNaturalist image batch progress",
+                total_expected_records=None,
+            )
 
         if stats.submitted_records == 0:
             job_logger.info("No iNaturalist image records to process")

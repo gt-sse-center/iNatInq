@@ -71,12 +71,11 @@ class ImageSearchService:
 
         This method:
         1. Generates a CLIP text embedding for the query
-        2. Searches the image collection (named {collection}_images) for similar vectors
+        2. Searches the image collection for similar vectors
         3. Returns formatted results with image metadata and similarity scores
 
         Args:
-            collection: Base collection name. The image collection will be
-                searched as {collection}_images.
+            collection: Base collection name.
             query: Natural language text query (e.g., "a fluffy cat").
             limit: Maximum number of results to return.
 
@@ -99,10 +98,9 @@ class ImageSearchService:
         query_embedding = self.clip_client.embed_text(query.strip())
 
         # 2. Search image collection (async, run in event loop)
-        image_collection = f"{collection}_images"
         return asyncio.run(
             self.vector_db_provider.search_async(
-                collection=image_collection,
+                collection=collection,
                 query_vector=query_embedding,
                 limit=limit,
             )
@@ -121,8 +119,7 @@ class ImageSearchService:
         for non-blocking operations.
 
         Args:
-            collection: Base collection name. The image collection will be
-                searched as {collection}_images.
+            collection: Base collection name.
             query: Natural language text query (e.g., "a fluffy cat").
             limit: Maximum number of results to return.
 
@@ -145,9 +142,8 @@ class ImageSearchService:
         query_embedding = await self.clip_client.embed_text_async(query.strip())
 
         # 2. Search image collection (async)
-        image_collection = f"{collection}_images"
         return await self.vector_db_provider.search_async(
-            collection=image_collection,
+            collection=collection,
             query_vector=query_embedding,
             limit=limit,
         )

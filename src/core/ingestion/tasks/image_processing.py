@@ -254,7 +254,6 @@ class ImageProcessingPipeline:
                 all_vectors.extend([[] for _ in batch])
 
         # Build points and upsert
-        qdrant_image_collection = f"{collection}_images"
         weaviate_image_class = WeaviateClientWrapper._collection_to_image_class_name(collection)
         vector_size = clip_client.vector_size
 
@@ -315,7 +314,7 @@ class ImageProcessingPipeline:
             upsert_tasks.append(
                 asyncio.ensure_future(
                     qdrant_db.batch_upsert_async(
-                        collection=qdrant_image_collection,
+                        collection=collection,
                         points=qdrant_points,
                         vector_size=vector_size,
                     )
@@ -409,7 +408,7 @@ def process_image_batch_ray(
         s3_secret_key: S3 secret key.
         s3_bucket: S3 bucket name.
         image_embedding_config: CLIP/image embedding configuration.
-        collection: Base collection name (image collections: {collection}_images, {Collection}Images).
+        collection: Base collection name
         image_batch_size: S3 keys per task (already batched by caller).
         image_embed_batch_size: Images per CLIP API call.
         rate_limiter: Optional Ray actor for rate limiting.

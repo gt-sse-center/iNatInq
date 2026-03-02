@@ -95,16 +95,36 @@ def mock_async_client() -> AsyncMock:
 
 
 @pytest.fixture
-def qdrant_client(mock_async_client: AsyncMock) -> QdrantClientWrapper:
-    """Create a QdrantClientWrapper instance with mocked client.
+def mock_sync_client() -> MagicMock:
+    """Create a mock QdrantClient (sync) for testing.
+
+    Returns:
+        MagicMock: A mock sync Qdrant client with common methods.
+    """
+    client = MagicMock()
+    client.get_collection = MagicMock()
+    client.update_collection = MagicMock()
+    client.get_collections = MagicMock()
+    client.create_collection = MagicMock()
+    client.close = MagicMock()
+    return client
+
+
+@pytest.fixture
+def qdrant_client(mock_async_client: AsyncMock, mock_sync_client: MagicMock) -> QdrantClientWrapper:
+    """Create a QdrantClientWrapper instance with mocked async and sync clients.
 
     Args:
         mock_async_client: Mock AsyncQdrantClient fixture.
+        mock_sync_client: Mock QdrantClient fixture.
 
     Returns:
-        QdrantClientWrapper: Configured client with mocked async client.
+        QdrantClientWrapper: Configured client with mocked clients.
     """
-    with patch("clients.qdrant.AsyncQdrantClient", return_value=mock_async_client):
+    with (
+        patch("clients.qdrant.AsyncQdrantClient", return_value=mock_async_client),
+        patch("clients.qdrant.QdrantClient", return_value=mock_sync_client),
+    ):
         client = QdrantClientWrapper(url="http://qdrant.example.com:6333")
     return client
 
