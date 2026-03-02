@@ -20,13 +20,16 @@ from typing import Any
 import ray
 
 from clients.s3 import S3ClientWrapper
+from clients.qdrant import QdrantClientWrapper
 from config import ImageEmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
 from core.ingestion.databricks.batch_runner import run_ray_batch_processing
 from core.ingestion.shared.batching import iter_image_batches
+from core.ingestion.shared.qdrant_indexing import qdrant_indexing_disabled
 from core.ingestion.strategies import LocalRayStrategy
 from core.ingestion.tasks import process_image_batch_ray
 from foundation.checkpoint import CheckpointManager, is_s3_path
 from foundation.logger import LOGGING_CONFIG
+from contextlib import nullcontext
 
 dictConfig(LOGGING_CONFIG)
 
@@ -101,7 +104,7 @@ def main() -> None:
             s3_client=s3 if is_s3_path(ray_cfg.checkpoint_dir) else None,
         )
         if ray_cfg.checkpoint_enabled:
-            checkpoint_path = f"{ray_cfg.checkpoint_dir}/{collection}_images.json"
+            checkpoint_path = f"{ray_cfg.checkpoint_dir}/{collection}.json"
             processed = checkpoint_manager.load(checkpoint_path)
 
         image_batch_size = ray_cfg.image_batch_size
@@ -155,16 +158,28 @@ def main() -> None:
                 ingestion_targets=ingestion_targets,
             )
 
-        stats = run_ray_batch_processing(
-            batches=batch_gen,
-            submit_batch=_submit_batch,
-            wait_batch_size=ray_cfg.wait_batch_size,
-            wait_timeout=ray_cfg.wait_timeout,
-            max_inflight_batches=max_inflight_batches,
-            job_logger=job_logger,
-            progress_label="Image batch progress",
-            total_expected_records=None,
-        )
+        should_disable_indexing = ray_cfg.disable_indexing_during_ingest and "qdrant" in ingestion_targets
+        qdrant_wrapper = QdrantClientWrapper.from_config(vector_cfg) if should_disable_indexing else None
+
+        with (
+            qdrant_indexing_disabled(
+                client=qdrant_wrapper,
+                collection=collection,
+                vector_size=embed_cfg.clip_vector_size,
+            )
+            if should_disable_indexing
+            else nullcontext()
+        ):
+            stats = run_ray_batch_processing(
+                batches=batch_gen,
+                submit_batch=_submit_batch,
+                wait_batch_size=ray_cfg.wait_batch_size,
+                wait_timeout=ray_cfg.wait_timeout,
+                max_inflight_batches=max_inflight_batches,
+                job_logger=job_logger,
+                progress_label="Image batch progress",
+                total_expected_records=None,
+            )
 
         success = stats.successful
         failed = stats.failed
@@ -194,7 +209,12 @@ def main() -> None:
         )
 
     except Exception as e:
-        job_logger.error("Unexpected error in Ray image job: %s", e, extra={"error": str(e)}, exc_info=True)
+        job_logger.error(
+            "Unexpected error in Ray image job: %s",
+            e,
+            extra={"error": str(e)},
+            exc_info=True,
+        )
         raise
     finally:
         strategy.shutdown()

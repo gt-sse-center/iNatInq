@@ -823,16 +823,10 @@ class TestIndexingControl:
         )
 
         # Act - disable indexing
-        asyncio.run(qdrant_client.disable_indexing(collection=test_collection))
+        qdrant_client.disable_indexing_sync(collection=test_collection)
 
         # Act - re-enable indexing
-        asyncio.run(
-            qdrant_client.enable_indexing(
-                collection=test_collection,
-                indexing_threshold=20000,
-                hnsw_m=16,
-            )
-        )
+        qdrant_client.enable_indexing_sync(collection=test_collection)
 
         # Assert - search still works
         results = asyncio.run(

@@ -550,8 +550,8 @@ count-all: count-qdrant count-weaviate
 
 .PHONY: count-images-qdrant
 count-images-qdrant:
-	@echo "Counting images in Qdrant collection '$(IMAGE_COLLECTION)_images'..."
-	@curl -sf "http://localhost:6333/collections/$(IMAGE_COLLECTION)_images" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); print('Qdrant images:', d.get('result', {}).get('points_count', 0))" 2>/dev/null || echo "Qdrant: Collection not found or service unavailable"
+	@echo "Counting images in Qdrant collection '$(IMAGE_COLLECTION)'..."
+	@curl -sf "http://localhost:6333/collections/$(IMAGE_COLLECTION)" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); print('Qdrant images:', d.get('result', {}).get('points_count', 0))" 2>/dev/null || echo "Qdrant: Collection not found or service unavailable"
 
 .PHONY: count-images-weaviate
 count-images-weaviate:
@@ -577,7 +577,7 @@ QUERY ?= What is the story about?
 search-qdrant:
 	@echo "Searching Qdrant for: '$(QUERY)'"
 	@ENCODED_QUERY=$$(python3 -c 'import urllib.parse; print(urllib.parse.quote_plus("$(QUERY)"))'); \
-	curl -sf "http://localhost:8000/search?query=$$ENCODED_QUERY&provider=qdrant&limit=3" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); \
+	curl -sf "http://localhost:8000/search?q=$$ENCODED_QUERY&provider=qdrant&limit=3" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); \
 		print('Results:', len(d.get('results', []))); \
 		[print(f\"  - {r.get('payload', {}).get('text', '')[:100]}...\") for r in d.get('results', [])[:3]]" 2>/dev/null || echo "Search failed or service unavailable"
 
@@ -585,7 +585,7 @@ search-qdrant:
 search-weaviate:
 	@echo "Searching Weaviate for: '$(QUERY)'"
 	@ENCODED_QUERY=$$(python3 -c 'import urllib.parse; print(urllib.parse.quote_plus("$(QUERY)"))'); \
-	curl -sf "http://localhost:8000/search?query=$$ENCODED_QUERY&provider=weaviate&limit=3" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); \
+	curl -sf "http://localhost:8000/search?q=$$ENCODED_QUERY&provider=weaviate&limit=3" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); \
 		print('Results:', len(d.get('results', []))); \
 		[print(f\"  - {r.get('payload', {}).get('text', '')[:100]}...\") for r in d.get('results', [])[:3]]" 2>/dev/null || echo "Search failed or service unavailable"
 
@@ -673,8 +673,8 @@ vectordb-clear: qdrant-clear weaviate-clear
 # Image collection clear targets
 .PHONY: qdrant-clear-images
 qdrant-clear-images:
-	@echo "Deleting Qdrant image collection '$(IMAGE_COLLECTION)_images'..."
-	@curl -sf -X DELETE "http://localhost:6333/collections/$(IMAGE_COLLECTION)_images" 2>/dev/null && echo "✅ Qdrant image collection deleted" || echo "Qdrant delete failed or collection doesn't exist"
+	@echo "Deleting Qdrant image collection '$(IMAGE_COLLECTION)'..."
+	@curl -sf -X DELETE "http://localhost:6333/collections/$(IMAGE_COLLECTION)" 2>/dev/null && echo "✅ Qdrant image collection deleted" || echo "Qdrant delete failed or collection doesn't exist"
 
 .PHONY: weaviate-clear-images
 weaviate-clear-images:

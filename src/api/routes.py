@@ -95,14 +95,13 @@ async def search_images(
 
     This endpoint:
     1. Generates a CLIP text embedding for the query
-    2. Searches the image collection ({collection}_images) for similar vectors
+    2. Searches the image collection for similar vectors
     3. Returns ranked image results with similarity scores and metadata
 
     Args:
         q: Natural language text query (e.g., "a fluffy cat sitting on a couch").
         limit: Maximum number of results to return (default: 10, max: 100).
         collection: Optional base collection name (defaults to service default).
-            The actual image collection searched will be {collection}_images.
         provider: Optional vector database provider (qdrant or weaviate).
             If not specified, uses VECTOR_DB_PROVIDER environment variable.
 
@@ -125,7 +124,7 @@ async def search_images(
         {
             "query": "sunset over ocean",
             "model": "ViT-B/32",
-            "collection": "documents_images",
+            "collection": "documents",
             "provider": "qdrant",
             "results": [
                 {
@@ -199,13 +198,10 @@ async def search_images(
             )
         )
 
-    # Image collection name follows pattern {collection}_images
-    image_collection_name = f"{collection_name}_images"
-
     return models.ImageSearchResponse(
         query=q,
         model=image_embed_config.clip_model or "",
-        collection=image_collection_name,
+        collection=collection_name,
         provider=provider_type,
         results=pydantic_results,
         total=search_results.total,

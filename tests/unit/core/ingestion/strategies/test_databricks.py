@@ -409,16 +409,17 @@ class TestDatabricksStrategySetupCluster:
         mock_setup_fn.__signature__ = inspect.Signature(
             parameters=[
                 inspect.Parameter("max_worker_nodes", inspect.Parameter.POSITIONAL_OR_KEYWORD),
-                inspect.Parameter("num_worker_nodes", inspect.Parameter.POSITIONAL_OR_KEYWORD),
-                inspect.Parameter("cpus_per_node", inspect.Parameter.POSITIONAL_OR_KEYWORD),
-                inspect.Parameter("memory_per_node", inspect.Parameter.POSITIONAL_OR_KEYWORD),
             ]
         )
 
         result = strategy._setup_spark_cluster(mock_setup_fn, max_workers=10)
 
         assert result == "cluster_handle"
-        mock_setup_fn.assert_called_once_with(max_worker_nodes=10)
+
+        # Assert that the setup function is called with the correct parameters (max_worker_nodes overriden and other parameters passed through config)
+        mock_setup_fn.assert_called_once_with(
+            max_worker_nodes=10,
+        )
 
 
 class TestDatabricksStrategyInitRayClient:

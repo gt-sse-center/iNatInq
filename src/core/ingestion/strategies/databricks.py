@@ -172,9 +172,7 @@ class DatabricksStrategy:
             Cluster handle from setup_ray_cluster().
         """
         kwargs = {
-            "num_worker_nodes": self._config.num_workers,
-            "cpus_per_node": int(self._config.worker_cpus),
-            "memory_per_node": self._config.worker_memory,
+            "max_worker_nodes": max_workers,
         }
 
         # Filter to only supported parameters
@@ -186,7 +184,7 @@ class DatabricksStrategy:
             extra={"params": filtered},
         )
 
-        return setup_fn(max_worker_nodes=max_workers)
+        return setup_fn(**filtered)
 
     def _init_ray_client(self) -> None:
         """Initialize Ray client connection to Databricks cluster."""

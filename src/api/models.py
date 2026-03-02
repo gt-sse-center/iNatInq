@@ -103,7 +103,7 @@ class RayImageJobRequest(BaseModel):
     Attributes:
         s3_bucket: S3 bucket containing images.
         s3_prefix: S3 prefix to process (e.g., "images/").
-        collection: Base collection name (image collections created as {collection}_images).
+        collection: Base collection name.
         image_max_items: Optional limit on number of images to process.
         image_page_size: Optional S3 listing page size override.
 

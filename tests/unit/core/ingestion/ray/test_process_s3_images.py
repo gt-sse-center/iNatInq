@@ -54,9 +54,17 @@ class TestRayImageJobMain:
                     ) as mock_vector_cfg:
                         with patch("core.ingestion.ray.process_s3_images.LocalRayStrategy") as mock_strat_cls:
                             with patch("core.ingestion.ray.process_s3_images.S3ClientWrapper") as mock_s3_cls:
-                                with patch(
-                                    "core.ingestion.ray.process_s3_images.iter_image_batches"
-                                ) as mock_iter:
+                                with (
+                                    patch(
+                                        "core.ingestion.ray.process_s3_images.iter_image_batches"
+                                    ) as mock_iter,
+                                    patch(
+                                        "core.ingestion.ray.process_s3_images.qdrant_indexing_disabled"
+                                    ) as mock_indexing_disabled,
+                                    patch(
+                                        "core.ingestion.ray.process_s3_images.QdrantClientWrapper"
+                                    ) as mock_qdrant_cls,
+                                ):
                                     mock_ray_cfg.return_value = MagicMock(
                                         num_workers=4,
                                         image_batch_size=50,
@@ -78,6 +86,7 @@ class TestRayImageJobMain:
                                         s3_prefix="",
                                         image_max_items=None,
                                         image_page_size=1000,
+                                        disable_indexing_during_ingest=False,
                                     )
                                     mock_minio_cfg.return_value = MagicMock(
                                         endpoint_url="http://minio:9000",
@@ -85,10 +94,13 @@ class TestRayImageJobMain:
                                         secret_access_key="secret",
                                         bucket="test-bucket",
                                     )
-                                    mock_embed_cfg.return_value = MagicMock()
+                                    embed_cfg = MagicMock()
+                                    mock_embed_cfg.return_value = embed_cfg
                                     mock_vector_cfg.return_value = MagicMock(
                                         collection="documents",
                                         ingestion_targets=frozenset({"qdrant", "weaviate"}),
+                                        qdrant_url="http://localhost:6333",
+                                        qdrant_api_key=None,
                                     )
                                     mock_strat_cls.from_env.return_value = mock_strategy
                                     mock_s3_cls.return_value = mock_s3
@@ -98,10 +110,13 @@ class TestRayImageJobMain:
                                     yield {
                                         "ray_cfg": mock_ray_cfg,
                                         "minio_cfg": mock_minio_cfg,
+                                        "embed_cfg": embed_cfg,
                                         "vector_cfg": mock_vector_cfg,
                                         "strategy": mock_strategy,
                                         "s3": mock_s3,
                                         "iter_batches": mock_iter,
+                                        "qdrant_indexing_disabled": mock_indexing_disabled,
+                                        "qdrant_cls": mock_qdrant_cls,
                                     }
 
     def test_main_initializes_and_shuts_down_cluster(self, mock_dependencies, mock_ray):
@@ -380,3 +395,28 @@ class TestRayImageJobMain:
         mock_dependencies["iter_batches"].assert_called_once()
         call_kwargs = mock_dependencies["iter_batches"].call_args[1]
         assert call_kwargs["page_size"] == 200
+
+    def test_main_disables_and_reenables_qdrant_indexing(self, mock_dependencies, mock_ray):
+        """main() uses qdrant_indexing_disabled context manager when flag is set.
+
+        **Why this test is important:**
+          - Disabling HNSW indexing during bulk uploads improves throughput
+          - Indexing must be re-enabled after processing completes
+          - Both operations must use the correct collection name and credentials
+
+        **What it tests:**
+          - qdrant_indexing_disabled context manager is entered with correct args
+          - Context manager is only used when disable_indexing_during_ingest is True
+        """
+        from core.ingestion.ray.process_s3_images import main
+
+        mock_dependencies["ray_cfg"].return_value.disable_indexing_during_ingest = True
+
+        with patch.dict("os.environ", {"S3_PREFIX": "images/"}, clear=False):
+            main()
+
+        mock_dependencies["qdrant_indexing_disabled"].assert_called_once_with(
+            client=mock_dependencies["qdrant_cls"].from_config.return_value,
+            collection="documents",
+            vector_size=mock_dependencies["embed_cfg"].clip_vector_size,
+        )

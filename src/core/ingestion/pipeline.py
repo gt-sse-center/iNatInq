@@ -39,11 +39,14 @@ import attrs
 import ray
 from botocore.exceptions import ClientError
 
+from clients.qdrant import QdrantClientWrapper
 from clients.s3 import S3ClientWrapper
 from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
 from foundation.checkpoint import CheckpointManager, is_s3_path
 from core.ingestion.shared import RateLimiterActor
+from core.ingestion.shared.qdrant_indexing import qdrant_indexing_disabled
 from core.ingestion.tasks import process_image_batch_ray
+from contextlib import nullcontext
 
 if TYPE_CHECKING:
     from core.ingestion.strategies.base import ClusterStrategy
@@ -216,19 +219,37 @@ class IngestionPipeline:
         # Create rate limiter and submit tasks
         rate_limiter = RateLimiterActor.remote(rate_per_sec=self.ray_config.ollama_requests_per_second)
 
-        futures = self._submit_tasks(
-            key_batches=key_batches,
-            total_batches=total_batches,
-            rate_limiter=rate_limiter,
+        should_disable_indexing = (
+            self.ray_config.disable_indexing_during_ingest
+            and "qdrant" in self.vector_config.ingestion_targets
         )
 
-        # Collect results with progress tracking
-        results = self._collect_results(
-            futures=futures,
-            total_keys=total_keys,
-            job_logger=job_logger,
-            start=start,
+        qdrant_wrapper = (
+            QdrantClientWrapper.from_config(self.vector_config) if should_disable_indexing else None
         )
+
+        with (
+            qdrant_indexing_disabled(
+                client=qdrant_wrapper,
+                collection=self.vector_config.collection,
+                vector_size=self.embed_config.clip_vector_size,
+            )
+            if should_disable_indexing
+            else nullcontext()
+        ):
+            futures = self._submit_tasks(
+                key_batches=key_batches,
+                total_batches=total_batches,
+                rate_limiter=rate_limiter,
+            )
+
+            # Collect results with progress tracking
+            results = self._collect_results(
+                futures=futures,
+                total_keys=total_keys,
+                job_logger=job_logger,
+                start=start,
+            )
 
         # Calculate statistics
         success = sum(1 for _, ok, _ in results if ok)
