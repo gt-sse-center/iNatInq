@@ -171,7 +171,7 @@ class ProcessingClientsFactory:
         session = create_retry_session()
 
         # Create embedding provider
-        embedder = create_embedding_provider(config.embedding_config, session=session)
+        embedder = create_embedding_provider(config.embedding_config)
 
         # Create vector DB providers only for targeted databases
         db_factory = self._vector_db_factory or VectorDBConfigFactory(config.namespace)

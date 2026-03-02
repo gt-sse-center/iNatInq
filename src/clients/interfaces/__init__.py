@@ -7,7 +7,7 @@ database, etc.). Concrete implementations live in the parent `clients` package.
 
 from config import EmbeddingConfig, VectorDBConfig
 
-from .embedding import EmbeddingProvider, ImageEmbeddingProvider, create_embedding_provider
+from .embedding import EmbeddingProvider, create_embedding_provider
 from .embedding import register_provider as register_embedding_provider
 from .vector_db import VectorDBProvider, create_vector_db_provider
 from .vector_db import register_provider as register_vector_db_provider
@@ -15,7 +15,6 @@ from .vector_db import register_provider as register_vector_db_provider
 __all__ = [
     "EmbeddingConfig",
     "EmbeddingProvider",
-    "ImageEmbeddingProvider",
     "VectorDBConfig",
     "VectorDBProvider",
     "create_embedding_provider",

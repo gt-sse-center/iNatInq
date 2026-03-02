@@ -56,8 +56,7 @@ class TestProviderRegistration:
             ollama_model="test-model",
         )
 
-        with patch("clients.ollama.create_retry_session"):
-            provider = create_embedding_provider(config)
+        provider = create_embedding_provider(config)
 
         assert isinstance(provider, OllamaClient)
         assert provider.base_url == "http://ollama.example.com:11434"

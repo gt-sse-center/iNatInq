@@ -1,35 +1,31 @@
 """Unit tests for clients.ollama module.
 
-This file tests the OllamaClient class which provides text embedding generation
+This file tests the OllamaClient class which provides embedding generation
 via the Ollama API.
 
 # Test Coverage
 
 The tests cover:
   - Client Initialization: Default and custom configuration, from_config factory
-  - Session Management: Session creation, set_session method, session property
-  - Embedding Generation: Single and batch embeddings, success and error cases
-  - Circuit Breaker Integration: Circuit breaker usage, error handling (sync and async)
-  - Async Operations: Async embedding methods with async circuit breaker
+  - Async Embedding Generation: Single and batch embeddings, success and error cases
+  - Circuit Breaker Integration: Async circuit breaker usage and error handling
   - Error Handling: UpstreamError on failures, circuit breaker errors
   - Vector Size: Model-based vector size determination
 
 # Test Structure
 
 Tests use pytest class-based organization with mocking for external dependencies.
-The underlying requests.Session and circuit breaker are mocked to isolate client logic.
+The underlying httpx.AsyncClient and circuit breaker are mocked to isolate client logic.
 
 # Running Tests
 
-Run with: pytest tests/unit/clients/test_ollama.py
+Run with: uv run pytest tests/unit/clients/test_ollama.py
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiobreaker
-import pybreaker
 import pytest
-import requests
 
 from clients.ollama import OllamaClient
 from config import EmbeddingConfig
@@ -54,15 +50,21 @@ class TestOllamaClientInit:
 
         **What it tests:**
           - Client is created with base_url and model
-          - Default timeout_s is 60 seconds
-          - Session is created automatically
+          - Client is created with default attribute values
         """
-        client = OllamaClient(base_url="http://ollama.example.com:11434", model="test-model")
+        client = OllamaClient(base_url="test-url", model="test-model")
 
-        assert client.base_url == "http://ollama.example.com:11434"
+        assert client.base_url == "test-url"
         assert client.model == "test-model"
         assert client.timeout_s == 60
-        assert client._session is not None
+        assert client.batch_timeout_multiplier == 1
+        assert client.circuit_breaker_failure_threshold == 5
+        assert client.circuit_breaker_recovery_timeout_s == 30
+        assert client.max_batch_size == 12
+        assert client.vector_size_override is None
+        assert client.max_retries == 3
+        assert client.retry_min_wait == 1
+        assert client.retry_max_wait == 10
 
     def test_creates_client_with_custom_timeout(self) -> None:
         """Test that client accepts custom timeout.
@@ -82,27 +84,19 @@ class TestOllamaClientInit:
         assert client.timeout_s == 120
 
     def test_creates_circuit_breaker(self) -> None:
-        """Test that both sync and async circuit breakers are created during initialization.
+        """Test that async circuit breaker is created during initialization.
 
         **Why this test is important:**
           - Circuit breaker provides fault tolerance
           - Ensures circuit breaker is configured with correct parameters
           - Critical for production reliability
-          - Validates both sync (pybreaker) and async (aiobreaker) circuit breaker integration
+          - Validates aiobreaker circuit breaker integration
 
         **What it tests:**
-          - Sync circuit breaker (pybreaker) is created with correct configuration
           - Async circuit breaker (aiobreaker) is created with correct configuration
-          - Failure threshold and recovery timeout are set correctly for both
+          - Failure threshold is set correctly
         """
         client = OllamaClient(base_url="http://ollama.example.com:11434", model="test-model")
-
-        # Verify sync circuit breaker (pybreaker) was created
-        assert client._breaker is not None
-        assert isinstance(client._breaker, pybreaker.CircuitBreaker)
-        assert client._breaker.name == "ollama"
-        assert client._breaker.fail_max == 5
-        assert client._breaker.reset_timeout == 30
 
         # Verify async circuit breaker (aiobreaker) was created
         assert client._async_breaker is not None
@@ -119,8 +113,7 @@ class TestOllamaClientInit:
           - Validates configurable resilience parameters
 
         **What it tests:**
-          - Custom failure threshold is applied to both breakers
-          - Custom recovery timeout is applied to both breakers
+          - Custom failure threshold is applied to async breaker
         """
         client = OllamaClient(
             base_url="http://ollama.example.com:11434",
@@ -129,8 +122,6 @@ class TestOllamaClientInit:
             circuit_breaker_recovery_timeout_s=60,
         )
 
-        assert client._breaker.fail_max == 3
-        assert client._breaker.reset_timeout == 60
         assert client._async_breaker.fail_max == 3
 
     def test_creates_client_with_batch_config(self) -> None:
@@ -188,7 +179,6 @@ class TestOllamaClientInit:
         **What it tests:**
           - Client is created from EmbeddingConfig
           - Config values are correctly applied
-          - Session can be passed optionally
         """
         config = EmbeddingConfig(
             provider_type="ollama",
@@ -271,362 +261,8 @@ class TestOllamaClientInit:
         assert client.batch_timeout_multiplier == 2.0
         assert client.max_batch_size == 8
 
-        # Verify circuit breaker was configured with custom values
-        assert client._breaker.fail_max == 10
-        assert client._breaker.reset_timeout == 60
-
-
-# =============================================================================
-# Session Management Tests
-# =============================================================================
-
-
-class TestOllamaClientSession:
-    """Test suite for OllamaClient session management."""
-
-    def test_session_property_creates_session(self) -> None:
-        """Test that session property creates session if needed.
-
-        **Why this test is important:**
-          - Lazy session creation improves initialization performance
-          - Ensures session is always available
-          - Critical for resource management
-          - Validates lazy initialization pattern
-
-        **What it tests:**
-          - Session is created when accessed
-          - Session is cached for subsequent accesses
-        """
-        client = OllamaClient(base_url="http://ollama.example.com:11434", model="test-model")
-        # Clear initial session
-        object.__setattr__(client, "_session", None)
-
-        session = client.session
-
-        assert session is not None
-        assert client.session is session  # Cached
-
-    def test_set_session_updates_session(self, ollama_client: OllamaClient) -> None:
-        """Test that set_session updates the session.
-
-        **Why this test is important:**
-          - Allows custom session configuration
-          - Enables connection pooling and retry logic customization
-          - Critical for performance optimization
-          - Validates session replacement
-
-        **What it tests:**
-          - set_session updates the session
-          - session property returns the new session
-        """
-        new_session = MagicMock(spec=requests.Session)
-
-        ollama_client.set_session(new_session)
-
-        assert ollama_client._session == new_session
-        assert ollama_client.session == new_session
-
-
-# =============================================================================
-# Embedding Generation Tests
-# =============================================================================
-
-
-class TestOllamaClientEmbed:
-    """Test suite for OllamaClient.embed method."""
-
-    def test_embed_success(self, ollama_client: OllamaClient, mock_session: MagicMock) -> None:
-        """Test that embed returns embedding vector on success.
-
-        **Why this test is important:**
-          - Embedding generation is the core functionality
-          - Validates successful API interaction
-          - Ensures response parsing is correct
-          - Critical for basic functionality
-
-        **What it tests:**
-          - HTTP POST is called with correct URL and payload
-          - Response JSON is parsed correctly
-          - Embedding vector is returned as list of floats
-        """
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"embedding": [0.1, 0.2, 0.3]}
-        mock_session.post.return_value = mock_response
-
-        result = ollama_client.embed("hello world")
-
-        assert result == [0.1, 0.2, 0.3]
-        mock_session.post.assert_called_once()
-        call_args = mock_session.post.call_args
-        # First positional argument is the URL
-        assert "api/embeddings" in call_args[0][0]
-        # Check keyword arguments
-        assert call_args[1]["json"] == {"model": "nomic-embed-text", "prompt": "hello world"}
-
-    def test_embed_raises_upstream_error_on_request_exception(
-        self, ollama_client: OllamaClient, mock_session: MagicMock
-    ) -> None:
-        """Test that embed raises UpstreamError on request exception.
-
-        **Why this test is important:**
-          - Error handling ensures consistent error types
-          - UpstreamError maps to HTTP 502 in API layer
-          - Critical for error propagation and debugging
-          - Validates error wrapping
-
-        **What it tests:**
-          - RequestException is wrapped in UpstreamError
-          - Error message includes context
-        """
-        mock_session.post.side_effect = requests.RequestException("connection failed")
-
-        with pytest.raises(UpstreamError, match="Ollama request failed"):
-            ollama_client.embed("hello world")
-
-    def test_embed_raises_upstream_error_on_error_status(
-        self, ollama_client: OllamaClient, mock_session: MagicMock
-    ) -> None:
-        """Test that embed raises UpstreamError on error status code.
-
-        **Why this test is important:**
-          - HTTP error status codes should be handled gracefully
-          - UpstreamError provides consistent error handling
-          - Critical for error propagation
-          - Validates status code handling
-
-        **What it tests:**
-          - HTTP 400+ status codes raise UpstreamError
-          - Error message includes status code and response text
-        """
-        mock_response = MagicMock()
-        mock_response.status_code = 500
-        mock_response.text = "Internal Server Error"
-        mock_session.post.return_value = mock_response
-
-        with pytest.raises(UpstreamError, match="Ollama error 500"):
-            ollama_client.embed("hello world")
-
-    def test_embed_raises_upstream_error_on_missing_embedding(
-        self, ollama_client: OllamaClient, mock_session: MagicMock
-    ) -> None:
-        """Test that embed raises UpstreamError when embedding is missing.
-
-        **Why this test is important:**
-          - Validates response structure
-          - Prevents silent failures
-          - Critical for data integrity
-          - Validates response validation
-
-        **What it tests:**
-          - Missing embedding field raises UpstreamError
-          - Empty embedding list raises UpstreamError
-        """
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {}
-        mock_session.post.return_value = mock_response
-
-        with pytest.raises(UpstreamError, match="missing embedding"):
-            ollama_client.embed("hello world")
-
-    def test_embed_handles_circuit_breaker_error(
-        self,
-        ollama_client: OllamaClient,
-    ) -> None:
-        """Test that embed handles circuit breaker errors.
-
-        **Why this test is important:**
-          - Circuit breaker errors need special handling
-          - UpstreamError conversion ensures consistent error types
-          - Critical for fault tolerance
-          - Validates circuit breaker integration
-
-        **What it tests:**
-          - CircuitBreakerError is handled correctly by the decorator
-          - UpstreamError is raised when circuit is open
-        """
-        # Replace the circuit breaker with a mock in OPEN state
-        mock_breaker = MagicMock(spec=pybreaker.CircuitBreaker)
-        mock_breaker.current_state = pybreaker.STATE_OPEN
-        object.__setattr__(ollama_client, "_breaker", mock_breaker)
-
-        with pytest.raises(UpstreamError, match="service is currently unavailable"):
-            ollama_client.embed("hello world")
-
-
-# =============================================================================
-# Batch Embedding Tests
-# =============================================================================
-
-
-class TestOllamaClientEmbedBatch:
-    """Test suite for OllamaClient.embed_batch method."""
-
-    def test_embed_batch_success(self, ollama_client: OllamaClient, mock_session: MagicMock) -> None:
-        """Test that embed_batch returns embeddings on success.
-
-        **Why this test is important:**
-          - Batch embedding is more efficient than individual calls
-          - Validates batch API interaction
-          - Ensures response parsing is correct
-          - Critical for performance optimization
-
-        **What it tests:**
-          - HTTP POST is called with batch endpoint and payload
-          - Response JSON is parsed correctly
-          - List of embedding vectors is returned
-        """
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"embeddings": [[0.1, 0.2], [0.3, 0.4]]}
-        mock_session.post.return_value = mock_response
-
-        result = ollama_client.embed_batch(["hello", "world"])
-
-        assert result == [[0.1, 0.2], [0.3, 0.4]]
-        mock_session.post.assert_called_once()
-        call_args = mock_session.post.call_args
-        # First positional argument is the URL
-        assert "api/embed" in call_args[0][0]
-        # Check keyword arguments
-        assert call_args[1]["json"] == {"model": "nomic-embed-text", "input": ["hello", "world"]}
-
-    def test_embed_batch_raises_value_error_on_empty_list(self, ollama_client: OllamaClient) -> None:
-        """Test that embed_batch raises ValueError for empty list.
-
-        **Why this test is important:**
-          - Prevents invalid API calls
-          - Ensures input validation
-          - Critical for preventing errors
-          - Validates input validation
-
-        **What it tests:**
-          - Empty texts list raises ValueError
-          - Error message is descriptive
-        """
-        with pytest.raises(ValueError, match="texts list cannot be empty"):
-            ollama_client.embed_batch([])
-
-    def test_embed_batch_raises_value_error_on_exceeding_max_batch_size(self) -> None:
-        """Test that embed_batch raises ValueError when exceeding max_batch_size.
-
-        **Why this test is important:**
-          - Batch size limits prevent quality degradation
-          - Large batches can cause OOM or slow responses
-          - Critical for production reliability
-
-        **What it tests:**
-          - Batch exceeding max_batch_size raises ValueError
-          - Error message includes both actual and max size
-        """
-        client = OllamaClient(
-            base_url="http://ollama.example.com:11434",
-            model="test-model",
-            max_batch_size=5,
-        )
-
-        texts = ["text"] * 10  # 10 texts exceeds max of 5
-        with pytest.raises(ValueError, match="exceeds max_batch_size"):
-            client.embed_batch(texts)
-
-    def test_embed_batch_allows_unlimited_when_max_batch_size_none(
-        self, ollama_client: OllamaClient, mock_session: MagicMock
-    ) -> None:
-        """Test that embed_batch allows any size when max_batch_size is None.
-
-        **Why this test is important:**
-          - Some use cases need unlimited batch sizes
-          - None value should disable the limit
-          - Critical for flexibility
-
-        **What it tests:**
-          - Large batch is accepted when max_batch_size=None
-          - No ValueError is raised
-        """
-        # Create client with no batch limit
-        client = OllamaClient(
-            base_url="http://ollama.example.com:11434",
-            model="test-model",
-            max_batch_size=None,
-        )
-        client.set_session(mock_session)
-
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"embeddings": [[0.1]] * 20}
-        mock_session.post.return_value = mock_response
-
-        texts = ["text"] * 20  # Large batch
-        result = client.embed_batch(texts)
-
-        assert len(result) == 20
-
-    def test_embed_batch_scales_timeout_by_batch_size(
-        self, ollama_client: OllamaClient, mock_session: MagicMock
-    ) -> None:
-        """Test that embed_batch scales timeout by batch size.
-
-        **Why this test is important:**
-          - Larger batches need more time
-          - Timeout scaling prevents premature timeouts
-          - Critical for reliability
-          - Validates timeout calculation
-
-        **What it tests:**
-          - Timeout is scaled based on batch size
-          - Minimum timeout is preserved
-        """
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"embeddings": [[0.1], [0.2], [0.3]]}
-        mock_session.post.return_value = mock_response
-
-        ollama_client.embed_batch(["a", "b", "c"])
-
-        call_kwargs = mock_session.post.call_args[1]
-        assert call_kwargs["timeout"] == 180  # 60 * 3
-
-    def test_embed_batch_falls_back_on_batch_api_failure(
-        self,
-        ollama_client: OllamaClient,
-        mock_session: MagicMock,
-    ) -> None:
-        """Test that embed_batch falls back to individual calls on batch API failure.
-
-        **Why this test is important:**
-          - Fallback ensures compatibility with older Ollama versions
-          - Graceful degradation improves reliability
-          - Critical for backward compatibility
-          - Validates fallback logic
-
-        **What it tests:**
-          - Batch API failure triggers fallback
-          - Individual embed calls are made
-          - Correct result is returned after fallback
-        """
-        # First call fails (batch API), subsequent calls succeed (fallback)
-        mock_response_fail = MagicMock()
-        mock_response_fail.status_code = 400
-        mock_response_fail.text = "Batch API not supported"
-
-        mock_response_success = MagicMock()
-        mock_response_success.status_code = 200
-        mock_response_success.json.side_effect = [
-            {"embedding": [0.1, 0.2]},
-            {"embedding": [0.3, 0.4]},
-        ]
-
-        mock_session.post.side_effect = [
-            mock_response_fail,
-            mock_response_success,
-            mock_response_success,
-        ]
-
-        result = ollama_client.embed_batch(["hello", "world"], fallback_to_individual=True)
-
-        assert result == [[0.1, 0.2], [0.3, 0.4]]
-        assert mock_session.post.call_count == 3  # 1 batch + 2 individual
+        # Verify async circuit breaker was configured with custom values
+        assert client._async_breaker.fail_max == 10
 
 
 # =============================================================================
@@ -675,66 +311,19 @@ class TestOllamaClientVectorSize:
 
 
 # =============================================================================
-# Close Method Tests
+# Text Embedding Tests
 # =============================================================================
 
 
-class TestOllamaClientClose:
-    """Test suite for OllamaClient.close method."""
+class TestOllamaClientEmbedText:
+    """Test suite for OllamaClient.embed_text method."""
 
-    def test_close_closes_session(self, ollama_client: OllamaClient, mock_session: MagicMock) -> None:
-        """Test that close closes the session.
-
-        **Why this test is important:**
-          - Proper resource cleanup prevents leaks
-          - Session closing releases connections
-          - Critical for resource management
-          - Validates cleanup logic
-
-        **What it tests:**
-          - Session close is called
-          - Session reference is cleared
-        """
-        ollama_client.close()
-
-        mock_session.close.assert_called_once()
-        assert ollama_client._session is None
-
-    def test_close_handles_none_session(self) -> None:
-        """Test that close handles None session gracefully.
-
-        **Why this test is important:**
-          - Idempotent close prevents errors
-          - Allows multiple close calls
-          - Critical for robustness
-          - Validates defensive programming
-
-        **What it tests:**
-          - Close with None session doesn't raise error
-        """
-        client = OllamaClient(base_url="http://ollama.example.com:11434", model="test-model")
-        object.__setattr__(client, "_session", None)
-
-        # Should not raise
-        client.close()
-        assert client._session is None
-
-
-# =============================================================================
-# Async Embedding Tests
-# =============================================================================
-
-
-class TestOllamaClientEmbedAsync:
-    """Test suite for OllamaClient.embed_async method."""
-
-    @pytest.mark.asyncio
     @patch("clients.ollama.httpx.AsyncClient")
     @pytest.mark.asyncio
-    async def test_embed_async_success(
+    async def test_embed_text_success(
         self, mock_async_client_cls: MagicMock, ollama_client: OllamaClient
     ) -> None:
-        """Test that embed_async returns embedding vector on success."""
+        """Test that embed_text returns embedding vector on success."""
         mock_response = MagicMock()
         mock_response.json.return_value = {"embedding": [0.1, 0.2, 0.3]}
         mock_response.raise_for_status = MagicMock()
@@ -745,17 +334,22 @@ class TestOllamaClientEmbedAsync:
         mock_client.__aexit__.return_value = None
         mock_async_client_cls.return_value = mock_client
 
-        result = await ollama_client.embed_async("hello world")
+        result = await ollama_client.embed_text("hello world")
 
         assert result == [0.1, 0.2, 0.3]
         mock_client.post.assert_called_once()
+        call_args = mock_client.post.call_args
+        # First positional argument is the URL
+        assert "api/embeddings" in call_args[0][0]
+        # Check keyword arguments
+        assert call_args[1]["json"] == {"model": "nomic-embed-text", "prompt": "hello world"}
 
     @patch("clients.ollama.httpx.AsyncClient")
     @pytest.mark.asyncio
-    async def test_embed_async_raises_on_http_status_error(
+    async def test_embed_text_raises_on_http_status_error(
         self, mock_async_client_cls: MagicMock, ollama_client: OllamaClient
     ) -> None:
-        """Test that embed_async raises UpstreamError on HTTP status error.
+        """Test that embed_text raises UpstreamError on HTTP status error.
 
         Note: 500 errors are retriable, so the error message comes from the
         retry wrapper after all retries are exhausted.
@@ -774,15 +368,15 @@ class TestOllamaClientEmbedAsync:
         mock_client.__aexit__.return_value = None
         mock_async_client_cls.return_value = mock_client
 
-        with pytest.raises(UpstreamError, match="Ollama embed_async failed after"):
-            await ollama_client.embed_async("hello world")
+        with pytest.raises(UpstreamError, match="Ollama _embed_async_impl failed after"):
+            await ollama_client.embed_text("hello world")
 
     @patch("clients.ollama.httpx.AsyncClient")
     @pytest.mark.asyncio
-    async def test_embed_async_raises_on_request_error(
+    async def test_embed_text_raises_on_request_error(
         self, mock_async_client_cls: MagicMock, ollama_client: OllamaClient
     ) -> None:
-        """Test that embed_async raises UpstreamError on request error.
+        """Test that embed_text raises UpstreamError on request error.
 
         Note: RequestError (base class, not ConnectError) is non-retriable
         so the error wraps immediately via async_retry_call.
@@ -795,15 +389,15 @@ class TestOllamaClientEmbedAsync:
         mock_client.__aexit__.return_value = None
         mock_async_client_cls.return_value = mock_client
 
-        with pytest.raises(UpstreamError, match="Ollama embed_async failed"):
-            await ollama_client.embed_async("hello world")
+        with pytest.raises(UpstreamError, match="Ollama _embed_async_impl failed"):
+            await ollama_client.embed_text("hello world")
 
     @patch("clients.ollama.httpx.AsyncClient")
     @pytest.mark.asyncio
-    async def test_embed_async_raises_on_missing_embedding(
+    async def test_embed_text_raises_on_missing_embedding(
         self, mock_async_client_cls: MagicMock, ollama_client: OllamaClient
     ) -> None:
-        """Test that embed_async raises UpstreamError when embedding is missing."""
+        """Test that embed_text raises UpstreamError when embedding is missing."""
         mock_response = MagicMock()
         mock_response.json.return_value = {}
         mock_response.raise_for_status = MagicMock()
@@ -815,14 +409,14 @@ class TestOllamaClientEmbedAsync:
         mock_async_client_cls.return_value = mock_client
 
         with pytest.raises(UpstreamError, match="missing embedding"):
-            await ollama_client.embed_async("hello world")
+            await ollama_client.embed_text("hello world")
 
     @patch("foundation.circuit_breaker.handle_circuit_breaker_error")
     @pytest.mark.asyncio
-    async def test_embed_async_handles_circuit_breaker_open(
+    async def test_embed_text_handles_circuit_breaker_open(
         self, mock_handle_error: MagicMock, ollama_client: OllamaClient
     ) -> None:
-        """Test that embed_async handles circuit breaker open state.
+        """Test that embed_text handles circuit breaker open state.
 
         **Why this test is important:**
           - Async methods use aiobreaker for circuit breaking
@@ -841,25 +435,25 @@ class TestOllamaClientEmbedAsync:
         object.__setattr__(ollama_client, "_async_breaker", mock_async_breaker)
 
         with pytest.raises(UpstreamError, match="service unavailable"):
-            await ollama_client.embed_async("hello world")
+            await ollama_client.embed_text("hello world")
 
         mock_handle_error.assert_called_once_with("ollama")
 
 
 # =============================================================================
-# Async Batch Embedding Tests
+# Batch Text Embedding Tests
 # =============================================================================
 
 
-class TestOllamaClientEmbedBatchAsync:
-    """Test suite for OllamaClient.embed_batch_async method."""
+class TestOllamaClientEmbedTextBatch:
+    """Test suite for OllamaClient.embed_text_batch method."""
 
     @patch("clients.ollama.httpx.AsyncClient")
     @pytest.mark.asyncio
-    async def test_embed_batch_async_success(
+    async def test_embed_text_batch_success(
         self, mock_async_client_cls: MagicMock, ollama_client: OllamaClient
     ) -> None:
-        """Test that embed_batch_async returns embeddings on success."""
+        """Test that embed_text_batch returns embeddings on success."""
         mock_response = MagicMock()
         mock_response.json.return_value = {"embeddings": [[0.1, 0.2], [0.3, 0.4]]}
         mock_response.raise_for_status = MagicMock()
@@ -870,27 +464,84 @@ class TestOllamaClientEmbedBatchAsync:
         mock_client.__aexit__.return_value = None
         mock_async_client_cls.return_value = mock_client
 
-        result = await ollama_client.embed_batch_async(["hello", "world"])
+        result = await ollama_client.embed_text_batch(["hello", "world"])
 
         assert result == [[0.1, 0.2], [0.3, 0.4]]
         mock_client.post.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_embed_batch_async_raises_value_error_on_empty_list(
+    async def test_embed_text_batch_raises_value_error_on_empty_list(
         self, ollama_client: OllamaClient
     ) -> None:
-        """Test that embed_batch_async raises ValueError for empty list."""
+        """Test that embed_text_batch raises ValueError for empty list."""
         with pytest.raises(ValueError, match="texts list cannot be empty"):
-            await ollama_client.embed_batch_async([])
+            await ollama_client.embed_text_batch([])
+
+    @pytest.mark.asyncio
+    async def test_embed_text_batch_raises_value_error_on_exceeding_max_batch_size(self) -> None:
+        """Test that embed_text_batch raises ValueError when exceeding max_batch_size.
+
+        **Why this test is important:**
+          - Batch size limits prevent quality degradation
+          - Large batches can cause OOM or slow responses
+          - Critical for production reliability
+
+        **What it tests:**
+          - Batch exceeding max_batch_size raises ValueError
+          - Error message includes both actual and max size
+        """
+        client = OllamaClient(
+            base_url="http://ollama.example.com:11434",
+            model="test-model",
+            max_batch_size=5,
+        )
+
+        texts = ["text"] * 10  # 10 texts exceeds max of 5
+        with pytest.raises(ValueError, match="exceeds max_batch_size"):
+            await client.embed_text_batch(texts)
 
     @patch("clients.ollama.httpx.AsyncClient")
     @pytest.mark.asyncio
-    async def test_embed_batch_async_falls_back_on_failure(
+    async def test_embed_text_batch_scales_timeout_by_batch_size(
+        self, mock_async_client_cls: MagicMock, ollama_client: OllamaClient
+    ) -> None:
+        """Test that embed_text_batch scales timeout by batch size.
+
+        **Why this test is important:**
+          - Larger batches need more time
+          - Timeout scaling prevents premature timeouts
+          - Critical for reliability
+          - Validates timeout calculation
+
+        **What it tests:**
+          - Timeout is scaled based on batch size
+          - Minimum timeout is preserved
+        """
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"embeddings": [[0.1], [0.2], [0.3]]}
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_async_client_cls.return_value = mock_client
+
+        await ollama_client.embed_text_batch(["a", "b", "c"])
+
+        # Verify post was called with scaled timeout
+        call_kwargs = mock_client.post.call_args[1]
+        # timeout_s=60, batch_timeout_multiplier=1.0, 3 texts = 60 * 1.0 * 3 = 180
+        assert call_kwargs["timeout"] == 180
+
+    @patch("clients.ollama.httpx.AsyncClient")
+    @pytest.mark.asyncio
+    async def test_embed_text_batch_falls_back_on_failure(
         self,
         mock_async_client_cls: MagicMock,
         ollama_client: OllamaClient,
     ) -> None:
-        """Test that embed_batch_async falls back to individual calls on failure.
+        """Test that embed_text_batch falls back to individual calls on failure.
 
         **Why this test is important:**
           - Fallback ensures compatibility with older Ollama versions
@@ -921,17 +572,17 @@ class TestOllamaClientEmbedBatchAsync:
         with patch.object(
             ollama_client, "_embed_async_impl", side_effect=[[0.1, 0.2], [0.3, 0.4]]
         ) as mock_embed_impl:
-            result = await ollama_client.embed_batch_async(["hello", "world"], fallback_to_individual=True)
+            result = await ollama_client.embed_text_batch(["hello", "world"], fallback_to_individual=True)
 
             assert result == [[0.1, 0.2], [0.3, 0.4]]
             assert mock_embed_impl.call_count == 2
 
     @patch("foundation.circuit_breaker.handle_circuit_breaker_error")
     @pytest.mark.asyncio
-    async def test_embed_batch_async_handles_circuit_breaker_open(
+    async def test_embed_text_batch_handles_circuit_breaker_open(
         self, mock_handle_error: MagicMock, ollama_client: OllamaClient
     ) -> None:
-        """Test that embed_batch_async handles circuit breaker open state.
+        """Test that embed_text_batch handles circuit breaker open state.
 
         **Why this test is important:**
           - Async batch methods use aiobreaker for circuit breaking
@@ -950,42 +601,38 @@ class TestOllamaClientEmbedBatchAsync:
         object.__setattr__(ollama_client, "_async_breaker", mock_async_breaker)
 
         with pytest.raises(UpstreamError, match="service unavailable"):
-            await ollama_client.embed_batch_async(["hello", "world"])
+            await ollama_client.embed_text_batch(["hello", "world"])
 
         mock_handle_error.assert_called_once_with("ollama")
 
+    @patch("clients.ollama.httpx.AsyncClient")
+    @pytest.mark.asyncio
+    async def test_embed_text_batch_raises_if_missing_results(
+        self, mock_async_client_cls: MagicMock, ollama_client: OllamaClient
+    ) -> None:
+        """Test that embed_text_batch raises UpstreamError when result count != input count.
 
-# =============================================================================
-# Initialization Tests (Session Creation)
-# =============================================================================
+        **Why this test is important:**
+          - Ollama must return one embedding per input text
+          - Length mismatch indicates upstream bug or truncation
+          - Critical for data integrity in batch operations
 
+        **What it tests:**
+          - Response with fewer embeddings than inputs raises UpstreamError
+          - Error message includes expected and actual counts
+        """
+        # 3 inputs but only 2 embeddings in response
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "embeddings": [[0.1, 0.2], [0.3, 0.4]],  # 2 embeddings
+        }
+        mock_response.raise_for_status = MagicMock()
 
-class TestOllamaClientSessionCreation:
-    """Test suite for OllamaClient session initialization."""
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_async_client_cls.return_value = mock_client
 
-    @patch("clients.ollama.create_retry_session")
-    def test_client_creates_session_on_init(self, mock_create_session: MagicMock) -> None:
-        """Test that client creates a session on initialization when not provided."""
-        mock_session = MagicMock(spec=requests.Session)
-        mock_create_session.return_value = mock_session
-
-        client = OllamaClient(
-            base_url="http://ollama.example.com:11434",
-            model="test-model",
-        )
-
-        mock_create_session.assert_called_once()
-        assert client._session is mock_session
-
-    def test_from_config_with_session(self) -> None:
-        """Test that from_config sets session when provided."""
-        mock_session = MagicMock(spec=requests.Session)
-        config = EmbeddingConfig(
-            provider_type="ollama",
-            ollama_url="http://ollama.example.com:11434",
-            ollama_model="test-model",
-        )
-
-        client = OllamaClient.from_config(config, session=mock_session)
-
-        assert client._session is mock_session
+        with pytest.raises(UpstreamError, match="Ollama returned 2 embeddings for 3 texts"):
+            await ollama_client.embed_text_batch(["hello", "world", "foo"])

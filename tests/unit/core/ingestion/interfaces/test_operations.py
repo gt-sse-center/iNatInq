@@ -881,7 +881,7 @@ class TestEmbeddingGenerator:
           - Returns vector on success
         """
         mock_embedder = MagicMock()
-        mock_embedder.embed_async = AsyncMock(return_value=[0.1, 0.2, 0.3])
+        mock_embedder.embed_text = AsyncMock(return_value=[0.1, 0.2, 0.3])
 
         generator = EmbeddingGenerator(mock_embedder)
         result = await generator.generate_one_async("Hello world")
@@ -900,7 +900,7 @@ class TestEmbeddingGenerator:
           - None returned on error
         """
         mock_embedder = MagicMock()
-        mock_embedder.embed_async = AsyncMock(side_effect=UpstreamError("Service unavailable"))
+        mock_embedder.embed_text = AsyncMock(side_effect=UpstreamError("Service unavailable"))
 
         generator = EmbeddingGenerator(mock_embedder)
         result = await generator.generate_one_async("Hello")
@@ -919,7 +919,7 @@ class TestEmbeddingGenerator:
           - Returns list of vectors
         """
         mock_embedder = MagicMock()
-        mock_embedder.embed_batch_async = AsyncMock(return_value=[[0.1, 0.2], [0.3, 0.4]])
+        mock_embedder.embed_text_batch = AsyncMock(return_value=[[0.1, 0.2], [0.3, 0.4]])
 
         generator = EmbeddingGenerator(mock_embedder)
         batch = [
@@ -960,7 +960,7 @@ class TestEmbeddingGenerator:
           - Rate limiter acquire called
         """
         mock_embedder = MagicMock()
-        mock_embedder.embed_batch_async = AsyncMock(return_value=[[0.1, 0.2]])
+        mock_embedder.embed_text_batch = AsyncMock(return_value=[[0.1, 0.2]])
 
         mock_limiter = MagicMock()
         mock_limiter.acquire = AsyncMock()
@@ -983,7 +983,7 @@ class TestEmbeddingGenerator:
           - Processing completes with semaphore
         """
         mock_embedder = MagicMock()
-        mock_embedder.embed_batch_async = AsyncMock(return_value=[[0.1, 0.2]])
+        mock_embedder.embed_text_batch = AsyncMock(return_value=[[0.1, 0.2]])
 
         generator = EmbeddingGenerator(mock_embedder)
         semaphore = asyncio.Semaphore(1)
