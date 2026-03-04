@@ -26,6 +26,8 @@ Usage::
 
 import functools
 import time
+from collections.abc import Callable, Coroutine
+from typing import Any, Concatenate, ParamSpec, TypeVar
 
 from core.metrics.classify import classify_error
 from core.metrics.registry import (
@@ -34,8 +36,24 @@ from core.metrics.registry import (
     CLIENT_REQUEST_TOTAL,
 )
 
+P = ParamSpec("P")
+R = TypeVar("R")
+SelfT = TypeVar("SelfT")
 
-def with_client_metrics(client: str, operation: str):
+
+def _record_metrics(client: str, operation: str, start_time: float, exc: Exception | None = None) -> None:
+    duration = time.perf_counter() - start_time
+    status = "error" if exc is not None else "success"
+    CLIENT_REQUEST_DURATION.labels(client=client, operation=operation, status=status).observe(duration)
+    CLIENT_REQUEST_TOTAL.labels(client=client, operation=operation, status=status).inc()
+    if exc is not None:
+        # Classify error and increment error counter
+        CLIENT_ERRORS_TOTAL.labels(client=client, operation=operation, error_type=classify_error(exc)).inc()
+
+
+def with_client_metrics(
+    client: str, operation: str
+) -> Callable[[Callable[Concatenate[SelfT, P], R]], Callable[Concatenate[SelfT, P], R]]:
     """Decorator to wrap synchronous client methods with Prometheus metrics.
 
     This decorator:
@@ -65,20 +83,16 @@ def with_client_metrics(client: str, operation: str):
         breaker) to capture full request duration including breaker checks.
     """
 
-    def decorator(func):
+    def decorator(func: Callable[Concatenate[SelfT, P], R]) -> Callable[Concatenate[SelfT, P], R]:
         @functools.wraps(func)
-        def wrapper(self, *args, **kwargs):
+        def wrapper(self: SelfT, *args: P.args, **kwargs: P.kwargs) -> R:
             start_time = time.perf_counter()
 
             try:
                 result = func(self, *args, **kwargs)
 
                 # Success path
-                duration = time.perf_counter() - start_time
-                CLIENT_REQUEST_DURATION.labels(client=client, operation=operation, status="success").observe(
-                    duration
-                )
-                CLIENT_REQUEST_TOTAL.labels(client=client, operation=operation, status="success").inc()
+                _record_metrics(client, operation, start_time)
 
                 return result
 
@@ -87,15 +101,7 @@ def with_client_metrics(client: str, operation: str):
                 # cancellation/shutdown signals (KeyboardInterrupt, SystemExit,
                 # asyncio.CancelledError, GeneratorExit) propagate without
                 # being counted as client errors.
-                duration = time.perf_counter() - start_time
-                CLIENT_REQUEST_DURATION.labels(client=client, operation=operation, status="error").observe(
-                    duration
-                )
-                CLIENT_REQUEST_TOTAL.labels(client=client, operation=operation, status="error").inc()
-
-                # Classify error and increment error counter
-                error_type = classify_error(exc)
-                CLIENT_ERRORS_TOTAL.labels(client=client, operation=operation, error_type=error_type).inc()
+                _record_metrics(client, operation, start_time, exc)
 
                 # Re-raise the original exception unchanged
                 raise
@@ -107,7 +113,12 @@ def with_client_metrics(client: str, operation: str):
     return decorator
 
 
-def with_client_metrics_async(client: str, operation: str):
+def with_client_metrics_async(
+    client: str, operation: str
+) -> Callable[
+    [Callable[Concatenate[SelfT, P], Coroutine[Any, Any, R]]],
+    Callable[Concatenate[SelfT, P], Coroutine[Any, Any, R]],
+]:
     """Decorator to wrap asynchronous client methods with Prometheus metrics.
 
     This is the async version of `with_client_metrics`. It works with coroutine
@@ -133,20 +144,18 @@ def with_client_metrics_async(client: str, operation: str):
         breaker) to capture full request duration including breaker checks.
     """
 
-    def decorator(func):
+    def decorator(
+        func: Callable[Concatenate[SelfT, P], Coroutine[Any, Any, R]],
+    ) -> Callable[Concatenate[SelfT, P], Coroutine[Any, Any, R]]:
         @functools.wraps(func)
-        async def wrapper(self, *args, **kwargs):
+        async def wrapper(self: SelfT, *args: P.args, **kwargs: P.kwargs) -> R:
             start_time = time.perf_counter()
 
             try:
                 result = await func(self, *args, **kwargs)
 
                 # Success path
-                duration = time.perf_counter() - start_time
-                CLIENT_REQUEST_DURATION.labels(client=client, operation=operation, status="success").observe(
-                    duration
-                )
-                CLIENT_REQUEST_TOTAL.labels(client=client, operation=operation, status="success").inc()
+                _record_metrics(client, operation, start_time)
 
                 return result
 
@@ -155,15 +164,7 @@ def with_client_metrics_async(client: str, operation: str):
                 # cancellation/shutdown signals (KeyboardInterrupt, SystemExit,
                 # asyncio.CancelledError, GeneratorExit) propagate without
                 # being counted as client errors.
-                duration = time.perf_counter() - start_time
-                CLIENT_REQUEST_DURATION.labels(client=client, operation=operation, status="error").observe(
-                    duration
-                )
-                CLIENT_REQUEST_TOTAL.labels(client=client, operation=operation, status="error").inc()
-
-                # Classify error and increment error counter
-                error_type = classify_error(exc)
-                CLIENT_ERRORS_TOTAL.labels(client=client, operation=operation, error_type=error_type).inc()
+                _record_metrics(client, operation, start_time, exc)
 
                 # Re-raise the original exception unchanged
                 raise

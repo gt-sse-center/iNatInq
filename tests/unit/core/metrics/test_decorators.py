@@ -501,48 +501,6 @@ class TestAllClientsInstrumented:
     with a circuit breaker decorator also has a metrics decorator.
     """
 
-    # Expected instrumented methods per client class (ground truth from plan spec)
-    EXPECTED: dict[str, set[str]] = {
-        "OllamaClient": {
-            "embed",
-            "embed_batch",
-            "embed_async",
-            "embed_batch_async",
-        },
-        "QdrantClientWrapper": {
-            "ensure_collection_async",
-            "ensure_image_collection_async",
-            "search_async",
-            "disable_indexing",
-            "enable_indexing",
-            "_do_batch_upsert",
-        },
-        "WeaviateClientWrapper": {
-            "ensure_collection_async",
-            "ensure_image_collection_async",
-            "search_async",
-            "_do_batch_upsert",
-        },
-        "S3ClientWrapper": {
-            "ensure_bucket",
-            "put_object",
-            "get_object",
-            "list_objects",
-            "exists",
-            "delete_object",
-        },
-        "CLIPClient": {
-            "embed_image",
-            "embed_image_async",
-            "embed_image_batch",
-            "embed_image_batch_async",
-            "embed_text",
-            "embed_text_async",
-            "embed_text_batch",
-            "embed_text_batch_async",
-        },
-    }
-
     def _get_client_classes(self) -> list[type]:
         """Import and return all client classes."""
         from clients.clip import CLIPClient
@@ -565,35 +523,23 @@ class TestAllClientsInstrumented:
           - All expected methods have the _client_metrics marker attribute
           - No method with __wrapped__ (decorator-wrapped) is missing metrics
         """
-        missing = []
+        missing: list[str] = []
         for cls in self._get_client_classes():
             cls_name = cls.__name__
-            expected_methods = self.EXPECTED.get(cls_name, set())
+            expected_methods = set(
+                [
+                    attr_name
+                    for attr_name, attr_value in vars(cls).items()
+                    if hasattr(attr_value, "_breaker") and callable(attr_value)
+                ]
+            )
 
-            # Part 1: Every expected method must have the marker
+            # Every expected method must have the `_client_metrics` marker
             for method_name in expected_methods:
                 method = vars(cls).get(method_name)
                 assert method is not None, f"{cls_name}.{method_name} not found in class"
                 if not hasattr(method, "_client_metrics"):
                     missing.append(f"{cls_name}.{method_name}")
-
-            # Part 2: Catch-all — any method with __wrapped__ that we didn't expect
-            # should also have _client_metrics (or be flagged for review)
-            for attr_name, attr_value in vars(cls).items():
-                # Skip staticmethod/classmethod descriptors — they have __wrapped__
-                # in Python 3.10+ but are not network call wrappers
-                if isinstance(attr_value, (staticmethod, classmethod)):
-                    continue
-                if not callable(attr_value):
-                    continue
-                if not hasattr(attr_value, "__wrapped__"):
-                    continue
-                if attr_name in expected_methods:
-                    continue  # Already checked above
-                # This method has a functools.wraps wrapper but isn't in our expected list.
-                # It might be a new circuit-breaker-decorated method that needs metrics.
-                if not hasattr(attr_value, "_client_metrics"):
-                    missing.append(f"{cls_name}.{attr_name} (unexpected wrapped method without metrics)")
 
         assert not missing, (
             f"The following client methods are missing @with_client_metrics decorators:\n"

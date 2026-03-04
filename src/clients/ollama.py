@@ -322,7 +322,6 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
             return self.vector_size_override
         return self._get_model_vector_sizes().get(self.model, 768)
 
-    @with_client_metrics_async("ollama", "_embed_async_impl")
     async def _embed_async_impl(self, text: str) -> list[float]:
         """Internal async embed implementation without circuit breaker."""
         url = f"{self.base_url.rstrip('/')}/api/embeddings"
@@ -348,6 +347,7 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         )
 
     @override
+    @with_client_metrics_async("ollama", "embed_text")
     @with_circuit_breaker_async("ollama")
     async def embed_text(self, text: str) -> list[float]:
         return await self._embed_async_impl(text)

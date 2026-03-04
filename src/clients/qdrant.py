@@ -406,6 +406,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             operation="Qdrant search",
         )
 
+    @with_client_metrics("qdrant", "ensure_collection_sync")
     @with_circuit_breaker("qdrant-sync")
     def ensure_collection_sync(
         self,
