@@ -18,6 +18,7 @@ prevent cardinality explosion.
 """
 
 from core.metrics.classify import classify_error
+from core.metrics.decorators import with_client_metrics, with_client_metrics_async
 from core.metrics.registry import (
     CIRCUIT_BREAKER_STATE,
     CIRCUIT_BREAKER_TRANSITIONS,
@@ -62,4 +63,7 @@ __all__ = [  # noqa: RUF022 - organized by category, not alphabetically
     "INGESTION_CHECKPOINT_SAVES",
     # Helpers
     "classify_error",
+    # Decorators
+    "with_client_metrics",
+    "with_client_metrics_async",
 ]

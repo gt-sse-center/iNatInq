@@ -159,7 +159,7 @@ packages = ["src/foundation"]
 ignore_missing_imports = true
 
 [tool.basedpyright]
-typeChecking = "strict"
+typeCheckingMode = "strict"
 reportMissingTypeStubs = false
 
 [tool.uv.build-backend]

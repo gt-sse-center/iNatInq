@@ -40,13 +40,14 @@ from qdrant_client.models import PointStruct  # Qdrant's native point type
 
 from config import VectorDBConfig
 from core.exceptions import UpstreamError
+from core.metrics.decorators import with_client_metrics, with_client_metrics_async
 from core.models import SearchResultItem, SearchResults
 from foundation.async_utils import close_async_resource
 from foundation.circuit_breaker import (
     create_async_circuit_breaker,
     create_circuit_breaker,
-    with_circuit_breaker_async,
     with_circuit_breaker,
+    with_circuit_breaker_async,
 )
 from foundation.retry import HTTPErrorClassifier, async_retry_call, create_retry_logger
 
@@ -209,6 +210,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             circuit_breaker_timeout=getattr(config, "qdrant_circuit_breaker_timeout", 60),
         )
 
+    @with_client_metrics_async("qdrant", "ensure_collection_async")
     @with_circuit_breaker_async("qdrant")
     async def ensure_collection_async(
         self,
@@ -258,6 +260,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             operation="Qdrant ensure_collection",
         )
 
+    @with_client_metrics_async("qdrant", "ensure_image_collection_async")
     @with_circuit_breaker_async("qdrant")
     async def ensure_image_collection_async(
         self,
@@ -340,6 +343,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             operation="Qdrant ensure_image_collection",
         )
 
+    @with_client_metrics_async("qdrant", "search_async")
     @with_circuit_breaker_async("qdrant")
     async def search_async(
         self, *, collection: str, query_vector: list[float], limit: int = 10
@@ -402,6 +406,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             operation="Qdrant search",
         )
 
+    @with_client_metrics("qdrant", "ensure_collection_sync")
     @with_circuit_breaker("qdrant-sync")
     def ensure_collection_sync(
         self,
@@ -461,6 +466,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             )
             raise UpstreamError(f"Failed to ensure collection {collection}") from e
 
+    @with_client_metrics("qdrant", "disable_indexing_sync")
     @with_circuit_breaker("qdrant-sync")
     def disable_indexing_sync(
         self,
@@ -510,6 +516,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             )
             raise UpstreamError(f"Failed to disable indexing for collection {collection}") from e
 
+    @with_client_metrics("qdrant", "enable_indexing_sync")
     @with_circuit_breaker("qdrant-sync")
     def enable_indexing_sync(
         self,
@@ -550,6 +557,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             )
             raise UpstreamError(f"Failed to enable indexing for collection {collection}") from e
 
+    @with_client_metrics_async("qdrant", "_do_batch_upsert")
     @with_circuit_breaker_async("qdrant")
     async def _do_batch_upsert(self, *, collection: str, points: list[PointStruct]) -> None:
         """Qdrant-specific batch upsert implementation with retry.

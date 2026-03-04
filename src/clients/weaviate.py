@@ -56,6 +56,7 @@ from weaviate.exceptions import (
 from config import VectorDBConfig
 from core.exceptions import UpstreamError
 from core.models import SearchResultItem, SearchResults
+from core.metrics.decorators import with_client_metrics_async
 from foundation.circuit_breaker import (
     create_async_circuit_breaker,
     with_circuit_breaker_async,
@@ -303,6 +304,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             circuit_breaker_timeout=config.weaviate_circuit_breaker_timeout,
         )
 
+    @with_client_metrics_async("weaviate", "ensure_collection_async")
     @with_circuit_breaker_async("weaviate")
     async def ensure_collection_async(self, *, collection: str, vector_size: int) -> None:
         """Create a Weaviate collection (class) if it does not already exist.
@@ -397,6 +399,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
         parts = collection.replace("-", "_").split("_")
         return "".join(part[:1].upper() + part[1:] for part in parts if part)
 
+    @with_client_metrics_async("weaviate", "ensure_image_collection_async")
     @with_circuit_breaker_async("weaviate")
     async def ensure_image_collection_async(
         self,
@@ -470,6 +473,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             operation="Weaviate ensure_image_collection",
         )
 
+    @with_client_metrics_async("weaviate", "search_async")
     @with_circuit_breaker_async("weaviate")
     async def search_async(
         self, *, collection: str, query_vector: list[float], limit: int = 10
@@ -555,6 +559,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             msg = f"Weaviate search failed: {e}"
             raise UpstreamError(msg) from e
 
+    @with_client_metrics_async("weaviate", "_do_batch_upsert")
     @with_circuit_breaker_async("weaviate")
     async def _do_batch_upsert(self, *, collection: str, points: list[WeaviateDataObject]) -> None:
         """Weaviate-specific batch upsert implementation with retry.

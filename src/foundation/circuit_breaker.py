@@ -256,7 +256,7 @@ def handle_circuit_breaker_error(service_name: str) -> NoReturn:
         "The circuit breaker is open due to repeated failures. "
         "The service will be retried automatically after the recovery timeout."
     )
-    raise UpstreamError(msg)
+    raise UpstreamError(msg, error_kind="circuit_open")
 
 
 def _get_breaker_or_raise(instance: object) -> pybreaker.CircuitBreaker:
