@@ -17,7 +17,7 @@ from logging.config import dictConfig
 import attrs
 from databricks.sdk import WorkspaceClient
 
-from config import DatabricksRayJobConfig, ImageEmbeddingConfig
+from config import DatabricksRayJobConfig, EmbeddingConfig
 from core.exceptions import UpstreamError
 from core.services.ingestion_params import (
     add_ray_tuning_env,
@@ -60,7 +60,7 @@ class DatabricksRayService:
         s3_secret_access_key: str,
         s3_bucket: str,
         s3_prefix: str = "",
-        image_embedding_config: ImageEmbeddingConfig,
+        embedding_config: EmbeddingConfig,
         collection: str,
         image_max_items: int | None = None,
         image_page_size: int | None = None,
@@ -77,7 +77,7 @@ class DatabricksRayService:
             s3_secret_access_key: S3 secret key.
             s3_bucket: S3 bucket name to read from.
             s3_prefix: S3 prefix to filter objects (default: "" for bucket root).
-            image_embedding_config: Image embedding provider configuration.
+            embedding_config: Image embedding provider configuration.
             collection: Vector DB base collection name.
             image_max_items: Optional limit on number of images to process.
             image_page_size: Optional S3 listing page size override.
@@ -96,7 +96,7 @@ class DatabricksRayService:
             s3_secret_access_key=s3_secret_access_key,
             s3_bucket=s3_bucket,
             s3_prefix=s3_prefix,
-            image_embedding_config=image_embedding_config,
+            embedding_config=embedding_config,
             collection=collection,
             extra_env_keys=("INATINQ_SRC_DIR",),
         )
@@ -126,7 +126,7 @@ class DatabricksRayService:
         self,
         *,
         namespace: str,
-        image_embedding_config: ImageEmbeddingConfig,
+        embedding_config: EmbeddingConfig,
         collection: str,
         s3_prefix: str = "images/",
     ) -> int:
@@ -140,7 +140,7 @@ class DatabricksRayService:
 
         env_vars = build_inat_image_ingestion_env(
             namespace=namespace,
-            image_embedding_config=image_embedding_config,
+            embedding_config=embedding_config,
             collection=collection,
             extra_env_keys=("INATINQ_SRC_DIR",),
         )

@@ -124,10 +124,6 @@ External services can be configured via environment variables **or** YAML config
 in `configs/`. Environment variables always take priority over YAML values.
 
 ```bash
-# External Ollama (embedding service)
-export OLLAMA_BASE_URL=http://your-ollama-host:11434
-export OLLAMA_MODEL=nomic-embed-text  # or your preferred model
-make docker-up
 
 # Qdrant Cloud (https://cloud.qdrant.io/)
 export QDRANT_URL=https://your-cluster.region.cloud.qdrant.io
@@ -151,22 +147,21 @@ export DATABRICKS_TOKEN=your-databricks-token
 export DATABRICKS_JOB_ID=123
 export DATABRICKS_TASK_TYPE=python
 
-# Image Embedding (CLIP) - for image search
-export IMAGE_EMBEDDING_PROVIDER=clip  # or "llava" for Ollama LLaVA
-# ai4all/clip server:
-export CLIP_BACKEND=clip
+# Embedding Providers
+# Ollama (embedding service)
+export EMBEDDING_PROVIDER="ollama"
+export OLLAMA_BASE_URL="http://your-ollama-host:11434"
+export OLLAMA_MODEL="llava"  # or your preferred model
+# Local ai4all/clip server:
+export EMBEDDING_PROVIDER="clip"
 export CLIP_URL=http://your-clip-host:8000
 export CLIP_MODEL=ViT-B/32
 # Hosted CLIP (Azure ML-style /score endpoint):
-# export CLIP_BACKEND=hosted_clip
-# export CLIP_URL=https://<your-endpoint>/score
-# export CLIP_API_KEY=your-api-key
-# export CLIP_MODEL=clip-vit-base-patch32
-# export CLIP_VECTOR_SIZE=512
-# Ollama LLaVA:
-# export CLIP_BACKEND=ollama
-# export CLIP_URL=http://your-ollama-host:11434
-# export CLIP_MODEL=llava
+export EMBEDDING_PROVIDER="hosted_clip"
+export CLIP_URL=https://<your-endpoint>/score
+export CLIP_API_KEY=your-api-key
+export CLIP_MODEL=clip-vit-base-patch32
+export CLIP_VECTOR_SIZE=512
 
 # Image Processing Settings
 export IMAGE_BATCH_SIZE=10       # Images per processing batch

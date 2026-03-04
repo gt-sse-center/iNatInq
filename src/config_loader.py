@@ -186,8 +186,6 @@ YAML_TO_ENV_MAP: dict[str, str] = {
     "embeddings.sagemaker.endpoint": "SAGEMAKER_ENDPOINT",
     "embeddings.sagemaker.region": "SAGEMAKER_REGION",
     # Image embeddings
-    "image_embeddings.provider": "IMAGE_EMBEDDING_PROVIDER",
-    "image_embeddings.backend": "CLIP_BACKEND",
     "image_embeddings.model": "CLIP_MODEL",
     "image_embeddings.vector_size": "CLIP_VECTOR_SIZE",
     "image_embeddings.url": "CLIP_URL",

@@ -21,12 +21,14 @@ test images using PIL.
 Run with: pytest tests/unit/foundation/test_image.py
 """
 
+import base64
 import io
+from unittest.mock import patch
 
 import pytest
 from PIL import Image
 
-from foundation.image import resize_for_embedding, validate_image
+from foundation.image import encode_image_base64, resize_for_embedding, validate_image
 
 
 # =============================================================================
@@ -535,3 +537,33 @@ class TestResizeForEmbedding:
         with Image.open(io.BytesIO(result)) as img:
             assert img.size == (224, 224)
             assert img.mode == "RGB"
+
+
+# =============================================================================
+# encode_image_base64 Tests
+# =============================================================================
+
+
+class TestEncodeImageBase64:
+    def test_encode_image_returns_base64(self) -> None:
+        orig_img_bytes = b"foo"
+        result = encode_image_base64(orig_img_bytes, include_mime_type=False)
+        decoded = base64.b64decode(result)
+        assert decoded == orig_img_bytes
+
+    def test_encode_image_includes_mime_type_when_requested(self) -> None:
+        orig_img_bytes = b"foo"
+        with patch("filetype.guess_mime") as guess_mime:
+            guess_mime.return_value = "image/jpeg"
+
+            result = encode_image_base64(orig_img_bytes, include_mime_type=True)
+
+        assert result.startswith("data:image/jpeg;base64,")
+        encoded_part = result.split(",", 1)[1]
+        decoded = base64.b64decode(encoded_part)
+        assert decoded == orig_img_bytes
+        guess_mime.assert_called_once_with(orig_img_bytes)
+
+    def test_encode_image_raises_with_enpty_image_bytes(self) -> None:
+        with pytest.raises(ValueError, match="cannot be empty"):
+            encode_image_base64(b"", include_mime_type=False)

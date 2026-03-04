@@ -237,7 +237,7 @@ def ollama_client(ollama_url: str) -> OllamaClient:
         "Created Ollama client for integration tests", extra={"url": ollama_url, "model": "all-minilm"}
     )
     yield client
-    client.close()
+    asyncio.run(client.close())
 
 
 # =============================================================================

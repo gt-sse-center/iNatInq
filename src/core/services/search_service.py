@@ -1,7 +1,7 @@
 """Service layer for semantic search operations.
 
 This module provides service classes for semantic search orchestration:
-- ImageSearchService: Text-to-image search using CLIP embeddings
+- ImageSearchService: Text-to-image search using embeddings
 
 The services:
 1. Generate embedding for query text
@@ -13,7 +13,7 @@ import asyncio
 
 import attrs
 
-from clients.clip import CLIPClient
+from clients.interfaces.embedding import EmbeddingProvider
 from clients.interfaces.vector_db import VectorDBProvider
 from core.exceptions import BadRequestError
 from core.models import SearchResults
@@ -21,32 +21,28 @@ from core.models import SearchResults
 
 @attrs.define(frozen=True, slots=True)
 class ImageSearchService:
-    """Service for performing text-to-image search using CLIP embeddings.
-
-    CLIP (Contrastive Language-Image Pre-training) embeddings allow searching
-    images using natural language text queries. Both text and image embeddings
-    live in the same vector space, enabling cross-modal search.
+    """Service for performing text-to-image search using embeddings.
 
     This service orchestrates text-to-image search by:
-    1. Generating CLIP text embedding for the query via CLIPClient
+    1. Generating text embedding for the query via EmbeddingProvider
     2. Searching image collections in vector database
     3. Returning formatted results with image metadata and similarity scores
 
     Attributes:
-        clip_client: CLIPClient instance for generating text embeddings.
+        embedding_provider: EmbeddingProvider instance for generating text embeddings.
         vector_db_provider: Vector database provider instance.
 
     Example:
         ```python
         from core.services.search_service import ImageSearchService
-        from clients.clip import CLIPClient
+        from clients.interfaces.embedding import create_embedding_provider
         from clients.interfaces.vector_db import create_vector_db_provider
 
-        clip_client = CLIPClient.from_config(ImageEmbeddingConfig.from_env())
+        embedding_provider = create_embedding_provider(EmbeddingConfig.from_env())
         vector_db_provider = create_vector_db_provider(VectorDBConfig.from_env())
 
         service = ImageSearchService(
-            clip_client=clip_client,
+            embedding_provider=embedding_provider,
             vector_db_provider=vector_db_provider,
         )
         results = await service.search_images_async(
@@ -57,7 +53,7 @@ class ImageSearchService:
         ```
     """
 
-    clip_client: CLIPClient
+    embedding_provider: EmbeddingProvider
     vector_db_provider: VectorDBProvider
 
     def search_images(
@@ -94,17 +90,18 @@ class ImageSearchService:
         if limit < 1 or limit > 100:
             raise BadRequestError("Limit must be between 1 and 100")
 
-        # 1. Generate CLIP text embedding for query
-        query_embedding = self.clip_client.embed_text(query.strip())
+        async def do_async():
+            # 1. Generate text embedding for query
+            query_embedding = await self.embedding_provider.embed_text(query.strip())
 
-        # 2. Search image collection (async, run in event loop)
-        return asyncio.run(
-            self.vector_db_provider.search_async(
+            # 2. Search image collection
+            return await self.vector_db_provider.search_async(
                 collection=collection,
                 query_vector=query_embedding,
                 limit=limit,
             )
-        )
+
+        return asyncio.run(do_async())
 
     async def search_images_async(
         self,
@@ -138,8 +135,8 @@ class ImageSearchService:
         if limit < 1 or limit > 100:
             raise BadRequestError("Limit must be between 1 and 100")
 
-        # 1. Generate CLIP text embedding for query (async)
-        query_embedding = await self.clip_client.embed_text_async(query.strip())
+        # 1. Generate text embedding for query (async)
+        query_embedding = await self.embedding_provider.embed_text(query.strip())
 
         # 2. Search image collection (async)
         return await self.vector_db_provider.search_async(

@@ -33,32 +33,32 @@ text_vector = client.embed_text("a fluffy cat sitting on a couch")
 
 The client class:
 - Encapsulates configuration (base_url, model, timeout)
-- Provides sync and async methods for single and batch image/text embedding
+- Provides async methods for single and batch image/text embedding
+- Implements `EmbeddingProvider` protocol
 - Handles errors consistently via `UpstreamError`
 - Uses circuit breaker pattern for resilience
 - Uses attrs for concise, correct class definition
 """
 
 import asyncio
-import base64
 import logging
-from typing import Any
+from typing import Any, Literal
+from pydantic import BaseModel, TypeAdapter, ValidationError
+from typing_extensions import override
 
 import aiobreaker
 import attrs
 import httpx
-import pybreaker
-import requests
 
-from config import ImageEmbeddingConfig
+from clients.interfaces import EmbeddingProvider
+from config import EmbeddingConfig, ProviderType
 from core.exceptions import UpstreamError
-from core.metrics.decorators import with_client_metrics, with_client_metrics_async
+from core.metrics.decorators import with_client_metrics_async
 from foundation.circuit_breaker import (
     create_async_circuit_breaker,
-    with_circuit_breaker,
     with_circuit_breaker_async,
 )
-from foundation.http import create_retry_session
+from foundation.image import encode_image_base64
 from foundation.retry import HTTPErrorClassifier, async_retry_call, create_retry_logger
 
 from .mixins import CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin
@@ -79,6 +79,7 @@ class CLIPErrorClassifier(HTTPErrorClassifier):
     Same pattern as OllamaErrorClassifier (both use httpx).
     """
 
+    @override
     def is_retriable(self, exc: BaseException) -> bool:
         """Classify whether the exception is retriable."""
         if isinstance(exc, (httpx.ConnectError, httpx.ReadError, httpx.WriteError)):
@@ -91,6 +92,7 @@ class CLIPErrorClassifier(HTTPErrorClassifier):
             return False
         return False
 
+    @override
     def get_error_details(self, exc: BaseException) -> dict[str, Any]:
         """Extract structured error details for logging."""
         if isinstance(exc, httpx.HTTPStatusError):
@@ -107,11 +109,6 @@ _clip_log_retry = create_retry_logger(
 
 # Known CLIP model vector sizes
 CLIP_VECTOR_SIZES: dict[str, int] = {
-    "llava": 4096,  # LLaVA uses LLaMA-based embeddings
-    "llava:7b": 4096,
-    "llava:13b": 5120,
-    "llava:34b": 8192,
-    "bakllava": 4096,
     "clip-vit-base-patch32": 512,
     "clip-vit-base-patch16": 512,
     "clip-vit-large-patch14": 768,
@@ -119,18 +116,32 @@ CLIP_VECTOR_SIZES: dict[str, int] = {
 }
 
 
-@attrs.define(frozen=False, slots=True)
-class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
-    """Client for generating image embeddings via CLIP-compatible APIs.
+class HostedClipRespEntry(BaseModel):
+    """Pydantic model to validate Hosted CLIP server response."""
 
-    This client supports multiple backends:
-    - **ollama**: Ollama's multi-modal models (LLaVA, BakLLaVA)
-    - **clip**: Dedicated CLIP servers like ai4all/clip (https://hub.docker.com/r/ai4all/clip)
+    image_features: list[float]
+    text_features: list[float]
+
+
+HostedClipResponse = TypeAdapter(list[HostedClipRespEntry])
+
+
+class LocalClipRespEntry(BaseModel):
+    """Pydantic model to validate Local CLIP server responses."""
+
+    vector: list[float]
+
+
+LocalClipResponse = TypeAdapter(list[LocalClipRespEntry])
+
+
+@attrs.define(frozen=False, slots=True)
+class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
+    """Client for generating image embeddings via CLIP-compatible APIs.
 
     Attributes:
         base_url: Base URL for the embedding service.
         model: Model name to use for image embedding.
-        backend: API backend type. One of "ollama", "clip", or "hosted_clip". Default: "ollama".
         timeout_s: Request timeout in seconds (default: 120, higher for images).
         circuit_breaker_failure_threshold: Number of consecutive failures before
             circuit opens. Default: 5.
@@ -141,34 +152,17 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         vector_size_override: Override auto-detected vector size. Use for custom
             models not in the known model map. Default: None (auto-detect).
 
-    Example:
-        ```python
-        # Using Ollama backend (default)
-        client = CLIPClient(
-            base_url="http://ollama:11434",
-            model="llava"
-        )
-
-        # Using ai4all/clip backend
-        client = CLIPClient(
-            base_url="http://clip-server:8000",
-            model="ViT-B/32",
-            backend="clip"
-        )
-
-        with open("cat.jpg", "rb") as f:
-            vector = client.embed_image(f.read())
-        ```
-
+    Note:
+        This class implements the `EmbeddingProvider` abstract base class and can be used
+        anywhere that interface is expected.
     """
 
     # Required parameters
     base_url: str
     model: str
 
-    # Backend type: "ollama", "clip", or "hosted_clip"
-    backend: str = attrs.field(default="ollama")
-    api_key: str | None = attrs.field(default=None)
+    is_hosted: bool
+    clip_api_key: str | None = attrs.field(default=None)
 
     # Timeout configuration (higher default for images)
     timeout_s: int = attrs.field(default=120)
@@ -189,12 +183,11 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
     retry_max_wait: float = attrs.field(default=10.0)
 
     # Private attributes
-    _session: requests.Session | None = attrs.field(init=False, default=None)
     _async_client: httpx.AsyncClient | None = attrs.field(init=False, default=None)
     _async_client_loop: asyncio.AbstractEventLoop | None = attrs.field(init=False, default=None)
-    _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
     _async_breaker: aiobreaker.CircuitBreaker = attrs.field(init=False)
 
+    @override
     def _circuit_breaker_config(self) -> tuple[str, int, int]:
         """Return circuit breaker configuration for CLIP.
 
@@ -211,22 +204,12 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
     def __attrs_post_init__(self) -> None:
         """Initialize the requests session and circuit breakers."""
-        if self._session is None:
-            self._session = create_retry_session()
-
         # Initialize sync circuit breaker from mixin
         self._init_circuit_breaker()
 
         # Initialize async circuit breaker (aiobreaker)
         name, fail_max, timeout = self._circuit_breaker_config()
         object.__setattr__(self, "_async_breaker", create_async_circuit_breaker(name, fail_max, timeout))
-
-    @property
-    def session(self) -> requests.Session:
-        """Get the requests session, creating one if needed."""
-        if self._session is None:
-            self._session = create_retry_session()
-        return self._session
 
     async def _get_async_client(self) -> httpx.AsyncClient:
         """Get or create a reusable async HTTP client.
@@ -256,9 +239,11 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                 limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
             )
             self._async_client_loop = current_loop
+        assert self._async_client is not None
         return self._async_client
 
-    async def close_async(self) -> None:
+    @override
+    async def close(self) -> None:
         """Close the async HTTP client and release resources."""
         if self._async_client is not None:
             try:
@@ -269,6 +254,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             self._async_client_loop = None
 
     @property
+    @override
     def vector_size(self) -> int:
         """Return the dimension of vectors produced by this model.
 
@@ -299,166 +285,37 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
         # Fallback to common CLIP size
         logger.warning(
-            "Unknown CLIP model '%s', using default vector size 512. "
-            "Set vector_size_override for accurate dimension.",
+            "Unknown CLIP model '%s', using default vector size 512. Set vector_size_override for accurate dimension.",
             self.model,
         )
         return 512
 
-    def _encode_image(self, image_bytes: bytes) -> str:
-        """Encode image bytes to base64 string.
+    @property
+    @override
+    def model_name(self) -> str:
+        return self.model
 
-        For the 'clip' backend (ai4all/clip), this returns a data URL with
-        the `data:image/...;base64,` prefix. For the 'ollama' backend, it
-        returns raw base64.
-
-        Args:
-            image_bytes: Raw image data.
-
-        Returns:
-            Base64-encoded string (with data URL prefix for clip backend).
-
-        Raises:
-            ValueError: If image_bytes is empty.
-        """
-        if not image_bytes:
-            msg = "Image bytes cannot be empty"
-            raise ValueError(msg)
-
-        b64_data = base64.b64encode(image_bytes).decode("utf-8")
-
-        if self.backend == "clip":
-            # ai4all/clip requires data URL format with MIME type prefix
-            # Detect image format from magic bytes
-            mime_type = self._detect_image_mime_type(image_bytes)
-            return f"data:{mime_type};base64,{b64_data}"
-
-        return b64_data
-
-    def _rows_to_dicts(self, columns: object, rows: object) -> list[dict[str, object]]:
-        if not isinstance(columns, list) or not isinstance(rows, list):
-            return []
-        records: list[dict[str, object]] = []
-        for row in rows:
-            if isinstance(row, list):
-                if len(columns) == 1:
-                    records.append({str(columns[0]): row or []})
-                elif len(row) == len(columns):
-                    records.append({str(columns[i]): row[i] for i in range(len(columns))})
-                else:
-                    records.append({"vector": row})
-            elif len(columns) == 1:
-                records.append({str(columns[0]): row})
-            else:
-                records.append({"vector": row})
-        return records
-
-    def _unwrap_hosted_clip_records(self, data: object) -> list[object]:
-        if isinstance(data, dict):
-            if "columns" in data and "data" in data:
-                records = self._rows_to_dicts(data.get("columns"), data.get("data"))
-                if records:
-                    return records
-            for key in ("output_data", "outputs", "predictions", "result", "data"):
-                if key in data:
-                    return self._unwrap_hosted_clip_records(data[key])
-        if isinstance(data, list):
-            return data
-        msg = f"Unexpected response format from hosted CLIP: {data}"
-        raise UpstreamError(msg)
-
-    def _coerce_vector(self, value: object) -> list[float] | None:
-        if isinstance(value, list):
-            if not value:
-                return []
-            if all(isinstance(x, (int, float)) for x in value):
-                return value
-            if (
-                len(value) == 1
-                and isinstance(value[0], list)
-                and all(isinstance(x, (int, float)) for x in value[0])
-            ):
-                return value[0]
-        return None
-
-    def _extract_hosted_clip_vector(self, record: object, *, kind: str) -> list[float]:
-        key_candidates = ("text_features", "image_features", "vector")
-        vector: list[float] | None = None
-        if isinstance(record, dict):
-            for key in key_candidates:
-                if key in record:
-                    vector = self._coerce_vector(record[key])
-                    if vector is None:
-                        vector = self._coerce_vector(record.get("vector"))
-                    if vector is not None:
-                        if not vector:
-                            logger.warning(
-                                "Empty embedding returned from hosted CLIP",
-                                extra={
-                                    "backend": self.backend,
-                                    "model": self.model,
-                                    "base_url": self.base_url,
-                                    "kind": kind,
-                                    "key": key,
-                                },
-                            )
-                        return vector
-                    break
-        else:
-            vector = self._coerce_vector(record)
-            if vector is not None:
-                if not vector:
-                    logger.warning(
-                        "Empty embedding returned from hosted CLIP",
-                        extra={
-                            "backend": self.backend,
-                            "model": self.model,
-                            "base_url": self.base_url,
-                            "kind": kind,
-                            "key": "vector",
-                        },
-                    )
-                return vector
-        msg = f"Unexpected response format from hosted CLIP: {record}"
-        raise UpstreamError(msg)
-
-    def _parse_hosted_clip_response(self, data: object, *, kind: str) -> list[float]:
-        records = self._unwrap_hosted_clip_records(data)
-        if not records:
-            msg = f"Unexpected response format from hosted CLIP: {data}"
-            raise UpstreamError(msg)
-        return self._extract_hosted_clip_vector(records[0], kind=kind)
-
-    def _parse_hosted_clip_batch_response(self, data: object, *, kind: str, count: int) -> list[list[float]]:
-        records = self._unwrap_hosted_clip_records(data)
-        if len(records) != count:
-            msg = f"Hosted CLIP response length {len(records)} != request length {count}"
-            raise UpstreamError(msg)
-        return [self._extract_hosted_clip_vector(record, kind=kind) for record in records]
-
-    def _build_request_headers(self, *, accept_json: bool = False) -> dict[str, str] | None:
+    def _build_hosted_clip_request_headers(self, *, accept_json: bool = False) -> dict[str, str] | None:
         headers: dict[str, str] = {}
         if accept_json:
             headers["Accept"] = "application/json"
-        if self.api_key:
-            if self.api_key.lower().startswith("bearer "):
-                headers["Authorization"] = self.api_key
+        if self.clip_api_key:
+            if self.clip_api_key.lower().startswith("bearer "):
+                headers["Authorization"] = self.clip_api_key
             else:
-                headers["Authorization"] = f"Bearer {self.api_key}"
+                headers["Authorization"] = f"Bearer {self.clip_api_key}"
         return headers or None
 
     def _build_hosted_clip_payload(
         self,
         *,
         images: list[str],
-        texts: list[str] | None = None,
+        texts: list[str],
     ) -> dict[str, object]:
-        if texts is None:
-            texts = [""] * len(images)
-        elif len(texts) != len(images):
-            msg = f"Texts list length ({len(texts)}) must match images list length ({len(images)})"
-            raise ValueError(msg)
-
+        if len(images) != len(texts):
+            raise ValueError(
+                f"Texts list length ({len(texts)}) must match images list length ({len(images)})"
+            )
         rows = [[images[i], texts[i]] for i in range(len(images))]
         return {
             "input_data": {
@@ -468,207 +325,27 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             }
         }
 
-    def _ollama_prompt(self, text: str | None = None) -> str:
-        """Return prompt for Ollama embedding requests.
-
-        Uses caller-provided text when available, otherwise falls back to
-        a generic prompt for image-only embedding requests.
-        """
-        if text is None:
-            return "embeddings"
-        prompt = text.strip()
-        return prompt or "embeddings"
-
-    def _detect_image_mime_type(self, image_bytes: bytes) -> str:
-        """Detect MIME type from image magic bytes.
-
-        Args:
-            image_bytes: Raw image data.
-
-        Returns:
-            MIME type string (e.g., "image/png", "image/jpeg").
-        """
-        # Check magic bytes for common image formats
-        if image_bytes.startswith(b"\x89PNG"):
-            return "image/png"
-        if image_bytes.startswith(b"\xff\xd8\xff"):
-            return "image/jpeg"
-        if image_bytes.startswith((b"GIF87a", b"GIF89a")):
-            return "image/gif"
-        if image_bytes.startswith(b"RIFF") and b"WEBP" in image_bytes[:12]:
-            return "image/webp"
-        # Default to PNG if unknown
-        return "image/png"
-
-    def _make_embed_request(self, image_b64: str, text: str | None = None) -> list[float]:
-        """Make synchronous embedding request.
-
-        Supports multiple backends:
-        - ollama: Uses /api/embeddings with images array and optional prompt
-        - clip: Uses /embed/image with base64 image data (text ignored)
-
-        Args:
-            image_b64: Base64-encoded image.
-            text: Optional text to embed alongside the image. Used for Ollama
-                backend's prompt field. Ignored for clip backend.
-
-        Returns:
-            Embedding vector.
-
-        Raises:
-            UpstreamError: If request fails.
-        """
-        try:
-            if self.backend == "clip":
-                # ai4all/clip API format: POST /embedding/image with {"images": [...]}
-                # Returns: list of {image, vector} objects
-                # Note: clip backend doesn't support text alongside images
-                url = f"{self.base_url}/embedding/image"
-                payload = {"images": [image_b64]}
-                response = self.session.post(
-                    url,
-                    json=payload,
-                    timeout=self.timeout_s,
-                )
-                response.raise_for_status()
-                data = response.json()
-
-                # ai4all/clip returns a list of {image, vector} objects
-                if isinstance(data, list) and len(data) > 0 and "vector" in data[0]:
-                    vector = data[0]["vector"]
-                    if not vector:
-                        logger.warning(
-                            "Empty embedding returned from CLIP backend",
-                            extra={"backend": self.backend, "model": self.model, "base_url": self.base_url},
-                        )
-                    return vector
-                msg = f"Unexpected response format from CLIP server: {data}"
-                raise UpstreamError(msg)
-
-            if self.backend == "hosted_clip":
-                url = f"{self.base_url}"
-                payload = self._build_hosted_clip_payload(images=[image_b64], texts=[text or ""])
-                response = self.session.post(
-                    url,
-                    json=payload,
-                    timeout=self.timeout_s,
-                    headers=self._build_request_headers(accept_json=True),
-                )
-                response.raise_for_status()
-                data = response.json()
-                return self._parse_hosted_clip_response(data, kind="image")
-
-            # Ollama API format (default)
-            url = f"{self.base_url}/api/embeddings"
-            payload = {
-                "model": self.model,
-                "prompt": self._ollama_prompt(text),
-                "images": [image_b64],
-            }
-            response = self.session.post(
-                url,
-                json=payload,
-                timeout=self.timeout_s,
-            )
-            response.raise_for_status()
-            data = response.json()
-
-            if "embedding" not in data:
-                msg = f"Unexpected response format from Ollama: {data}"
-                raise UpstreamError(msg)
-
-            embedding = data["embedding"]
-            if not embedding:
-                logger.warning(
-                    "Empty embedding returned from Ollama",
-                    extra={"backend": self.backend, "model": self.model, "base_url": self.base_url},
-                )
-            return embedding
-
-        except requests.RequestException as e:
-            msg = f"CLIP embedding request failed: {e}"
-            raise UpstreamError(msg) from e
-
-    async def _make_embed_request_async(self, image_b64: str, text: str | None = None) -> list[float]:
-        """Make asynchronous embedding request with retry.
-
-        Supports multiple backends:
-        - ollama: Uses /api/embeddings with images array and optional prompt
-        - clip: Uses /embed/image with base64 image data (text ignored)
-
-        Args:
-            image_b64: Base64-encoded image.
-            text: Optional text to embed alongside the image. Used for Ollama
-                backend's prompt field. Ignored for clip backend.
-
-        Returns:
-            Embedding vector.
-
-        Raises:
-            UpstreamError: If request fails after retries.
-        """
-
-        async def _do_request() -> list[float]:
+    async def _request_images(self, images_b64: list[str]) -> list[list[float]]:
+        async def do_request() -> list[list[float]]:
             client = await self._get_async_client()
-            if self.backend == "clip":
-                url = f"{self.base_url}/embedding/image"
-                payload = {"images": [image_b64]}
-                response = await client.post(url, json=payload)
-                response.raise_for_status()
-                data = response.json()
 
-                if isinstance(data, list) and len(data) > 0 and "vector" in data[0]:
-                    vector = data[0]["vector"]
-                    if not vector:
-                        logger.warning(
-                            "Empty embedding returned from CLIP backend",
-                            extra={
-                                "backend": self.backend,
-                                "model": self.model,
-                                "base_url": self.base_url,
-                            },
-                        )
-                    return vector
-                msg = f"Unexpected response format from CLIP server: {data}"
-                raise UpstreamError(msg)
+            url = self.base_url if self.is_hosted else f"{self.base_url}/embedding/image"
+            payload = (
+                self._build_hosted_clip_payload(images=images_b64, texts=[""] * len(images_b64))
+                if self.is_hosted
+                else {"images": images_b64}
+            )
+            headers = self._build_hosted_clip_request_headers(accept_json=True) if self.is_hosted else None
 
-            if self.backend == "hosted_clip":
-                url = f"{self.base_url}"
-                payload = self._build_hosted_clip_payload(images=[image_b64], texts=[text or ""])
-                response = await client.post(
-                    url,
-                    json=payload,
-                    headers=self._build_request_headers(accept_json=True),
-                )
-                response.raise_for_status()
-                data = response.json()
-                return self._parse_hosted_clip_response(data, kind="image")
-
-            # Ollama API format (default)
-            url = f"{self.base_url}/api/embeddings"
-            payload = {
-                "model": self.model,
-                "prompt": self._ollama_prompt(text),
-                "images": [image_b64],
-            }
-            response = await client.post(url, json=payload)
+            response = await client.post(url, json=payload, headers=headers)
             response.raise_for_status()
             data = response.json()
-
-            if "embedding" not in data:
-                msg = f"Unexpected response format from Ollama: {data}"
-                raise UpstreamError(msg)
-
-            embedding = data["embedding"]
-            if not embedding:
-                logger.warning(
-                    "Empty embedding returned from Ollama",
-                    extra={"backend": self.backend, "model": self.model, "base_url": self.base_url},
-                )
-            return embedding
+            if self.is_hosted:
+                return self._parse_hosted_clip_response(data, kind="images", count=len(images_b64))
+            return self._parse_local_clip_response(data, count=len(images_b64))
 
         return await async_retry_call(
-            _do_request,
+            do_request,
             max_retries=self.max_retries,
             min_wait=self.retry_min_wait,
             max_wait=self.retry_max_wait,
@@ -677,358 +354,81 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             operation="CLIP embed_image_async",
         )
 
-    @with_client_metrics("clip", "embed_image")
-    @with_circuit_breaker("clip")
-    def embed_image(self, image_bytes: bytes, text: str | None = None) -> list[float]:
-        """Generate embedding for a single image.
-
-        Args:
-            image_bytes: Raw image bytes (JPEG, PNG, WebP, or GIF format).
-            text: Optional text to embed alongside the image. This enables
-                multi-modal embeddings where both image and text are encoded
-                into the same vector space. Implementations can ignore this
-                parameter if not supported. Useful for future filter support
-                and combined image+metadata embeddings.
-
-        Returns:
-            List of floats representing the image embedding vector.
-
-        Raises:
-            UpstreamError: If the embedding service is unreachable or returns an error.
-            ValueError: If image_bytes is empty.
-        """
-        image_b64 = self._encode_image(image_bytes)
-        return self._make_embed_request(image_b64, text)
-
-    @with_client_metrics_async("clip", "embed_image_async")
+    @override
+    @with_client_metrics_async("clip", "embed_image")
     @with_circuit_breaker_async("clip")
-    async def embed_image_async(self, image_bytes: bytes, text: str | None = None) -> list[float]:
-        """Generate embedding for a single image (async).
+    async def embed_image(self, image_bytes: bytes) -> list[float]:
+        image_b64 = encode_image_base64(image_bytes, include_mime_type=(not self.is_hosted))
+        return (await self._request_images([image_b64]))[0]
 
-        Args:
-            image_bytes: Raw image bytes (JPEG, PNG, WebP, or GIF format).
-            text: Optional text to embed alongside the image. This enables
-                multi-modal embeddings where both image and text are encoded
-                into the same vector space. Implementations can ignore this
-                parameter if not supported. Useful for future filter support
-                and combined image+metadata embeddings.
-
-        Returns:
-            List of floats representing the image embedding vector.
-
-        Raises:
-            UpstreamError: If the embedding service is unreachable or returns an error.
-            ValueError: If image_bytes is empty.
-        """
-        image_b64 = self._encode_image(image_bytes)
-        return await self._make_embed_request_async(image_b64, text)
-
-    @with_client_metrics("clip", "embed_image_batch")
-    @with_circuit_breaker("clip")
-    def embed_image_batch(self, images: list[bytes], texts: list[str] | None = None) -> list[list[float]]:
-        """Generate embeddings for multiple images.
-
-        Note: Ollama doesn't natively support batch image embeddings, so this
-        method processes images sequentially. For true parallelism, use
-        `embed_image_batch_async`.
-
-        Args:
-            images: List of raw image bytes to embed.
-            texts: Optional list of text strings to embed alongside images.
-                If provided, must have the same length as images. Each text
-                will be embedded with its corresponding image. Implementations
-                can ignore this parameter if not supported. Useful for future
-                filter support and combined image+metadata embeddings.
-
-        Returns:
-            List of embedding vectors, one per input image.
-
-        Raises:
-            UpstreamError: If any embedding request fails.
-            ValueError: If images list is empty or contains empty bytes, or
-                if texts is provided but has a different length than images.
-        """
-        if not images:
+    @override
+    @with_client_metrics_async("clip", "embed_image_batch")
+    @with_circuit_breaker_async("clip")
+    async def embed_image_batch(self, images_bytes: list[bytes]) -> list[list[float]]:
+        if not images_bytes:
             msg = "Images list cannot be empty"
             raise ValueError(msg)
 
-        # Validate texts length if provided
-        if texts is not None and len(texts) != len(images):
-            msg = f"Texts list length ({len(texts)}) must match images list length ({len(images)})"
-            raise ValueError(msg)
-
         # Apply batch size limit
-        if self.max_batch_size is not None and len(images) > self.max_batch_size:
+        if self.max_batch_size is not None and len(images_bytes) > self.max_batch_size:
             msg = (
-                f"Batch size {len(images)} exceeds max_batch_size {self.max_batch_size}. "
-                "Split into smaller batches."
-            )
-            raise ValueError(msg)
-
-        if self.backend == "hosted_clip":
-            encoded_images = [self._encode_image(img) for img in images]
-            url = f"{self.base_url}"
-            payload = self._build_hosted_clip_payload(images=encoded_images, texts=texts)
-            response = self.session.post(
-                url,
-                json=payload,
-                timeout=self.timeout_s,
-                headers=self._build_request_headers(accept_json=True),
-            )
-            response.raise_for_status()
-            data = response.json()
-            return self._parse_hosted_clip_batch_response(data, kind="image", count=len(encoded_images))
-
-        results = []
-        for i, image_bytes in enumerate(images):
-            image_b64 = self._encode_image(image_bytes)
-            text = texts[i] if texts is not None else None
-            embedding = self._make_embed_request(image_b64, text)
-            results.append(embedding)
-
-        return results
-
-    @with_client_metrics_async("clip", "embed_image_batch_async")
-    @with_circuit_breaker_async("clip")
-    async def embed_image_batch_async(
-        self, images: list[bytes], texts: list[str] | None = None
-    ) -> list[list[float]]:
-        """Generate embeddings for multiple images (async).
-
-        Uses asyncio.gather for concurrent processing of images.
-
-        Args:
-            images: List of raw image bytes to embed.
-            texts: Optional list of text strings to embed alongside images.
-                If provided, must have the same length as images. Each text
-                will be embedded with its corresponding image. Implementations
-                can ignore this parameter if not supported. Useful for future
-                filter support and combined image+metadata embeddings.
-
-        Returns:
-            List of embedding vectors, one per input image.
-
-        Raises:
-            UpstreamError: If any embedding request fails.
-            ValueError: If images list is empty or contains empty bytes, or
-                if texts is provided but has a different length than images.
-        """
-        if not images:
-            msg = "Images list cannot be empty"
-            raise ValueError(msg)
-
-        # Validate texts length if provided
-        if texts is not None and len(texts) != len(images):
-            msg = f"Texts list length ({len(texts)}) must match images list length ({len(images)})"
-            raise ValueError(msg)
-
-        # Apply batch size limit
-        if self.max_batch_size is not None and len(images) > self.max_batch_size:
-            msg = (
-                f"Batch size {len(images)} exceeds max_batch_size {self.max_batch_size}. "
+                f"Batch size {len(images_bytes)} exceeds max_batch_size {self.max_batch_size}. "
                 "Split into smaller batches."
             )
             raise ValueError(msg)
 
         # Encode all images first
-        encoded_images = [self._encode_image(img) for img in images]
-
-        if self.backend == "hosted_clip":
-
-            async def _do_hosted_batch() -> list[list[float]]:
-                url = f"{self.base_url}"
-                payload = self._build_hosted_clip_payload(images=encoded_images, texts=texts)
-                client = await self._get_async_client()
-                response = await client.post(
-                    url,
-                    json=payload,
-                    headers=self._build_request_headers(accept_json=True),
-                )
-                response.raise_for_status()
-                data = response.json()
-                return self._parse_hosted_clip_batch_response(data, kind="image", count=len(encoded_images))
-
-            return await async_retry_call(
-                _do_hosted_batch,
-                max_retries=self.max_retries,
-                min_wait=self.retry_min_wait,
-                max_wait=self.retry_max_wait,
-                is_retriable=_clip_classifier.is_retriable,
-                before_sleep=_clip_log_retry,
-                operation="CLIP embed_image_batch_async (hosted)",
-            )
-
-        # Make concurrent requests with optional text
-        tasks = [
-            self._make_embed_request_async(img_b64, texts[i] if texts is not None else None)
-            for i, img_b64 in enumerate(encoded_images)
+        encoded_images = [
+            encode_image_base64(image, include_mime_type=(not self.is_hosted)) for image in images_bytes
         ]
-        results = await asyncio.gather(*tasks)
 
-        return list(results)
+        return await self._request_images(encoded_images)
 
-    # =========================================================================
-    # Text Embedding Methods (for cross-modal search)
-    # =========================================================================
-
-    def _make_text_embed_request(self, text: str) -> list[float]:
-        """Make synchronous text embedding request.
-
-        Supports multiple backends:
-        - ollama: Uses /api/embeddings with prompt
-        - clip: Uses /embedding/text with texts array
-
-        Args:
-            text: Text to embed.
-
-        Returns:
-            Embedding vector.
-
-        Raises:
-            UpstreamError: If request fails.
-        """
+    def _parse_local_clip_response(self, data: object, *, count: int) -> list[list[float]]:
         try:
-            if self.backend == "clip":
-                # ai4all/clip API format: POST /embedding/text with {"texts": [...]}
-                # Returns: list of {text, vector} objects
-                url = f"{self.base_url}/embedding/text"
-                payload = {"texts": [text]}
-                response = self.session.post(
-                    url,
-                    json=payload,
-                    timeout=self.timeout_s,
-                )
-                response.raise_for_status()
-                data = response.json()
+            validated_data = LocalClipResponse.validate_python(data)
+        except ValidationError as e:
+            raise UpstreamError(f"Unexpected response format from local CLIP server: {e}")  # noqa: B904
 
-                if isinstance(data, list) and len(data) > 0 and "vector" in data[0]:
-                    vector = data[0]["vector"]
-                    if not vector:
-                        logger.warning(
-                            "Empty text embedding returned from CLIP backend",
-                            extra={"backend": self.backend, "model": self.model, "base_url": self.base_url},
-                        )
-                    return vector
-                msg = f"Unexpected response format from CLIP server: {data}"
-                raise UpstreamError(msg)
+        vectors = [entry.vector for entry in validated_data]
+        if len(vectors) != count:
+            raise UpstreamError(f"Local CLIP server returned {len(vectors)} vectors, expected {count}")
+        return vectors
 
-            if self.backend == "hosted_clip":
-                url = f"{self.base_url}"
-                payload = self._build_hosted_clip_payload(images=[""], texts=[text])
-                response = self.session.post(
-                    url,
-                    json=payload,
-                    timeout=self.timeout_s,
-                    headers=self._build_request_headers(accept_json=True),
-                )
-                response.raise_for_status()
-                data = response.json()
-                return self._parse_hosted_clip_response(data, kind="text")
+    def _parse_hosted_clip_response(
+        self, data: object, *, kind: Literal["images", "text"], count: int
+    ) -> list[list[float]]:
+        try:
+            validated_data = HostedClipResponse.validate_python(data)
+        except ValidationError as e:
+            raise UpstreamError(f"Unexpected response format from hosted CLIP server: {e}")  # noqa: B904
+        if kind == "images":
+            vectors = [entry.image_features for entry in validated_data]
+        elif kind == "text":
+            vectors = [entry.text_features for entry in validated_data]
+        else:
+            raise ValueError(f"Invalid kind value: {kind}")  # pyright: ignore[reportUnreachable]
+        if len(vectors) != count:
+            raise UpstreamError(f"Hosted CLIP server returned {len(vectors)} vectors, expected {count}")
+        return vectors
 
-            # Ollama API format (default)
-            url = f"{self.base_url}/api/embeddings"
-            payload = {
-                "model": self.model,
-                "prompt": self._ollama_prompt(text),
-            }
-            response = self.session.post(
-                url,
-                json=payload,
-                timeout=self.timeout_s,
-            )
-            response.raise_for_status()
-            data = response.json()
-
-            if "embedding" not in data:
-                msg = f"Unexpected response format from Ollama: {data}"
-                raise UpstreamError(msg)
-
-            embedding = data["embedding"]
-            if not embedding:
-                logger.warning(
-                    "Empty text embedding returned from Ollama",
-                    extra={"backend": self.backend, "model": self.model, "base_url": self.base_url},
-                )
-            return embedding
-
-        except requests.RequestException as e:
-            msg = f"CLIP text embedding request failed: {e}"
-            raise UpstreamError(msg) from e
-
-    async def _make_text_embed_request_async(self, text: str) -> list[float]:
-        """Make asynchronous text embedding request with retry.
-
-        Supports multiple backends:
-        - ollama: Uses /api/embeddings with prompt
-        - clip: Uses /embedding/text with texts array
-
-        Args:
-            text: Text to embed.
-
-        Returns:
-            Embedding vector.
-
-        Raises:
-            UpstreamError: If request fails after retries.
-        """
-
-        async def _do_request() -> list[float]:
+    async def _request_texts(self, texts: list[str]) -> list[list[float]]:
+        async def _do_request() -> list[list[float]]:
             client = await self._get_async_client()
-            if self.backend == "clip":
-                url = f"{self.base_url}/embedding/text"
-                payload = {"texts": [text]}
-                response = await client.post(url, json=payload)
-                response.raise_for_status()
-                data = response.json()
-
-                if isinstance(data, list) and len(data) > 0 and "vector" in data[0]:
-                    vector = data[0]["vector"]
-                    if not vector:
-                        logger.warning(
-                            "Empty text embedding returned from CLIP backend",
-                            extra={
-                                "backend": self.backend,
-                                "model": self.model,
-                                "base_url": self.base_url,
-                            },
-                        )
-                    return vector
-                msg = f"Unexpected response format from CLIP server: {data}"
-                raise UpstreamError(msg)
-
-            if self.backend == "hosted_clip":
-                url = f"{self.base_url}"
-                payload = self._build_hosted_clip_payload(images=[""], texts=[text])
-                response = await client.post(
-                    url,
-                    json=payload,
-                    headers=self._build_request_headers(accept_json=True),
-                )
-                response.raise_for_status()
-                data = response.json()
-                return self._parse_hosted_clip_response(data, kind="text")
-
-            # Ollama API format (default)
-            url = f"{self.base_url}/api/embeddings"
-            payload = {
-                "model": self.model,
-                "prompt": self._ollama_prompt(text),
-            }
-            response = await client.post(url, json=payload)
+            url = self.base_url if self.is_hosted else f"{self.base_url}/embedding/text"
+            payload = (
+                self._build_hosted_clip_payload(images=[""] * len(texts), texts=texts)
+                if self.is_hosted
+                else {"texts": texts}
+            )
+            headers = self._build_hosted_clip_request_headers(accept_json=True) if self.is_hosted else None
+            response = await client.post(url, json=payload, headers=headers)
             response.raise_for_status()
             data = response.json()
 
-            if "embedding" not in data:
-                msg = f"Unexpected response format from Ollama: {data}"
-                raise UpstreamError(msg)
-
-            embedding = data["embedding"]
-            if not embedding:
-                logger.warning(
-                    "Empty text embedding returned from Ollama",
-                    extra={"backend": self.backend, "model": self.model, "base_url": self.base_url},
-                )
-            return embedding
+            if self.is_hosted:
+                return self._parse_hosted_clip_response(data, kind="text", count=len(texts))
+            return self._parse_local_clip_response(data, count=len(texts))
 
         return await async_retry_call(
             _do_request,
@@ -1040,119 +440,19 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             operation="CLIP embed_text_async",
         )
 
-    @with_client_metrics("clip", "embed_text")
-    @with_circuit_breaker("clip")
-    def embed_text(self, text: str) -> list[float]:
-        """Generate embedding for a text query.
-
-        The resulting vector is in the same space as image embeddings,
-        enabling cross-modal similarity search (text-to-image).
-
-        Args:
-            text: Text to embed (e.g., "a fluffy cat").
-
-        Returns:
-            List of floats representing the text embedding vector.
-
-        Raises:
-            UpstreamError: If the embedding service is unreachable or returns an error.
-            ValueError: If text is empty.
-        """
+    @override
+    @with_client_metrics_async("clip", "embed_text")
+    @with_circuit_breaker_async("clip")
+    async def embed_text(self, text: str) -> list[float]:
         if not text or not text.strip():
             msg = "Text cannot be empty"
             raise ValueError(msg)
-        return self._make_text_embed_request(text)
+        return (await self._request_texts([text]))[0]
 
-    @with_client_metrics_async("clip", "embed_text_async")
+    @override
+    @with_client_metrics_async("clip", "embed_text_batch")
     @with_circuit_breaker_async("clip")
-    async def embed_text_async(self, text: str) -> list[float]:
-        """Generate embedding for a text query (async).
-
-        The resulting vector is in the same space as image embeddings,
-        enabling cross-modal similarity search (text-to-image).
-
-        Args:
-            text: Text to embed (e.g., "a fluffy cat").
-
-        Returns:
-            List of floats representing the text embedding vector.
-
-        Raises:
-            UpstreamError: If the embedding service is unreachable or returns an error.
-            ValueError: If text is empty.
-        """
-        if not text or not text.strip():
-            msg = "Text cannot be empty"
-            raise ValueError(msg)
-        return await self._make_text_embed_request_async(text)
-
-    @with_client_metrics("clip", "embed_text_batch")
-    @with_circuit_breaker("clip")
-    def embed_text_batch(self, texts: list[str]) -> list[list[float]]:
-        """Generate embeddings for multiple text queries.
-
-        Args:
-            texts: List of text strings to embed.
-
-        Returns:
-            List of embedding vectors, one per input text.
-
-        Raises:
-            UpstreamError: If any embedding request fails.
-            ValueError: If texts list is empty or contains empty strings.
-        """
-        if not texts:
-            msg = "Texts list cannot be empty"
-            raise ValueError(msg)
-
-        # Apply batch size limit
-        if self.max_batch_size is not None and len(texts) > self.max_batch_size:
-            msg = (
-                f"Batch size {len(texts)} exceeds max_batch_size {self.max_batch_size}. "
-                "Split into smaller batches."
-            )
-            raise ValueError(msg)
-
-        if self.backend == "hosted_clip":
-            url = f"{self.base_url}"
-            payload = self._build_hosted_clip_payload(images=[""] * len(texts), texts=texts)
-            response = self.session.post(
-                url,
-                json=payload,
-                timeout=self.timeout_s,
-                headers=self._build_request_headers(accept_json=True),
-            )
-            response.raise_for_status()
-            data = response.json()
-            return self._parse_hosted_clip_batch_response(data, kind="text", count=len(texts))
-
-        results = []
-        for text in texts:
-            if not text or not text.strip():
-                msg = "Text cannot be empty"
-                raise ValueError(msg)
-            embedding = self._make_text_embed_request(text)
-            results.append(embedding)
-
-        return results
-
-    @with_client_metrics_async("clip", "embed_text_batch_async")
-    @with_circuit_breaker_async("clip")
-    async def embed_text_batch_async(self, texts: list[str]) -> list[list[float]]:
-        """Generate embeddings for multiple text queries (async).
-
-        Uses asyncio.gather for concurrent processing.
-
-        Args:
-            texts: List of text strings to embed.
-
-        Returns:
-            List of embedding vectors, one per input text.
-
-        Raises:
-            UpstreamError: If any embedding request fails.
-            ValueError: If texts list is empty or contains empty strings.
-        """
+    async def embed_text_batch(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             msg = "Texts list cannot be empty"
             raise ValueError(msg)
@@ -1171,63 +471,18 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
                 msg = "Text cannot be empty"
                 raise ValueError(msg)
 
-        if self.backend == "hosted_clip":
+        return await self._request_texts(texts)
 
-            async def _do_hosted_text_batch() -> list[list[float]]:
-                url = f"{self.base_url}"
-                payload = self._build_hosted_clip_payload(images=[""] * len(texts), texts=texts)
-                client = await self._get_async_client()
-                response = await client.post(
-                    url,
-                    json=payload,
-                    headers=self._build_request_headers(accept_json=True),
-                )
-                response.raise_for_status()
-                data = response.json()
-                return self._parse_hosted_clip_batch_response(data, kind="text", count=len(texts))
-
-            return await async_retry_call(
-                _do_hosted_text_batch,
-                max_retries=self.max_retries,
-                min_wait=self.retry_min_wait,
-                max_wait=self.retry_max_wait,
-                is_retriable=_clip_classifier.is_retriable,
-                before_sleep=_clip_log_retry,
-                operation="CLIP embed_text_batch_async (hosted)",
-            )
-
-        # Make concurrent requests
-        tasks = [self._make_text_embed_request_async(text) for text in texts]
-        results = await asyncio.gather(*tasks)
-
-        return list(results)
-
-    def close(self) -> None:
-        """Close HTTP session and cleanup resources."""
-        if self._session is not None:
-            self._session.close()
-            self._session = None
-
-    def set_session(self, session: requests.Session) -> None:
-        """Set custom requests session for connection pooling.
-
-        Args:
-            session: Requests session to use for HTTP calls.
-        """
-        if self._session is not None:
-            self._session.close()
-        self._session = session
-
+    @override
     @classmethod
     def from_config(
         cls,
-        config: ImageEmbeddingConfig,
-        session: requests.Session | None = None,
+        config: EmbeddingConfig,
     ) -> "CLIPClient":
-        """Create CLIPClient from ImageEmbeddingConfig.
+        """Create CLIPClient from EmbeddingConfig.
 
         Args:
-            config: Image embedding configuration.
+            config: Embedding configuration.
             session: Optional requests session for connection pooling.
 
         Returns:
@@ -1237,27 +492,22 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             ValueError: If config is missing required fields.
         """
         if not config.clip_url:
-            msg = "clip_url is required in ImageEmbeddingConfig"
-            raise ValueError(msg)
+            raise ValueError("clip_url is required in EmbeddingConfig")
         if not config.clip_model:
-            msg = "clip_model is required in ImageEmbeddingConfig"
-            raise ValueError(msg)
-        if config.clip_backend == "hosted_clip" and not config.clip_api_key:
+            raise ValueError("clip_model is required in EmbeddingConfig")
+
+        is_hosted = config.provider_type == ProviderType.HOSTED_CLIP
+        if is_hosted and not config.clip_api_key:
             raise ValueError("CLIP_API_KEY is required for hosted_clip backend")
 
-        client = cls(
+        return cls(
+            is_hosted=is_hosted,
             base_url=config.clip_url,
             model=config.clip_model,
-            backend=config.clip_backend,
-            api_key=config.clip_api_key,
+            clip_api_key=config.clip_api_key,
             timeout_s=config.clip_timeout,
             circuit_breaker_failure_threshold=config.clip_circuit_breaker_threshold,
             circuit_breaker_recovery_timeout_s=config.clip_circuit_breaker_timeout,
             max_batch_size=config.clip_max_batch_size,
             vector_size_override=config.clip_vector_size,
         )
-
-        if session is not None:
-            client.set_session(session)
-
-        return client

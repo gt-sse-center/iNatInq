@@ -21,7 +21,7 @@ import ray
 
 from clients.s3 import S3ClientWrapper
 from clients.qdrant import QdrantClientWrapper
-from config import ImageEmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
+from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
 from core.ingestion.databricks.batch_runner import run_ray_batch_processing
 from core.ingestion.shared.batching import iter_image_batches
 from core.ingestion.shared.qdrant_indexing import qdrant_indexing_disabled
@@ -52,7 +52,7 @@ def main() -> None:
 
     ray_cfg = RayJobConfig.from_env(namespace)
     minio_cfg = MinIOConfig.from_env(namespace)
-    embed_cfg = ImageEmbeddingConfig.from_env(namespace)
+    embed_cfg = EmbeddingConfig.from_env(namespace)
     vector_cfg = VectorDBConfig.from_env(namespace)
 
     s3_prefix = ray_cfg.s3_prefix
@@ -142,7 +142,7 @@ def main() -> None:
                 s3_access_key=minio_cfg.access_key_id,
                 s3_secret_key=minio_cfg.secret_access_key,
                 s3_bucket=bucket,
-                image_embedding_config=embed_cfg,
+                embedding_config=embed_cfg,
                 collection=collection,
                 image_batch_size=image_batch_size,
                 image_embed_batch_size=image_embed_batch_size,

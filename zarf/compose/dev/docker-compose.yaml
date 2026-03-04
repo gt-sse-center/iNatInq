@@ -300,13 +300,13 @@ services:
       - ./pipeline.env
     # Cloud/External overrides: set these env vars in shell to use external providers
     environment:
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-clip}
       # Ollama (text embedding service)
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-nomic-embed-text}
       # CLIP (image embedding service)
       - CLIP_URL=${CLIP_URL:-http://clip:8000}
       - CLIP_MODEL=${CLIP_MODEL:-ViT-B/32}
-      - CLIP_BACKEND=${CLIP_BACKEND:-clip}
       # Qdrant (vector database)
       - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
@@ -348,3 +348,4 @@ volumes:
 networks:
   ml-network:
     driver: bridge
+

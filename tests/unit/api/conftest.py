@@ -11,9 +11,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from api.app import create_app
-from clients.clip import CLIPClient
 from clients.interfaces.embedding import EmbeddingProvider
 from clients.interfaces.vector_db import VectorDBProvider
+from config import ProviderType
 from core.models import SearchResultItem, SearchResults
 from fastapi.testclient import TestClient
 
@@ -46,11 +46,12 @@ def mock_embedding_provider() -> MagicMock:
         MagicMock: A mock embedding provider with embed and embed_async methods.
     """
     provider = MagicMock(spec=EmbeddingProvider)
-    provider.embed = MagicMock(return_value=[0.1, 0.2, 0.3] * 256)  # 768-dim vector
-    provider.embed_async = AsyncMock(return_value=[0.1, 0.2, 0.3] * 256)
-    provider.embed_batch = MagicMock(return_value=[[0.1, 0.2, 0.3] * 256, [0.4, 0.5, 0.6] * 256])
-    provider.embed_batch_async = AsyncMock(return_value=[[0.1, 0.2, 0.3] * 256, [0.4, 0.5, 0.6] * 256])
+    provider.embed_text = AsyncMock(return_value=[0.1, 0.2, 0.3] * 256)
+    provider.embed_text_batch = MagicMock(return_value=[[0.1, 0.2, 0.3] * 256, [0.4, 0.5, 0.6] * 256])
+    provider.embed_image = AsyncMock(return_value=[0.1, 0.2, 0.3] * 256)
+    provider.embed_image_batch = AsyncMock(return_value=[[0.1, 0.2, 0.3] * 256, [0.4, 0.5, 0.6] * 256])
     provider.vector_size = 768
+    provider.model_name = "ViT-B/32"
     provider.close = MagicMock()
     return provider
 
@@ -164,7 +165,7 @@ def mock_settings() -> MagicMock:
 
     settings = MagicMock()
     settings.embedding = EmbeddingConfig(
-        provider_type="ollama",
+        provider_type=ProviderType.OLLAMA,
         ollama_url="http://localhost:11434",
         ollama_model="nomic-embed-text",
     )
@@ -237,23 +238,8 @@ def patch_get_settings(mock_settings: MagicMock):
 
 
 # =============================================================================
-# CLIP Client Mocks (for Image Search)
+# Image Search Mocks
 # =============================================================================
-
-
-@pytest.fixture
-def mock_clip_client() -> MagicMock:
-    """Create a mock CLIPClient for testing image search.
-
-    Returns:
-        MagicMock: A mock CLIP client with text embedding methods.
-    """
-    client = MagicMock(spec=CLIPClient)
-    client.embed_text = MagicMock(return_value=[0.1, 0.2, 0.3] * 170)  # 510-dim vector
-    client.embed_text_async = AsyncMock(return_value=[0.1, 0.2, 0.3] * 170)
-    client.vector_size = 512
-    client.model = "clip-vit-base-patch32"
-    return client
 
 
 @pytest.fixture
@@ -302,16 +288,15 @@ def mock_image_vector_db_provider() -> MagicMock:
 
 
 @pytest.fixture
-def mock_image_embedding_config() -> MagicMock:
-    """Create a mock ImageEmbeddingConfig for testing.
+def mock_embedding_config() -> MagicMock:
+    """Create a mock EmbeddingConfig for testing.
 
     Returns:
-        MagicMock: A mock image embedding configuration.
+        MagicMock: A mock embedding configuration with CLIP attributes.
     """
     config = MagicMock()
     config.clip_url = "http://clip.test:8000"
     config.clip_model = "ViT-B/32"
-    config.clip_backend = "clip"
     config.clip_timeout = 120
     config.clip_circuit_breaker_threshold = 5
     config.clip_circuit_breaker_timeout = 30
@@ -321,34 +306,34 @@ def mock_image_embedding_config() -> MagicMock:
 
 
 @pytest.fixture
-def patch_clip_client(mock_clip_client: MagicMock):
-    """Patch CLIPClient.from_config to return mock client.
+def patch_embedding_provider(mock_embedding_provider: MagicMock):
+    """Patch create_embedding_provider to return mock provider for image search.
 
     Args:
-        mock_clip_client: Mock CLIP client fixture.
+        mock_embedding_provider: Mock embedding provider fixture.
 
     Yields:
         Mock patch object.
     """
     with patch(
-        "api.routes.CLIPClient.from_config",
-        return_value=mock_clip_client,
+        "api.routes.create_embedding_provider",
+        return_value=mock_embedding_provider,
     ) as mock:
         yield mock
 
 
 @pytest.fixture
-def patch_image_embedding_config(mock_image_embedding_config: MagicMock):
-    """Patch ImageEmbeddingConfig.from_env to return mock config.
+def patch_embedding_config(mock_embedding_config: MagicMock):
+    """Patch EmbeddingConfig.from_env to return mock config.
 
     Args:
-        mock_image_embedding_config: Mock image embedding config fixture.
+        mock_embedding_config: Mock embedding config fixture.
 
     Yields:
         Mock patch object.
     """
     with patch(
-        "api.routes.ImageEmbeddingConfig.from_env",
-        return_value=mock_image_embedding_config,
+        "api.routes.EmbeddingConfig.from_env",
+        return_value=mock_embedding_config,
     ) as mock:
         yield mock

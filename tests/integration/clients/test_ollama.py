@@ -41,7 +41,6 @@ import asyncio
 import logging
 
 import aiobreaker
-import pybreaker
 import pytest
 
 from clients.ollama import OllamaClient
@@ -427,4 +426,4 @@ class TestFromConfig:
             result = await client.embed_text("test")
             assert len(result) == 384
         finally:
-            client.close()
+            await client.close()

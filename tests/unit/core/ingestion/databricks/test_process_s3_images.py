@@ -127,7 +127,7 @@ class TestDatabricksImageJobMain:
         with patch("core.ingestion.databricks.process_s3_images.RayJobConfig.from_env") as mock_ray_cfg:
             with patch("core.ingestion.databricks.process_s3_images.MinIOConfig.from_env") as mock_minio_cfg:
                 with patch(
-                    "core.ingestion.databricks.process_s3_images.ImageEmbeddingConfig.from_env"
+                    "core.ingestion.databricks.process_s3_images.EmbeddingConfig.from_env"
                 ) as mock_embed_cfg:
                     with patch(
                         "core.ingestion.databricks.process_s3_images.VectorDBConfig.from_env"

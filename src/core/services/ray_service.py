@@ -21,7 +21,7 @@ from typing import Any
 import attrs
 from ray.job_submission import JobSubmissionClient
 
-from config import ImageEmbeddingConfig, RayJobConfig
+from config import EmbeddingConfig, RayJobConfig
 from core.exceptions import UpstreamError
 from core.services.ingestion_params import build_image_ingestion_env
 
@@ -47,7 +47,7 @@ class RayService:
         s3_bucket: str,
         s3_prefix: str = "",
         collection: str,
-        image_embedding_config: ImageEmbeddingConfig | None = None,
+        embedding_config: EmbeddingConfig | None = None,
         image_max_items: int | None = None,
         image_page_size: int | None = None,
     ) -> str:
@@ -65,7 +65,7 @@ class RayService:
             s3_bucket: S3 bucket name containing images.
             s3_prefix: S3 prefix to process (default: "" for bucket root).
             collection: Base collection name.
-            image_embedding_config: Image embedding configuration. If None, loaded from env.
+            embedding_config: Image embedding configuration. If None, loaded from env.
             image_max_items: Optional limit on number of images to process.
             image_page_size: Optional S3 listing page size override.
 
@@ -81,8 +81,8 @@ class RayService:
                 "RAY_DASHBOARD_ADDRESS not configured. Cannot submit image job to Ray cluster."
             )
 
-        if image_embedding_config is None:
-            image_embedding_config = ImageEmbeddingConfig.from_env(namespace)
+        if embedding_config is None:
+            embedding_config = EmbeddingConfig.from_env(namespace)
 
         dashboard_address = ray_config.dashboard_address
         logger.info(
@@ -97,7 +97,7 @@ class RayService:
             s3_secret_access_key=s3_secret_access_key,
             s3_bucket=s3_bucket,
             s3_prefix=s3_prefix,
-            image_embedding_config=image_embedding_config,
+            embedding_config=embedding_config,
             collection=collection,
         )
         if image_max_items is not None:

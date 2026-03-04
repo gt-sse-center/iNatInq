@@ -36,6 +36,7 @@ class TestEmbeddingProviderABC:
             "embed_image",
             "embed_image_batch",
             "vector_size",
+            "model_name",
             "from_config",
         }
         assert abstract_methods == expected
@@ -61,6 +62,10 @@ class TestEmbeddingProviderABC:
             @property
             def vector_size(self) -> int:
                 return 1
+
+            @property
+            def model_name(self) -> str:
+                return "test-model"
 
             @classmethod
             def from_config(

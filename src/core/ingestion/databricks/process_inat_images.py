@@ -21,7 +21,7 @@ import ray
 
 from clients.inaturalist_open_data import INaturalistOpenDataClient, INaturalistPhotoRecord
 from clients.qdrant import QdrantClientWrapper
-from config import INatConfig, ImageEmbeddingConfig, RayJobConfig, VectorDBConfig
+from config import INatConfig, EmbeddingConfig, RayJobConfig, VectorDBConfig
 from core.ingestion.databricks.batch_runner import run_ray_batch_processing
 from core.ingestion.databricks.runtime import apply_python_params as _apply_python_params
 from core.ingestion.interfaces.operations import detect_image_format
@@ -86,7 +86,7 @@ def _iter_task_payload_batches(
 @ray.remote(num_cpus=1, max_retries=3)
 def process_inat_photo_batch_ray(
     records: list[dict[str, str]],
-    image_embedding_config: ImageEmbeddingConfig,
+    embedding_config: EmbeddingConfig,
     collection: str,
     image_batch_size: int = 20,
     image_embed_batch_size: int = 4,
@@ -115,7 +115,7 @@ def process_inat_photo_batch_ray(
         s3_access_key="",
         s3_secret_key="",
         s3_bucket="",
-        image_embedding_config=image_embedding_config,
+        embedding_config=embedding_config,
         collection=collection,
         image_batch_size=image_batch_size,
         image_embed_batch_size=image_embed_batch_size,
@@ -187,7 +187,7 @@ def main() -> None:
 
     inat_cfg = INatConfig.from_env()
     ray_cfg = RayJobConfig.from_env(namespace)
-    embed_cfg = ImageEmbeddingConfig.from_env(namespace)
+    embed_cfg = EmbeddingConfig.from_env(namespace)
     vector_cfg = VectorDBConfig.from_env(namespace)
 
     collection = vector_cfg.collection
@@ -261,7 +261,7 @@ def main() -> None:
         def _submit_batch(batch: list[dict[str, str]]) -> Any:
             return task_fn.remote(
                 records=batch,
-                image_embedding_config=embed_cfg,
+                embedding_config=embed_cfg,
                 collection=collection,
                 image_batch_size=image_batch_size,
                 image_embed_batch_size=image_embed_batch_size,

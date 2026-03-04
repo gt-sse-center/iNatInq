@@ -38,12 +38,13 @@ the ai4all/clip API format is properly documented.
 
 import logging
 
+import asyncio
+
 import aiobreaker
-import pybreaker
 import pytest
 
 from clients.clip import CLIPClient
-from config import ImageEmbeddingConfig
+from config import EmbeddingConfig, ProviderType
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,7 @@ SAMPLE_IMAGE_2 = _create_solid_color_png((0, 0, 255))  # Blue image (different f
 # =============================================================================
 
 
-@pytest.fixture()
+@pytest.fixture
 def clip_client(clip_container) -> CLIPClient:
     """Create a CLIPClient connected to the ai4all/clip container.
 
@@ -98,7 +99,7 @@ def clip_client(clip_container) -> CLIPClient:
     client = CLIPClient(
         base_url=base_url,
         model="ViT-B/32",
-        backend="clip",  # Use ai4all/clip API format
+        is_hosted=False,
         timeout_s=120,
         circuit_breaker_failure_threshold=3,
         circuit_breaker_recovery_timeout_s=10,
@@ -106,7 +107,7 @@ def clip_client(clip_container) -> CLIPClient:
 
     yield client
 
-    client.close()
+    asyncio.run(client.close())
 
 
 @pytest.fixture
@@ -132,7 +133,8 @@ class TestHappyPath:
     under normal conditions with a healthy ai4all/clip container.
     """
 
-    def test_embed_image_returns_vector(self, clip_client: CLIPClient, mock_image_bytes: bytes) -> None:
+    @pytest.mark.asyncio
+    async def test_embed_image_returns_vector(self, clip_client: CLIPClient, mock_image_bytes: bytes) -> None:
         """Test that embed_image() returns a valid embedding vector.
 
         **Why this test is important:**
@@ -145,13 +147,16 @@ class TestHappyPath:
         - Response is parsed correctly
         - Embedding vector is returned
         """
-        result = clip_client.embed_image(mock_image_bytes)
+        result = await clip_client.embed_image(mock_image_bytes)
 
         assert isinstance(result, list)
         assert len(result) > 0
         assert all(isinstance(x, float) for x in result)
 
-    def test_embed_image_different_images_produce_different_vectors(self, clip_client: CLIPClient) -> None:
+    @pytest.mark.asyncio
+    async def test_embed_image_different_images_produce_different_vectors(
+        self, clip_client: CLIPClient
+    ) -> None:
         """Test that different images produce different embeddings.
 
         **Why this test is important:**
@@ -162,33 +167,10 @@ class TestHappyPath:
         - Two different images produce different embedding vectors
         - The vectors are not identical
         """
-        result1 = clip_client.embed_image(SAMPLE_PNG)
-        result2 = clip_client.embed_image(SAMPLE_IMAGE_2)
+        result1 = await clip_client.embed_image(SAMPLE_PNG)
+        result2 = await clip_client.embed_image(SAMPLE_IMAGE_2)
 
-        # Vectors should be different for different images
-        # (may be same if model doesn't differentiate, but usually different)
         assert len(result1) == len(result2)
-
-    @pytest.mark.asyncio
-    async def test_embed_image_async_returns_vector(
-        self, clip_client: CLIPClient, mock_image_bytes: bytes
-    ) -> None:
-        """Test that embed_image_async() returns a valid embedding vector.
-
-        **Why this test is important:**
-        Async embedding is critical for high-throughput pipelines where
-        we need to parallelize multiple embedding requests.
-
-        **What it tests:**
-        - Async HTTP request completes successfully
-        - Response is parsed correctly in async context
-        - Embedding vector is returned
-        """
-        result = await clip_client.embed_image_async(mock_image_bytes)
-
-        assert isinstance(result, list)
-        assert len(result) > 0
-        assert all(isinstance(x, float) for x in result)
 
 
 # =============================================================================
@@ -204,7 +186,8 @@ class TestBatchOperations:
     when embedding multiple images.
     """
 
-    def test_embed_image_batch_returns_multiple_vectors(self, clip_client: CLIPClient) -> None:
+    @pytest.mark.asyncio
+    async def test_embed_image_batch_returns_multiple_vectors(self, clip_client: CLIPClient) -> None:
         """Test that embed_image_batch() returns vectors for all images.
 
         **Why this test is important:**
@@ -216,31 +199,16 @@ class TestBatchOperations:
         - Correct number of vectors returned
         - Each vector has values
         """
-        images = [SAMPLE_PNG, SAMPLE_PNG, SAMPLE_PNG]
-        result = clip_client.embed_image_batch(images)
+        requests = [
+            SAMPLE_PNG,
+            SAMPLE_PNG,
+            SAMPLE_PNG,
+        ]
+        result = await clip_client.embed_image_batch(requests)
 
         assert len(result) == 3
         assert all(len(v) > 0 for v in result)
         assert all(isinstance(x, float) for v in result for x in v)
-
-    @pytest.mark.asyncio
-    async def test_embed_image_batch_async_returns_multiple_vectors(self, clip_client: CLIPClient) -> None:
-        """Test that embed_image_batch_async() returns vectors for all images.
-
-        **Why this test is important:**
-        Async batch embedding combines the benefits of batching and
-        async operations for maximum throughput.
-
-        **What it tests:**
-        - Async batch API processes multiple images
-        - Correct number of vectors returned
-        - Vectors are correctly parsed in async context
-        """
-        images = [SAMPLE_PNG, SAMPLE_PNG]
-        result = await clip_client.embed_image_batch_async(images)
-
-        assert len(result) == 2
-        assert all(len(v) > 0 for v in result)
 
 
 # =============================================================================
@@ -256,26 +224,12 @@ class TestCircuitBreaker:
     when a service is degraded.
     """
 
-    def test_sync_circuit_breaker_starts_closed(self, clip_client: CLIPClient) -> None:
-        """Test that sync circuit breaker starts in closed state.
-
-        **Why this test is important:**
-        The circuit breaker must start closed to allow normal operation.
-        A breaker that starts open would block all requests.
-
-        **What it tests:**
-        - Sync circuit breaker (_breaker) exists
-        - Initial state is CLOSED
-        """
-        assert clip_client._breaker is not None
-        assert clip_client._breaker.current_state == pybreaker.STATE_CLOSED
-
     def test_async_circuit_breaker_starts_closed(self, clip_client: CLIPClient) -> None:
         """Test that async circuit breaker starts in closed state.
 
         **Why this test is important:**
-        The async circuit breaker must also start closed.
-        Async operations use a separate breaker (aiobreaker).
+        The async circuit breaker must start closed to allow normal operation.
+        Async operations use aiobreaker.
 
         **What it tests:**
         - Async circuit breaker (_async_breaker) exists
@@ -299,7 +253,8 @@ class TestErrorHandling:
     to avoid circuit breaker state pollution.
     """
 
-    def test_empty_image_raises_value_error(self, clip_container) -> None:
+    @pytest.mark.asyncio
+    async def test_empty_image_raises_value_error(self, clip_container) -> None:
         """Test that empty image bytes raises ValueError.
 
         **Why this test is important:**
@@ -316,13 +271,14 @@ class TestErrorHandling:
         client = CLIPClient(
             base_url=f"http://{host}:{port}",
             model="ViT-B/32",
-            backend="clip",
+            is_hosted=False,
         )
 
         with pytest.raises(ValueError, match="empty"):
-            client.embed_image(b"")
+            await client.embed_image(b"")
 
-    def test_empty_batch_raises_value_error(self, clip_container) -> None:
+    @pytest.mark.asyncio
+    async def test_empty_batch_raises_value_error(self, clip_container) -> None:
         """Test that empty batch raises ValueError.
 
         **Why this test is important:**
@@ -339,13 +295,14 @@ class TestErrorHandling:
         client = CLIPClient(
             base_url=f"http://{host}:{port}",
             model="ViT-B/32",
-            backend="clip",
+            is_hosted=False,
         )
 
         with pytest.raises(ValueError, match="empty"):
-            client.embed_image_batch([])
+            await client.embed_image_batch([])
 
-    def test_batch_exceeds_max_raises_value_error(self, clip_container) -> None:
+    @pytest.mark.asyncio
+    async def test_batch_exceeds_max_raises_value_error(self, clip_container) -> None:
         """Test that oversized batch raises ValueError.
 
         **Why this test is important:**
@@ -362,15 +319,14 @@ class TestErrorHandling:
         client = CLIPClient(
             base_url=f"http://{host}:{port}",
             model="ViT-B/32",
-            backend="clip",
+            is_hosted=False,
             max_batch_size=8,
         )
 
-        # Create batch larger than max_batch_size (8)
-        images = [SAMPLE_PNG] * 10
+        requests = [SAMPLE_PNG for _ in range(10)]
 
         with pytest.raises(ValueError, match="exceeds max_batch_size"):
-            client.embed_image_batch(images)
+            await client.embed_image_batch(requests)
 
 
 # =============================================================================
@@ -386,44 +342,17 @@ class TestResourceCleanup:
     when the client is closed.
     """
 
-    def test_close_releases_session(self, clip_container) -> None:
-        """Test that close() releases the HTTP session.
-
-        **Why this test is important:**
-        Proper cleanup prevents resource leaks. The session should
-        be set to None after close().
-
-        **What it tests:**
-        - close() is called without error
-        - Session is set to None
-        """
-        host = clip_container.get_container_host_ip()
-        port = clip_container.get_exposed_port(8000)
-
-        client = CLIPClient(
-            base_url=f"http://{host}:{port}",
-            model="ViT-B/32",
-            backend="clip",
-        )
-
-        # Access session to ensure it exists
-        _ = client.session
-
-        # Close should release session
-        client.close()
-
-        assert client._session is None
-
-    def test_client_usable_after_close_and_reopen(self, clip_container) -> None:
+    @pytest.mark.asyncio
+    async def test_client_usable_after_close_and_reopen(self, clip_container) -> None:
         """Test that client can be used after close if session is reset.
 
         **Why this test is important:**
-        Clients should be resilient. After close(), a new session
+        Clients should be resilient. After close(), a new async client
         should be created automatically on next use.
 
         **What it tests:**
         - close() is called
-        - New request creates new session
+        - New request creates new async client
         - Request succeeds
         """
         host = clip_container.get_container_host_ip()
@@ -432,15 +361,13 @@ class TestResourceCleanup:
         client = CLIPClient(
             base_url=f"http://{host}:{port}",
             model="ViT-B/32",
-            backend="clip",
+            is_hosted=False,
         )
 
-        # Use, close, then use again
-        result1 = client.embed_image(SAMPLE_PNG)
-        client.close()
+        result1 = await client.embed_image(SAMPLE_PNG)
+        await client.close()
 
-        # Should create new session automatically
-        result2 = client.embed_image(SAMPLE_PNG)
+        result2 = await client.embed_image(SAMPLE_PNG)
 
         assert result1 is not None
         assert result2 is not None
@@ -459,7 +386,8 @@ class TestFactoryMethod:
     These tests verify that clients can be created from config objects.
     """
 
-    def test_from_config_creates_client(self, clip_container) -> None:
+    @pytest.mark.asyncio
+    async def test_from_config_creates_client(self, clip_container) -> None:
         """Test that from_config() creates a properly configured client.
 
         **Why this test is important:**
@@ -469,15 +397,15 @@ class TestFactoryMethod:
         **What it tests:**
         - from_config() creates a client
         - Client has correct configuration
-        - Session and circuit breakers are initialized
+        - Circuit breakers are initialized
         """
         host = clip_container.get_container_host_ip()
         port = clip_container.get_exposed_port(8000)
 
-        config = ImageEmbeddingConfig(
+        config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
             clip_url=f"http://{host}:{port}",
             clip_model="ViT-B/32",
-            clip_backend="clip",
             clip_timeout=120,
             clip_circuit_breaker_threshold=5,
         )
@@ -485,17 +413,14 @@ class TestFactoryMethod:
         client = CLIPClient.from_config(config)
 
         try:
-            # Verify client is properly configured
+            assert client.is_hosted is False
             assert client.base_url == f"http://{host}:{port}"
             assert client.model == "ViT-B/32"
-            assert client.backend == "clip"
             assert client.timeout_s == 120
             assert client.circuit_breaker_failure_threshold == 5
-            assert client._session is not None
-            assert client._breaker is not None
             assert client._async_breaker is not None
         finally:
-            client.close()
+            await client.close()
 
 
 # =============================================================================
@@ -511,7 +436,8 @@ class TestTextEmbedding:
     in the same vector space as image embeddings, enabling cross-modal search.
     """
 
-    def test_embed_text_returns_vector(self, clip_client: CLIPClient) -> None:
+    @pytest.mark.asyncio
+    async def test_embed_text_returns_vector(self, clip_client: CLIPClient) -> None:
         """Test that embed_text() returns a valid embedding vector.
 
         **Why this test is important:**
@@ -522,30 +448,14 @@ class TestTextEmbedding:
         - embed_text() returns a list of floats
         - Vector has the correct dimension
         """
-        result = clip_client.embed_text("a fluffy cat sitting on a couch")
+        result = await clip_client.embed_text("a fluffy cat sitting on a couch")
 
         assert isinstance(result, list)
         assert len(result) == clip_client.vector_size
         assert all(isinstance(x, float) for x in result)
 
     @pytest.mark.asyncio
-    async def test_embed_text_async_returns_vector(self, clip_client: CLIPClient) -> None:
-        """Test that embed_text_async() returns a valid embedding vector.
-
-        **Why this test is important:**
-        Async text embedding is needed for high-throughput query processing.
-
-        **What it tests:**
-        - embed_text_async() returns a list of floats
-        - Vector has the correct dimension
-        """
-        result = await clip_client.embed_text_async("a golden retriever playing fetch")
-
-        assert isinstance(result, list)
-        assert len(result) == clip_client.vector_size
-        assert all(isinstance(x, float) for x in result)
-
-    def test_different_texts_produce_different_vectors(self, clip_client: CLIPClient) -> None:
+    async def test_different_texts_produce_different_vectors(self, clip_client: CLIPClient) -> None:
         """Test that different texts produce different embeddings.
 
         **Why this test is important:**
@@ -555,10 +465,9 @@ class TestTextEmbedding:
         **What it tests:**
         - Two different text descriptions produce different vectors
         """
-        result1 = clip_client.embed_text("a black cat")
-        result2 = clip_client.embed_text("a sunny beach")
+        result1 = await clip_client.embed_text("a black cat")
+        result2 = await clip_client.embed_text("a sunny beach")
 
-        # Vectors should be different
         assert result1 != result2
 
 
@@ -566,7 +475,8 @@ class TestTextEmbedding:
 class TestTextEmbeddingBatch:
     """Test suite for batch text embedding operations."""
 
-    def test_embed_text_batch_returns_multiple_vectors(self, clip_client: CLIPClient) -> None:
+    @pytest.mark.asyncio
+    async def test_embed_text_batch_returns_multiple_vectors(self, clip_client: CLIPClient) -> None:
         """Test that embed_text_batch() returns vectors for all texts.
 
         **Why this test is important:**
@@ -577,24 +487,7 @@ class TestTextEmbeddingBatch:
         - All vectors have correct dimension
         """
         texts = ["a cat", "a dog", "a bird"]
-        results = clip_client.embed_text_batch(texts)
-
-        assert len(results) == len(texts)
-        assert all(len(v) == clip_client.vector_size for v in results)
-
-    @pytest.mark.asyncio
-    async def test_embed_text_batch_async_returns_multiple_vectors(self, clip_client: CLIPClient) -> None:
-        """Test that embed_text_batch_async() returns vectors for all texts.
-
-        **Why this test is important:**
-        Async batch embedding enables high-throughput query processing.
-
-        **What it tests:**
-        - Returns correct number of vectors
-        - All vectors have correct dimension
-        """
-        texts = ["a red car", "a blue boat"]
-        results = await clip_client.embed_text_batch_async(texts)
+        results = await clip_client.embed_text_batch(texts)
 
         assert len(results) == len(texts)
         assert all(len(v) == clip_client.vector_size for v in results)
@@ -604,7 +497,8 @@ class TestTextEmbeddingBatch:
 class TestTextEmbeddingValidation:
     """Test suite for text embedding input validation."""
 
-    def test_empty_text_raises_value_error(self, clip_container) -> None:
+    @pytest.mark.asyncio
+    async def test_empty_text_raises_value_error(self, clip_container) -> None:
         """Test that empty text raises ValueError.
 
         **Why this test is important:**
@@ -619,13 +513,14 @@ class TestTextEmbeddingValidation:
         client = CLIPClient(
             base_url=f"http://{host}:{port}",
             model="ViT-B/32",
-            backend="clip",
+            is_hosted=False,
         )
 
         with pytest.raises(ValueError, match="empty"):
-            client.embed_text("")
+            await client.embed_text("")
 
-    def test_whitespace_text_raises_value_error(self, clip_container) -> None:
+    @pytest.mark.asyncio
+    async def test_whitespace_text_raises_value_error(self, clip_container) -> None:
         """Test that whitespace-only text raises ValueError.
 
         **Why this test is important:**
@@ -640,13 +535,14 @@ class TestTextEmbeddingValidation:
         client = CLIPClient(
             base_url=f"http://{host}:{port}",
             model="ViT-B/32",
-            backend="clip",
+            is_hosted=False,
         )
 
         with pytest.raises(ValueError, match="empty"):
-            client.embed_text("   ")
+            await client.embed_text("   ")
 
-    def test_empty_text_batch_raises_value_error(self, clip_container) -> None:
+    @pytest.mark.asyncio
+    async def test_empty_text_batch_raises_value_error(self, clip_container) -> None:
         """Test that empty text batch raises ValueError.
 
         **Why this test is important:**
@@ -661,11 +557,11 @@ class TestTextEmbeddingValidation:
         client = CLIPClient(
             base_url=f"http://{host}:{port}",
             model="ViT-B/32",
-            backend="clip",
+            is_hosted=False,
         )
 
         with pytest.raises(ValueError, match="empty"):
-            client.embed_text_batch([])
+            await client.embed_text_batch([])
 
 
 @pytest.mark.integration
@@ -676,7 +572,8 @@ class TestCrossModalSearch:
     same vector space, enabling text-to-image similarity search.
     """
 
-    def test_image_and_text_vectors_same_dimension(
+    @pytest.mark.asyncio
+    async def test_image_and_text_vectors_same_dimension(
         self, clip_client: CLIPClient, mock_image_bytes: bytes
     ) -> None:
         """Test that image and text embeddings have the same dimensions.
@@ -688,26 +585,8 @@ class TestCrossModalSearch:
         **What it tests:**
         - Image embedding dimension matches text embedding dimension
         """
-        image_vector = clip_client.embed_image(mock_image_bytes)
-        text_vector = clip_client.embed_text("a small image")
-
-        assert len(image_vector) == len(text_vector)
-        assert len(image_vector) == clip_client.vector_size
-
-    @pytest.mark.asyncio
-    async def test_async_image_and_text_vectors_same_dimension(
-        self, clip_client: CLIPClient, mock_image_bytes: bytes
-    ) -> None:
-        """Test that async image and text embeddings have the same dimensions.
-
-        **Why this test is important:**
-        Async operations should produce vectors in the same space.
-
-        **What it tests:**
-        - Async image embedding dimension matches async text embedding dimension
-        """
-        image_vector = await clip_client.embed_image_async(mock_image_bytes)
-        text_vector = await clip_client.embed_text_async("a small image")
+        image_vector = await clip_client.embed_image(mock_image_bytes)
+        text_vector = await clip_client.embed_text("a small image")
 
         assert len(image_vector) == len(text_vector)
         assert len(image_vector) == clip_client.vector_size

@@ -27,7 +27,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from config import ImageEmbeddingConfig
+from config import EmbeddingConfig, ProviderType
 from core.exceptions import UpstreamError
 from core.services.ray_service import RayService
 
@@ -549,7 +549,7 @@ class TestRayServiceDashboardAddress:
             s3_secret_access_key="test-secret",
             s3_bucket="test-bucket",
             s3_prefix="inputs/",
-            image_embedding_config=ImageEmbeddingConfig(),
+            embedding_config=EmbeddingConfig(provider_type=ProviderType.OLLAMA),
             collection="test-collection",
         )
 
@@ -592,7 +592,7 @@ class TestRayServiceDashboardAddress:
             s3_secret_access_key="minioadmin",
             s3_bucket="pipeline",
             s3_prefix="inputs/",
-            image_embedding_config=ImageEmbeddingConfig(),
+            embedding_config=EmbeddingConfig(provider_type=ProviderType.OLLAMA),
             collection="documents",
         )
 

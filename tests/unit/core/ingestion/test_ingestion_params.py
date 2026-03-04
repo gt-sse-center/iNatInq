@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from config import EmbeddingConfig, ImageEmbeddingConfig
+from config import EmbeddingConfig, ProviderType
 from core.services.ingestion_params import (
     add_ray_tuning_env,
     build_image_ingestion_env,
@@ -23,7 +23,7 @@ def test_build_ingestion_env_includes_required_and_optional(monkeypatch) -> None
     monkeypatch.setenv("EXTRA_ENV", "extra-value")
 
     embedding_config = EmbeddingConfig(
-        provider_type="ollama",
+        provider_type=ProviderType.OLLAMA,
         ollama_url="http://ollama.test:11434",
         ollama_model="nomic-embed-text",
         vector_size=768,
@@ -77,6 +77,7 @@ def test_add_ray_tuning_env(monkeypatch) -> None:
 
 def test_build_image_ingestion_env_includes_required_and_optional(monkeypatch) -> None:
     """Ensure image ingestion env includes required keys and passthrough values."""
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "hosted_clip")
     monkeypatch.setenv("QDRANT_URL", "http://qdrant.test:6333")
     monkeypatch.setenv("QDRANT_API_KEY", "qdrant-key")
     monkeypatch.setenv("WEAVIATE_URL", "http://weaviate.test:8080")
@@ -88,11 +89,10 @@ def test_build_image_ingestion_env_includes_required_and_optional(monkeypatch) -
     monkeypatch.setenv("INAT_IMAGE_SIZE", "large")
     monkeypatch.setenv("EXTRA_ENV", "extra-value")
 
-    image_embedding_config = ImageEmbeddingConfig(
-        provider_type="clip",
+    embedding_config = EmbeddingConfig(
+        provider_type=ProviderType.HOSTED_CLIP,
         clip_url="http://clip.test:8000",
         clip_model="ViT-B/32",
-        clip_backend="hosted_clip",
         clip_timeout=90,
         clip_circuit_breaker_threshold=7,
         clip_circuit_breaker_timeout=45,
@@ -110,7 +110,7 @@ def test_build_image_ingestion_env_includes_required_and_optional(monkeypatch) -
         s3_secret_access_key="secret-key",
         s3_bucket="bucket",
         s3_prefix="images/",
-        image_embedding_config=image_embedding_config,
+        embedding_config=embedding_config,
         collection="images",
         extra_env_keys=["EXTRA_ENV"],
     )
@@ -122,10 +122,9 @@ def test_build_image_ingestion_env_includes_required_and_optional(monkeypatch) -
     assert env_vars["S3_SECRET_ACCESS_KEY"] == "secret-key"
     assert env_vars["S3_BUCKET"] == "bucket"
     assert env_vars["VECTOR_DB_COLLECTION"] == "images"
-    assert env_vars["IMAGE_EMBEDDING_PROVIDER"] == "clip"
+    assert env_vars["EMBEDDING_PROVIDER"] == "hosted_clip"
     assert env_vars["CLIP_URL"] == "http://clip.test:8000"
     assert env_vars["CLIP_MODEL"] == "ViT-B/32"
-    assert env_vars["CLIP_BACKEND"] == "hosted_clip"
     assert env_vars["CLIP_TIMEOUT"] == "90"
     assert env_vars["CLIP_CIRCUIT_BREAKER_THRESHOLD"] == "7"
     assert env_vars["CLIP_CIRCUIT_BREAKER_TIMEOUT"] == "45"
@@ -149,7 +148,7 @@ def test_build_image_ingestion_env_includes_required_and_optional(monkeypatch) -
 def test_build_ingestion_env_with_ingestion_targets(monkeypatch) -> None:
     """Test that VECTOR_DB_TARGETS is set when ingestion_targets is provided."""
     monkeypatch.delenv("VECTOR_DB_TARGETS", raising=False)
-    embedding_config = EmbeddingConfig(provider_type="ollama")
+    embedding_config = EmbeddingConfig(provider_type=ProviderType.OLLAMA)
 
     env_vars = build_ingestion_env(
         namespace="ns",
@@ -169,7 +168,7 @@ def test_build_ingestion_env_with_ingestion_targets(monkeypatch) -> None:
 def test_build_ingestion_env_targets_sorted(monkeypatch) -> None:
     """Test that VECTOR_DB_TARGETS value is sorted for deterministic output."""
     monkeypatch.delenv("VECTOR_DB_TARGETS", raising=False)
-    embedding_config = EmbeddingConfig(provider_type="ollama")
+    embedding_config = EmbeddingConfig(provider_type=ProviderType.OLLAMA)
 
     env_vars = build_ingestion_env(
         namespace="ns",
@@ -194,11 +193,10 @@ def test_build_inat_image_ingestion_env_excludes_s3_connection_keys(monkeypatch)
     monkeypatch.setenv("INAT_METADATA_URL", "s3://inaturalist-open-data/photos.csv.gz")
     monkeypatch.setenv("EXTRA_ENV", "extra-value")
 
-    image_embedding_config = ImageEmbeddingConfig(
-        provider_type="clip",
+    embedding_config = EmbeddingConfig(
+        provider_type=ProviderType.HOSTED_CLIP,
         clip_url="http://clip.test:8000",
         clip_model="ViT-B/32",
-        clip_backend="hosted_clip",
         clip_timeout=90,
         clip_circuit_breaker_threshold=7,
         clip_circuit_breaker_timeout=45,
@@ -211,14 +209,13 @@ def test_build_inat_image_ingestion_env_excludes_s3_connection_keys(monkeypatch)
 
     env_vars = build_inat_image_ingestion_env(
         namespace="ml-system",
-        image_embedding_config=image_embedding_config,
+        embedding_config=embedding_config,
         collection="images",
         extra_env_keys=["EXTRA_ENV"],
     )
 
     assert env_vars["K8S_NAMESPACE"] == "ml-system"
     assert env_vars["VECTOR_DB_COLLECTION"] == "images"
-    assert env_vars["IMAGE_EMBEDDING_PROVIDER"] == "clip"
     assert env_vars["INAT_MAX_ROWS"] == "500"
     assert env_vars["INAT_METADATA_URL"] == "s3://inaturalist-open-data/photos.csv.gz"
     assert env_vars["EXTRA_ENV"] == "extra-value"
@@ -233,15 +230,15 @@ def test_build_inat_image_ingestion_env_passthroughs_vector_db_targets(monkeypat
     """Ensure iNat image ingestion env passes through VECTOR_DB_TARGETS when set."""
     monkeypatch.setenv("VECTOR_DB_TARGETS", "qdrant")
 
-    image_embedding_config = ImageEmbeddingConfig(
-        provider_type="clip",
+    embedding_config = EmbeddingConfig(
+        provider_type=ProviderType.LOCAL_CLIP,
         clip_url="http://clip.test:8000",
         clip_model="ViT-B/32",
     )
 
     env_vars = build_inat_image_ingestion_env(
         namespace="ml-system",
-        image_embedding_config=image_embedding_config,
+        embedding_config=embedding_config,
         collection="images",
     )
 
