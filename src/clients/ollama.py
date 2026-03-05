@@ -32,14 +32,15 @@ The client class:
 import asyncio
 import logging
 from typing import Any
-from typing_extensions import override
 
 import aiobreaker
 import attrs
 import httpx
+from typing_extensions import override
 
 from config import EmbeddingConfig
 from core.exceptions import UpstreamError
+from core.metrics.decorators import with_client_metrics_async
 from foundation.circuit_breaker import (
     create_async_circuit_breaker,
     with_circuit_breaker_async,
@@ -346,11 +347,13 @@ class OllamaClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embe
         )
 
     @override
+    @with_client_metrics_async("ollama", "embed_text")
     @with_circuit_breaker_async("ollama")
     async def embed_text(self, text: str) -> list[float]:
         return await self._embed_async_impl(text)
 
     @override
+    @with_client_metrics_async("ollama", "embed_text_batch")
     @with_circuit_breaker_async("ollama")
     async def embed_text_batch(
         self, texts: list[str], *, fallback_to_individual: bool = False

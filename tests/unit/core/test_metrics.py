@@ -21,12 +21,7 @@ Each test documents "Why important" and "What it tests".
 Run with: uv run pytest tests/unit/core/test_metrics.py
 """
 
-from datetime import UTC, datetime
-from unittest.mock import MagicMock
-
-import aiobreaker
 import prometheus_client
-import pybreaker
 import requests.exceptions
 from foundation.exceptions import UpstreamError
 
@@ -265,7 +260,7 @@ class TestClassifyError:
         assert classify_error(UpstreamError("service unavailable")) == "upstream"
 
     def test_classify_error_circuit_open(self) -> None:
-        """Test that circuit breaker errors are classified as 'circuit_open'.
+        """Test that circuit-open errors are classified as 'circuit_open'.
 
         **Why this test is important:**
           - Circuit breaker open state indicates repeated failures
@@ -273,23 +268,16 @@ class TestClassifyError:
           - Critical for capacity planning and incident response
 
         **What it tests:**
-          - pybreaker.CircuitBreakerError returns "circuit_open"
-          - aiobreaker.CircuitBreakerError returns "circuit_open"
-          - Handles different constructor signatures (pybreaker vs aiobreaker)
+          - UpstreamError with error_kind="circuit_open" returns "circuit_open"
+          - This matches production behaviour: circuit breaker decorators convert
+            CircuitBreakerError → UpstreamError(error_kind="circuit_open") before
+            the metrics decorator sees the exception.
         """
         # Arrange
         from core.metrics import classify_error
 
-        # Create mock breaker for pybreaker (takes breaker instance)
-        mock_breaker = MagicMock()
-
-        # Act & Assert
-        assert classify_error(pybreaker.CircuitBreakerError(mock_breaker)) == "circuit_open"
-        # aiobreaker requires (message: str, reopen_time: datetime)
-        assert (
-            classify_error(aiobreaker.CircuitBreakerError("breaker open", datetime.now(tz=UTC)))
-            == "circuit_open"
-        )
+        # Act & Assert — the circuit breaker decorator wraps the raw error
+        assert classify_error(UpstreamError("breaker open", error_kind="circuit_open")) == "circuit_open"
 
     def test_classify_error_unknown_fallback(self) -> None:
         """Test that unrecognized exceptions are classified as 'unknown'.

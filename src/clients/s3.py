@@ -85,6 +85,7 @@ from tenacity import (
 )
 
 from core.exceptions import UpstreamError
+from core.metrics.decorators import with_client_metrics
 from foundation.circuit_breaker import with_circuit_breaker
 from foundation.retry import HTTPErrorClassifier, create_retry_logger
 
@@ -418,6 +419,7 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             logger.exception(msg, extra={"operation": operation})
             raise UpstreamError(msg) from e
 
+    @with_client_metrics("s3", "ensure_bucket")
     @with_circuit_breaker("s3")
     def ensure_bucket(self, bucket: str) -> None:
         """Ensure an S3 bucket exists, creating it if missing.
@@ -450,6 +452,7 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
 
         self._with_retry("ensure_bucket", _ensure)
 
+    @with_client_metrics("s3", "put_object")
     @with_circuit_breaker("s3")
     def put_object(self, *, bucket: str, key: str, body: bytes) -> None:
         """Put an object into S3 with retry and circuit breaker protection.
@@ -470,6 +473,7 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             Body=body,
         )
 
+    @with_client_metrics("s3", "get_object")
     @with_circuit_breaker("s3")
     def get_object(self, *, bucket: str, key: str) -> bytes:
         """Get an object from S3 with retry and circuit breaker protection.
@@ -492,6 +496,7 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         result = self._with_retry("get_object", _get_and_read)
         return cast(bytes, result)
 
+    @with_client_metrics("s3", "list_objects")
     @with_circuit_breaker("s3")
     def list_objects(self, *, bucket: str, prefix: str = "") -> list[str]:
         """List all object keys in a bucket with retry and circuit breaker protection.
@@ -584,6 +589,7 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             extra={"total_pages": page_num, "total_keys": total_keys},
         )
 
+    @with_client_metrics("s3", "exists")
     @with_circuit_breaker("s3")
     def exists(self, *, bucket: str, key: str) -> bool:
         """Check if an object exists in S3 with retry and circuit breaker protection.
@@ -645,6 +651,7 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         # Run blocking boto3 call in thread pool for async-like behavior
         return await loop.run_in_executor(None, lambda: self.get_object(bucket=bucket, key=key))
 
+    @with_client_metrics("s3", "delete_object")
     @with_circuit_breaker("s3")
     def delete_object(self, *, bucket: str, key: str) -> None:
         """Delete an object from S3 with retry and circuit breaker protection.

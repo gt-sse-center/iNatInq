@@ -12,8 +12,6 @@ before the builtin ``OSError`` catch-all.
 import asyncio
 from typing import Literal
 
-import aiobreaker
-import pybreaker
 import requests.exceptions
 
 from foundation.exceptions import UpstreamError
@@ -62,13 +60,13 @@ def classify_error(exc: BaseException) -> ErrorType:
     if isinstance(exc, (ConnectionError, OSError)):
         return "connection"
 
-    # Check UpstreamError (application-level wrapper for external service failures)
+    # Check UpstreamError — circuit breaker decorators convert CircuitBreakerError
+    # to UpstreamError(error_kind="circuit_open") before this classifier sees it,
+    # so we inspect error_kind to distinguish circuit-open from generic upstream.
     if isinstance(exc, UpstreamError):
+        if exc.error_kind == "circuit_open":
+            return "circuit_open"
         return "upstream"
-
-    # Check circuit breaker errors (both sync pybreaker and async aiobreaker)
-    if isinstance(exc, (pybreaker.CircuitBreakerError, aiobreaker.CircuitBreakerError)):
-        return "circuit_open"
 
     # Fallback for unrecognized exceptions
     return "unknown"
