@@ -70,7 +70,7 @@ class TestQdrantClientWrapperInit:
         client = QdrantClientWrapper(url="http://qdrant.example.com:6333")
 
         mock_async_qdrant_client.assert_called_once_with(
-            url="http://qdrant.example.com:6333", api_key=None, timeout=300
+            url="http://qdrant.example.com:6333", api_key=None, timeout=300, pool_size=10
         )
         assert client.url == "http://qdrant.example.com:6333"
         assert client._client == mock_async_client
@@ -145,6 +145,7 @@ class TestQdrantClientWrapperInit:
             url="http://qdrant.example.com:6333",
             api_key=None,
             timeout=600,
+            pool_size=10,
         )
 
     @patch("clients.qdrant.AsyncQdrantClient")
@@ -175,6 +176,7 @@ class TestQdrantClientWrapperInit:
             url="https://qdrant.cloud.example.com:6333",
             api_key="test-api-key-12345",
             timeout=300,
+            pool_size=10,
         )
         assert client.api_key == "test-api-key-12345"
 
@@ -231,6 +233,7 @@ class TestQdrantClientWrapperInit:
             url="https://qdrant.cloud.example.com:6333",
             api_key="config-api-key-67890",
             timeout=300,
+            pool_size=10,
         )
         assert client.api_key == "config-api-key-67890"
 
@@ -271,6 +274,7 @@ class TestQdrantClientWrapperInit:
             url="http://qdrant.example.com:6333",
             api_key=None,
             timeout=600,
+            pool_size=10,
         )
 
         # Verify client attributes
