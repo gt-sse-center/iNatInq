@@ -19,11 +19,6 @@ from pathlib import Path
 from typing import Any
 
 
-def _write(message: str, *, error: bool = False) -> None:
-    stream = sys.stderr if error else sys.stdout
-    stream.write(f"{message}\n")
-
-
 def _read_env_file(path: Path) -> dict[str, str]:
     env: dict[str, str] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -93,10 +88,10 @@ def _create_scope_if_needed(*, host: str, token: str, scope: str) -> None:
             path="/api/2.0/secrets/scopes/create",
             payload={"scope": scope},
         )
-        _write(f"Created secret scope: {scope}")
+        print(f"Created secret scope: {scope}")
     except RuntimeError as exc:
         if "RESOURCE_ALREADY_EXISTS" in str(exc):
-            _write(f"Secret scope already exists: {scope}")
+            print(f"Secret scope already exists: {scope}")
             return
         raise
 
@@ -164,10 +159,10 @@ def main() -> int:
     env_file = Path(os.environ.get("ENV_FILE", repo_root / "zarf/databricks/dev/.env.local"))
 
     if not env_file.exists():
-        _write(f"Missing env file: {env_file}", error=True)
-        _write(
+        print(f"Missing env file: {env_file}", file=sys.stderr)
+        print(
             "Create it from zarf/databricks/dev/env.local.example or set ENV_FILE.",
-            error=True,
+            file=sys.stderr,
         )
         return 1
 
@@ -191,7 +186,7 @@ def main() -> int:
     }
     missing = [key for key, value in required.items() if not value]
     if missing:
-        _write(f"Missing required config: {', '.join(missing)}", error=True)
+        print(f"Missing required config: {', '.join(missing)}", file=sys.stderr)
         return 1
 
     scope = os.getenv("DATABRICKS_S3_SECRET_SCOPE", "inatinq-minio")
@@ -204,7 +199,7 @@ def main() -> int:
     _create_scope_if_needed(host=host, token=token, scope=scope)
     _put_secret(host=host, token=token, scope=scope, key=access_key_name, value=s3_access_key)
     _put_secret(host=host, token=token, scope=scope, key=secret_key_name, value=s3_secret_key)
-    _write(f"Updated secrets in scope '{scope}' ({access_key_name}, {secret_key_name})")
+    print(f"Updated secrets in scope '{scope}' ({access_key_name}, {secret_key_name})")
 
     cluster = _api_request(
         host=host,
@@ -232,7 +227,7 @@ def main() -> int:
         path="/api/2.0/clusters/edit",
         payload=edit_payload,
     )
-    _write(f"Updated cluster Spark conf for S3A on cluster {cluster_id}")
+    print(f"Updated cluster Spark conf for S3A on cluster {cluster_id}")
 
     if should_restart:
         _api_request(
@@ -242,9 +237,9 @@ def main() -> int:
             path="/api/2.0/clusters/restart",
             payload={"cluster_id": cluster_id},
         )
-        _write(f"Cluster restart requested: {cluster_id}")
+        print(f"Cluster restart requested: {cluster_id}")
     else:
-        _write(
+        print(
             "Cluster restart not requested. Set DATABRICKS_RESTART_CLUSTER_AFTER_S3A_CONFIG=true to auto-restart."
         )
 
