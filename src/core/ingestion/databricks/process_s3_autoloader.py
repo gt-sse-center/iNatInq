@@ -217,42 +217,6 @@ def _start_query(df: DataFrame, *, cfg: AutoLoaderConfig):
     return writer.toTable(cfg.bronze_table)
 
 
-def main() -> None:
-    """Run S3 Auto Loader ingestion into Bronze Delta table."""
-    _apply_python_params(sys.argv[1:])
-    cfg = AutoLoaderConfig.from_env()
-
-    job_logger = logging.getLogger("pipeline.autoloader.job")
-    job_logger.info(
-        "Databricks Auto Loader job started",
-        extra={
-            "source_path": cfg.source_path,
-            "resolved_source_path": _resolve_source_path(cfg.source_path, cfg=cfg),
-            "bronze_table": cfg.bronze_table,
-            "trigger_mode": cfg.trigger_mode,
-            "file_format": cfg.file_format,
-            "using_explicit_s3_endpoint": bool(cfg.s3_endpoint),
-        },
-    )
-    start = time.time()
-
-    spark_session = _spark_session_class()
-    spark = spark_session.getActiveSession() or spark_session.builder.getOrCreate()
-    autoloader_df = _build_autoloader_df(spark, cfg=cfg)
-    query = _start_query(autoloader_df, cfg=cfg)
-    query.awaitTermination()
-
-    elapsed = round(time.time() - start, 2)
-    job_logger.info(
-        "Databricks Auto Loader job completed",
-        extra={
-            "bronze_table": cfg.bronze_table,
-            "checkpoint_location": cfg.checkpoint_location,
-            "elapsed_seconds": elapsed,
-        },
-    )
-
-
 def _configure_s3a_for_minio(spark: SparkSession, *, cfg: AutoLoaderConfig) -> None:
     """Configure Spark Hadoop S3A settings when explicit MinIO/S3 creds are provided."""
     if not cfg.s3_endpoint:
@@ -325,6 +289,42 @@ def _spark_functions():
     except ModuleNotFoundError as exc:  # pragma: no cover - depends on runtime env
         raise RuntimeError("pyspark is required for Databricks Auto Loader job") from exc
     return sf
+
+
+def main() -> None:
+    """Run S3 Auto Loader ingestion into Bronze Delta table."""
+    _apply_python_params(sys.argv[1:])
+    cfg = AutoLoaderConfig.from_env()
+
+    job_logger = logging.getLogger("pipeline.autoloader.job")
+    job_logger.info(
+        "Databricks Auto Loader job started",
+        extra={
+            "source_path": cfg.source_path,
+            "resolved_source_path": _resolve_source_path(cfg.source_path, cfg=cfg),
+            "bronze_table": cfg.bronze_table,
+            "trigger_mode": cfg.trigger_mode,
+            "file_format": cfg.file_format,
+            "using_explicit_s3_endpoint": bool(cfg.s3_endpoint),
+        },
+    )
+    start = time.time()
+
+    spark_session = _spark_session_class()
+    spark = spark_session.getActiveSession() or spark_session.builder.getOrCreate()
+    autoloader_df = _build_autoloader_df(spark, cfg=cfg)
+    query = _start_query(autoloader_df, cfg=cfg)
+    query.awaitTermination()
+
+    elapsed = round(time.time() - start, 2)
+    job_logger.info(
+        "Databricks Auto Loader job completed",
+        extra={
+            "bronze_table": cfg.bronze_table,
+            "checkpoint_location": cfg.checkpoint_location,
+            "elapsed_seconds": elapsed,
+        },
+    )
 
 
 if __name__ == "__main__":
