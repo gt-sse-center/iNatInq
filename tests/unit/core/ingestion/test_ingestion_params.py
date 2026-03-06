@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from config import EmbeddingConfig, ProviderType
 from core.services.ingestion_params import (
     add_ray_tuning_env,
