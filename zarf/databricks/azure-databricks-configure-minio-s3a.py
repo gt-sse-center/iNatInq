@@ -10,6 +10,7 @@ This helper is intended as a one-time bootstrap:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import urllib.error
@@ -17,6 +18,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def _read_env_file(path: Path) -> dict[str, str]:
@@ -88,10 +91,10 @@ def _create_scope_if_needed(*, host: str, token: str, scope: str) -> None:
             path="/api/2.0/secrets/scopes/create",
             payload={"scope": scope},
         )
-        print(f"Created secret scope: {scope}")
+        logger.info("Created secret scope: %s", scope)
     except RuntimeError as exc:
         if "RESOURCE_ALREADY_EXISTS" in str(exc):
-            print(f"Secret scope already exists: {scope}")
+            logger.info("Secret scope already exists: %s", scope)
             return
         raise
 
@@ -155,14 +158,15 @@ def _remove_stale_s3a_class_conf(spark_conf: dict[str, str]) -> None:
 
 def main() -> int:
     """Create/update Databricks secret scope and cluster Spark S3A settings."""
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
     repo_root = Path(__file__).resolve().parents[2]
     env_file = Path(os.environ.get("ENV_FILE", repo_root / "zarf/databricks/dev/.env.local"))
 
     if not env_file.exists():
-        print(f"Missing env file: {env_file}", file=sys.stderr)
-        print(
+        logger.error("Missing env file: %s", env_file)
+        logger.error(
             "Create it from zarf/databricks/dev/env.local.example or set ENV_FILE.",
-            file=sys.stderr,
         )
         return 1
 
@@ -186,7 +190,7 @@ def main() -> int:
     }
     missing = [key for key, value in required.items() if not value]
     if missing:
-        print(f"Missing required config: {', '.join(missing)}", file=sys.stderr)
+        logger.error("Missing required config: %s", ", ".join(missing))
         return 1
 
     scope = os.getenv("DATABRICKS_S3_SECRET_SCOPE", "inatinq-minio")
@@ -199,7 +203,7 @@ def main() -> int:
     _create_scope_if_needed(host=host, token=token, scope=scope)
     _put_secret(host=host, token=token, scope=scope, key=access_key_name, value=s3_access_key)
     _put_secret(host=host, token=token, scope=scope, key=secret_key_name, value=s3_secret_key)
-    print(f"Updated secrets in scope '{scope}' ({access_key_name}, {secret_key_name})")
+    logger.info("Updated secrets in scope '%s' (%s, %s)", scope, access_key_name, secret_key_name)
 
     cluster = _api_request(
         host=host,
@@ -227,7 +231,7 @@ def main() -> int:
         path="/api/2.0/clusters/edit",
         payload=edit_payload,
     )
-    print(f"Updated cluster Spark conf for S3A on cluster {cluster_id}")
+    logger.info("Updated cluster Spark conf for S3A on cluster %s", cluster_id)
 
     if should_restart:
         _api_request(
@@ -237,9 +241,9 @@ def main() -> int:
             path="/api/2.0/clusters/restart",
             payload={"cluster_id": cluster_id},
         )
-        print(f"Cluster restart requested: {cluster_id}")
+        logger.info("Cluster restart requested: %s", cluster_id)
     else:
-        print(
+        logger.info(
             "Cluster restart not requested. Set DATABRICKS_RESTART_CLUSTER_AFTER_S3A_CONFIG=true to auto-restart."
         )
 
