@@ -9,7 +9,6 @@ import pytest
 from core.ingestion.databricks.process_s3_autoloader import (
     AutoLoaderConfig,
     _configure_s3a_for_minio,
-    _parse_bool,
     _resolve_source_path,
 )
 
@@ -21,10 +20,16 @@ def _reset_minio_env(monkeypatch) -> None:
         monkeypatch.delenv(key, raising=False)
 
 
-def test_parse_bool_uses_default_for_unknown_values() -> None:
-    """Unknown values should not crash and should resolve to default."""
-    assert _parse_bool("not-a-bool", default=True) is True
-    assert _parse_bool("not-a-bool", default=False) is False
+def test_autoloader_config_rejects_invalid_boolean_values(monkeypatch) -> None:
+    """Invalid bool env values should fail fast with a clear message."""
+    monkeypatch.setenv("S3_BUCKET", "pipeline")
+    monkeypatch.setenv("AUTOLOADER_BRONZE_TABLE", "main.default.images_bronze")
+    monkeypatch.setenv("AUTOLOADER_SCHEMA_LOCATION", "dbfs:/schema")
+    monkeypatch.setenv("AUTOLOADER_CHECKPOINT_LOCATION", "dbfs:/checkpoints")
+    monkeypatch.setenv("AUTOLOADER_INCLUDE_EXISTING_FILES", "not-a-bool")
+
+    with pytest.raises(ValueError, match="Invalid boolean Auto Loader config"):
+        AutoLoaderConfig.from_env()
 
 
 def test_autoloader_config_requires_mandatory_env(monkeypatch) -> None:

@@ -333,7 +333,6 @@ async def submit_databricks_image_job(
         embed_config = EmbeddingConfig.from_env(namespace)
         effective_s3_prefix: str | None
         if req.source == "inat":
-            image_embed_cfg = ImageEmbeddingConfig.from_env(namespace)
             effective_s3_prefix = None
             run_id = databricks_service.submit_inat_image_job(
                 namespace=namespace,
@@ -341,7 +340,6 @@ async def submit_databricks_image_job(
                 collection=req.collection,
             )
         else:
-            image_embed_cfg = ImageEmbeddingConfig.from_env(namespace)
             effective_s3_prefix = req.s3_prefix or ""
             minio_cfg = MinIOConfig.from_env(namespace)
             run_id = databricks_service.submit_image_job(

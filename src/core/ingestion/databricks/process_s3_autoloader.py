@@ -15,6 +15,9 @@ from dataclasses import dataclass
 from logging.config import dictConfig
 from typing import TYPE_CHECKING, Any
 
+from pydantic import Field, ValidationError
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 if TYPE_CHECKING:
     from pyspark.sql import DataFrame, SparkSession
 
@@ -26,16 +29,35 @@ dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("pipeline.autoloader.databricks")
 
 
-def _parse_bool(raw: str | None, *, default: bool) -> bool:
-    """Parse bool-like env values with a default fallback."""
-    if raw is None:
-        return default
-    normalized = raw.strip().lower()
-    if normalized in {"1", "true", "t", "yes", "y", "on"}:
-        return True
-    if normalized in {"0", "false", "f", "no", "n", "off"}:
-        return False
-    return default
+class _AutoLoaderBoolEnv(BaseSettings):
+    """Typed boolean env settings for Auto Loader runtime flags."""
+
+    include_existing_files: bool = Field(default=True, validation_alias="AUTOLOADER_INCLUDE_EXISTING_FILES")
+    s3_use_ssl: bool = Field(default=True, validation_alias="S3_USE_SSL")
+    s3_path_style: bool = Field(default=False, validation_alias="S3_PATH_STYLE")
+
+    model_config = SettingsConfigDict(env_prefix="", extra="ignore", frozen=True)
+
+    @classmethod
+    def from_env(cls) -> _AutoLoaderBoolEnv:
+        """Load and validate bool env vars via pydantic_settings."""
+        try:
+            return cls()
+        except ValidationError as exc:
+            env_by_field = {
+                "include_existing_files": "AUTOLOADER_INCLUDE_EXISTING_FILES",
+                "s3_use_ssl": "S3_USE_SSL",
+                "s3_path_style": "S3_PATH_STYLE",
+            }
+            invalid = sorted(
+                {
+                    env_by_field.get(str(error["loc"][0]), str(error["loc"][0]))
+                    for error in exc.errors()
+                    if error.get("loc")
+                }
+            )
+            details = ", ".join(invalid) if invalid else "boolean env vars"
+            raise ValueError(f"Invalid boolean Auto Loader config: {details}") from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +82,7 @@ class AutoLoaderConfig:
     @classmethod
     def from_env(cls) -> AutoLoaderConfig:
         """Load Auto Loader settings from environment variables."""
+        bool_env = _AutoLoaderBoolEnv.from_env()
         s3_bucket = (os.getenv("S3_BUCKET") or "").strip()
         s3_prefix = (os.getenv("S3_PREFIX") or "").strip()
         bronze_table = (os.getenv("AUTOLOADER_BRONZE_TABLE") or "").strip()
@@ -116,18 +139,15 @@ class AutoLoaderConfig:
             schema_location=schema_location,
             checkpoint_location=checkpoint_location,
             file_format=(os.getenv("AUTOLOADER_FILE_FORMAT") or "binaryFile").strip(),
-            include_existing_files=_parse_bool(
-                os.getenv("AUTOLOADER_INCLUDE_EXISTING_FILES"),
-                default=True,
-            ),
+            include_existing_files=bool_env.include_existing_files,
             max_files_per_trigger=max_files_per_trigger,
             trigger_mode=trigger_mode,
             processing_time_interval=(os.getenv("AUTOLOADER_TRIGGER_INTERVAL") or "5 minutes").strip(),
             s3_endpoint=s3_endpoint,
             s3_access_key_id=s3_access_key_id,
             s3_secret_access_key=s3_secret_access_key,
-            s3_use_ssl=_parse_bool(os.getenv("S3_USE_SSL"), default=True),
-            s3_path_style=_parse_bool(os.getenv("S3_PATH_STYLE"), default=False),
+            s3_use_ssl=bool_env.s3_use_ssl,
+            s3_path_style=bool_env.s3_path_style,
         )
 
 
