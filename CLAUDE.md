@@ -297,10 +297,8 @@ When modifying Ray jobs, ensure:
 
 Key variables to know (see `src/config.py` for full list):
 
-- **`EMBEDDING_PROVIDER`**: `ollama`, `openai`, `huggingface`, `sagemaker` (default: `ollama`)
+- **`EMBEDDING_PROVIDER`**: `ollama`, `openai`, `huggingface`, `sagemaker`, `clip`, `hosted_clip`, (default: `clip`)
 - **`VECTOR_DB_PROVIDER`**: `qdrant`, `weaviate` (default: `qdrant`)
-- **`IMAGE_EMBEDDING_PROVIDER`**: `clip`, `llava` (default: `clip`)
-- **`CLIP_BACKEND`**: `ollama`, `clip` (default: `ollama`)
 - **`OLLAMA_BASE_URL`**: Auto-detected based on environment
 - **`QDRANT_URL`**: Auto-detected based on environment
 - **`S3_ENDPOINT`**: Auto-detected based on environment
@@ -340,4 +338,3 @@ See `zarf/databricks/README.md` for setup details.
 3. **Circuit breaker state**: If tests fail with "Circuit breaker is open", reset the breaker or wait for timeout
 4. **Testcontainers ports**: Always use `container.get_exposed_port()`, never hardcode ports
 5. **Provider factories**: Use `create_embedding_provider()` and `create_vector_db_provider()` instead of instantiating clients directly - this ensures provider abstraction works correctly
-6. **CLIP vs Ollama backend**: Image embedding uses different APIs depending on `CLIP_BACKEND` setting

@@ -23,7 +23,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from config import EmbeddingConfig, ImageEmbeddingConfig
+from config import EmbeddingConfig, EmbeddingConfig, ProviderType
 from core.exceptions import UpstreamError
 from core.services.databricks_ray_service import DatabricksRayService
 
@@ -66,11 +66,10 @@ class TestDatabricksRayServiceSubmitImageJob:
         mock_client.jobs.run_now.return_value = mock_response
         mock_client_cls.return_value = mock_client
 
-        image_embedding_config = ImageEmbeddingConfig(
-            provider_type="clip",
+        embedding_config = EmbeddingConfig(
+            provider_type=ProviderType.HOSTED_CLIP,
             clip_url="http://clip.test:8000",
             clip_model="ViT-B/32",
-            clip_backend="hosted_clip",
             clip_timeout=90,
             clip_circuit_breaker_threshold=7,
             clip_circuit_breaker_timeout=45,
@@ -89,7 +88,7 @@ class TestDatabricksRayServiceSubmitImageJob:
             s3_secret_access_key="test-secret",
             s3_bucket="test-bucket",
             s3_prefix="images/",
-            image_embedding_config=image_embedding_config,
+            embedding_config=embedding_config,
             collection="test-image-collection",
         )
 
@@ -106,10 +105,9 @@ class TestDatabricksRayServiceSubmitImageJob:
         assert "S3_SECRET_ACCESS_KEY=test-secret" in params
         assert "S3_BUCKET=test-bucket" in params
         assert "VECTOR_DB_COLLECTION=test-image-collection" in params
-        assert "IMAGE_EMBEDDING_PROVIDER=clip" in params
         assert "CLIP_URL=http://clip.test:8000" in params
         assert "CLIP_MODEL=ViT-B/32" in params
-        assert "CLIP_BACKEND=hosted_clip" in params
+        assert "EMBEDDING_PROVIDER=hosted_clip" in params
         assert "CLIP_TIMEOUT=90" in params
         assert "CLIP_CIRCUIT_BREAKER_THRESHOLD=7" in params
         assert "CLIP_CIRCUIT_BREAKER_TIMEOUT=45" in params
@@ -142,8 +140,8 @@ class TestDatabricksRayServiceSubmitImageJob:
         mock_client.jobs.run_now.side_effect = Exception("boom")
         mock_client_cls.return_value = mock_client
 
-        image_embedding_config = ImageEmbeddingConfig(
-            provider_type="clip",
+        embedding_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
             clip_url="http://clip.test:8000",
             clip_model="ViT-B/32",
         )
@@ -157,7 +155,7 @@ class TestDatabricksRayServiceSubmitImageJob:
                 s3_secret_access_key="test-secret",
                 s3_bucket="test-bucket",
                 s3_prefix="images/",
-                image_embedding_config=image_embedding_config,
+                embedding_config=embedding_config,
                 collection="test-image-collection",
             )
 
@@ -195,8 +193,8 @@ class TestDatabricksRayServiceSubmitINatImageJob:
         mock_client.jobs.run_now.return_value = mock_response
         mock_client_cls.return_value = mock_client
 
-        image_embedding_config = ImageEmbeddingConfig(
-            provider_type="clip",
+        embedding_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
             clip_url="http://clip.test:8000",
             clip_model="ViT-B/32",
         )
@@ -205,7 +203,7 @@ class TestDatabricksRayServiceSubmitINatImageJob:
         run_id = service.submit_inat_image_job(
             namespace="test-namespace",
             s3_prefix="images/",
-            image_embedding_config=image_embedding_config,
+            embedding_config=embedding_config,
             collection="test-image-collection",
         )
 
@@ -230,8 +228,8 @@ class TestDatabricksRayServiceSubmitINatImageJob:
         mock_databricks_config.inat_job_id = None
         mock_config.return_value = mock_databricks_config
 
-        image_embedding_config = ImageEmbeddingConfig(
-            provider_type="clip",
+        embedding_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
             clip_url="http://clip.test:8000",
             clip_model="ViT-B/32",
         )
@@ -241,7 +239,7 @@ class TestDatabricksRayServiceSubmitINatImageJob:
             service.submit_inat_image_job(
                 namespace="test-namespace",
                 s3_prefix="images/",
-                image_embedding_config=image_embedding_config,
+                embedding_config=embedding_config,
                 collection="test-image-collection",
             )
 
@@ -420,11 +418,10 @@ class TestDatabricksRayServiceStatusLogs:
         mock_client.jobs.run_now.side_effect = Exception("boom")
         mock_client_cls.return_value = mock_client
 
-        image_embedding_config = ImageEmbeddingConfig(
-            provider_type="clip",
+        embedding_config = EmbeddingConfig(
+            provider_type=ProviderType.HOSTED_CLIP,
             clip_url="http://clip.test:8000",
             clip_model="ViT-B/32",
-            clip_backend="hosted_clip",
             clip_timeout=90,
             clip_circuit_breaker_threshold=7,
             clip_circuit_breaker_timeout=45,
@@ -443,6 +440,6 @@ class TestDatabricksRayServiceStatusLogs:
                 s3_secret_access_key="test-secret",
                 s3_bucket="test-bucket",
                 s3_prefix="inputs/",
-                image_embedding_config=image_embedding_config,
+                embedding_config=embedding_config,
                 collection="test-collection",
             )

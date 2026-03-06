@@ -18,7 +18,7 @@ ImageSearchService:
 # Test Structure
 
 Tests use pytest class-based organization with mocking for external dependencies.
-The embedding provider, CLIP client, and vector DB provider are mocked to isolate
+The embedding provider and vector DB provider are mocked to isolate
 service logic.
 
 # Running Tests
@@ -47,33 +47,33 @@ class TestImageSearchServiceInit:
 
     def test_creates_service_with_providers(
         self,
-        mock_clip_client: MagicMock,
+        mock_embedding_provider: MagicMock,
         mock_image_vector_db_provider: MagicMock,
     ) -> None:
-        """Test that service is created with CLIP client and vector DB provider.
+        """Test that service is created with embedding provider and vector DB provider.
 
         **Why this test is important:**
-          - Service requires both CLIP client and vector DB provider
+          - Service requires both embedding provider and vector DB provider
           - Validates dependency injection
           - Critical for initialization
           - Validates attrs integration
 
         **What it tests:**
-          - Service is created with CLIP client
+          - Service is created with embedding provider
           - Service is created with vector DB provider
           - Providers are accessible as attributes
         """
         service = ImageSearchService(
-            clip_client=mock_clip_client,
+            embedding_provider=mock_embedding_provider,
             vector_db_provider=mock_image_vector_db_provider,
         )
 
-        assert service.clip_client is mock_clip_client
+        assert service.embedding_provider is mock_embedding_provider
         assert service.vector_db_provider is mock_image_vector_db_provider
 
     def test_service_is_frozen(
         self,
-        mock_clip_client: MagicMock,
+        mock_embedding_provider: MagicMock,
         mock_image_vector_db_provider: MagicMock,
     ) -> None:
         """Test that service is immutable (frozen=True).
@@ -89,12 +89,12 @@ class TestImageSearchServiceInit:
           - FrozenInstanceError is raised on modification attempt
         """
         service = ImageSearchService(
-            clip_client=mock_clip_client,
+            embedding_provider=mock_embedding_provider,
             vector_db_provider=mock_image_vector_db_provider,
         )
 
         with pytest.raises(attrs.exceptions.FrozenInstanceError):
-            service.clip_client = MagicMock()
+            service.embedding_provider = MagicMock()
 
 
 # =============================================================================
@@ -126,7 +126,7 @@ class TestImageSearchServiceSearchImages:
         )
 
         # Verify CLIP text embedding was generated
-        image_search_service.clip_client.embed_text.assert_called_once_with("sunset over ocean")
+        image_search_service.embedding_provider.embed_text.assert_called_once_with("sunset over ocean")
 
         # Verify vector DB was searched with image collection name
         image_search_service.vector_db_provider.search_async.assert_called_once()
@@ -152,7 +152,7 @@ class TestImageSearchServiceSearchImages:
           - Validates input preprocessing
 
         **What it tests:**
-          - Query is stripped before CLIP embedding generation
+          - Query is stripped before embedding generation
           - Leading/trailing whitespace is removed
         """
         image_search_service.search_images(
@@ -161,7 +161,7 @@ class TestImageSearchServiceSearchImages:
             limit=10,
         )
 
-        image_search_service.clip_client.embed_text.assert_called_once_with("sunset over ocean")
+        image_search_service.embedding_provider.embed_text.assert_called_once_with("sunset over ocean")
 
     def test_search_raises_on_empty_query(self, image_search_service: ImageSearchService) -> None:
         """Test that search_images raises BadRequestError for empty query.
@@ -253,22 +253,24 @@ class TestImageSearchServiceSearchImages:
         result_50 = image_search_service.search_images(collection="documents", query="test", limit=50)
         assert result_50 is not None
 
-    def test_search_propagates_clip_error(self, image_search_service: ImageSearchService) -> None:
-        """Test that search_images propagates CLIP client errors.
+    def test_search_propagates_embedding_error(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images propagates embedding provider errors.
 
         **Why this test is important:**
-          - CLIP errors need to propagate
+          - embedding errors need to propagate
           - UpstreamError is expected error type
           - Critical for error handling
           - Validates error propagation
 
         **What it tests:**
-          - UpstreamError from CLIP client is propagated
+          - UpstreamError from embedding provider is propagated
           - Error is not swallowed
         """
-        image_search_service.clip_client.embed_text.side_effect = UpstreamError("CLIP connection failed")
+        image_search_service.embedding_provider.embed_text.side_effect = UpstreamError(
+            "embedding provider failed"
+        )
 
-        with pytest.raises(UpstreamError, match="CLIP connection failed"):
+        with pytest.raises(UpstreamError, match="embedding provider failed"):
             image_search_service.search_images(collection="documents", query="test", limit=10)
 
     def test_search_propagates_vector_db_error(self, image_search_service: ImageSearchService) -> None:
@@ -311,7 +313,7 @@ class TestImageSearchServiceSearchImagesAsync:
           - Critical for API performance
 
         **What it tests:**
-          - CLIP client embed_text_async is called with query
+          - EmbeddingProvider embed_text is called with query
           - Vector DB provider search is called with embedding
           - Search results are returned correctly
         """
@@ -321,8 +323,8 @@ class TestImageSearchServiceSearchImagesAsync:
             limit=10,
         )
 
-        # Verify CLIP text embedding was generated
-        image_search_service.clip_client.embed_text_async.assert_called_once_with("fluffy cat")
+        # Verify text embedding was generated
+        image_search_service.embedding_provider.embed_text.assert_called_once_with("fluffy cat")
 
         # Verify vector DB was searched with image collection name
         image_search_service.vector_db_provider.search_async.assert_called_once()
@@ -347,7 +349,7 @@ class TestImageSearchServiceSearchImagesAsync:
           - Validates input preprocessing
 
         **What it tests:**
-          - Query is stripped before CLIP embedding generation
+          - Query is stripped before embedding generation
           - Leading/trailing whitespace is removed
         """
         await image_search_service.search_images_async(
@@ -356,7 +358,7 @@ class TestImageSearchServiceSearchImagesAsync:
             limit=10,
         )
 
-        image_search_service.clip_client.embed_text_async.assert_called_once_with("fluffy cat")
+        image_search_service.embedding_provider.embed_text.assert_called_once_with("fluffy cat")
 
     @pytest.mark.asyncio
     async def test_search_async_raises_on_empty_query(self, image_search_service: ImageSearchService) -> None:
@@ -398,24 +400,26 @@ class TestImageSearchServiceSearchImagesAsync:
             await image_search_service.search_images_async(collection="photos", query="test", limit=101)
 
     @pytest.mark.asyncio
-    async def test_search_async_propagates_clip_error(self, image_search_service: ImageSearchService) -> None:
-        """Test that search_images_async propagates CLIP client errors.
+    async def test_search_async_propagates_embedding_error(
+        self, image_search_service: ImageSearchService
+    ) -> None:
+        """Test that search_images_async propagates client errors.
 
         **Why this test is important:**
-          - CLIP errors need to propagate
+          - EmbeddingProvider errors need to propagate
           - UpstreamError is expected error type
           - Critical for error handling
           - Validates error propagation
 
         **What it tests:**
-          - UpstreamError from CLIP client is propagated
+          - UpstreamError from embedding provider is propagated
           - Error is not swallowed
         """
-        image_search_service.clip_client.embed_text_async.side_effect = UpstreamError(
-            "CLIP connection failed"
+        image_search_service.embedding_provider.embed_text.side_effect = UpstreamError(
+            "embedding provider failed"
         )
 
-        with pytest.raises(UpstreamError, match="CLIP connection failed"):
+        with pytest.raises(UpstreamError, match="embedding provider failed"):
             await image_search_service.search_images_async(collection="photos", query="test", limit=10)
 
     @pytest.mark.asyncio
@@ -452,7 +456,7 @@ class TestImageSearchServiceIntegration:
 
     def test_full_image_search_workflow(
         self,
-        mock_clip_client: MagicMock,
+        mock_embedding_provider: MagicMock,
         mock_image_vector_db_provider: MagicMock,
     ) -> None:
         """Test complete image search workflow: validate -> embed -> search -> format.
@@ -465,12 +469,12 @@ class TestImageSearchServiceIntegration:
 
         **What it tests:**
           - Input validation passes for valid query
-          - CLIP text embedding is generated correctly
+          - Text embedding is generated correctly
           - Vector DB search is performed on image collection
           - Results include image metadata
         """
         # Setup mock responses
-        mock_clip_client.embed_text.return_value = [0.5, 0.6, 0.7, 0.8]
+        mock_embedding_provider.embed_text.return_value = [0.5, 0.6, 0.7, 0.8]
         mock_image_vector_db_provider.search_async.return_value = SearchResults(
             items=[
                 SearchItem(
@@ -502,7 +506,7 @@ class TestImageSearchServiceIntegration:
 
         # Create service
         service = ImageSearchService(
-            clip_client=mock_clip_client,
+            embedding_provider=mock_embedding_provider,
             vector_db_provider=mock_image_vector_db_provider,
         )
 
@@ -513,8 +517,8 @@ class TestImageSearchServiceIntegration:
             limit=5,
         )
 
-        # Verify CLIP text embedding
-        mock_clip_client.embed_text.assert_called_once_with("beautiful sunset over the ocean")
+        # Verify text embedding
+        mock_embedding_provider.embed_text.assert_called_once_with("beautiful sunset over the ocean")
 
         # Verify vector DB search with image collection
         mock_image_vector_db_provider.search_async.assert_called_once()
@@ -536,7 +540,7 @@ class TestImageSearchServiceIntegration:
     @pytest.mark.asyncio
     async def test_full_image_search_workflow_async(
         self,
-        mock_clip_client: MagicMock,
+        mock_embedding_provider: MagicMock,
         mock_image_vector_db_provider: MagicMock,
     ) -> None:
         """Test complete async image search workflow.
@@ -549,12 +553,12 @@ class TestImageSearchServiceIntegration:
 
         **What it tests:**
           - Input validation passes for valid query
-          - Async CLIP text embedding is generated correctly
+          - Async text embedding is generated correctly
           - Vector DB search is performed
           - Results are formatted correctly
         """
         # Setup mock responses
-        mock_clip_client.embed_text_async.return_value = [0.1, 0.2, 0.3]
+        mock_embedding_provider.embed_text.return_value = [0.1, 0.2, 0.3]
         mock_image_vector_db_provider.search_async.return_value = SearchResults(
             items=[
                 SearchItem(
@@ -574,7 +578,7 @@ class TestImageSearchServiceIntegration:
 
         # Create service
         service = ImageSearchService(
-            clip_client=mock_clip_client,
+            embedding_provider=mock_embedding_provider,
             vector_db_provider=mock_image_vector_db_provider,
         )
 
@@ -585,8 +589,8 @@ class TestImageSearchServiceIntegration:
             limit=10,
         )
 
-        # Verify CLIP text embedding
-        mock_clip_client.embed_text_async.assert_called_once_with("fluffy cat")
+        # Verify text embedding
+        mock_embedding_provider.embed_text.assert_called_once_with("fluffy cat")
 
         # Verify vector DB search
         mock_image_vector_db_provider.search_async.assert_called_once()

@@ -16,14 +16,13 @@ and the Ray distributed processing function.
     uv run pytest tests/unit/core/ingestion/tasks/test_image_processing.py -v
 """
 
-import asyncio
 import os
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from config import ImageEmbeddingConfig
+from config import EmbeddingConfig, ProviderType
 from core.ingestion.interfaces.types import ImageContentResult, ProcessingResult
 from core.ingestion.tasks.image_processing import (
     DEFAULT_IMAGE_PREPROCESS_MAX_SIZE,
@@ -49,16 +48,17 @@ class TestRayImageProcessingConfig:
         - Setting image embedding configuration
         - Collection name assignment
         """
-        embed_config = ImageEmbeddingConfig(
-            clip_model_id="openai/clip-vit-base-patch32",
-            clip_service_url="http://clip:8000",
+        embed_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
+            clip_model="openai/clip-vit-base-patch32",
+            clip_url="http://clip:8000",
         )
         config = RayImageProcessingConfig(
             s3_endpoint="http://minio:9000",
             s3_access_key="access",
             s3_secret_key="secret",
             s3_bucket="bucket",
-            image_embedding_config=embed_config,
+            embedding_config=embed_config,
             collection="test-collection",
         )
         assert config.s3_endpoint == "http://minio:9000"
@@ -80,16 +80,17 @@ class TestRayImageProcessingConfig:
         - Default max_concurrency is 10
         - Default image_preprocess_max_size matches CLIP requirements
         """
-        embed_config = ImageEmbeddingConfig(
-            clip_model_id="openai/clip-vit-base-patch32",
-            clip_service_url="http://clip:8000",
+        embed_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
+            clip_model="openai/clip-vit-base-patch32",
+            clip_url="http://clip:8000",
         )
         config = RayImageProcessingConfig(
             s3_endpoint="http://minio:9000",
             s3_access_key="access",
             s3_secret_key="secret",
             s3_bucket="bucket",
-            image_embedding_config=embed_config,
+            embedding_config=embed_config,
             collection="test",
         )
         assert config.image_batch_size == 20
@@ -118,16 +119,17 @@ class TestImageProcessingPipeline:
     @pytest.fixture
     def config(self):
         """Create a config for testing."""
-        embed_config = ImageEmbeddingConfig(
-            clip_model_id="openai/clip-vit-base-patch32",
-            clip_service_url="http://clip:8000",
+        embed_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
+            clip_model="openai/clip-vit-base-patch32",
+            clip_url="http://clip:8000",
         )
         return RayImageProcessingConfig(
             s3_endpoint="http://minio:9000",
             s3_access_key="access",
             s3_secret_key="secret",
             s3_bucket="test-bucket",
-            image_embedding_config=embed_config,
+            embedding_config=embed_config,
             collection="test-collection",
             image_embed_batch_size=2,
         )
@@ -206,8 +208,10 @@ class TestImageProcessingPipeline:
 
         with patch("core.ingestion.tasks.image_processing.S3ClientWrapper", return_value=mock_s3):
             with patch("core.ingestion.tasks.image_processing.create_retry_session"):
-                with patch("core.ingestion.tasks.image_processing.CLIPClient") as mock_clip_cls:
-                    mock_clip_cls.from_config.return_value = MagicMock(close_async=AsyncMock())
+                with patch(
+                    "core.ingestion.tasks.image_processing.create_embedding_provider",
+                    return_value=MagicMock(close=AsyncMock()),
+                ):
                     with patch(
                         "core.ingestion.tasks.image_processing.VectorDBConfigFactory",
                         return_value=mock_db_factory,
@@ -244,9 +248,6 @@ class TestImageProcessingPipeline:
         pipeline = ImageProcessingPipeline(config)
 
         mock_s3 = MagicMock()
-        mock_session = MagicMock()
-        mock_clip = MagicMock()
-        mock_clip.close_async = AsyncMock()
 
         image = ImageContentResult(
             s3_key="image.jpg",
@@ -261,11 +262,11 @@ class TestImageProcessingPipeline:
         mock_db_factory.create_both.return_value = (MagicMock(), MagicMock())
 
         with patch("core.ingestion.tasks.image_processing.S3ClientWrapper", return_value=mock_s3):
-            with patch(
-                "core.ingestion.tasks.image_processing.create_retry_session", return_value=mock_session
-            ):
-                with patch("core.ingestion.tasks.image_processing.CLIPClient") as mock_clip_class:
-                    mock_clip_class.from_config.return_value = mock_clip
+            with patch("core.ingestion.tasks.image_processing.create_retry_session"):
+                with patch(
+                    "core.ingestion.tasks.image_processing.create_embedding_provider",
+                    return_value=MagicMock(close=AsyncMock()),
+                ):
                     with patch(
                         "core.ingestion.tasks.image_processing.VectorDBConfigFactory",
                         return_value=mock_db_factory,
@@ -298,16 +299,17 @@ class TestImageProcessingPipelineAsync:
     @pytest.fixture
     def config(self):
         """Create a config for testing."""
-        embed_config = ImageEmbeddingConfig(
-            clip_model_id="openai/clip-vit-base-patch32",
-            clip_service_url="http://clip:8000",
+        embed_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
+            clip_model="openai/clip-vit-base-patch32",
+            clip_url="http://clip:8000",
         )
         return RayImageProcessingConfig(
             s3_endpoint="http://minio:9000",
             s3_access_key="access",
             s3_secret_key="secret",
             s3_bucket="test-bucket",
-            image_embedding_config=embed_config,
+            embedding_config=embed_config,
             collection="test-collection",
             image_embed_batch_size=2,
         )
@@ -348,7 +350,7 @@ class TestImageProcessingPipelineAsync:
         pipeline = ImageProcessingPipeline(config)
 
         mock_clip = MagicMock()
-        mock_clip.embed_image_batch_async = AsyncMock(return_value=[[0.1] * 512])
+        mock_clip.embed_image_batch = AsyncMock(return_value=[[0.1] * 512])
         mock_clip.vector_size = 512
 
         mock_qdrant = MagicMock()
@@ -392,7 +394,7 @@ class TestImageProcessingPipelineAsync:
         pipeline = ImageProcessingPipeline(config)
 
         mock_clip = MagicMock()
-        mock_clip.embed_image_batch_async = AsyncMock(side_effect=Exception("CLIP error"))
+        mock_clip.embed_image_batch = AsyncMock(side_effect=Exception("CLIP error"))
         mock_clip.vector_size = 512
 
         mock_qdrant = MagicMock()
@@ -430,7 +432,7 @@ class TestImageProcessingPipelineAsync:
         pipeline = ImageProcessingPipeline(config)
 
         mock_clip = MagicMock()
-        mock_clip.embed_image_batch_async = AsyncMock(return_value=[[0.1] * 512])
+        mock_clip.embed_image_batch = AsyncMock(return_value=[[0.1] * 512])
         mock_clip.vector_size = 512
 
         mock_qdrant = MagicMock()
@@ -462,7 +464,7 @@ class TestImageProcessingPipelineAsync:
         pipeline = ImageProcessingPipeline(config)
 
         mock_clip = MagicMock()
-        mock_clip.embed_image_batch_async = AsyncMock(return_value=[[0.1] * 512])
+        mock_clip.embed_image_batch = AsyncMock(return_value=[[0.1] * 512])
         mock_clip.vector_size = 512
 
         mock_qdrant = MagicMock()
@@ -509,7 +511,7 @@ class TestImageProcessingPipelineAsync:
         pipeline = ImageProcessingPipeline(config)
 
         mock_clip = MagicMock()
-        mock_clip.embed_image_batch_async = AsyncMock(return_value=[[0.1] * 512])
+        mock_clip.embed_image_batch = AsyncMock(return_value=[[0.1] * 512])
         mock_clip.vector_size = 512
 
         mock_qdrant = MagicMock()
@@ -562,7 +564,7 @@ class TestImageProcessingPipelineAsync:
         pipeline = ImageProcessingPipeline(config)
 
         mock_clip = MagicMock()
-        mock_clip.embed_image_batch_async = AsyncMock(return_value=[[0.1] * 512, [0.2] * 512])
+        mock_clip.embed_image_batch = AsyncMock(return_value=[[0.1] * 512, [0.2] * 512])
         mock_clip.vector_size = 512
 
         mock_qdrant = MagicMock()
@@ -616,7 +618,7 @@ class TestImageProcessingPipelineAsync:
         pipeline = ImageProcessingPipeline(config)
 
         mock_clip = MagicMock()
-        mock_clip.embed_image_batch_async = AsyncMock(return_value=[[0.1] * 512])
+        mock_clip.embed_image_batch = AsyncMock(return_value=[[0.1] * 512])
         mock_clip.vector_size = 512
 
         mock_qdrant = MagicMock()
@@ -663,9 +665,10 @@ class TestProcessImageBatchRay:
         - Results are returned as (s3_key, success, error_message) tuples
         - Both successful and failed images are represented
         """
-        embed_config = ImageEmbeddingConfig(
-            clip_model_id="openai/clip-vit-base-patch32",
-            clip_service_url="http://clip:8000",
+        embed_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
+            clip_model="openai/clip-vit-base-patch32",
+            clip_url="http://clip:8000",
         )
 
         mock_pipeline = MagicMock()
@@ -686,7 +689,7 @@ class TestProcessImageBatchRay:
                 s3_access_key="access",
                 s3_secret_key="secret",
                 s3_bucket="bucket",
-                image_embedding_config=embed_config,
+                embedding_config=embed_config,
                 collection="test",
             )
 
@@ -709,9 +712,10 @@ class TestProcessImageBatchRay:
         - Rate limiter is passed to the pipeline
         - Processing completes successfully with rate limiting
         """
-        embed_config = ImageEmbeddingConfig(
-            clip_model_id="openai/clip-vit-base-patch32",
-            clip_service_url="http://clip:8000",
+        embed_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
+            clip_model="openai/clip-vit-base-patch32",
+            clip_url="http://clip:8000",
         )
 
         mock_pipeline_class = MagicMock()
@@ -734,7 +738,7 @@ class TestProcessImageBatchRay:
                     s3_access_key="access",
                     s3_secret_key="secret",
                     s3_bucket="bucket",
-                    image_embedding_config=embed_config,
+                    embedding_config=embed_config,
                     collection="test",
                     rate_limiter=mock_rate_actor,
                 )
@@ -755,9 +759,10 @@ class TestProcessImageBatchRay:
         - Ray logger is obtained and used
         - Info-level logging occurs during processing
         """
-        embed_config = ImageEmbeddingConfig(
-            clip_model_id="openai/clip-vit-base-patch32",
-            clip_service_url="http://clip:8000",
+        embed_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
+            clip_model="openai/clip-vit-base-patch32",
+            clip_url="http://clip:8000",
         )
 
         mock_pipeline = MagicMock()
@@ -779,7 +784,7 @@ class TestProcessImageBatchRay:
                     s3_access_key="access",
                     s3_secret_key="secret",
                     s3_bucket="bucket",
-                    image_embedding_config=embed_config,
+                    embedding_config=embed_config,
                     collection="test",
                 )
 
@@ -799,9 +804,10 @@ class TestProcessImageBatchRay:
         - circuit_breaker_threshold is passed correctly
         - embedding_timeout is passed correctly
         """
-        embed_config = ImageEmbeddingConfig(
-            clip_model_id="openai/clip-vit-base-patch32",
-            clip_service_url="http://clip:8000",
+        embed_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
+            clip_model="openai/clip-vit-base-patch32",
+            clip_url="http://clip:8000",
         )
 
         with patch("core.ingestion.tasks.image_processing.RayImageProcessingConfig") as mock_config_class:
@@ -823,7 +829,7 @@ class TestProcessImageBatchRay:
                     s3_access_key="access",
                     s3_secret_key="secret",
                     s3_bucket="bucket",
-                    image_embedding_config=embed_config,
+                    embedding_config=embed_config,
                     collection="test",
                     pipeline_concurrency=20,
                     circuit_breaker_threshold=10,

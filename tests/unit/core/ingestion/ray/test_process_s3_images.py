@@ -46,9 +46,7 @@ class TestRayImageJobMain:
 
         with patch("core.ingestion.ray.process_s3_images.RayJobConfig.from_env") as mock_ray_cfg:
             with patch("core.ingestion.ray.process_s3_images.MinIOConfig.from_env") as mock_minio_cfg:
-                with patch(
-                    "core.ingestion.ray.process_s3_images.ImageEmbeddingConfig.from_env"
-                ) as mock_embed_cfg:
+                with patch("core.ingestion.ray.process_s3_images.EmbeddingConfig.from_env") as mock_embed_cfg:
                     with patch(
                         "core.ingestion.ray.process_s3_images.VectorDBConfig.from_env"
                     ) as mock_vector_cfg:
@@ -207,7 +205,7 @@ class TestRayImageJobMain:
 
         with patch("core.ingestion.ray.process_s3_images.RayJobConfig.from_env"):
             with patch("core.ingestion.ray.process_s3_images.MinIOConfig.from_env"):
-                with patch("core.ingestion.ray.process_s3_images.ImageEmbeddingConfig.from_env"):
+                with patch("core.ingestion.ray.process_s3_images.EmbeddingConfig.from_env"):
                     with patch("core.ingestion.ray.process_s3_images.VectorDBConfig.from_env"):
                         with patch("core.ingestion.ray.process_s3_images.LocalRayStrategy") as mock_strat_cls:
                             mock_strat_cls.from_env.return_value = mock_strategy

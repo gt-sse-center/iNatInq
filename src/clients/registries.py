@@ -5,6 +5,8 @@ Registration happens at module import time to avoid circular dependencies betwee
 interface definitions and concrete implementations.
 """
 
+from config import ProviderType
+from .clip import CLIPClient
 from .interfaces.embedding import register_provider as register_embedding_provider
 from .interfaces.vector_db import register_provider as register_vector_db_provider
 from .ollama import OllamaClient
@@ -14,7 +16,9 @@ from .weaviate import WeaviateClientWrapper
 
 def _register_embedding_providers() -> None:
     """Register default embedding providers."""
-    register_embedding_provider("ollama", OllamaClient)
+    register_embedding_provider(ProviderType.OLLAMA, OllamaClient)
+    register_embedding_provider(ProviderType.LOCAL_CLIP, CLIPClient)
+    register_embedding_provider(ProviderType.HOSTED_CLIP, CLIPClient)
 
 
 def _register_vector_db_providers() -> None:

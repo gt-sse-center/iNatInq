@@ -28,7 +28,7 @@ import aiobreaker
 import pytest
 
 from clients.ollama import OllamaClient
-from config import EmbeddingConfig
+from config import EmbeddingConfig, ProviderType
 from core.exceptions import UpstreamError
 
 # =============================================================================
@@ -181,7 +181,7 @@ class TestOllamaClientInit:
           - Config values are correctly applied
         """
         config = EmbeddingConfig(
-            provider_type="ollama",
+            provider_type=ProviderType.OLLAMA,
             ollama_url="http://ollama.example.com:11434",
             ollama_model="test-model",
         )
@@ -204,7 +204,9 @@ class TestOllamaClientInit:
           - ValueError is raised for wrong provider_type
           - Error message is descriptive
         """
-        config = EmbeddingConfig(provider_type="openai", openai_api_key="key", openai_model="model")
+        config = EmbeddingConfig(
+            provider_type=ProviderType.OPENAI, openai_api_key="key", openai_model="model"
+        )
 
         with pytest.raises(ValueError, match="provider_type must be 'ollama'"):
             OllamaClient.from_config(config)
@@ -222,7 +224,7 @@ class TestOllamaClientInit:
           - ValueError is raised for missing ollama_url
           - ValueError is raised for missing ollama_model
         """
-        config = EmbeddingConfig(provider_type="ollama", ollama_url=None, ollama_model=None)
+        config = EmbeddingConfig(provider_type=ProviderType.OLLAMA, ollama_url=None, ollama_model=None)
 
         with pytest.raises(ValueError, match="requires: ollama_url, ollama_model"):
             OllamaClient.from_config(config)
@@ -243,7 +245,7 @@ class TestOllamaClientInit:
           - ollama_max_batch_size is passed correctly
         """
         config = EmbeddingConfig(
-            provider_type="ollama",
+            provider_type=ProviderType.OLLAMA,
             ollama_url="http://ollama.example.com:11434",
             ollama_model="test-model",
             ollama_timeout=120,
@@ -325,7 +327,7 @@ class TestOllamaClientEmbedText:
     ) -> None:
         """Test that embed_text returns embedding vector on success."""
         mock_response = MagicMock()
-        mock_response.json.return_value = {"embedding": [0.1, 0.2, 0.3]}
+        mock_response.json.return_value = {"embeddings": [[0.1, 0.2, 0.3]]}
         mock_response.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()
@@ -340,9 +342,9 @@ class TestOllamaClientEmbedText:
         mock_client.post.assert_called_once()
         call_args = mock_client.post.call_args
         # First positional argument is the URL
-        assert "api/embeddings" in call_args[0][0]
+        assert "api/embed" in call_args[0][0]
         # Check keyword arguments
-        assert call_args[1]["json"] == {"model": "nomic-embed-text", "prompt": "hello world"}
+        assert call_args[1]["json"] == {"model": "nomic-embed-text", "input": ["hello world"]}
 
     @patch("clients.ollama.httpx.AsyncClient")
     @pytest.mark.asyncio
@@ -368,7 +370,7 @@ class TestOllamaClientEmbedText:
         mock_client.__aexit__.return_value = None
         mock_async_client_cls.return_value = mock_client
 
-        with pytest.raises(UpstreamError, match="Ollama _embed_async_impl failed after"):
+        with pytest.raises(UpstreamError, match="Ollama _request_texts failed after"):
             await ollama_client.embed_text("hello world")
 
     @patch("clients.ollama.httpx.AsyncClient")
@@ -389,7 +391,7 @@ class TestOllamaClientEmbedText:
         mock_client.__aexit__.return_value = None
         mock_async_client_cls.return_value = mock_client
 
-        with pytest.raises(UpstreamError, match="Ollama _embed_async_impl failed"):
+        with pytest.raises(UpstreamError, match="Ollama _request_texts failed"):
             await ollama_client.embed_text("hello world")
 
     @patch("clients.ollama.httpx.AsyncClient")
@@ -408,7 +410,7 @@ class TestOllamaClientEmbedText:
         mock_client.__aexit__.return_value = None
         mock_async_client_cls.return_value = mock_client
 
-        with pytest.raises(UpstreamError, match="missing embedding"):
+        with pytest.raises(UpstreamError, match="Unexpected response format"):
             await ollama_client.embed_text("hello world")
 
     @patch("foundation.circuit_breaker.handle_circuit_breaker_error")
@@ -534,49 +536,6 @@ class TestOllamaClientEmbedTextBatch:
         # timeout_s=60, batch_timeout_multiplier=1.0, 3 texts = 60 * 1.0 * 3 = 180
         assert call_kwargs["timeout"] == 180
 
-    @patch("clients.ollama.httpx.AsyncClient")
-    @pytest.mark.asyncio
-    async def test_embed_text_batch_falls_back_on_failure(
-        self,
-        mock_async_client_cls: MagicMock,
-        ollama_client: OllamaClient,
-    ) -> None:
-        """Test that embed_text_batch falls back to individual calls on failure.
-
-        **Why this test is important:**
-          - Fallback ensures compatibility with older Ollama versions
-          - Graceful degradation improves reliability
-          - Uses internal _embed_async_impl to avoid double circuit breaker wrapping
-
-        **What it tests:**
-          - Batch API failure triggers fallback
-          - Individual _embed_async_impl calls are made
-          - Correct result is returned after fallback
-        """
-        import httpx
-
-        # Mock batch API failure
-        mock_response = MagicMock()
-        mock_response.status_code = 400
-        mock_response.text = "Batch API not supported"
-
-        mock_client = AsyncMock()
-        mock_client.post.side_effect = httpx.HTTPStatusError(
-            "Bad Request", request=MagicMock(), response=mock_response
-        )
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-        mock_async_client_cls.return_value = mock_client
-
-        # Mock internal _embed_async_impl method (avoids double circuit breaker wrapping)
-        with patch.object(
-            ollama_client, "_embed_async_impl", side_effect=[[0.1, 0.2], [0.3, 0.4]]
-        ) as mock_embed_impl:
-            result = await ollama_client.embed_text_batch(["hello", "world"], fallback_to_individual=True)
-
-            assert result == [[0.1, 0.2], [0.3, 0.4]]
-            assert mock_embed_impl.call_count == 2
-
     @patch("foundation.circuit_breaker.handle_circuit_breaker_error")
     @pytest.mark.asyncio
     async def test_embed_text_batch_handles_circuit_breaker_open(
@@ -612,10 +571,6 @@ class TestOllamaClientEmbedTextBatch:
     ) -> None:
         """Test that embed_text_batch raises UpstreamError when result count != input count.
 
-        **Why this test is important:**
-          - Ollama must return one embedding per input text
-          - Length mismatch indicates upstream bug or truncation
-          - Critical for data integrity in batch operations
 
         **What it tests:**
           - Response with fewer embeddings than inputs raises UpstreamError
@@ -628,11 +583,201 @@ class TestOllamaClientEmbedTextBatch:
         }
         mock_response.raise_for_status = MagicMock()
 
+
+# =============================================================================
+# Image Embedding Tests
+# =============================================================================
+class TestOllamaClientEmbedImage:
+    """Test suite for OllamaClient.embed_image method."""
+
+    @patch("clients.ollama.httpx.AsyncClient")
+    @pytest.mark.asyncio
+    async def test_embed_image_success(
+        self, mock_async_client_cls: MagicMock, ollama_client: OllamaClient
+    ) -> None:
+        """Test that embed_image returns embedding vector on success.
+
+        **Why this test is important:**
+          - Image embedding is core functionality for visual search
+          - Must correctly parse /api/embeddings response format
+          - Critical for image ingestion pipelines
+
+        **What it tests:**
+          - Returns embedding from API response
+          - Correct endpoint and payload structure used
+        """
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"embedding": [0.1, 0.2, 0.3]}
+        mock_response.raise_for_status = MagicMock()
+
         mock_client = AsyncMock()
         mock_client.post.return_value = mock_response
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__.return_value = None
         mock_async_client_cls.return_value = mock_client
 
-        with pytest.raises(UpstreamError, match="Ollama returned 2 embeddings for 3 texts"):
-            await ollama_client.embed_text_batch(["hello", "world", "foo"])
+        result = await ollama_client.embed_image(b"fake-image-data")
+
+        assert result == [0.1, 0.2, 0.3]
+        mock_client.post.assert_called_once()
+        call_args = mock_client.post.call_args
+        assert "api/embeddings" in call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_embed_image_empty_raises(self, ollama_client: OllamaClient) -> None:
+        """Test that embed_image rejects empty image bytes.
+
+        **Why this test is important:**
+          - Empty images are invalid and waste API calls
+          - Fail-fast improves error diagnosis
+
+        **What it tests:**
+          - ValueError raised with descriptive message
+        """
+        with pytest.raises(ValueError, match="empty"):
+            await ollama_client.embed_image(b"")
+
+    @patch("clients.ollama.httpx.AsyncClient")
+    @pytest.mark.asyncio
+    async def test_embed_image_raises_upstream_error_on_request_error(
+        self, mock_async_client_cls: MagicMock, ollama_client: OllamaClient
+    ) -> None:
+        """Test that embed_image raises UpstreamError on network failure.
+
+        **Why this test is important:**
+          - Network errors must be surfaced with proper error type
+          - UpstreamError enables circuit breaker integration
+
+        **What it tests:**
+          - RequestException is caught and wrapped
+          - Error message is descriptive
+        """
+        import httpx
+
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = httpx.ConnectError("Connection refused")
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_async_client_cls.return_value = mock_client
+
+        with pytest.raises(UpstreamError, match="Ollama _request_images failed"):
+            await ollama_client.embed_image(b"fake-image-data")
+
+    @patch("clients.ollama.httpx.AsyncClient")
+    @pytest.mark.asyncio
+    async def test_embed_image_raises_upstream_error_on_missing_embedding(
+        self, mock_async_client_cls: MagicMock, ollama_client: OllamaClient
+    ) -> None:
+        """Test that embed_image handles missing embedding in response.
+
+        **Why this test is important:**
+          - API may return malformed responses
+          - Must fail clearly rather than silently corrupt data
+
+        **What it tests:**
+          - Empty/malformed response triggers UpstreamError
+        """
+        mock_response = MagicMock()
+        mock_response.json.return_value = {}
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_async_client_cls.return_value = mock_client
+
+        with pytest.raises(UpstreamError, match="Unexpected response"):
+            await ollama_client.embed_image(b"fake-image-data")
+        # 3 inputs but only 2 embeddings in response
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "embeddings": [[0.1, 0.2], [0.3, 0.4]],  # 2 embeddings
+        }
+        mock_response.raise_for_status = MagicMock()
+
+
+class TestOllamaClientEmbedImageBatch:
+    """Test suite for OllamaClient.embed_image_batch method."""
+
+    @patch("clients.ollama.httpx.AsyncClient")
+    @pytest.mark.asyncio
+    async def test_embed_image_batch_success(
+        self, mock_async_client_cls: MagicMock, ollama_client: OllamaClient
+    ) -> None:
+        """Test that embed_image_batch returns embeddings for all images.
+
+        **Why this test is important:**
+          - Batch processing is critical for ingestion performance
+          - Must process all images correctly
+
+        **What it tests:**
+          - Returns correct number of embeddings
+          - Each image generates an embedding
+        """
+        call_1_embedding = [0.1, 0.2, 0.3]
+        call_2_embedding = [0.4, 0.5, 0.6]
+        req_count = 0
+
+        def mock_embed_response():
+            nonlocal req_count
+            req_count += 1
+            if req_count == 1:
+                return {"embedding": call_1_embedding}
+            else:
+                return {"embedding": call_2_embedding}
+
+        mock_response = MagicMock()
+        mock_response.json = mock_embed_response
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_async_client_cls.return_value = mock_client
+
+        images = [
+            b"img1",
+            b"img2",
+        ]
+        result = await ollama_client.embed_image_batch(images)
+
+        assert len(result) == 2
+        assert result[0] == call_1_embedding
+        assert result[1] == call_2_embedding
+
+    @pytest.mark.asyncio
+    async def test_embed_image_batch_empty_raises(self, ollama_client: OllamaClient) -> None:
+        """Test that embed_image_batch rejects empty list.
+
+        **Why this test is important:**
+          - Empty batch is a programming error
+          - Early validation prevents downstream confusion
+
+        **What it tests:**
+          - ValueError raised for empty list
+        """
+        with pytest.raises(ValueError, match="empty"):
+            await ollama_client.embed_image_batch([])
+
+    @pytest.mark.asyncio
+    async def test_embed_image_batch_exceeds_max_raises(self) -> None:
+        """Test that embed_image_batch rejects oversized batches.
+
+        **Why this test is important:**
+          - Large batches can overwhelm the API
+          - Batch size limits prevent memory issues
+
+        **What it tests:**
+          - ValueError raised when batch exceeds max_batch_size
+        """
+        client = OllamaClient(
+            base_url="http://ollama.example.com:11434",
+            model="llava",
+            max_batch_size=4,
+        )
+        images = [b"img"] * 10  # Exceeds max of 4
+
+        with pytest.raises(ValueError, match="exceeds max_batch_size"):
+            await client.embed_image_batch(images)

@@ -14,7 +14,7 @@ Design goals:
 import os
 from collections.abc import Iterable
 
-from config import EmbeddingConfig, ImageEmbeddingConfig
+from config import EmbeddingConfig
 from core.ingestion.shared.env_keys import (
     IMAGE_OPTIONAL_ENV_KEYS as _IMAGE_OPTIONAL_ENV_KEYS,
     INAT_IMAGE_ENV_KEYS as _INAT_IMAGE_ENV_KEYS,
@@ -143,7 +143,7 @@ def build_image_ingestion_env(
     s3_secret_access_key: str,
     s3_bucket: str,
     s3_prefix: str,
-    image_embedding_config: ImageEmbeddingConfig,
+    embedding_config: EmbeddingConfig,
     collection: str,
     extra_env_keys: Iterable[str] | None = None,
 ) -> dict[str, str]:
@@ -159,7 +159,7 @@ def build_image_ingestion_env(
         s3_secret_access_key: S3 secret key.
         s3_bucket: S3 bucket name.
         s3_prefix: S3 prefix to filter objects.
-        image_embedding_config: Image embedding provider configuration.
+        embedding_config: Image embedding provider configuration.
         collection: Vector DB base collection name.
         extra_env_keys: Optional iterable of env var names to pass through
             from the current process if set.
@@ -176,23 +176,22 @@ def build_image_ingestion_env(
         "S3_SECRET_ACCESS_KEY": s3_secret_access_key,
         "S3_BUCKET": s3_bucket,
         "VECTOR_DB_COLLECTION": collection,
-        "IMAGE_EMBEDDING_PROVIDER": image_embedding_config.provider_type,
-        "CLIP_BACKEND": image_embedding_config.clip_backend,
-        "CLIP_TIMEOUT": str(image_embedding_config.clip_timeout),
-        "CLIP_CIRCUIT_BREAKER_THRESHOLD": str(image_embedding_config.clip_circuit_breaker_threshold),
-        "CLIP_CIRCUIT_BREAKER_TIMEOUT": str(image_embedding_config.clip_circuit_breaker_timeout),
-        "CLIP_MAX_BATCH_SIZE": str(image_embedding_config.clip_max_batch_size),
-        "IMAGE_BATCH_SIZE": str(image_embedding_config.image_batch_size),
-        "IMAGE_MAX_SIZE_MB": str(image_embedding_config.image_max_size_mb),
-        "IMAGE_TARGET_SIZE": str(image_embedding_config.image_target_size),
+        "EMBEDDING_PROVIDER": embedding_config.provider_type,
+        "CLIP_TIMEOUT": str(embedding_config.clip_timeout),
+        "CLIP_CIRCUIT_BREAKER_THRESHOLD": str(embedding_config.clip_circuit_breaker_threshold),
+        "CLIP_CIRCUIT_BREAKER_TIMEOUT": str(embedding_config.clip_circuit_breaker_timeout),
+        "CLIP_MAX_BATCH_SIZE": str(embedding_config.clip_max_batch_size),
+        "IMAGE_BATCH_SIZE": str(embedding_config.image_batch_size),
+        "IMAGE_MAX_SIZE_MB": str(embedding_config.image_max_size_mb),
+        "IMAGE_TARGET_SIZE": str(embedding_config.image_target_size),
     }
 
-    if image_embedding_config.clip_url:
-        env_vars["CLIP_URL"] = image_embedding_config.clip_url
-    if image_embedding_config.clip_model:
-        env_vars["CLIP_MODEL"] = image_embedding_config.clip_model
-    if image_embedding_config.clip_vector_size is not None:
-        env_vars["CLIP_VECTOR_SIZE"] = str(image_embedding_config.clip_vector_size)
+    if embedding_config.clip_url:
+        env_vars["CLIP_URL"] = embedding_config.clip_url
+    if embedding_config.clip_model:
+        env_vars["CLIP_MODEL"] = embedding_config.clip_model
+    if embedding_config.clip_vector_size is not None:
+        env_vars["CLIP_VECTOR_SIZE"] = str(embedding_config.clip_vector_size)
 
     _passthrough_env_vars(
         env_vars,
@@ -213,7 +212,7 @@ def build_image_ingestion_env(
 def build_inat_image_ingestion_env(
     *,
     namespace: str,
-    image_embedding_config: ImageEmbeddingConfig,
+    embedding_config: EmbeddingConfig,
     collection: str,
     extra_env_keys: Iterable[str] | None = None,
 ) -> dict[str, str]:
@@ -225,23 +224,22 @@ def build_inat_image_ingestion_env(
     env_vars = {
         "K8S_NAMESPACE": namespace,
         "VECTOR_DB_COLLECTION": collection,
-        "IMAGE_EMBEDDING_PROVIDER": image_embedding_config.provider_type,
-        "CLIP_BACKEND": image_embedding_config.clip_backend,
-        "CLIP_TIMEOUT": str(image_embedding_config.clip_timeout),
-        "CLIP_CIRCUIT_BREAKER_THRESHOLD": str(image_embedding_config.clip_circuit_breaker_threshold),
-        "CLIP_CIRCUIT_BREAKER_TIMEOUT": str(image_embedding_config.clip_circuit_breaker_timeout),
-        "CLIP_MAX_BATCH_SIZE": str(image_embedding_config.clip_max_batch_size),
-        "IMAGE_BATCH_SIZE": str(image_embedding_config.image_batch_size),
-        "IMAGE_MAX_SIZE_MB": str(image_embedding_config.image_max_size_mb),
-        "IMAGE_TARGET_SIZE": str(image_embedding_config.image_target_size),
+        "EMBEDDING_PROVIDER": embedding_config.provider_type,
+        "CLIP_TIMEOUT": str(embedding_config.clip_timeout),
+        "CLIP_CIRCUIT_BREAKER_THRESHOLD": str(embedding_config.clip_circuit_breaker_threshold),
+        "CLIP_CIRCUIT_BREAKER_TIMEOUT": str(embedding_config.clip_circuit_breaker_timeout),
+        "CLIP_MAX_BATCH_SIZE": str(embedding_config.clip_max_batch_size),
+        "IMAGE_BATCH_SIZE": str(embedding_config.image_batch_size),
+        "IMAGE_MAX_SIZE_MB": str(embedding_config.image_max_size_mb),
+        "IMAGE_TARGET_SIZE": str(embedding_config.image_target_size),
     }
 
-    if image_embedding_config.clip_url:
-        env_vars["CLIP_URL"] = image_embedding_config.clip_url
-    if image_embedding_config.clip_model:
-        env_vars["CLIP_MODEL"] = image_embedding_config.clip_model
-    if image_embedding_config.clip_vector_size is not None:
-        env_vars["CLIP_VECTOR_SIZE"] = str(image_embedding_config.clip_vector_size)
+    if embedding_config.clip_url:
+        env_vars["CLIP_URL"] = embedding_config.clip_url
+    if embedding_config.clip_model:
+        env_vars["CLIP_MODEL"] = embedding_config.clip_model
+    if embedding_config.clip_vector_size is not None:
+        env_vars["CLIP_VECTOR_SIZE"] = str(embedding_config.clip_vector_size)
 
     _passthrough_env_vars(
         env_vars,

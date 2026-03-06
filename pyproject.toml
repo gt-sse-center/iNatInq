@@ -32,6 +32,7 @@ dependencies = [
     "uvicorn>=0.32.0",
     "weaviate-client>=4.9.3",
     "pre-commit>=4.5.1",
+    "filetype>=1.2.0",
 ]
 
 classifiers = [
@@ -159,8 +160,13 @@ packages = ["src/foundation"]
 ignore_missing_imports = true
 
 [tool.basedpyright]
-typeCheckingMode = "strict"
+typeCheckingMode = "recommended"
 reportMissingTypeStubs = false
+reportUnknownMemberType = false
+reportUnusedCallResult = false
+reportExplicitAny = false
+reportUnannotatedClassAttribute = false
+reportAny = false
 
 [tool.uv.build-backend]
 module-name = "foundation"

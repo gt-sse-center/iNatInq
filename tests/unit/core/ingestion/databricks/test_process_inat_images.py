@@ -44,9 +44,7 @@ class TestDatabricksINatImageJobMain:
         with (
             patch("core.ingestion.databricks.process_inat_images.INatConfig.from_env") as mock_inat_cfg,
             patch("core.ingestion.databricks.process_inat_images.RayJobConfig.from_env") as mock_ray_cfg,
-            patch(
-                "core.ingestion.databricks.process_inat_images.ImageEmbeddingConfig.from_env"
-            ) as mock_embed_cfg,
+            patch("core.ingestion.databricks.process_inat_images.EmbeddingConfig.from_env") as mock_embed_cfg,
             patch("core.ingestion.databricks.process_inat_images.VectorDBConfig.from_env") as mock_vector_cfg,
             patch("core.ingestion.databricks.process_inat_images.DatabricksStrategy") as mock_strat_cls,
             patch("core.ingestion.databricks.process_inat_images.INaturalistOpenDataClient") as mock_inat_cls,

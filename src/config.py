@@ -162,7 +162,7 @@ defaults):
 - `DATABRICKS_WORKSPACE_PATH`: Optional workspace path (if used)
 
 **Embedding Provider Configuration**
-- `EMBEDDING_PROVIDER`: Provider type - `ollama`, `openai`,
+- `EMBEDDING_PROVIDER`: Provider type,
   `huggingface`, or `sagemaker` (default: `ollama`)
 - `EMBEDDING_VECTOR_SIZE`: Expected vector dimension (optional,
   auto-detected if not set)
@@ -182,14 +182,10 @@ defaults):
 - `SAGEMAKER_REGION`: AWS region for SageMaker (default: `us-east-1`)
 
 **Image Embedding Provider Configuration**
-- `IMAGE_EMBEDDING_PROVIDER`: Provider type - `clip` or `llava`
-  (default: `clip`)
-- `CLIP_URL`: CLIP/Ollama service URL (default: auto-detected based on
+- `EMBEDDING_PROVIDER`: `clip` for local CLIP model, `hosted_clip` for hosted model
+- `CLIP_URL`: CLIP service URL (default: auto-detected based on
   environment and backend)
-- `CLIP_MODEL`: Model name for image embedding (default: `ViT-B/32`
-  for clip backend, `llava` for ollama backend)
-- `CLIP_BACKEND`: API backend type - `ollama`, `clip`, or `hosted_clip`
-  (default: `ollama`)
+- `CLIP_MODEL`: Model name for image embedding (default: `ViT-B/32`)
 - `CLIP_API_KEY`: Optional API key for hosted CLIP endpoints
 - `CLIP_TIMEOUT`: Request timeout in seconds (default: `120`)
 - `CLIP_CIRCUIT_BREAKER_THRESHOLD`: Failures before circuit opens
@@ -252,6 +248,7 @@ This module uses Pydantic Settings for configuration management, providing:
 - Multiple configuration sources (env vars)
 """
 
+from enum import StrEnum
 import os
 import logging
 from functools import lru_cache
@@ -354,17 +351,28 @@ def resolve_vector_db_targets(
     return target_mapping["both"]
 
 
+class ProviderType(StrEnum):
+    """Specifies the underlying model provider."""
+
+    OLLAMA = "ollama"
+    OPENAI = "openai"
+    HUGGINGFACE = "huggingface"
+    SAGEMAKER = "sagemaker"
+    LOCAL_CLIP = "clip"
+    HOSTED_CLIP = "hosted_clip"
+
+
 class EmbeddingConfig(BaseModel):
-    """Configuration for embedding provider.
+    """Configuration for an embedding provider.
 
     This configuration class supports multiple embedding providers and can be
     extended to add new providers without breaking existing code.
 
     Attributes:
-        provider_type: Type of embedding provider. Must be one of:
-            "ollama", "openai", "huggingface", or "sagemaker".
+        provider_type: Type of embedding provider.
         vector_size: Expected vector dimension. If None, will be
             auto-detected from the first embedding or provider default.
+
         ollama_url: Ollama service URL. Required if
             provider_type="ollama". Auto-detected based on environment if
             not set.
@@ -378,22 +386,48 @@ class EmbeddingConfig(BaseModel):
         ollama_batch_timeout_multiplier: Multiplier for batch timeout.
             Default: 1.0.
         ollama_max_batch_size: Maximum texts per batch request. Default: 12.
+
         openai_api_key: OpenAI API key. Required if
             provider_type="openai".
         openai_model: OpenAI model name. Required if
             provider_type="openai". Default: "text-embedding-ada-002".
+
         huggingface_model: HuggingFace model name. Required if
             provider_type="huggingface".
         huggingface_device: Device for HuggingFace models. Must be
             "cpu" or "cuda". Default: "cpu".
+
         sagemaker_endpoint: SageMaker endpoint name. Required if
             provider_type="sagemaker".
         sagemaker_region: AWS region for SageMaker endpoint.
             Default: "us-east-1".
+
+        clip_url: CLIP/Ollama service URL. Required if provider_type="clip".
+            Auto-detected based on environment if not set.
+        clip_model: Model name for image embedding (e.g., "llava", "ViT-B/32").
+            Default: "llava".
+        clip_timeout: Request timeout in seconds. Default: 120 (higher for images).
+        clip_circuit_breaker_threshold: Failures before circuit opens. Default: 5.
+        clip_circuit_breaker_timeout: Circuit recovery timeout in seconds. Default: 30.
+        clip_max_batch_size: Maximum images per batch API request. Default: 8.
+        clip_vector_size: Override auto-detected vector size. Default: None.
+
+        image_batch_size: Number of images per processing batch (Ray/pipeline).
+            Smaller than text batches due to higher memory per image. Default: 10.
+        image_max_size_mb: Maximum allowed image size in megabytes. Images larger
+            than this will be rejected. Default: 10 MB.
+        image_target_size: Target dimension for image resizing before embedding.
+            Images are resized to (target_size, target_size) for CLIP models.
+            Default: 224 (standard CLIP input size).
     """
 
-    provider_type: Literal["ollama", "openai", "huggingface", "sagemaker"]
+    provider_type: ProviderType
     vector_size: int | None = None
+
+    # Image processing settings
+    image_batch_size: int = 10
+    image_max_size_mb: float = 10.0
+    image_target_size: int = 224
 
     # Ollama settings
     ollama_url: str | None = None
@@ -416,141 +450,9 @@ class EmbeddingConfig(BaseModel):
     sagemaker_endpoint: str | None = None
     sagemaker_region: str | None = None
 
-    model_config = SettingsConfigDict(frozen=True)
-
-    @classmethod
-    def from_env(cls, namespace: str = "ml-system") -> "EmbeddingConfig":
-        """Create EmbeddingConfig from environment variables.
-
-        Supports:
-        - EMBEDDING_PROVIDER: Provider type (ollama, openai, etc.)
-        - EMBEDDING_VECTOR_SIZE: Expected vector dimension (optional)
-        - OLLAMA_BASE_URL, OLLAMA_MODEL: Ollama config (backward compatible)
-        - OPENAI_API_KEY, OPENAI_MODEL: OpenAI config
-        - HUGGINGFACE_MODEL: HuggingFace model name
-        - SAGEMAKER_ENDPOINT, SAGEMAKER_REGION: SageMaker config
-
-        Args:
-            namespace: Kubernetes namespace for service discovery.
-
-        Returns:
-            Configured EmbeddingConfig instance.
-        """
-        # Determine provider type
-        provider_type = os.getenv("EMBEDDING_PROVIDER", "ollama").lower()
-
-        # Validate provider type
-        valid_providers = ("ollama", "openai", "huggingface", "sagemaker")
-        if provider_type not in valid_providers:
-            msg = f"Invalid EMBEDDING_PROVIDER: {provider_type}. Must be one of: {valid_providers}"
-            raise ValueError(msg)
-
-        in_cluster = _is_in_cluster()
-
-        # Build config based on provider type
-        # Parse vector size once (can be None)
-        vector_size_str = os.getenv("EMBEDDING_VECTOR_SIZE")
-        vector_size: int | None = None
-        if vector_size_str:
-            vector_size = int(vector_size_str)
-
-        if provider_type == "ollama":
-            # Default URL based on environment
-            default_url = f"http://ollama.{namespace}:11434" if in_cluster else "http://localhost:11434"
-            ollama_url_val = os.getenv("OLLAMA_BASE_URL") or default_url
-            ollama_model_val = os.getenv("OLLAMA_MODEL") or "nomic-embed-text"
-            return cls(
-                provider_type="ollama",
-                vector_size=vector_size,
-                ollama_url=ollama_url_val,
-                ollama_model=ollama_model_val,
-                ollama_timeout=int(os.getenv("OLLAMA_TIMEOUT", "60")),
-                ollama_circuit_breaker_threshold=int(os.getenv("OLLAMA_CIRCUIT_BREAKER_THRESHOLD", "5")),
-                ollama_circuit_breaker_timeout=int(os.getenv("OLLAMA_CIRCUIT_BREAKER_TIMEOUT", "30")),
-                ollama_batch_timeout_multiplier=float(os.getenv("OLLAMA_BATCH_TIMEOUT_MULTIPLIER", "1.0")),
-                ollama_max_batch_size=int(os.getenv("OLLAMA_MAX_BATCH_SIZE", "12")),
-            )
-
-        if provider_type == "openai":
-            api_key = os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                raise ValueError("OPENAI_API_KEY is required for OpenAI provider")
-            openai_model_val = os.getenv("OPENAI_MODEL") or "text-embedding-ada-002"
-            return cls(
-                provider_type="openai",
-                vector_size=vector_size,
-                openai_api_key=api_key,
-                openai_model=openai_model_val,
-            )
-
-        if provider_type == "huggingface":
-            model = os.getenv("HUGGINGFACE_MODEL")
-            if not model:
-                raise ValueError("HUGGINGFACE_MODEL is required for HuggingFace provider")
-            huggingface_device_val = os.getenv("HUGGINGFACE_DEVICE") or "cpu"
-            return cls(
-                provider_type="huggingface",
-                vector_size=vector_size,
-                huggingface_model=model,
-                huggingface_device=huggingface_device_val,
-            )
-
-        if provider_type == "sagemaker":
-            endpoint = os.getenv("SAGEMAKER_ENDPOINT")
-            if not endpoint:
-                raise ValueError("SAGEMAKER_ENDPOINT is required for SageMaker provider")
-            sagemaker_region_val = os.getenv("SAGEMAKER_REGION") or "us-east-1"
-            return cls(
-                provider_type="sagemaker",
-                vector_size=vector_size,
-                sagemaker_endpoint=endpoint,
-                sagemaker_region=sagemaker_region_val,
-            )
-
-        # This should be unreachable due to validation above, but needed
-        # for type checking
-        msg = f"Unsupported provider type: {provider_type}"
-        raise ValueError(msg)
-
-
-class ImageEmbeddingConfig(BaseModel):
-    """Configuration for image embedding provider (CLIP, LLaVA, etc.).
-
-    This configuration class supports multi-modal embedding providers that can
-    generate embeddings from image data.
-
-    Attributes:
-        provider_type: Type of image embedding provider. Supports "clip" or "llava".
-            Default: "clip".
-        clip_url: CLIP/Ollama service URL. Required if provider_type="clip".
-            Auto-detected based on environment if not set.
-        clip_model: Model name for image embedding (e.g., "llava", "ViT-B/32").
-            Default: "llava".
-        clip_backend: API backend type. One of "ollama", "clip", or "hosted_clip".
-            Default: "ollama".
-            - "ollama": Uses Ollama's /api/embeddings endpoint with LLaVA
-            - "clip": Uses ai4all/clip's /embed/image endpoint
-            - "hosted_clip": Uses hosted CLIP endpoints (Azure ML-style /score)
-        clip_timeout: Request timeout in seconds. Default: 120 (higher for images).
-        clip_circuit_breaker_threshold: Failures before circuit opens. Default: 5.
-        clip_circuit_breaker_timeout: Circuit recovery timeout in seconds. Default: 30.
-        clip_max_batch_size: Maximum images per batch API request. Default: 8.
-        clip_vector_size: Override auto-detected vector size. Default: None.
-        image_batch_size: Number of images per processing batch (Ray/pipeline).
-            Smaller than text batches due to higher memory per image. Default: 10.
-        image_max_size_mb: Maximum allowed image size in megabytes. Images larger
-            than this will be rejected. Default: 10 MB.
-        image_target_size: Target dimension for image resizing before embedding.
-            Images are resized to (target_size, target_size) for CLIP models.
-            Default: 224 (standard CLIP input size).
-    """
-
-    provider_type: Literal["clip", "llava"] = "clip"
-
     # CLIP settings
     clip_url: str | None = None
     clip_model: str | None = None
-    clip_backend: Literal["ollama", "clip", "hosted_clip"] = "ollama"
     clip_api_key: str | None = None
     clip_timeout: int = 120
     clip_circuit_breaker_threshold: int = 5
@@ -558,22 +460,21 @@ class ImageEmbeddingConfig(BaseModel):
     clip_max_batch_size: int = 8
     clip_vector_size: int | None = None
 
-    # Image processing settings
-    image_batch_size: int = 10
-    image_max_size_mb: float = 10.0
-    image_target_size: int = 224
-
     model_config = SettingsConfigDict(frozen=True)
 
     @classmethod
-    def from_env(cls, namespace: str = "ml-system") -> "ImageEmbeddingConfig":
-        """Create ImageEmbeddingConfig from environment variables.
+    def from_env(cls, namespace: str = "ml-system") -> "EmbeddingConfig":
+        """Create EmbeddingConfig from environment variables.
 
         Supports:
-        - IMAGE_EMBEDDING_PROVIDER: Provider type ("clip" or "llava", default: "clip")
+        - EMBEDDING_PROVIDER: Provider type (ollama, clip, hosted_clip, openai, etc.)
+        - EMBEDDING_VECTOR_SIZE: Expected vector dimension (optional)
+        - OLLAMA_BASE_URL, OLLAMA_MODEL: Ollama config (backward compatible)
+        - OPENAI_API_KEY, OPENAI_MODEL: OpenAI config
+        - HUGGINGFACE_MODEL: HuggingFace model name
+        - SAGEMAKER_ENDPOINT, SAGEMAKER_REGION: SageMaker config
         - CLIP_URL or OLLAMA_BASE_URL: Service URL
         - CLIP_MODEL: Model name (default depends on backend)
-        - CLIP_BACKEND: API backend type ("ollama", "clip", or "hosted_clip", default: "ollama")
         - CLIP_API_KEY: Optional API key for authenticated CLIP/Ollama endpoints
         - CLIP_TIMEOUT: Request timeout in seconds
         - CLIP_CIRCUIT_BREAKER_THRESHOLD: Failures before circuit opens
@@ -588,51 +489,133 @@ class ImageEmbeddingConfig(BaseModel):
             namespace: Kubernetes namespace for service discovery.
 
         Returns:
-            Configured ImageEmbeddingConfig instance.
+            Configured EmbeddingConfig instance.
+
         """
+
+        # Ensure anyone using the old IMAGE_EMBEDDING_PROVIDER env variable is notified
+        if os.getenv("IMAGE_EMBEDDING_PROVIDER") is not None:
+            raise ValueError(
+                "IMAGE_EMBEDDING_PROVIDER is no longer supported. Please use EMBEDDING_PROVIDER instead."
+            )
+
+        # Determine provider type
+        provider_type_str = os.getenv("EMBEDDING_PROVIDER", "clip").lower()
+        valid_providers = list(ProviderType._value2member_map_)
+        if provider_type_str not in valid_providers:
+            raise ValueError(
+                f"Invalid EMBEDDING_PROVIDER: {provider_type_str}. Must be one of: {valid_providers}"
+            )
+
+        provider_type = ProviderType(provider_type_str)
+
+        # Provider-agnostic settings
+        vector_size_str = os.getenv("EMBEDDING_VECTOR_SIZE")
+        vector_size: int | None = int(vector_size_str) if vector_size_str else None
+
         in_cluster = _is_in_cluster()
 
-        # Get provider type (clip or llava)
-        provider_type = os.getenv("IMAGE_EMBEDDING_PROVIDER", "clip").lower()
-        if provider_type not in ("clip", "llava"):
-            provider_type = "clip"
+        image_batch_size = int(os.getenv("IMAGE_BATCH_SIZE", "10"))
+        image_max_size_mb = float(os.getenv("IMAGE_MAX_SIZE_MB", "10.0"))
+        image_target_size = int(os.getenv("IMAGE_TARGET_SIZE", "224"))
 
-        # Get backend type (ollama, clip, or hosted_clip)
-        clip_backend = os.getenv("CLIP_BACKEND", "ollama").lower()
-        if clip_backend not in ("ollama", "clip", "hosted_clip"):
-            clip_backend = "ollama"
+        # Initialize all provider-specific fields with sensible defaults/None
+        # Ollama
+        ollama_url: str | None = None
+        ollama_model: str | None = None
+        ollama_timeout = int(os.getenv("OLLAMA_TIMEOUT", "60"))
+        ollama_circuit_breaker_threshold = int(os.getenv("OLLAMA_CIRCUIT_BREAKER_THRESHOLD", "5"))
+        ollama_circuit_breaker_timeout = int(os.getenv("OLLAMA_CIRCUIT_BREAKER_TIMEOUT", "30"))
+        ollama_batch_timeout_multiplier = float(os.getenv("OLLAMA_BATCH_TIMEOUT_MULTIPLIER", "1.0"))
+        ollama_max_batch_size = int(os.getenv("OLLAMA_MAX_BATCH_SIZE", "12"))
 
-        # Resolve URL based on backend
-        if clip_backend in ("clip", "hosted_clip"):
-            default_url = f"http://clip.{namespace}:8000" if in_cluster else "http://localhost:8000"
-            default_model = "ViT-B/32"
-        else:
+        # OpenAI
+        openai_api_key: str | None = None
+        openai_model: str | None = None
+
+        # HuggingFace
+        huggingface_model: str | None = None
+        huggingface_device: str | None = None
+
+        # SageMaker
+        sagemaker_endpoint: str | None = None
+        sagemaker_region: str | None = None
+
+        # CLIP / image embeddings
+        clip_url: str | None = None
+        clip_model: str | None = None
+        clip_api_key = os.getenv("CLIP_API_KEY")
+        clip_timeout = int(os.getenv("CLIP_TIMEOUT", "120"))
+        clip_circuit_breaker_threshold = int(os.getenv("CLIP_CIRCUIT_BREAKER_THRESHOLD", "5"))
+        clip_circuit_breaker_timeout = int(os.getenv("CLIP_CIRCUIT_BREAKER_TIMEOUT", "30"))
+        clip_max_batch_size = int(os.getenv("CLIP_MAX_BATCH_SIZE", "8"))
+        clip_vector_size_str = os.getenv("CLIP_VECTOR_SIZE")
+        clip_vector_size: int | None = int(clip_vector_size_str) if clip_vector_size_str else None
+
+        # Provider-specific validation
+        if provider_type is ProviderType.OLLAMA:
             default_url = f"http://ollama.{namespace}:11434" if in_cluster else "http://localhost:11434"
-            default_model = "llava"
+            ollama_url = os.getenv("OLLAMA_BASE_URL") or default_url
+            ollama_model = os.getenv("OLLAMA_MODEL") or "llava"
 
-        clip_url = os.getenv("CLIP_URL") or os.getenv("OLLAMA_BASE_URL", default_url)
-        clip_model = os.getenv("CLIP_MODEL", default_model)
+        elif provider_type is ProviderType.OPENAI:
+            openai_api_key = os.getenv("OPENAI_API_KEY")
+            if not openai_api_key:
+                raise ValueError("OPENAI_API_KEY is required for OpenAI provider")
+            openai_model = os.getenv("OPENAI_MODEL") or "text-embedding-ada-002"
 
-        # Parse optional vector size
-        vector_size_str = os.getenv("CLIP_VECTOR_SIZE")
-        clip_vector_size: int | None = None
-        if vector_size_str:
-            clip_vector_size = int(vector_size_str)
+        elif provider_type is ProviderType.HUGGINGFACE:
+            huggingface_model = os.getenv("HUGGINGFACE_MODEL")
+            if not huggingface_model:
+                raise ValueError("HUGGINGFACE_MODEL is required for HuggingFace provider")
+            huggingface_device = os.getenv("HUGGINGFACE_DEVICE") or "cpu"
 
+        elif provider_type is ProviderType.SAGEMAKER:
+            sagemaker_endpoint = os.getenv("SAGEMAKER_ENDPOINT")
+            if not sagemaker_endpoint:
+                raise ValueError("SAGEMAKER_ENDPOINT is required for SageMaker provider")
+            sagemaker_region = os.getenv("SAGEMAKER_REGION") or "us-east-1"
+
+        elif provider_type in (ProviderType.LOCAL_CLIP, ProviderType.HOSTED_CLIP):
+            default_url = f"http://clip.{namespace}:8000" if in_cluster else "http://localhost:8000"
+            clip_url = os.getenv("CLIP_URL") or os.getenv("OLLAMA_BASE_URL", default_url)
+            default_model = "ViT-B/32"
+            clip_model = os.getenv("CLIP_MODEL", default_model)
+
+        # Single construction with all resolved values
         return cls(
-            provider_type=provider_type,  # type: ignore[arg-type]
+            provider_type=provider_type,
+            vector_size=vector_size,
+            # Image settings
+            image_batch_size=image_batch_size,
+            image_max_size_mb=image_max_size_mb,
+            image_target_size=image_target_size,
+            # Ollama
+            ollama_url=ollama_url,
+            ollama_model=ollama_model,
+            ollama_timeout=ollama_timeout,
+            ollama_circuit_breaker_threshold=ollama_circuit_breaker_threshold,
+            ollama_circuit_breaker_timeout=ollama_circuit_breaker_timeout,
+            ollama_batch_timeout_multiplier=ollama_batch_timeout_multiplier,
+            ollama_max_batch_size=ollama_max_batch_size,
+            # OpenAI
+            openai_api_key=openai_api_key,
+            openai_model=openai_model,
+            # HuggingFace
+            huggingface_model=huggingface_model,
+            huggingface_device=huggingface_device,
+            # SageMaker
+            sagemaker_endpoint=sagemaker_endpoint,
+            sagemaker_region=sagemaker_region,
+            # CLIP
             clip_url=clip_url,
             clip_model=clip_model,
-            clip_backend=clip_backend,  # type: ignore[arg-type]
-            clip_api_key=os.getenv("CLIP_API_KEY"),
-            clip_timeout=int(os.getenv("CLIP_TIMEOUT", "120")),
-            clip_circuit_breaker_threshold=int(os.getenv("CLIP_CIRCUIT_BREAKER_THRESHOLD", "5")),
-            clip_circuit_breaker_timeout=int(os.getenv("CLIP_CIRCUIT_BREAKER_TIMEOUT", "30")),
-            clip_max_batch_size=int(os.getenv("CLIP_MAX_BATCH_SIZE", "8")),
+            clip_api_key=clip_api_key,
+            clip_timeout=clip_timeout,
+            clip_circuit_breaker_threshold=clip_circuit_breaker_threshold,
+            clip_circuit_breaker_timeout=clip_circuit_breaker_timeout,
+            clip_max_batch_size=clip_max_batch_size,
             clip_vector_size=clip_vector_size,
-            image_batch_size=int(os.getenv("IMAGE_BATCH_SIZE", "10")),
-            image_max_size_mb=float(os.getenv("IMAGE_MAX_SIZE_MB", "10.0")),
-            image_target_size=int(os.getenv("IMAGE_TARGET_SIZE", "224")),
         )
 
 
