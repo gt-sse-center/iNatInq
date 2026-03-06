@@ -41,6 +41,7 @@ help:
 	@echo "│ make azure-databricks-build  Create/update cluster from spec                │"
 	@echo "│ make azure-databricks-up     Start cluster                                  │"
 	@echo "│ make azure-databricks-down   Terminate cluster                              │"
+	@echo "│ make azure-databricks-configure-minio-s3a Configure MinIO S3A secret/conf   │"
 	@echo "├── Docker Service Logs ──────────────────────────────────────────────────────┤"
 	@echo "│ make logs-pipeline     Tail pipeline logs                                   │"
 	@echo "│ make logs-ollama       Tail ollama logs                                     │"
@@ -313,6 +314,11 @@ azure-databricks-up: databricks-env-check
 azure-databricks-down: databricks-env-check
 	@ENV_FILE=$(DATABRICKS_ENV_FILE) CLUSTER_SPEC_FILE=$(DATABRICKS_CLUSTER_SPEC) \
 		zarf/databricks/azure-databricks-down.py
+
+.PHONY: azure-databricks-configure-minio-s3a
+azure-databricks-configure-minio-s3a: databricks-env-check
+	@ENV_FILE=$(DATABRICKS_ENV_FILE) \
+		zarf/databricks/azure-databricks-configure-minio-s3a.py
 
 .PHONY: databricks-env-check
 databricks-env-check:

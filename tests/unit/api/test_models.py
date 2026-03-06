@@ -256,3 +256,18 @@ class TestDatabricksImageJobRequest:
                 collection="documents",
                 image_page_size=0,
             )
+
+    def test_source_rejects_s3_autoloader(self) -> None:
+        """Test that s3_autoloader is not accepted on image endpoint model."""
+        with pytest.raises(ValidationError):
+            models.DatabricksImageJobRequest(source="s3_autoloader", collection="documents")
+
+    def test_collection_required_for_s3_source(self) -> None:
+        """Collection is required for direct S3 image ingestion jobs."""
+        with pytest.raises(ValidationError):
+            models.DatabricksImageJobRequest(source="s3")
+
+    def test_collection_required_for_inat_source(self) -> None:
+        """Collection is required for iNaturalist image ingestion jobs."""
+        with pytest.raises(ValidationError):
+            models.DatabricksImageJobRequest(source="inat")

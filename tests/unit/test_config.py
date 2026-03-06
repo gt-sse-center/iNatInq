@@ -328,6 +328,51 @@ class TestDatabricksRayJobConfig:
             with pytest.raises(ValueError, match="DATABRICKS_INAT_JOB_ID must be an integer"):
                 DatabricksRayJobConfig.from_env()
 
+    def test_parses_optional_s3_autoloader_job_id(self) -> None:
+        """Test optional DATABRICKS_S3_AUTOLOADER_JOB_ID parsing."""
+        with patch.dict(
+            os.environ,
+            {
+                "DATABRICKS_HOST": "https://dbc.example.cloud",
+                "DATABRICKS_TOKEN": "databricks-token",
+                "DATABRICKS_JOB_ID": "789",
+                "DATABRICKS_S3_AUTOLOADER_JOB_ID": "45678",
+            },
+            clear=True,
+        ):
+            config = DatabricksRayJobConfig.from_env()
+            assert config.s3_autoloader_job_id == 45678
+
+    def test_invalid_s3_autoloader_job_id(self) -> None:
+        """Test invalid optional s3 autoloader job id is rejected."""
+        with patch.dict(
+            os.environ,
+            {
+                "DATABRICKS_HOST": "https://dbc.example.cloud",
+                "DATABRICKS_TOKEN": "databricks-token",
+                "DATABRICKS_JOB_ID": "789",
+                "DATABRICKS_S3_AUTOLOADER_JOB_ID": "not-an-int",
+            },
+            clear=True,
+        ):
+            with pytest.raises(ValueError, match="DATABRICKS_S3_AUTOLOADER_JOB_ID must be an integer"):
+                DatabricksRayJobConfig.from_env()
+
+    def test_from_env_allows_missing_job_id_when_not_required(self) -> None:
+        """CDC producer path should not require DATABRICKS_JOB_ID."""
+        with patch.dict(
+            os.environ,
+            {
+                "DATABRICKS_HOST": "https://dbc.example.cloud",
+                "DATABRICKS_TOKEN": "databricks-token",
+                "DATABRICKS_S3_AUTOLOADER_JOB_ID": "45678",
+            },
+            clear=True,
+        ):
+            config = DatabricksRayJobConfig.from_env(require_job_id=False)
+            assert config.job_id == 0
+            assert config.s3_autoloader_job_id == 45678
+
 
 # =============================================================================
 # MinIOConfig Tests

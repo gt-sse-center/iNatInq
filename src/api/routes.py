@@ -13,6 +13,7 @@ This module defines all HTTP endpoints for the pipeline service. It handles:
 - `POST /ray/jobs/images`: Submit Ray job to process S3 images and store
 image embeddings in vector DB image collections
 - `POST /databricks/jobs/images`: Submit Databricks job to process S3 images
+- `POST /databricks/jobs/cdc-producer`: Submit Databricks CDC producer job
 - `GET /ray/jobs/{job_id}`: Check status of a submitted job
 
 ## Error Handling
@@ -314,6 +315,9 @@ async def submit_databricks_image_job(
 
     Args:
         req: Request containing source, optional s3_prefix, and collection.
+            Supported sources:
+            - s3: direct S3 image job
+            - inat: iNaturalist image job
 
     Returns:
         Job metadata including Databricks run ID and submission timestamp.
@@ -329,6 +333,7 @@ async def submit_databricks_image_job(
         embed_config = EmbeddingConfig.from_env(namespace)
         effective_s3_prefix: str | None
         if req.source == "inat":
+            image_embed_cfg = ImageEmbeddingConfig.from_env(namespace)
             effective_s3_prefix = None
             run_id = databricks_service.submit_inat_image_job(
                 namespace=namespace,
@@ -336,6 +341,7 @@ async def submit_databricks_image_job(
                 collection=req.collection,
             )
         else:
+            image_embed_cfg = ImageEmbeddingConfig.from_env(namespace)
             effective_s3_prefix = req.s3_prefix or ""
             minio_cfg = MinIOConfig.from_env(namespace)
             run_id = databricks_service.submit_image_job(
@@ -362,6 +368,31 @@ async def submit_databricks_image_job(
         )
     except Exception as e:
         raise PipelineError(f"Failed to submit Databricks image job: {e!s}") from e
+
+
+@router.post(
+    "/databricks/jobs/cdc-producer",
+    response_model=models.DatabricksCdcProducerJobResponse,
+    status_code=202,
+    tags=["databricks-jobs"],
+)
+async def submit_databricks_cdc_producer_job() -> models.DatabricksCdcProducerJobResponse:
+    """Submit a Databricks CDC producer (Auto Loader) job run."""
+    try:
+        settings = get_settings()
+        namespace = settings.k8s_namespace
+
+        databricks_service = DatabricksRayService()
+        run_id = databricks_service.submit_s3_autoloader_job(namespace=namespace)
+
+        return models.DatabricksCdcProducerJobResponse(
+            run_id=str(run_id),
+            status="submitted",
+            namespace=namespace,
+            submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+        )
+    except Exception as e:
+        raise PipelineError(f"Failed to submit Databricks CDC producer job: {e!s}") from e
 
 
 @router.delete(
