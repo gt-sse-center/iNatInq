@@ -32,6 +32,7 @@ dependencies = [
     "uvicorn>=0.32.0",
     "weaviate-client>=4.9.3",
     "pre-commit>=4.5.1",
+    "redis>=7.2.1",
     "filetype>=1.2.0",
 ]
 
