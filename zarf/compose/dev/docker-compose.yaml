@@ -287,6 +287,21 @@ services:
     networks: [ml-network]
 
   # ---------------------------------------------------------------------------
+  # Redis — Caching / DLQ Storage
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:latest
+    container_name: redis
+    ports:
+      - "8334:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [ml-network]
+
+  # ---------------------------------------------------------------------------
   # Pipeline — FastAPI Orchestrator
   # ---------------------------------------------------------------------------
   pipeline:
@@ -348,4 +363,3 @@ volumes:
 networks:
   ml-network:
     driver: bridge
-
