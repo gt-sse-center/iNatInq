@@ -69,18 +69,18 @@ class TestCircuitBreakerListener:
             mock_cb.name = "test_service"
             mock_cb.fail_counter = 5
 
-            # pybreaker uses string states, not enum attributes
-            listener.state_change(
-                mock_cb,
-                "CLOSED",  # type: ignore[arg-type]
-                "OPEN",  # type: ignore[arg-type]
-            )
+            old_state = MagicMock(spec=pybreaker.CircuitBreakerState)
+            old_state.name = "closed"
+            new_state = MagicMock(spec=pybreaker.CircuitBreakerState)
+            new_state.name = "open"
+
+            listener.state_change(mock_cb, old_state, new_state)
 
             mock_logger.warning.assert_called_once()
             call_kwargs = mock_logger.warning.call_args[1]
             assert call_kwargs["extra"]["circuit_breaker"] == "test_service"
-            assert call_kwargs["extra"]["old_state"] == "CLOSED"
-            assert call_kwargs["extra"]["new_state"] == "OPEN"
+            assert call_kwargs["extra"]["old_state"] == "closed"
+            assert call_kwargs["extra"]["new_state"] == "open"
             assert call_kwargs["extra"]["failure_count"] == 5
 
     def test_before_call_logs(self) -> None:
