@@ -221,7 +221,7 @@ def _start_query(df: DataFrame, *, cfg: AutoLoaderConfig) -> StreamingQuery:
 
 def _configure_s3a_for_minio(spark: SparkSession, *, cfg: AutoLoaderConfig) -> None:
     """Configure Spark Hadoop S3A settings when explicit MinIO/S3 creds are provided."""
-    if not cfg.s3_endpoint:
+    if not cfg.s3_endpoint or not cfg.s3_access_key_id or not cfg.s3_secret_access_key:
         return
 
     spark.conf.set("spark.hadoop.fs.s3a.endpoint", cfg.s3_endpoint)

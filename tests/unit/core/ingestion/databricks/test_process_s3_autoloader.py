@@ -159,3 +159,21 @@ def test_configure_s3a_for_minio_sets_expected_spark_confs() -> None:
     actual = {(call.args[0], call.args[1]) for call in spark.conf.set.call_args_list}
     for pair in expected:
         assert pair in actual
+
+
+def test_configure_s3a_for_minio_noops_when_credentials_incomplete() -> None:
+    """Direct config construction with missing creds should not set Spark confs."""
+    cfg = AutoLoaderConfig(
+        source_path="s3://bucket/prefix",
+        bronze_table="main.default.images_bronze",
+        schema_location="dbfs:/schema",
+        checkpoint_location="dbfs:/checkpoints",
+        s3_endpoint="http://minio:9000",
+        s3_access_key_id=None,
+        s3_secret_access_key="secret",
+    )
+    spark = MagicMock()
+
+    _configure_s3a_for_minio(spark, cfg=cfg)
+
+    spark.conf.set.assert_not_called()
