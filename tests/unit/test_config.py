@@ -370,7 +370,7 @@ class TestDatabricksRayJobConfig:
             clear=True,
         ):
             config = DatabricksRayJobConfig.from_env(require_job_id=False)
-            assert config.job_id == 0
+            assert config.job_id is None
             assert config.s3_autoloader_job_id == 45678
 
 

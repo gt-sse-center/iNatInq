@@ -90,6 +90,8 @@ class DatabricksRayService:
             UpstreamError: If submission fails.
         """
         databricks_config = DatabricksRayJobConfig.from_env()
+        if databricks_config.job_id is None:
+            raise ValueError("Missing required Databricks config: DATABRICKS_JOB_ID")
         env_vars = build_image_ingestion_env(
             namespace=namespace,
             s3_endpoint=s3_endpoint,

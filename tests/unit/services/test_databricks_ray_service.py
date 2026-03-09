@@ -23,7 +23,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from config import EmbeddingConfig, EmbeddingConfig, ProviderType
+from config import EmbeddingConfig, ProviderType
 from core.exceptions import UpstreamError
 from core.services.databricks_ray_service import DatabricksRayService
 
@@ -148,6 +148,37 @@ class TestDatabricksRayServiceSubmitImageJob:
 
         service = DatabricksRayService()
         with pytest.raises(UpstreamError, match="Failed to submit Databricks image job"):
+            service.submit_image_job(
+                namespace="test-namespace",
+                s3_endpoint="http://minio.test:9000",
+                s3_access_key_id="test-key",
+                s3_secret_access_key="test-secret",
+                s3_bucket="test-bucket",
+                s3_prefix="images/",
+                embedding_config=embedding_config,
+                collection="test-image-collection",
+            )
+
+    @patch("core.services.databricks_ray_service.DatabricksRayJobConfig.from_env")
+    def test_submit_image_job_raises_without_job_id(
+        self,
+        mock_config: MagicMock,
+    ) -> None:
+        """Primary image submission requires DATABRICKS_JOB_ID."""
+        mock_databricks_config = MagicMock()
+        mock_databricks_config.host = "https://dbc.example.cloud"
+        mock_databricks_config.token = "databricks-token"
+        mock_databricks_config.job_id = None
+        mock_config.return_value = mock_databricks_config
+
+        embedding_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
+            clip_url="http://clip.test:8000",
+            clip_model="ViT-B/32",
+        )
+
+        service = DatabricksRayService()
+        with pytest.raises(ValueError, match="DATABRICKS_JOB_ID"):
             service.submit_image_job(
                 namespace="test-namespace",
                 s3_endpoint="http://minio.test:9000",

@@ -1232,7 +1232,7 @@ class DatabricksRayJobConfig(BaseModel):
     Attributes:
         host: Databricks workspace host URL.
         token: Databricks access token.
-        job_id: Databricks job ID.
+        job_id: Databricks job ID. Optional when `require_job_id=False`.
         inat_job_id: Optional dedicated Databricks iNaturalist image job ID.
         s3_autoloader_job_id: Optional dedicated Databricks S3 Auto Loader job ID.
         task_type: Parameter style for job tasks.
@@ -1242,7 +1242,7 @@ class DatabricksRayJobConfig(BaseModel):
 
     host: str
     token: str
-    job_id: int
+    job_id: int | None = None
     inat_job_id: int | None = None
     s3_autoloader_job_id: int | None = None
     task_type: Literal["python"] = "python"
@@ -1286,15 +1286,12 @@ class DatabricksRayJobConfig(BaseModel):
         if missing:
             raise ValueError(f"Missing required Databricks config: {', '.join(missing)}")
 
-        job_id: int
+        job_id: int | None = None
         if job_id_raw:
             try:
                 job_id = int(job_id_raw)
             except (TypeError, ValueError) as exc:
                 raise ValueError("DATABRICKS_JOB_ID must be an integer") from exc
-        else:
-            # Placeholder when DATABRICKS_JOB_ID is intentionally optional.
-            job_id = 0
 
         inat_job_id: int | None = None
         if inat_job_id_raw:

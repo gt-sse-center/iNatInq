@@ -20,6 +20,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 if TYPE_CHECKING:
     from pyspark.sql import DataFrame, SparkSession
+    from pyspark.sql import functions as spark_functions_module
+    from pyspark.sql.streaming import StreamingQuery
 
 from core.ingestion.databricks.runtime import apply_python_params as _apply_python_params
 from foundation.logger import LOGGING_CONFIG
@@ -198,7 +200,7 @@ def _build_autoloader_df(spark: SparkSession, *, cfg: AutoLoaderConfig) -> DataF
     )
 
 
-def _start_query(df: DataFrame, *, cfg: AutoLoaderConfig):
+def _start_query(df: DataFrame, *, cfg: AutoLoaderConfig) -> StreamingQuery:
     """Start Auto Loader writer query with the configured trigger mode."""
     writer = (
         df.writeStream.format("delta")
@@ -282,7 +284,7 @@ def _spark_session_class() -> Any:
     return SparkSession
 
 
-def _spark_functions():
+def _spark_functions() -> spark_functions_module:
     """Load pyspark SQL functions lazily for environments without pyspark."""
     try:
         from pyspark.sql import functions as sf
