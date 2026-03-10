@@ -44,9 +44,9 @@ class MetricRegistry(ABCMeta):
         """Create a new class and register it if it has a `name` attribute."""
         cls = super().__new__(mcs, name, bases, namespace)
 
-        # Register if the class has a 'name' class variable (not inherited abstract)
-        if "name" in namespace and namespace["name"] is not None:
-            metric_name = namespace["name"]
+        # Register if the class has a 'name' class variable with a non-empty value
+        metric_name = namespace.get("name")
+        if metric_name:
             mcs._registry[metric_name] = cls
 
         return cls
@@ -86,7 +86,7 @@ class Metric(ABC, metaclass=MetricRegistry):
         description: Human-readable description (class variable).
     """
 
-    name: str | None = None
+    name: str = ""
     description: str = ""
 
     @abstractmethod

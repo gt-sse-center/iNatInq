@@ -8,6 +8,8 @@ import json
 import logging
 from typing import Any
 
+from typing_extensions import override
+
 
 class MockSafeJSONEncoder(json.JSONEncoder):
     """JSON encoder that safely handles mock objects in tests.
@@ -17,24 +19,25 @@ class MockSafeJSONEncoder(json.JSONEncoder):
     during testing.
     """
 
-    def default(self, obj: Any) -> Any:
+    @override
+    def default(self, o: Any) -> Any:
         """Handle objects that aren't JSON serializable by default.
 
         Args:
-            obj: Object to serialize.
+            o: Object to serialize.
 
         Returns:
             Serializable representation of the object.
         """
         # Check if it's a Mock object (works for MagicMock, Mock, AsyncMock, etc.)
-        if hasattr(obj, "_mock_name") or type(obj).__name__.endswith("Mock"):
-            return f"<Mock: {type(obj).__name__}>"
+        if hasattr(o, "_mock_name") or type(o).__name__.endswith("Mock"):
+            return f"<Mock: {type(o).__name__}>"
 
         # For any other non-serializable object, convert to string
         try:
-            return super().default(obj)
+            return super().default(o)
         except TypeError:
-            return str(obj)
+            return str(o)
 
 
 class CustomJSONFormatter(logging.Formatter):
@@ -56,6 +59,7 @@ class CustomJSONFormatter(logging.Formatter):
         """
         logging.Formatter.__init__(self, fmt)
 
+    @override
     def format(self, record: logging.LogRecord) -> str:
         """Format a log record as JSON.
 

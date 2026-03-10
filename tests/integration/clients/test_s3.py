@@ -109,61 +109,6 @@ class TestHappyPath:
         assert len(result) == 5
         assert set(result) == set(keys)
 
-    def test_exists_returns_true_for_existing_object(
-        self, minio_client: S3ClientWrapper, test_bucket: str, unique_key: str, sample_data: bytes
-    ) -> None:
-        """Test exists() returns True for existing objects.
-
-        **Why this test is important:**
-          - Existence checks are used to avoid duplicate processing
-          - Critical for idempotent operations and checkpointing
-          - False negatives would cause unnecessary reprocessing
-
-        **What it tests:**
-          - exists() returns True for an object that was just uploaded
-          - No false negatives occur for existing objects
-        """
-        minio_client.put_object(bucket=test_bucket, key=unique_key, body=sample_data)
-
-        assert minio_client.exists(bucket=test_bucket, key=unique_key) is True
-
-    def test_exists_returns_false_for_missing_object(
-        self, minio_client: S3ClientWrapper, test_bucket: str
-    ) -> None:
-        """Test exists() returns False for non-existent objects.
-
-        **Why this test is important:**
-          - 404 errors must be handled gracefully, not raised as exceptions
-          - False positives would cause skipped processing of new objects
-          - Validates the exists() method correctly interprets S3 404 responses
-
-        **What it tests:**
-          - exists() returns False for a key that doesn't exist
-          - 404 ClientError is caught and converted to False
-        """
-        assert minio_client.exists(bucket=test_bucket, key="nonexistent-key") is False
-
-    def test_delete_object(
-        self, minio_client: S3ClientWrapper, test_bucket: str, unique_key: str, sample_data: bytes
-    ) -> None:
-        """Test object deletion.
-
-        **Why this test is important:**
-          - Deletion is required for cleanup and data lifecycle management
-          - Ensures deleted objects are actually removed from storage
-          - Validates delete_object integrates correctly with exists()
-
-        **What it tests:**
-          - delete_object removes an existing object
-          - exists() returns False after deletion
-        """
-        minio_client.put_object(bucket=test_bucket, key=unique_key, body=sample_data)
-        assert minio_client.exists(bucket=test_bucket, key=unique_key) is True
-
-        minio_client.delete_object(bucket=test_bucket, key=unique_key)
-
-        assert minio_client.exists(bucket=test_bucket, key=unique_key) is False
-
     @pytest.mark.asyncio
     async def test_get_object_async(
         self, minio_client: S3ClientWrapper, test_bucket: str, unique_key: str, sample_data: bytes
@@ -218,9 +163,6 @@ class TestRetrySuccess:
             retry_max_wait=0.1,
         )
 
-        # Ensure bucket exists
-        client.ensure_bucket(test_bucket)
-
         call_count = 0
         original_put = client._client.put_object
 
@@ -265,8 +207,6 @@ class TestRetrySuccess:
             retry_min_wait=0.01,
             retry_max_wait=0.1,
         )
-
-        client.ensure_bucket(test_bucket)
 
         call_count = 0
         original_get = client._client.get_object
@@ -326,8 +266,6 @@ class TestRetryExhaustion:
             retry_min_wait=0.01,
             retry_max_wait=0.05,
         )
-
-        client.ensure_bucket(test_bucket)
 
         call_count = 0
 
@@ -459,8 +397,6 @@ class TestCircuitBreakerOpens:
             retry_min_wait=0.001,
             retry_max_wait=0.01,
         )
-
-        client.ensure_bucket(test_bucket)
 
         # Circuit breaker threshold is 5 failures
         failure_count = 0
@@ -697,8 +633,6 @@ class TestObservability:
             retry_max_wait=0.05,
         )
 
-        client.ensure_bucket(test_bucket)
-
         call_count = 0
 
         def fail_once(*_args, **_kwargs):
@@ -737,8 +671,6 @@ class TestObservability:
             retry_min_wait=0.01,
             retry_max_wait=0.05,
         )
-
-        client.ensure_bucket(test_bucket)
 
         def always_fail(*_args, **_kwargs):
             raise EndpointConnectionError(endpoint_url="http://test")

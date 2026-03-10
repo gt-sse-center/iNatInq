@@ -103,10 +103,11 @@ class TestImageSearchServiceInit:
 
 
 class TestImageSearchServiceSearchImages:
-    """Test suite for ImageSearchService.search_images method."""
+    """Test suite for ImageSearchService.search_images_async method."""
 
-    def test_search_success(self, image_search_service: ImageSearchService) -> None:
-        """Test that search_images performs text-to-image search successfully.
+    @pytest.mark.asyncio
+    async def test_search_success(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images_async performs text-to-image search successfully.
 
         **Why this test is important:**
           - Image search is the core functionality
@@ -119,7 +120,7 @@ class TestImageSearchServiceSearchImages:
           - Vector DB provider search is called with embedding
           - Search results are returned correctly
         """
-        result = image_search_service.search_images(
+        result = await image_search_service.search_images_async(
             collection="documents",
             query="sunset over ocean",
             limit=10,
@@ -142,8 +143,9 @@ class TestImageSearchServiceSearchImages:
         assert result.items[0].score == 0.92
         assert result.items[1].score == 0.85
 
-    def test_search_strips_whitespace(self, image_search_service: ImageSearchService) -> None:
-        """Test that search_images strips whitespace from query.
+    @pytest.mark.asyncio
+    async def test_search_strips_whitespace(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images_async strips whitespace from query.
 
         **Why this test is important:**
           - Whitespace can affect embeddings
@@ -155,7 +157,7 @@ class TestImageSearchServiceSearchImages:
           - Query is stripped before embedding generation
           - Leading/trailing whitespace is removed
         """
-        image_search_service.search_images(
+        await image_search_service.search_images_async(
             collection="documents",
             query="  sunset over ocean  ",
             limit=10,
@@ -163,8 +165,9 @@ class TestImageSearchServiceSearchImages:
 
         image_search_service.embedding_provider.embed_text.assert_called_once_with("sunset over ocean")
 
-    def test_search_raises_on_empty_query(self, image_search_service: ImageSearchService) -> None:
-        """Test that search_images raises BadRequestError for empty query.
+    @pytest.mark.asyncio
+    async def test_search_raises_on_empty_query(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images_async raises BadRequestError for empty query.
 
         **Why this test is important:**
           - Empty queries are invalid
@@ -177,10 +180,13 @@ class TestImageSearchServiceSearchImages:
           - Error message is descriptive
         """
         with pytest.raises(BadRequestError, match="Query string cannot be empty"):
-            image_search_service.search_images(collection="documents", query="", limit=10)
+            await image_search_service.search_images_async(collection="documents", query="", limit=10)
 
-    def test_search_raises_on_whitespace_only_query(self, image_search_service: ImageSearchService) -> None:
-        """Test that search_images raises BadRequestError for whitespace-only query.
+    @pytest.mark.asyncio
+    async def test_search_raises_on_whitespace_only_query(
+        self, image_search_service: ImageSearchService
+    ) -> None:
+        """Test that search_images_async raises BadRequestError for whitespace-only query.
 
         **Why this test is important:**
           - Whitespace-only queries are effectively empty
@@ -193,10 +199,13 @@ class TestImageSearchServiceSearchImages:
           - Query.strip() is used for validation
         """
         with pytest.raises(BadRequestError, match="Query string cannot be empty"):
-            image_search_service.search_images(collection="documents", query="   ", limit=10)
+            await image_search_service.search_images_async(collection="documents", query="   ", limit=10)
 
-    def test_search_raises_on_invalid_limit_too_small(self, image_search_service: ImageSearchService) -> None:
-        """Test that search_images raises BadRequestError for limit < 1.
+    @pytest.mark.asyncio
+    async def test_search_raises_on_invalid_limit_too_small(
+        self, image_search_service: ImageSearchService
+    ) -> None:
+        """Test that search_images_async raises BadRequestError for limit < 1.
 
         **Why this test is important:**
           - Limit must be positive
@@ -209,10 +218,13 @@ class TestImageSearchServiceSearchImages:
           - Error message is descriptive
         """
         with pytest.raises(BadRequestError, match="Limit must be between 1 and 100"):
-            image_search_service.search_images(collection="documents", query="test", limit=0)
+            await image_search_service.search_images_async(collection="documents", query="test", limit=0)
 
-    def test_search_raises_on_invalid_limit_too_large(self, image_search_service: ImageSearchService) -> None:
-        """Test that search_images raises BadRequestError for limit > 100.
+    @pytest.mark.asyncio
+    async def test_search_raises_on_invalid_limit_too_large(
+        self, image_search_service: ImageSearchService
+    ) -> None:
+        """Test that search_images_async raises BadRequestError for limit > 100.
 
         **Why this test is important:**
           - Limit must be reasonable
@@ -225,10 +237,11 @@ class TestImageSearchServiceSearchImages:
           - Upper bound is enforced
         """
         with pytest.raises(BadRequestError, match="Limit must be between 1 and 100"):
-            image_search_service.search_images(collection="documents", query="test", limit=101)
+            await image_search_service.search_images_async(collection="documents", query="test", limit=101)
 
-    def test_search_accepts_valid_limit_range(self, image_search_service: ImageSearchService) -> None:
-        """Test that search_images accepts valid limit values.
+    @pytest.mark.asyncio
+    async def test_search_accepts_valid_limit_range(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images_async accepts valid limit values.
 
         **Why this test is important:**
           - Valid limits should work
@@ -242,19 +255,26 @@ class TestImageSearchServiceSearchImages:
           - Limit=50 is accepted (mid-range)
         """
         # Lower boundary
-        result_1 = image_search_service.search_images(collection="documents", query="test", limit=1)
+        result_1 = await image_search_service.search_images_async(
+            collection="documents", query="test", limit=1
+        )
         assert result_1 is not None
 
         # Upper boundary
-        result_100 = image_search_service.search_images(collection="documents", query="test", limit=100)
+        result_100 = await image_search_service.search_images_async(
+            collection="documents", query="test", limit=100
+        )
         assert result_100 is not None
 
         # Mid-range
-        result_50 = image_search_service.search_images(collection="documents", query="test", limit=50)
+        result_50 = await image_search_service.search_images_async(
+            collection="documents", query="test", limit=50
+        )
         assert result_50 is not None
 
-    def test_search_propagates_embedding_error(self, image_search_service: ImageSearchService) -> None:
-        """Test that search_images propagates embedding provider errors.
+    @pytest.mark.asyncio
+    async def test_search_propagates_embedding_error(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images_async propagates embedding provider errors.
 
         **Why this test is important:**
           - embedding errors need to propagate
@@ -271,10 +291,11 @@ class TestImageSearchServiceSearchImages:
         )
 
         with pytest.raises(UpstreamError, match="embedding provider failed"):
-            image_search_service.search_images(collection="documents", query="test", limit=10)
+            await image_search_service.search_images_async(collection="documents", query="test", limit=10)
 
-    def test_search_propagates_vector_db_error(self, image_search_service: ImageSearchService) -> None:
-        """Test that search_images propagates vector DB provider errors.
+    @pytest.mark.asyncio
+    async def test_search_propagates_vector_db_error(self, image_search_service: ImageSearchService) -> None:
+        """Test that search_images_async propagates vector DB provider errors.
 
         **Why this test is important:**
           - Vector DB errors need to propagate
@@ -291,7 +312,7 @@ class TestImageSearchServiceSearchImages:
         )
 
         with pytest.raises(UpstreamError, match="Qdrant connection failed"):
-            image_search_service.search_images(collection="documents", query="test", limit=10)
+            await image_search_service.search_images_async(collection="documents", query="test", limit=10)
 
 
 # =============================================================================
@@ -454,7 +475,8 @@ class TestImageSearchServiceSearchImagesAsync:
 class TestImageSearchServiceIntegration:
     """Test suite for end-to-end ImageSearchService integration."""
 
-    def test_full_image_search_workflow(
+    @pytest.mark.asyncio
+    async def test_full_image_search_workflow(
         self,
         mock_embedding_provider: MagicMock,
         mock_image_vector_db_provider: MagicMock,
@@ -511,7 +533,7 @@ class TestImageSearchServiceIntegration:
         )
 
         # Perform search
-        results = service.search_images(
+        results = await service.search_images_async(
             collection="vacation",
             query="beautiful sunset over the ocean",
             limit=5,

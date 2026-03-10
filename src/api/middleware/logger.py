@@ -11,6 +11,7 @@ from logging import Logger, getLogger
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
+from typing_extensions import override
 
 # Use a separate logger for our middleware to avoid conflicts with uvicorn.access
 logger: Logger = getLogger("pipeline.access")
@@ -40,6 +41,7 @@ class LoggerMiddleware(BaseHTTPMiddleware):
         for consistent logging behavior across services.
     """
 
+    @override
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:

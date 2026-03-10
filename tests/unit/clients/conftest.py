@@ -138,11 +138,8 @@ def mock_boto3_client() -> MagicMock:
         MagicMock: A mock boto3 S3 client with common S3 methods.
     """
     client = MagicMock()
-    client.head_bucket = MagicMock()
-    client.create_bucket = MagicMock()
     client.put_object = MagicMock()
     client.get_object = MagicMock()
-    client.head_object = MagicMock()
     client.get_paginator = MagicMock()
     return client
 

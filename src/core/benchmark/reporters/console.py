@@ -17,6 +17,7 @@ import sys
 from typing import TYPE_CHECKING
 
 from core.benchmark.reporters.base import Reporter
+from typing_extensions import override
 
 if TYPE_CHECKING:
     from io import TextIOBase
@@ -34,6 +35,7 @@ class ConsoleReporter(Reporter):
     def __init__(self, stream: TextIOBase | None = None) -> None:
         self._stream = stream or sys.stdout
 
+    @override
     async def report(self, results: dict[str, BenchmarkResult]) -> None:
         """Print a plain-text comparison table.
 

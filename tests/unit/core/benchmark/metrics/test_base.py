@@ -93,7 +93,7 @@ class TestMetric:
     def test_metric_has_name_class_variable(self):
         """Metric defines a name class variable."""
         assert hasattr(Metric, "name")
-        assert Metric.name is None
+        assert Metric.name == ""
 
     def test_metric_has_description_class_variable(self):
         """Metric defines a description class variable."""

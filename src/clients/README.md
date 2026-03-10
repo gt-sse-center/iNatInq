@@ -88,8 +88,6 @@ S3-compatible storage client wrapper (MinIO in dev environments).
 
 **Methods:**
 
-- `ensure_bucket(bucket: str)`: Creates a bucket if it doesn't exist (dev
-  convenience)
 - `put_object(bucket: str, key: str, body: bytes)`: Uploads an object to S3
 - `get_object(bucket: str, key: str) -> bytes`: Downloads an object from S3
 - `list_objects(bucket: str, prefix: str = "") -> list[str]`: Lists all object
@@ -106,7 +104,6 @@ s3_client = S3ClientWrapper(
     access_key_id="minioadmin",
     secret_access_key="minioadmin"
 )
-s3_client.ensure_bucket("pipeline")
 s3_client.put_object(bucket="pipeline", key="data.txt", body=b"hello")
 content = s3_client.get_object(bucket="pipeline", key="data.txt")
 keys = s3_client.list_objects(bucket="pipeline", prefix="inputs/")

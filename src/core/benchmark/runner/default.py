@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING
 
 from core.benchmark.metrics.latency import LatencyStats
 from core.benchmark.runner.base import BenchmarkResult, BenchmarkRunner
+from typing_extensions import override
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -82,6 +83,7 @@ class DefaultBenchmarkRunner(BenchmarkRunner):
         self._search_pipeline = search_pipeline
         self._collection = collection
 
+    @override
     async def run(
         self,
         provider: VectorDBProvider,

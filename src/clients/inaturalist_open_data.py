@@ -22,6 +22,8 @@ from core.exceptions import UpstreamError
 from foundation.circuit_breaker import with_circuit_breaker
 from foundation.http import create_retry_session
 
+from typing_extensions import override
+
 from .mixins import CircuitBreakerMixin, LoggerMixin
 
 if TYPE_CHECKING:
@@ -56,6 +58,7 @@ class INaturalistOpenDataClient(CircuitBreakerMixin, LoggerMixin):
 
     _session: requests.Session | None = attrs.field(init=False, default=None)
 
+    @override
     def _circuit_breaker_config(self) -> tuple[str, int, int]:
         """Return circuit breaker configuration for iNaturalist open data."""
         return (
@@ -285,21 +288,3 @@ class INaturalistOpenDataClient(CircuitBreakerMixin, LoggerMixin):
             if text_stream is not None:
                 text_stream.close()
             response.close()
-
-    def read_photo_records(
-        self,
-        *,
-        metadata_url: str,
-        size: str = "medium",
-        delimiter: str | None = None,
-        max_rows: int | None = None,
-    ) -> list[INaturalistPhotoRecord]:
-        """Read all photo records from metadata URL into a list."""
-        return list(
-            self.iter_photo_records(
-                metadata_url=metadata_url,
-                size=size,
-                delimiter=delimiter,
-                max_rows=max_rows,
-            )
-        )
