@@ -1,0 +1,57 @@
+name: "CD: Push to ACR"
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-push:
+    name: Build & Push to ACR
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        uses: azure/docker-login@v2
+        with:
+          login-server: ${{ vars.ACR_LOGIN_SERVER }}
+
+      - name: Build base image (local dependency)
+        run: |
+          docker build \
+            -f zarf/docker/base/Dockerfile.pipeline-base \
+            -t ml/pipeline-base:0.1.0 .
+
+      - name: Build and push pipeline image
+        run: |
+          IMAGE=${{ vars.ACR_LOGIN_SERVER }}/inatinq/pipeline
+          SHA_TAG=${GITHUB_SHA::7}
+
+          docker build \
+            -f zarf/docker/dev/Dockerfile.pipeline \
+            -t ${IMAGE}:latest \
+            -t ${IMAGE}:${SHA_TAG} .
+
+          docker push ${IMAGE}:latest
+          docker push ${IMAGE}:${SHA_TAG}
+
+      - name: Deploy to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_APP_SERVICE_NAME }}
+          images: ${{ vars.ACR_LOGIN_SERVER }}/inatinq/pipeline:${GITHUB_SHA::7}
