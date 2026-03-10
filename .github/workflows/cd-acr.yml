@@ -46,8 +46,12 @@ jobs:
           docker push ${IMAGE}:latest
           docker push ${IMAGE}:${SHA_TAG}
 
+      - name: Set short SHA
+        id: vars
+        run: echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ vars.AZURE_APP_SERVICE_NAME }}
-          images: ${{ vars.ACR_LOGIN_SERVER }}/inatinq/pipeline:${GITHUB_SHA::7}
+          images: ${{ vars.ACR_LOGIN_SERVER }}/inatinq/pipeline:${{ steps.vars.outputs.sha_short }}
