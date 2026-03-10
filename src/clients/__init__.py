@@ -31,7 +31,7 @@ def create_s3_client(config: "MinIOConfig | None" = None) -> "S3ClientWrapper":
         from clients import create_s3_client
 
         client = create_s3_client()
-        client.ensure_bucket("pipeline")
+        client.put_object(bucket="pipeline", key="data.txt", body=b"hello")
         ```
     """
     if config is None:

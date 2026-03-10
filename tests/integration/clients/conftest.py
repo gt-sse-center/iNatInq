@@ -97,12 +97,12 @@ def minio_client(minio_config: dict[str, str]) -> S3ClientWrapper:
 def test_bucket(minio_client: S3ClientWrapper) -> str:
     """Create a unique test bucket that's cleaned up after the test."""
     bucket_name = f"test-{uuid.uuid4().hex[:12]}"
-    minio_client.ensure_bucket(bucket_name)
+    minio_client.client.create_bucket(Bucket=bucket_name)
     yield bucket_name
     try:
         keys = minio_client.list_objects(bucket=bucket_name)
         for key in keys:
-            minio_client.delete_object(bucket=bucket_name, key=key)
+            minio_client.client.delete_object(Bucket=bucket_name, Key=key)
     except Exception as e:
         logger.warning("Bucket cleanup failed", extra={"bucket": bucket_name, "error": str(e)})
 

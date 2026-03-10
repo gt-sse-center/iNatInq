@@ -13,6 +13,7 @@ from collections.abc import Awaitable, Callable
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
+from typing_extensions import override
 
 # Get the uvicorn access logger
 _access_logger = logging.getLogger("uvicorn.access")
@@ -38,6 +39,7 @@ class HealthzFilterMiddleware(BaseHTTPMiddleware):
         than filtering them after creation.
     """
 
+    @override
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:

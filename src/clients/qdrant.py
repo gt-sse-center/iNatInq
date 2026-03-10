@@ -32,7 +32,6 @@ from typing import Any, Literal
 import aiobreaker
 import attrs
 import httpx
-import pybreaker
 from qdrant_client import AsyncQdrantClient, QdrantClient
 from qdrant_client.http import models as qmodels
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
@@ -45,11 +44,11 @@ from core.models import SearchResultItem, SearchResults
 from foundation.async_utils import close_async_resource
 from foundation.circuit_breaker import (
     create_async_circuit_breaker,
-    create_circuit_breaker,
     with_circuit_breaker,
     with_circuit_breaker_async,
 )
 from foundation.retry import HTTPErrorClassifier, async_retry_call, create_retry_logger
+from typing_extensions import override
 
 from .base import VectorDBClientBase
 from .interfaces.vector_db import VectorDBProvider
@@ -65,6 +64,7 @@ _retry_logger = logging.getLogger("clients.qdrant.retry")
 class QdrantErrorClassifier(HTTPErrorClassifier):
     """Qdrant-specific error classification for retry logic."""
 
+    @override
     def is_retriable(self, exc: BaseException) -> bool:
         """Classify whether the exception is retriable."""
         # Qdrant SDK response handling errors (serialization, transport)
@@ -83,6 +83,7 @@ class QdrantErrorClassifier(HTTPErrorClassifier):
             return False
         return False
 
+    @override
     def get_error_details(self, exc: BaseException) -> dict[str, Any]:
         """Extract structured error details for logging."""
         if isinstance(exc, UnexpectedResponse):
@@ -132,9 +133,9 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
     retry_max_wait: float = attrs.field(default=10.0)
     _client: AsyncQdrantClient = attrs.field(init=False, default=None)
     _sync_client: QdrantClient = attrs.field(init=False, default=None)
-    _sync_breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
     _async_breaker: aiobreaker.CircuitBreaker = attrs.field(init=False)
 
+    @override
     def _circuit_breaker_config(self) -> tuple[str, int, int]:
         """Return circuit breaker configuration for Qdrant.
 
@@ -163,23 +164,13 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             create_async_circuit_breaker(name, fail_max, timeout),
         )
 
-        object.__setattr__(
-            self,
-            "_sync_breaker",
-            create_circuit_breaker(name, fail_max, timeout),
-        )
-
     @property
     def client(self) -> AsyncQdrantClient:
         """Get the underlying AsyncQdrantClient instance."""
         return self._client
 
-    @property
-    def sync_client(self) -> QdrantClient:
-        """Get the underlying QdrantClient instance."""
-        return self._sync_client
-
     @classmethod
+    @override
     def from_config(cls, config: VectorDBConfig) -> "QdrantClientWrapper":
         """Create QdrantClientWrapper from VectorDBConfig.
 
@@ -585,11 +576,12 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             operation="Qdrant batch_upsert",
         )
 
-    async def batch_upsert_async(
+    @override
+    async def batch_upsert_async(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         *,
         collection: str,
-        points: list[PointStruct],  # type: ignore[override]
+        points: list[PointStruct],
         vector_size: int,
     ) -> None:
         """Batch upsert points into a Qdrant collection (async version).
@@ -634,6 +626,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             self, collection=collection, points=points, vector_size=vector_size
         )
 
+    @override
     def close(self) -> None:
         """Close the Qdrant async client and release resources.
 

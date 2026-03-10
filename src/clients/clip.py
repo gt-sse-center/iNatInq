@@ -61,7 +61,7 @@ from foundation.circuit_breaker import (
 from foundation.image import encode_image_base64
 from foundation.retry import HTTPErrorClassifier, async_retry_call, create_retry_logger
 
-from .mixins import CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin
+from .mixins import ConfigValidationMixin, LoggerMixin
 
 logger = logging.getLogger(__name__)
 _retry_logger = logging.getLogger("clients.clip.retry")
@@ -136,7 +136,7 @@ LocalClipResponse = TypeAdapter(list[LocalClipRespEntry])
 
 
 @attrs.define(frozen=False, slots=True)
-class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
+class CLIPClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
     """Client for generating image embeddings via CLIP-compatible APIs.
 
     Attributes:
@@ -187,7 +187,6 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embedd
     _async_client_loop: asyncio.AbstractEventLoop | None = attrs.field(init=False, default=None)
     _async_breaker: aiobreaker.CircuitBreaker = attrs.field(init=False)
 
-    @override
     def _circuit_breaker_config(self) -> tuple[str, int, int]:
         """Return circuit breaker configuration for CLIP.
 
@@ -203,10 +202,7 @@ class CLIPClient(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin, Embedd
         )
 
     def __attrs_post_init__(self) -> None:
-        """Initialize the requests session and circuit breakers."""
-        # Initialize sync circuit breaker from mixin
-        self._init_circuit_breaker()
-
+        """Initialize async circuit breaker."""
         # Initialize async circuit breaker (aiobreaker)
         name, fail_max, timeout = self._circuit_breaker_config()
         object.__setattr__(self, "_async_breaker", create_async_circuit_breaker(name, fail_max, timeout))

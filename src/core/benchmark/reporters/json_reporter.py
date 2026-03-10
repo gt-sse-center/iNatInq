@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from core.benchmark.reporters.base import Reporter
+from typing_extensions import override
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
 class _BenchmarkEncoder(json.JSONEncoder):
     """JSON encoder that handles datetime objects."""
 
+    @override
     def default(self, o: object) -> object:
         if isinstance(o, datetime):
             return o.isoformat()
@@ -45,6 +47,7 @@ class JSONReporter(Reporter):
     def __init__(self, output_path: Path) -> None:
         self._output_path = output_path
 
+    @override
     async def report(self, results: dict[str, BenchmarkResult]) -> None:
         """Write benchmark results to a JSON file.
 

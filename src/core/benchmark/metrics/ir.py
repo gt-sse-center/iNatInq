@@ -28,6 +28,7 @@ import math
 from collections.abc import Sequence
 
 from core.benchmark.metrics.base import Metric
+from typing_extensions import override
 
 
 class PrecisionAtK(Metric):
@@ -57,6 +58,7 @@ class PrecisionAtK(Metric):
             raise ValueError(f"k must be at least 1, got {k}")
         self.k = k
 
+    @override
     def compute(
         self,
         retrieved: Sequence[str],
@@ -105,6 +107,7 @@ class RecallAtK(Metric):
             raise ValueError(f"k must be at least 1, got {k}")
         self.k = k
 
+    @override
     def compute(
         self,
         retrieved: Sequence[str],
@@ -157,6 +160,7 @@ class MeanAveragePrecision(Metric):
     name: str = "map"
     description: str = "Average Precision (INQUIRE normalization) at each relevant hit"
 
+    @override
     def compute(
         self,
         retrieved: Sequence[str],
@@ -210,6 +214,7 @@ class MRR(Metric):
     name: str = "mrr"
     description: str = "Mean Reciprocal Rank - reciprocal of first relevant result rank"
 
+    @override
     def compute(
         self,
         retrieved: Sequence[str],
@@ -282,6 +287,7 @@ class NDCG(Metric):
             dcg += rel / math.log2(i + 2)
         return dcg
 
+    @override
     def compute(
         self,
         retrieved: Sequence[str],

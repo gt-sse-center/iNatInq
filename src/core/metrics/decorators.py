@@ -2,6 +2,11 @@
 
 This module provides decorators that instrument client methods with three
 Prometheus metrics:
+
+.. note::
+    Uses ``from __future__ import annotations`` so that ``CoroutineType[...]``
+    type annotations are not evaluated at runtime (``types.CoroutineType`` is
+    not subscriptable at runtime in Python < 3.12).
 - CLIENT_REQUEST_DURATION: Histogram of request latency
 - CLIENT_REQUEST_TOTAL: Counter of total requests by status
 - CLIENT_ERRORS_TOTAL: Counter of errors by error type
@@ -24,10 +29,15 @@ Usage::
         return await self._client.search(query_vector)
 """
 
+from __future__ import annotations
+
 import functools
 import time
-from collections.abc import Callable, Coroutine
-from typing import Any, Concatenate, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, Concatenate, ParamSpec, TypeVar
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from types import CoroutineType
 
 from core.metrics.classify import classify_error
 from core.metrics.registry import (
@@ -116,8 +126,8 @@ def with_client_metrics(
 def with_client_metrics_async(
     client: str, operation: str
 ) -> Callable[
-    [Callable[Concatenate[SelfT, P], Coroutine[Any, Any, R]]],
-    Callable[Concatenate[SelfT, P], Coroutine[Any, Any, R]],
+    [Callable[Concatenate[SelfT, P], CoroutineType[Any, Any, R]]],
+    Callable[Concatenate[SelfT, P], CoroutineType[Any, Any, R]],
 ]:
     """Decorator to wrap asynchronous client methods with Prometheus metrics.
 
@@ -145,8 +155,8 @@ def with_client_metrics_async(
     """
 
     def decorator(
-        func: Callable[Concatenate[SelfT, P], Coroutine[Any, Any, R]],
-    ) -> Callable[Concatenate[SelfT, P], Coroutine[Any, Any, R]]:
+        func: Callable[Concatenate[SelfT, P], CoroutineType[Any, Any, R]],
+    ) -> Callable[Concatenate[SelfT, P], CoroutineType[Any, Any, R]]:
         @functools.wraps(func)
         async def wrapper(self: SelfT, *args: P.args, **kwargs: P.kwargs) -> R:
             start_time = time.perf_counter()

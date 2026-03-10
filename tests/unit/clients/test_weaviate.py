@@ -22,9 +22,10 @@ The underlying WeaviateAsyncClient and circuit breaker are mocked to isolate cli
 Run with: pytest tests/unit/clients/test_weaviate.py
 """
 
+import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pybreaker
+import aiobreaker
 import pytest
 
 from weaviate.classes.config import VectorDistances
@@ -151,7 +152,7 @@ class TestWeaviateClientWrapperInit:
 
     @patch("clients.weaviate.WeaviateAsyncClient")
     def test_creates_circuit_breaker(self, mock_weaviate_async_client: MagicMock) -> None:
-        """Test that circuit breaker is created during initialization.
+        """Test that async circuit breaker is created during initialization.
 
         **Why this test is important:**
           - Circuit breaker provides fault tolerance
@@ -160,23 +161,23 @@ class TestWeaviateClientWrapperInit:
           - Validates circuit breaker integration
 
         **What it tests:**
-          - Circuit breaker is created with correct name
+          - Async circuit breaker is created with correct name
           - Failure threshold and recovery timeout are set correctly
         """
         mock_weaviate_async_client.return_value = AsyncMock()
 
         client = WeaviateClientWrapper(url="http://weaviate.example.com:8080")
 
-        # Verify circuit breaker was created
-        assert client._breaker is not None
-        assert isinstance(client._breaker, pybreaker.CircuitBreaker)
-        assert client._breaker.name == "weaviate"
-        assert client._breaker.fail_max == 3
-        assert client._breaker.reset_timeout == 60
+        # Verify async circuit breaker was created
+        assert client._async_breaker is not None
+        assert isinstance(client._async_breaker, aiobreaker.CircuitBreaker)
+        assert client._async_breaker.name == "weaviate"
+        assert client._async_breaker.fail_max == 3
+        assert client._async_breaker.timeout_duration == datetime.timedelta(seconds=60)
 
     @patch("clients.weaviate.WeaviateAsyncClient")
     def test_creates_circuit_breaker_with_custom_config(self, mock_weaviate_async_client: MagicMock) -> None:
-        """Test that circuit breaker respects custom configuration.
+        """Test that async circuit breaker respects custom configuration.
 
         **Why this test is important:**
           - Production environments may need different thresholds
@@ -195,9 +196,9 @@ class TestWeaviateClientWrapperInit:
             circuit_breaker_timeout=120,
         )
 
-        # Verify custom circuit breaker settings
-        assert client._breaker.fail_max == 10
-        assert client._breaker.reset_timeout == 120
+        # Verify custom async circuit breaker settings
+        assert client._async_breaker.fail_max == 10
+        assert client._async_breaker.timeout_duration == datetime.timedelta(seconds=120)
 
     @patch("clients.weaviate.WeaviateAsyncClient")
     def test_custom_timeout_attribute(self, mock_weaviate_async_client: MagicMock) -> None:
@@ -349,8 +350,7 @@ class TestWeaviateClientWrapperInit:
         assert client.timeout_s == 600
         assert client.circuit_breaker_threshold == 10
         assert client.circuit_breaker_timeout == 120
-        assert client._breaker.fail_max == 10
-        assert client._breaker.reset_timeout == 120
+        assert client._async_breaker.fail_max == 10
 
     def test_from_config_validates_provider_type(self) -> None:
         """Test that from_config validates provider_type.

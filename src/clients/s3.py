@@ -14,7 +14,6 @@ client = S3ClientWrapper(
     access_key_id="minioadmin",
     secret_access_key="minioadmin"
 )
-client.ensure_bucket("pipeline")
 client.put_object(bucket="pipeline", key="data.txt", body=b"hello")
 ```
 
@@ -88,6 +87,7 @@ from core.exceptions import UpstreamError
 from core.metrics.decorators import with_client_metrics
 from foundation.circuit_breaker import with_circuit_breaker
 from foundation.retry import HTTPErrorClassifier, create_retry_logger
+from typing_extensions import override
 
 from .mixins import CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin
 
@@ -165,6 +165,7 @@ class S3ErrorClassifier(HTTPErrorClassifier):
     categories based on exception type and S3 error codes.
     """
 
+    @override
     def is_retriable(self, exc: BaseException) -> bool:
         """Determine if an S3 exception should trigger a retry.
 
@@ -220,6 +221,7 @@ class S3ErrorClassifier(HTTPErrorClassifier):
         # Unknown exception type - don't retry
         return False
 
+    @override
     def get_error_details(self, exc: BaseException) -> dict[str, Any]:
         """Extract S3-specific error details for logging.
 
@@ -302,6 +304,7 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
     _client: Any = attrs.field(init=False, default=None)
     _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
 
+    @override
     def _circuit_breaker_config(self) -> tuple[str, int, int]:
         """Return circuit breaker configuration for S3.
 
@@ -418,39 +421,6 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             msg = f"S3 {operation} failed: {e}"
             logger.exception(msg, extra={"operation": operation})
             raise UpstreamError(msg) from e
-
-    @with_client_metrics("s3", "ensure_bucket")
-    @with_circuit_breaker("s3")
-    def ensure_bucket(self, bucket: str) -> None:
-        """Ensure an S3 bucket exists, creating it if missing.
-
-        This is a dev convenience function. In production, buckets are typically
-        created via infrastructure-as-code (Terraform, CloudFormation, etc.).
-
-        Args:
-            bucket: Bucket name to ensure exists.
-
-        Raises:
-            UpstreamError: If S3 operation fails after retries or circuit is open.
-
-        Note:
-            The function first checks if the bucket exists via `head_bucket()`. If
-            that raises a `ClientError` (bucket not found), it creates the bucket.
-            Other errors (e.g., permission denied) will propagate as exceptions.
-        """
-
-        def _ensure() -> None:
-            try:
-                self._client.head_bucket(Bucket=bucket)
-            except ClientError as e:
-                error_code = e.response.get("Error", {}).get("Code", "")
-                http_status = str(e.response.get("ResponseMetadata", {}).get("HTTPStatusCode", ""))
-                if error_code in ("404", "NoSuchBucket") or http_status == "404":
-                    self._client.create_bucket(Bucket=bucket)
-                else:
-                    raise
-
-        self._with_retry("ensure_bucket", _ensure)
 
     @with_client_metrics("s3", "put_object")
     @with_circuit_breaker("s3")
@@ -589,42 +559,6 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
             extra={"total_pages": page_num, "total_keys": total_keys},
         )
 
-    @with_client_metrics("s3", "exists")
-    @with_circuit_breaker("s3")
-    def exists(self, *, bucket: str, key: str) -> bool:
-        """Check if an object exists in S3 with retry and circuit breaker protection.
-
-        Args:
-            bucket: Bucket name.
-            key: Object key (path).
-
-        Returns:
-            True if the object exists, False otherwise.
-
-        Raises:
-            UpstreamError: If S3 operation fails after retries or circuit is open.
-
-        Note:
-            This method handles 404 errors directly (returns False).
-            Other errors (connection, server) are retried normally.
-        """
-
-        def _head_object() -> bool:
-            try:
-                self._client.head_object(Bucket=bucket, Key=key)
-                return True
-            except ClientError as e:
-                # 404 means object doesn't exist - this is expected, not an error
-                error_code = e.response.get("Error", {}).get("Code", "")
-                http_status = str(e.response.get("ResponseMetadata", {}).get("HTTPStatusCode", ""))
-                if error_code in ("404", "NoSuchKey") or http_status == "404":
-                    return False
-                # Re-raise other errors (permission denied, etc.) for retry logic
-                raise
-
-        result = self._with_retry("exists", _head_object)
-        return bool(result)
-
     async def get_object_async(self, *, bucket: str, key: str) -> bytes:
         """Get an object from S3 asynchronously using ThreadPoolExecutor.
 
@@ -650,28 +584,6 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         loop = asyncio.get_running_loop()
         # Run blocking boto3 call in thread pool for async-like behavior
         return await loop.run_in_executor(None, lambda: self.get_object(bucket=bucket, key=key))
-
-    @with_client_metrics("s3", "delete_object")
-    @with_circuit_breaker("s3")
-    def delete_object(self, *, bucket: str, key: str) -> None:
-        """Delete an object from S3 with retry and circuit breaker protection.
-
-        Args:
-            bucket: Bucket name.
-            key: Object key (path).
-
-        Raises:
-            UpstreamError: If S3 operation fails after retries or circuit is open.
-
-        Note:
-            S3 delete is idempotent - deleting a non-existent object succeeds.
-        """
-        self._with_retry(
-            "delete_object",
-            self._client.delete_object,
-            Bucket=bucket,
-            Key=key,
-        )
 
     def close(self) -> None:
         """Close the S3 client and release resources.

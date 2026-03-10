@@ -33,18 +33,18 @@ class VectorDBProvider(ABC):
     Example:
         ```python
         class MyVectorDB(VectorDBProvider):
-            async def ensure_collection_async(self, collection: str, vector_size: int) -> None:
+            async def ensure_collection_async(self, *, collection: str, vector_size: int) -> None:
                 # Implementation
                 ...
 
             async def search_async(
-                self, collection: str, query_vector: list[float], limit: int
+                self, *, collection: str, query_vector: list[float], limit: int
             ) -> SearchResults:
                 # Implementation
                 ...
 
             async def batch_upsert_async(
-                self, collection: str, points: list[VECTOR_DB_POINT], vector_size: int
+                self, *, collection: str, points: list[VECTOR_DB_POINT], vector_size: int
             ) -> None:
                 # Implementation
                 ...
@@ -52,7 +52,7 @@ class VectorDBProvider(ABC):
     """
 
     @abstractmethod
-    async def ensure_collection_async(self, collection: str, vector_size: int) -> None:
+    async def ensure_collection_async(self, *, collection: str, vector_size: int) -> None:
         """Create a collection if it does not already exist.
 
         This is a dev convenience function that checks for collection existence
@@ -72,7 +72,7 @@ class VectorDBProvider(ABC):
 
     @abstractmethod
     async def search_async(
-        self, collection: str, query_vector: list[float], limit: int = 10
+        self, *, collection: str, query_vector: list[float], limit: int = 10
     ) -> SearchResults:
         """Search for similar vectors in a collection.
 
@@ -93,6 +93,7 @@ class VectorDBProvider(ABC):
     @abstractmethod
     async def batch_upsert_async(
         self,
+        *,
         collection: str,
         points: list[VectorDBPoint],
         vector_size: int,
