@@ -2,7 +2,7 @@ name: "CD: Push to ACR"
 
 on:
   push:
-    branches: [main]
+    branches: [varun-azure-cd]
     paths-ignore:
       - "*.md"
       - "docs/**"
