@@ -1285,6 +1285,8 @@ class DatabricksRayJobConfig(BaseModel):
         missing = [name for name, value in required_pairs if not value]
         if missing:
             raise ValueError(f"Missing required Databricks config: {', '.join(missing)}")
+        assert host is not None
+        assert token is not None
 
         job_id: int | None = None
         if job_id_raw:
