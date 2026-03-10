@@ -7,11 +7,10 @@ from collections.abc import Callable, Awaitable
 
 from foundation.dead_letter_queue.dlq import DLQ
 from foundation.dead_letter_queue.dlq_backend import StubbedDLQBackend
+from foundation.dead_letter_queue.dlq_backend_registry import get_dlq_backend
 
 P = ParamSpec("P")
 T = TypeVar("T")
-
-_DLQ_BACKEND = StubbedDLQBackend
 
 
 @overload
@@ -44,16 +43,14 @@ def with_dlq(fn: Callable[..., T]) -> Callable[..., object]:
     """
 
     def create_dlq() -> DLQ:
-        backend = _DLQ_BACKEND()
-        return DLQ(backend)
+        dlq_backend = get_dlq_backend() or StubbedDLQBackend()
+        return DLQ(dlq_backend)
 
     if inspect.iscoroutinefunction(fn):
 
         @wraps(fn)
         async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> Awaitable[T]:
-            dlq = create_dlq()
-
-            return await fn(dlq, *args, **kwargs)
+            return await fn(create_dlq(), *args, **kwargs)
 
         wrapper_fn = async_wrapper
 
@@ -61,9 +58,7 @@ def with_dlq(fn: Callable[..., T]) -> Callable[..., object]:
 
         @wraps(fn)
         def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            dlq = create_dlq()
-
-            return fn(dlq, *args, **kwargs)
+            return fn(create_dlq(), *args, **kwargs)
 
         wrapper_fn = sync_wrapper
 

@@ -1,5 +1,13 @@
+"""Unit tests for the `@with_dlq` decorator.
+
+How to run:
+    uv run pytest tests/unit/foundation/dlq/test_with_dlq.py
+"""
+
+from unittest.mock import patch
 import pytest
 from foundation.dead_letter_queue.dlq import DLQ
+from foundation.dead_letter_queue.dlq_backend import StubbedDLQBackend
 from foundation.dead_letter_queue.with_dlq import with_dlq
 
 
@@ -93,3 +101,21 @@ class TestWithDLQ:
             pass
 
         assert hasattr(test_fn, "__wrapped_with_dlq")
+
+    def test_decorator_uses_stub_if_no_backend_configured(self):
+        with patch(
+            "foundation.dead_letter_queue.dlq_backend_registry.get_dlq_backend"
+        ) as mock_get_dlq_backend:
+            mock_get_dlq_backend.return_value = None
+
+            captured_backend = None
+
+            @with_dlq
+            def test_fn(dlq: DLQ):
+                nonlocal captured_backend
+                captured_backend = dlq._backend  # pyright: ignore[reportPrivateUsage]
+
+            # Invoke function
+            test_fn()
+
+            assert isinstance(captured_backend, StubbedDLQBackend)

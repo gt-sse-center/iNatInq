@@ -290,7 +290,7 @@ services:
   # Redis — Caching / DLQ Storage
   # ---------------------------------------------------------------------------
   redis:
-    image: redis:latest
+    image: redis:8.6
     container_name: redis
     ports:
       - "8334:6379"
