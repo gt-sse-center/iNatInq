@@ -25,9 +25,7 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Login to ACR
-        uses: azure/docker-login@v2
-        with:
-          login-server: ${{ vars.ACR_LOGIN_SERVER }}
+        run: az acr login --name ${{ vars.ACR_REGISTRY_NAME }}
 
       - name: Build base image (local dependency)
         run: |
