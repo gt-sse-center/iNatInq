@@ -38,7 +38,6 @@ from urllib.parse import urlparse
 
 import aiobreaker
 import attrs
-import pybreaker
 from weaviate import WeaviateAsyncClient
 from weaviate.auth import AuthApiKey
 from weaviate.classes.config import Configure, DataType, Property, VectorDistances
@@ -62,6 +61,7 @@ from foundation.circuit_breaker import (
     with_circuit_breaker_async,
 )
 from foundation.retry import HTTPErrorClassifier, async_retry_call, create_retry_logger
+from typing_extensions import override
 
 from .base import VectorDBClientBase
 from .interfaces.vector_db import VectorDBProvider
@@ -78,6 +78,7 @@ _retry_logger = logging.getLogger("clients.weaviate.retry")
 class WeaviateErrorClassifier(HTTPErrorClassifier):
     """Weaviate-specific error classification for retry logic."""
 
+    @override
     def is_retriable(self, exc: BaseException) -> bool:
         """Classify whether the exception is retriable."""
         # Connection/transport errors are always retriable
@@ -95,6 +96,7 @@ class WeaviateErrorClassifier(HTTPErrorClassifier):
             return False
         return False
 
+    @override
     def get_error_details(self, exc: BaseException) -> dict[str, Any]:
         """Extract structured error details for logging."""
         if isinstance(exc, UnexpectedStatusCodeError):
@@ -185,9 +187,9 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
     retry_max_wait: float = attrs.field(default=10.0)
     skip_init_checks: bool = True  # Default True to avoid Docker-to-cloud gRPC issues
     _client: WeaviateAsyncClient = attrs.field(init=False, default=None)
-    _breaker: pybreaker.CircuitBreaker = attrs.field(init=False)
     _async_breaker: aiobreaker.CircuitBreaker = attrs.field(init=False)
 
+    @override
     def _circuit_breaker_config(self) -> tuple[str, int, int]:
         """Return circuit breaker configuration for Weaviate.
 
@@ -262,9 +264,6 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
 
         self._client = _client_instance
 
-        # Initialize circuit breaker from base class
-        self._init_circuit_breaker()
-
         # Initialize async circuit breaker using aiobreaker
         name, fail_max, timeout = self._circuit_breaker_config()
         object.__setattr__(
@@ -279,6 +278,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
         return self._client
 
     @classmethod
+    @override
     def from_config(cls, config: VectorDBConfig) -> "WeaviateClientWrapper":
         """Create WeaviateClientWrapper from VectorDBConfig.
 
@@ -605,11 +605,12 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             operation="Weaviate batch_upsert",
         )
 
-    async def batch_upsert_async(
+    @override
+    async def batch_upsert_async(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         *,
         collection: str,
-        points: list[WeaviateDataObject],  # type: ignore[override]
+        points: list[WeaviateDataObject],
         vector_size: int,
     ) -> None:
         """Batch upsert data objects into a Weaviate collection.
@@ -659,6 +660,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             self, collection=collection, points=points, vector_size=vector_size
         )
 
+    @override
     def close(self) -> None:
         """Close the Weaviate client and release resources.
 

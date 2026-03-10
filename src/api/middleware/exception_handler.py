@@ -10,6 +10,7 @@ from collections.abc import Awaitable, Callable
 from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from typing_extensions import override
 
 from core.exceptions import BadRequestError, PipelineError, PipelineTimeoutError, UpstreamError
 
@@ -41,6 +42,7 @@ class ExceptionHandlerMiddleware(BaseHTTPMiddleware):
         exceptions from route handlers.
     """
 
+    @override
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:

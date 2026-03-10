@@ -144,7 +144,6 @@ class TestDatabricksINatImageJobMain:
             size="medium",
             max_rows=50,
         )
-        mock_dependencies["inat_client"].read_photo_records.assert_not_called()
         mock_task.options.assert_called_once()
         remote_call = mock_task.options.return_value.remote.call_args.kwargs
         assert remote_call["ingestion_targets"] == frozenset({"qdrant", "weaviate"})

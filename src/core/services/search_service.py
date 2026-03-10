@@ -9,8 +9,6 @@ The services:
 3. Format and return results
 """
 
-import asyncio
-
 import attrs
 
 from clients.interfaces.embedding import EmbeddingProvider
@@ -56,53 +54,6 @@ class ImageSearchService:
     embedding_provider: EmbeddingProvider
     vector_db_provider: VectorDBProvider
 
-    def search_images(
-        self,
-        *,
-        collection: str,
-        query: str,
-        limit: int = 10,
-    ) -> SearchResults:
-        """Perform text-to-image search over image collection.
-
-        This method:
-        1. Generates a CLIP text embedding for the query
-        2. Searches the image collection for similar vectors
-        3. Returns formatted results with image metadata and similarity scores
-
-        Args:
-            collection: Base collection name.
-            query: Natural language text query (e.g., "a fluffy cat").
-            limit: Maximum number of results to return.
-
-        Returns:
-            A `SearchResults` instance containing:
-            - `items`: List of image search results with s3_key, s3_uri, format, etc.
-            - `total`: Total number of results found
-
-        Raises:
-            BadRequestError: If query is empty or limit is invalid.
-            UpstreamError: If CLIP or vector database operations fail.
-        """
-        if not query or not query.strip():
-            raise BadRequestError("Query string cannot be empty")
-
-        if limit < 1 or limit > 100:
-            raise BadRequestError("Limit must be between 1 and 100")
-
-        async def do_async():
-            # 1. Generate text embedding for query
-            query_embedding = await self.embedding_provider.embed_text(query.strip())
-
-            # 2. Search image collection
-            return await self.vector_db_provider.search_async(
-                collection=collection,
-                query_vector=query_embedding,
-                limit=limit,
-            )
-
-        return asyncio.run(do_async())
-
     async def search_images_async(
         self,
         *,
@@ -110,10 +61,7 @@ class ImageSearchService:
         query: str,
         limit: int = 10,
     ) -> SearchResults:
-        """Perform text-to-image search over image collection (async).
-
-        This is the async version of `search_images()` that uses async I/O
-        for non-blocking operations.
+        """Perform text-to-image search over image collection.
 
         Args:
             collection: Base collection name.

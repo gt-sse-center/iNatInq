@@ -1,5 +1,10 @@
 """Circuit breaker utilities for resilient HTTP clients.
 
+.. note::
+    Uses ``from __future__ import annotations`` so that ``CoroutineType[...]``
+    type annotations are not evaluated at runtime (``types.CoroutineType`` is
+    not subscriptable at runtime in Python < 3.12).
+
 This module provides circuit breaker patterns for external service dependencies
 using two libraries:
 - **pybreaker**: For synchronous methods
@@ -71,11 +76,16 @@ Both decorators:
 3. Convert CircuitBreakerError to UpstreamError for consistent error handling
 """
 
+from __future__ import annotations
+
 import functools
 import logging
-from collections.abc import Callable, Coroutine
 from datetime import timedelta
-from typing import Any, Concatenate, NoReturn, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, Concatenate, NoReturn, ParamSpec, TypeVar
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from types import CoroutineType
 
 import aiobreaker
 import pybreaker
@@ -421,8 +431,8 @@ def with_circuit_breaker(
 def with_circuit_breaker_async(
     service_name: str,
 ) -> Callable[
-    [Callable[Concatenate[SelfT, P], Coroutine[Any, Any, R]]],
-    Callable[Concatenate[SelfT, P], Coroutine[Any, Any, R]],
+    [Callable[Concatenate[SelfT, P], CoroutineType[Any, Any, R]]],
+    Callable[Concatenate[SelfT, P], CoroutineType[Any, Any, R]],
 ]:
     """Decorator to wrap async method calls with circuit breaker protection.
 
@@ -472,8 +482,8 @@ def with_circuit_breaker_async(
     """
 
     def decorator(
-        func: Callable[Concatenate[SelfT, P], Coroutine[Any, Any, R]],
-    ) -> Callable[Concatenate[SelfT, P], Coroutine[Any, Any, R]]:
+        func: Callable[Concatenate[SelfT, P], CoroutineType[Any, Any, R]],
+    ) -> Callable[Concatenate[SelfT, P], CoroutineType[Any, Any, R]]:
         @functools.wraps(func)
         async def wrapper(self: SelfT, *args: P.args, **kwargs: P.kwargs) -> R:
             # Get async breaker - requires _async_breaker (aiobreaker.CircuitBreaker)

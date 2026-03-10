@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Literal
 
 from core.benchmark.datasets.base import Dataset, Query
 from core.benchmark.datasets.schemas import DatasetSchema
+from typing_extensions import override
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -53,15 +54,18 @@ class JSONDataset(Dataset):
         self._queries = queries
 
     @property
+    @override
     def name(self) -> str:
         """Return the dataset name."""
         return self._name
 
     @property
+    @override
     def modality(self) -> Literal["text", "image"]:
         """Return the data modality ("text" or "image")."""
         return self._modality
 
+    @override
     def queries(self) -> Iterator[Query]:
         """Iterate over queries in the dataset.
 
@@ -70,6 +74,7 @@ class JSONDataset(Dataset):
         """
         return iter(self._queries)
 
+    @override
     def __len__(self) -> int:
         """Return the number of queries in the dataset."""
         return len(self._queries)

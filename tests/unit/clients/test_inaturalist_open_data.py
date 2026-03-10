@@ -116,7 +116,7 @@ class TestINaturalistOpenDataClientMetadataUrl:
 class TestINaturalistOpenDataClientMetadataParsing:
     """Test suite for metadata parsing behavior."""
 
-    def test_read_photo_records_parses_tsv_metadata(self) -> None:
+    def test_iter_photo_records_parses_tsv_metadata(self) -> None:
         client = INaturalistOpenDataClient()
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
@@ -124,9 +124,11 @@ class TestINaturalistOpenDataClientMetadataParsing:
         payload = ("photo_id\textension\tlicense\n111\tjpg\tcc-by\n222\tjpeg\tcc0\n").encode("utf-8")
         mock_session.get.return_value = _make_metadata_response(payload)
 
-        records = client.read_photo_records(
-            metadata_url="https://example.com/photos.tsv",
-            size="small",
+        records = list(
+            client.iter_photo_records(
+                metadata_url="https://example.com/photos.tsv",
+                size="small",
+            )
         )
 
         assert len(records) == 2
@@ -141,7 +143,7 @@ class TestINaturalistOpenDataClientMetadataParsing:
             stream=True,
         )
 
-    def test_read_photo_records_parses_comma_delimited_metadata(self) -> None:
+    def test_iter_photo_records_parses_comma_delimited_metadata(self) -> None:
         client = INaturalistOpenDataClient()
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
@@ -149,12 +151,12 @@ class TestINaturalistOpenDataClientMetadataParsing:
         payload = "photo_id,extension\n333,png\n".encode("utf-8")
         mock_session.get.return_value = _make_metadata_response(payload)
 
-        records = client.read_photo_records(metadata_url="https://example.com/photos.csv")
+        records = list(client.iter_photo_records(metadata_url="https://example.com/photos.csv"))
 
         assert len(records) == 1
         assert records[0].photo_url.endswith("/333/medium.png")
 
-    def test_read_photo_records_parses_gzip_metadata(self) -> None:
+    def test_iter_photo_records_parses_gzip_metadata(self) -> None:
         client = INaturalistOpenDataClient()
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
@@ -162,13 +164,13 @@ class TestINaturalistOpenDataClientMetadataParsing:
         compressed = gzip.compress("photo_id\textension\n444\tgif\n".encode("utf-8"))
         mock_session.get.return_value = _make_metadata_response(compressed)
 
-        records = client.read_photo_records(metadata_url="https://example.com/photos.csv.gz")
+        records = list(client.iter_photo_records(metadata_url="https://example.com/photos.csv.gz"))
 
         assert len(records) == 1
         assert records[0].photo_id == "444"
         assert records[0].photo_url.endswith("/444/medium.gif")
 
-    def test_read_photo_records_parses_gzip_metadata_from_s3_uri(self) -> None:
+    def test_iter_photo_records_parses_gzip_metadata_from_s3_uri(self) -> None:
         client = INaturalistOpenDataClient()
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
@@ -176,7 +178,7 @@ class TestINaturalistOpenDataClientMetadataParsing:
         compressed = gzip.compress("photo_id\textension\n445\tgif\n".encode("utf-8"))
         mock_session.get.return_value = _make_metadata_response(compressed)
 
-        records = client.read_photo_records(metadata_url="s3://inaturalist-open-data/photos.csv.gz")
+        records = list(client.iter_photo_records(metadata_url="s3://inaturalist-open-data/photos.csv.gz"))
 
         assert len(records) == 1
         assert records[0].photo_id == "445"
@@ -186,7 +188,7 @@ class TestINaturalistOpenDataClientMetadataParsing:
             stream=True,
         )
 
-    def test_read_photo_records_skips_rows_missing_required_fields(self) -> None:
+    def test_iter_photo_records_skips_rows_missing_required_fields(self) -> None:
         client = INaturalistOpenDataClient()
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
@@ -194,11 +196,11 @@ class TestINaturalistOpenDataClientMetadataParsing:
         payload = ("photo_id\textension\n555\tjpg\n\tjpg\n666\t\n777\twebp\n").encode("utf-8")
         mock_session.get.return_value = _make_metadata_response(payload)
 
-        records = client.read_photo_records(metadata_url="https://example.com/photos.tsv")
+        records = list(client.iter_photo_records(metadata_url="https://example.com/photos.tsv"))
 
         assert [record.photo_id for record in records] == ["555", "777"]
 
-    def test_read_photo_records_respects_max_rows(self) -> None:
+    def test_iter_photo_records_respects_max_rows(self) -> None:
         client = INaturalistOpenDataClient()
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
@@ -206,7 +208,7 @@ class TestINaturalistOpenDataClientMetadataParsing:
         payload = ("photo_id\textension\n101\tjpg\n102\tjpg\n103\tjpg\n").encode("utf-8")
         mock_session.get.return_value = _make_metadata_response(payload)
 
-        records = client.read_photo_records(metadata_url="https://example.com/photos.tsv", max_rows=2)
+        records = list(client.iter_photo_records(metadata_url="https://example.com/photos.tsv", max_rows=2))
 
         assert len(records) == 2
         assert records[0].photo_id == "101"
@@ -225,14 +227,14 @@ class TestINaturalistOpenDataClientMetadataParsing:
         assert len(records) == 1
         assert isinstance(records[0], INaturalistPhotoRecord)
 
-    def test_read_photo_records_raises_upstream_error_on_metadata_request_error(self) -> None:
+    def test_iter_photo_records_raises_upstream_error_on_metadata_request_error(self) -> None:
         client = INaturalistOpenDataClient()
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
         mock_session.get.side_effect = requests.RequestException("boom")
 
         with pytest.raises(UpstreamError, match="Failed to fetch iNaturalist metadata"):
-            client.read_photo_records(metadata_url="https://example.com/photos.tsv")
+            list(client.iter_photo_records(metadata_url="https://example.com/photos.tsv"))
 
 
 class TestINaturalistOpenDataClientDownloadImage:

@@ -294,8 +294,8 @@ class TestCheckpointIntegration:
         # Save
         manager.save(s3_path, processed_keys)
 
-        # Verify object exists
-        assert minio_client.exists(bucket=test_bucket, key=checkpoint_key)
+        # Verify object exists via direct boto3 head_object
+        minio_client.client.head_object(Bucket=test_bucket, Key=checkpoint_key)
 
         # Load
         loaded = manager.load(s3_path)

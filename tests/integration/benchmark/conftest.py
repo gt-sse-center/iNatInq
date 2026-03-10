@@ -78,7 +78,7 @@ def inquire_bucket(
     Uses the shared ``minio_client`` from ``tests/integration/clients/conftest.py``.
     Returns the bucket name for downstream tests.
     """
-    minio_client.ensure_bucket(INQUIRE_BUCKET)
+    minio_client.client.create_bucket(Bucket=INQUIRE_BUCKET)
 
     jpgs = sorted(inquire_images_dir.glob("*.jpg"))
     logger.info("Uploading %d fixture images to bucket %s", len(jpgs), INQUIRE_BUCKET)
