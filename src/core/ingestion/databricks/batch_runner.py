@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
+from foundation.dead_letter_queue import DLQ, with_dlq
 
 import attrs
 import ray
@@ -24,7 +25,9 @@ class BatchRunStats:
     successful_keys: set[str] = attrs.field(factory=set)
 
 
+@with_dlq
 def _drain_ready_futures(
+    dlq: DLQ,
     *,
     futures: list[Any],
     stats: BatchRunStats,
@@ -46,11 +49,19 @@ def _drain_ready_futures(
     batch_results = ray.get(ready)
     for batch_result in batch_results:
         stats.completed_records += len(batch_result)
-        for key, ok, _ in batch_result:
+        for key, ok, err_msg in cast(list[tuple[str, bool, str]], batch_result):
             if ok:
                 stats.successful += 1
                 stats.successful_keys.add(key)
             else:
+                dlq.enqueue_failed_ingestion(
+                    key,
+                    metadata={
+                        "key": key,
+                        "error": err_msg,
+                        "label": progress_label,
+                    },
+                )
                 stats.failed += 1
 
     if total_expected_records is None:
