@@ -1,4 +1,7 @@
+import pytest
 import redis
+
+pytestmark = pytest.mark.integration
 
 
 def test_redis_is_accessible(redis_container: tuple[str, int]):

@@ -7,6 +7,10 @@ INQUIRE benchmark datasets and fixture images.
 
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.integration
+
 import io
 import json
 from collections.abc import Iterator
