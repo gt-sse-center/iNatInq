@@ -20,7 +20,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 if TYPE_CHECKING:
     from pyspark.sql import DataFrame, SparkSession
-    from pyspark.sql import functions as spark_functions_module
     from pyspark.sql.streaming import StreamingQuery
 
 from core.ingestion.databricks.runtime import apply_python_params as _apply_python_params
@@ -284,7 +283,7 @@ def _spark_session_class() -> Any:
     return SparkSession
 
 
-def _spark_functions() -> spark_functions_module:
+def _spark_functions() -> Any:
     """Load pyspark SQL functions lazily for environments without pyspark."""
     try:
         from pyspark.sql import functions as sf

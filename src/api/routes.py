@@ -387,7 +387,7 @@ async def submit_databricks_cdc_producer_job() -> models.DatabricksCdcProducerJo
             run_id=str(run_id),
             status="submitted",
             namespace=namespace,
-            submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+            submitted_at=str(datetime.now(timezone.utc).isoformat()),  # noqa: UP017
         )
     except Exception as e:
         raise PipelineError(f"Failed to submit Databricks CDC producer job: {e!s}") from e

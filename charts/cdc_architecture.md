@@ -122,20 +122,6 @@ Optional:
 
 The Ray consumer also uses the existing image pipeline env vars (`S3_*`, `VECTOR_DB_*`, `RAY_*`, `CLIP_*`).
 
-## Interaction with Existing Design
-
-What stays unchanged:
-
-1. Existing `run_ingest_image.py` / `process_s3_images.py` path remains available.
-2. Existing Ray task (`process_image_batch_ray`) and vector upsert logic are reused.
-3. Existing Databricks runtime bootstrap approach is reused.
-
-What is newly added:
-
-1. Separate producer job for file discovery (Auto Loader).
-2. Separate consumer job for incremental Ray processing from Bronze.
-3. Dedicated Delta progress table for deterministic CDC advancement.
-
 ## Scheduler Recommendation
 
 Run the two jobs independently:
