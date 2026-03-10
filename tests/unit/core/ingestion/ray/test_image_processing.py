@@ -5,8 +5,7 @@ Tests the image processing pipeline: S3 → Preprocessing → CLIP → Vector DB
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-from config import ImageEmbeddingConfig
+from config import EmbeddingConfig, ProviderType
 
 from core.ingestion.interfaces.types import ImageContentResult, ProcessingResult
 from core.ingestion.tasks.image_processing import (
@@ -27,8 +26,8 @@ class TestRayImageProcessingConfig:
 
     def test_creates_config_with_required_fields(self) -> None:
         """Config is created with required fields and image-specific defaults."""
-        image_embed = ImageEmbeddingConfig(
-            provider_type="clip",
+        embed_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
             clip_url="http://localhost:8000",
             clip_model="ViT-B/32",
         )
@@ -37,7 +36,7 @@ class TestRayImageProcessingConfig:
             s3_access_key="minioadmin",
             s3_secret_key="minioadmin",
             s3_bucket="images",
-            image_embedding_config=image_embed,
+            embedding_config=embed_config,
             collection="documents",
         )
         assert config.s3_bucket == "images"
@@ -48,8 +47,8 @@ class TestRayImageProcessingConfig:
 
     def test_config_with_custom_image_batch_sizes(self) -> None:
         """Config accepts custom image batch sizes (smaller than text)."""
-        image_embed = ImageEmbeddingConfig(
-            provider_type="clip",
+        embed_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
             clip_url="http://localhost:8000",
             clip_model="ViT-B/32",
         )
@@ -58,7 +57,7 @@ class TestRayImageProcessingConfig:
             s3_access_key="key",
             s3_secret_key="secret",
             s3_bucket="b",
-            image_embedding_config=image_embed,
+            embedding_config=embed_config,
             collection="photos",
             image_batch_size=10,
             image_embed_batch_size=2,
@@ -77,8 +76,8 @@ class TestImageProcessingPipeline:
 
     def test_process_keys_sync_returns_empty_for_empty_keys(self) -> None:
         """process_keys_sync returns empty list when keys is empty."""
-        image_embed = ImageEmbeddingConfig(
-            provider_type="clip",
+        embed_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
             clip_url="http://localhost:8000",
             clip_model="ViT-B/32",
         )
@@ -87,7 +86,7 @@ class TestImageProcessingPipeline:
             s3_access_key="key",
             s3_secret_key="secret",
             s3_bucket="b",
-            image_embedding_config=image_embed,
+            embedding_config=embed_config,
             collection="documents",
         )
         pipeline = ImageProcessingPipeline(config)
@@ -98,8 +97,8 @@ class TestImageProcessingPipeline:
         self,
     ) -> None:
         """When fetch_all returns no images, only fetch failures are returned."""
-        image_embed = ImageEmbeddingConfig(
-            provider_type="clip",
+        embed_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
             clip_url="http://localhost:8000",
             clip_model="ViT-B/32",
         )
@@ -108,7 +107,7 @@ class TestImageProcessingPipeline:
             s3_access_key="key",
             s3_secret_key="secret",
             s3_bucket="b",
-            image_embedding_config=image_embed,
+            embedding_config=embed_config,
             collection="documents",
         )
         pipeline = ImageProcessingPipeline(config)
@@ -116,14 +115,16 @@ class TestImageProcessingPipeline:
         with (
             patch("core.ingestion.tasks.image_processing.S3ClientWrapper"),
             patch("core.ingestion.tasks.image_processing.create_retry_session"),
-            patch("core.ingestion.tasks.image_processing.CLIPClient") as mock_clip_cls,
+            patch(
+                "core.ingestion.tasks.image_processing.create_embedding_provider",
+                return_value=MagicMock(close=AsyncMock()),
+            ),
             patch(
                 "core.ingestion.tasks.image_processing.create_vector_db_provider",
                 side_effect=[MagicMock(), MagicMock()],
             ),
             patch("core.ingestion.tasks.image_processing.VectorDBConfigFactory") as mock_factory,
         ):
-            mock_clip_cls.from_config.return_value = MagicMock(close_async=AsyncMock())
             mock_factory.return_value.create_both.return_value = (
                 MagicMock(),
                 MagicMock(),
@@ -149,8 +150,8 @@ class TestImageProcessingPipeline:
 
     def test_config_property_returns_config(self) -> None:
         """config property returns the pipeline config."""
-        image_embed = ImageEmbeddingConfig(
-            provider_type="clip",
+        embed_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
             clip_url="http://localhost:8000",
             clip_model="ViT-B/32",
         )
@@ -159,7 +160,7 @@ class TestImageProcessingPipeline:
             s3_access_key="key",
             s3_secret_key="secret",
             s3_bucket="b",
-            image_embedding_config=image_embed,
+            embedding_config=embed_config,
             collection="documents",
         )
         pipeline = ImageProcessingPipeline(config)

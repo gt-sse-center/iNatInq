@@ -49,9 +49,11 @@ help:
 	@echo "│ make logs-minio        Tail minio logs                                      │"
 	@echo "│ make logs-weaviate     Tail weaviate logs                                   │"
 	@echo "│ make logs-clip         Tail clip logs                                       │"
+	@echo "│ make logs-redis        Tail redis logs                                      │"
 	@echo "├── Docker Shell Access ──────────────────────────────────────────────────────┤"
 	@echo "│ make shell-pipeline    Shell into pipeline container                        │"
 	@echo "│ make shell-ollama      Shell into ollama container                          │"
+	@echo "│ make shell-redis       Shell into redis container cli                       │"
 	@echo "├── Ollama Models ────────────────────────────────────────────────────────────┤"
 	@echo "│ make ollama-pull       Pull nomic-embed-text model                          │"
 	@echo "│ make ollama-list       List installed Ollama models                         │"
@@ -267,7 +269,8 @@ docker-health:
 	@printf "│ Weaviate:        "; curl -sf http://localhost:8080/v1/.well-known/ready >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
 	@printf "│ Ollama:          "; curl -sf http://localhost:11434/api/tags >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
 	@printf "│ MinIO:           "; curl -sf http://localhost:9000/minio/health/live >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
-	@printf "│ Ray Dashboard:   "; curl -sf http://localhost:8265 >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
+	@printf "│ Ray:             "; curl -sf http://localhost:8265 >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
+	@printf "│ Redis:           "; docker exec redis redis-cli ping  >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
 	@printf "│ CLIP:            "; curl -sf http://localhost:8001/ >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
 	@echo "└──────────────────────────────────────────────────────────────────────────────┘"
 	@echo ""
@@ -351,6 +354,10 @@ logs-weaviate:
 logs-clip:
 	$(DOCKER_COMPOSE) logs -f clip
 
+.PHONY: logs-redis
+logs-redis:
+	$(DOCKER_COMPOSE) logs -f redis
+
 # =============================================================================
 # Docker Scaling
 # =============================================================================
@@ -374,6 +381,11 @@ shell-pipeline:
 shell-ollama:
 	@echo "Opening shell in ollama container..."
 	$(DOCKER_COMPOSE) exec ollama /bin/bash
+
+.PHONY: shell-redis
+shell-redis:
+	@echo "Opening red-cli in Redis container..."
+	$(DOCKER_COMPOSE) exec -it redis redis-cli
 
 # =============================================================================
 # Ollama Model Management

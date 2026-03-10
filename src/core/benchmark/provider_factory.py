@@ -19,7 +19,7 @@ import logging
 
 from clients.clip import CLIPClient
 from clients.interfaces.vector_db import VectorDBProvider, create_vector_db_provider
-from config import ImageEmbeddingConfig, VectorDBConfig
+from config import EmbeddingConfig, VectorDBConfig
 from core.benchmark.id_mapping import S3KeyIDMapper
 from core.benchmark.search_pipeline import CLIPSearchPipeline
 
@@ -37,7 +37,7 @@ def resolve_search_pipeline(
 
     Constructs the full pipeline from environment configuration:
     1. VectorDBConfig → VectorDBProvider (via factory + registry)
-    2. ImageEmbeddingConfig → CLIPClient
+    2. EmbeddingConfig → CLIPClient
     3. S3KeyIDMapper for ID translation
     4. Compose into CLIPSearchPipeline
 
@@ -63,9 +63,9 @@ def resolve_search_pipeline(
     vdb_config = VectorDBConfig.from_env_for_provider(provider_name)
     vector_provider = create_vector_db_provider(vdb_config)
 
-    # Build CLIP client from env config
-    img_config = ImageEmbeddingConfig.from_env()
-    clip_client = CLIPClient.from_config(img_config)
+    # Build Embedding client from env config
+    emb_config = EmbeddingConfig.from_env()
+    clip_client = CLIPClient.from_config(emb_config)
 
     # Compose the pipeline
     id_mapper = S3KeyIDMapper()
@@ -79,8 +79,8 @@ def resolve_search_pipeline(
         "Resolved search pipeline",
         extra={
             "provider": provider_name,
-            "clip_backend": img_config.clip_backend,
-            "clip_url": img_config.clip_url,
+            "clip_is_hosted": clip_client.is_hosted,
+            "clip_url": emb_config.clip_url,
         },
     )
 

@@ -40,9 +40,9 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from api import models
-from clients.clip import CLIPClient
+from clients.interfaces.embedding import create_embedding_provider
 from clients.interfaces.vector_db import create_vector_db_provider
-from config import ImageEmbeddingConfig, MinIOConfig, VectorDBConfig, get_settings
+from config import EmbeddingConfig, MinIOConfig, VectorDBConfig, get_settings
 from core.exceptions import BadRequestError, PipelineError
 from core.services.databricks_ray_service import DatabricksRayService
 from core.services.ray_service import RayService
@@ -148,11 +148,14 @@ async def search_images(
         - Score ranges from 0.0 to 1.0 (1.0 = identical, 0.0 = completely different)
         - Image collection must exist (created via image ingestion job)
     """
+    if not q or not q.strip():
+        raise BadRequestError("Query cannot be empty")
+
     s = get_settings()
 
-    # Create CLIP client for text embedding
-    image_embed_config = ImageEmbeddingConfig.from_env(s.k8s_namespace)
-    clip_client = CLIPClient.from_config(image_embed_config)
+    # Create embedding provider for text embedding
+    embed_config = EmbeddingConfig.from_env(s.k8s_namespace)
+    embedding_provider = create_embedding_provider(embed_config)
 
     # Determine provider type: use query parameter if provided, otherwise use settings
     if provider:
@@ -171,7 +174,7 @@ async def search_images(
     collection_name = collection or vector_db_config.collection
 
     image_search_service = ImageSearchService(
-        clip_client=clip_client,
+        embedding_provider=embedding_provider,
         vector_db_provider=vector_db_provider,
     )
 
@@ -200,7 +203,7 @@ async def search_images(
 
     return models.ImageSearchResponse(
         query=q,
-        model=image_embed_config.clip_model or "",
+        model=embedding_provider.model_name,
         collection=collection_name,
         provider=provider_type,
         results=pydantic_results,
@@ -323,13 +326,13 @@ async def submit_databricks_image_job(
         namespace = settings.k8s_namespace
 
         databricks_service = DatabricksRayService()
-        image_embed_cfg = ImageEmbeddingConfig.from_env(namespace)
+        embed_config = EmbeddingConfig.from_env(namespace)
         effective_s3_prefix: str | None
         if req.source == "inat":
             effective_s3_prefix = None
             run_id = databricks_service.submit_inat_image_job(
                 namespace=namespace,
-                image_embedding_config=image_embed_cfg,
+                embedding_config=embed_config,
                 collection=req.collection,
             )
         else:
@@ -342,7 +345,7 @@ async def submit_databricks_image_job(
                 s3_secret_access_key=minio_cfg.secret_access_key,
                 s3_bucket=minio_cfg.bucket,
                 s3_prefix=effective_s3_prefix,
-                image_embedding_config=image_embed_cfg,
+                embedding_config=embed_config,
                 collection=req.collection,
                 image_max_items=req.image_max_items,
                 image_page_size=req.image_page_size,

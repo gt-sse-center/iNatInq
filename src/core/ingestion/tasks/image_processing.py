@@ -11,23 +11,25 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import attrs
 import ray  # type: ignore[import-untyped]
 from qdrant_client.models import PointStruct
 
-from clients.clip import CLIPClient
-from clients.interfaces.vector_db import VectorDBProvider  # noqa: TC001
+from clients.interfaces.embedding import EmbeddingProvider, create_embedding_provider
 from clients.s3 import S3ClientWrapper
 from clients.weaviate import WeaviateClientWrapper, WeaviateDataObject
-from config import ImageEmbeddingConfig  # noqa: TC001
 from foundation.image import resize_for_embedding
 from core.ingestion.interfaces.factories import VectorDBConfigFactory, create_vector_db_provider
 from core.ingestion.interfaces.operations import ImageContentFetcher
 from core.ingestion.interfaces.types import ImageContentResult, ProcessingResult
 from foundation.http import create_retry_session
-from foundation.rate_limiter import RateLimiter  # noqa: TC001
+
+if TYPE_CHECKING:
+    from foundation.rate_limiter import RateLimiter
+    from clients.interfaces.vector_db import VectorDBProvider
+    from config import EmbeddingConfig
 
 from core.ingestion.shared import RayActorRateLimiter, get_ray_logger
 
@@ -54,7 +56,7 @@ class RayImageProcessingConfig:
     s3_access_key: str
     s3_secret_key: str
     s3_bucket: str
-    image_embedding_config: ImageEmbeddingConfig
+    embedding_config: EmbeddingConfig
     collection: str
     image_batch_size: int = 20
     image_embed_batch_size: int = 4
@@ -144,7 +146,7 @@ class ImageProcessingPipeline:
             return []
 
         session = create_retry_session()
-        clip_client = CLIPClient.from_config(self._config.image_embedding_config, session=session)
+        embedding_provider = create_embedding_provider(self._config.embedding_config)
         db_factory = VectorDBConfigFactory(self._config.namespace)
         targets = self._config.ingestion_targets
 
@@ -156,7 +158,7 @@ class ImageProcessingPipeline:
             weaviate_db = create_vector_db_provider(db_factory.create_weaviate_config())
 
         try:
-            return asyncio.run(self._process_images_async(images, clip_client, qdrant_db, weaviate_db))
+            return asyncio.run(self._process_images_async(images, embedding_provider, qdrant_db, weaviate_db))
         finally:
             if qdrant_db is not None:
                 qdrant_db.close()
@@ -167,7 +169,7 @@ class ImageProcessingPipeline:
     async def _fetch_and_process_async(
         self,
         s3: S3ClientWrapper,
-        clip_client: CLIPClient,
+        embedding_provider: EmbeddingProvider,
         qdrant_db: VectorDBProvider | None,
         weaviate_db: VectorDBProvider | None,
         keys: list[str],
@@ -179,7 +181,7 @@ class ImageProcessingPipeline:
 
         Args:
             s3: S3 client wrapper.
-            clip_client: CLIP embedding client.
+            embedding_provider: Embedding provider for image embeddings.
             qdrant_db: Qdrant vector database provider (or None).
             weaviate_db: Weaviate vector database provider (or None).
             keys: List of S3 object keys.
@@ -196,15 +198,17 @@ class ImageProcessingPipeline:
             if not images:
                 return fetch_failures
 
-            process_results = await self._process_images_async(images, clip_client, qdrant_db, weaviate_db)
+            process_results = await self._process_images_async(
+                images, embedding_provider, qdrant_db, weaviate_db
+            )
             return fetch_failures + process_results
         finally:
-            await clip_client.close_async()
+            await embedding_provider.close()
 
     async def _process_images_async(  # noqa: PLR0912
         self,
         images: list[ImageContentResult],
-        clip_client: CLIPClient,
+        embedding_provider: EmbeddingProvider,
         qdrant_db: VectorDBProvider | None,
         weaviate_db: VectorDBProvider | None,
     ) -> list[ProcessingResult]:
@@ -234,28 +238,28 @@ class ImageProcessingPipeline:
         all_vectors: list[list[float]] = []
         for i in range(0, len(processed), batch_size):
             batch = processed[i : i + batch_size]
-            image_bytes_batch = [p[1] for p in batch]
+            image_embed_requests = [p[1] for p in batch]
             acq = getattr(self._rate_limiter, "acquire", None) or getattr(
                 self._rate_limiter, "acquire_permission", None
             )
             if acq:
                 await acq()
             try:
-                vectors = await clip_client.embed_image_batch_async(image_bytes_batch)
+                vectors = await embedding_provider.embed_image_batch(image_embed_requests)
                 if vectors is None:
                     all_vectors.extend([[] for _ in batch])  # placeholder for failure
                 else:
                     all_vectors.extend(vectors)
             except Exception as e:
                 logger.warning(
-                    "CLIP batch embed failed",
+                    "Image batch embed failed",
                     extra={"error": str(e), "batch_size": len(batch)},
                 )
                 all_vectors.extend([[] for _ in batch])
 
         # Build points and upsert
         weaviate_image_class = WeaviateClientWrapper._collection_to_image_class_name(collection)
-        vector_size = clip_client.vector_size
+        vector_size = embedding_provider.vector_size
 
         # Ensure image collections exist for targeted DBs (parallel)
         ensure_tasks = []
@@ -382,7 +386,7 @@ def process_image_batch_ray(
     s3_access_key: str,
     s3_secret_key: str,
     s3_bucket: str,
-    image_embedding_config: ImageEmbeddingConfig,
+    embedding_config: EmbeddingConfig,
     collection: str,
     image_batch_size: int = 20,
     image_embed_batch_size: int = 4,
@@ -407,7 +411,7 @@ def process_image_batch_ray(
         s3_access_key: S3 access key.
         s3_secret_key: S3 secret key.
         s3_bucket: S3 bucket name.
-        image_embedding_config: CLIP/image embedding configuration.
+        embedding_config: embedding configuration.
         collection: Base collection name
         image_batch_size: S3 keys per task (already batched by caller).
         image_embed_batch_size: Images per CLIP API call.
@@ -434,7 +438,7 @@ def process_image_batch_ray(
         s3_access_key=s3_access_key,
         s3_secret_key=s3_secret_key,
         s3_bucket=s3_bucket,
-        image_embedding_config=image_embedding_config,
+        embedding_config=embedding_config,
         collection=collection,
         image_batch_size=image_batch_size,
         image_embed_batch_size=image_embed_batch_size,

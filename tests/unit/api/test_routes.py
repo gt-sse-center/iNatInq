@@ -76,8 +76,8 @@ class TestImageSearchEndpoint:
         self,
         test_client: TestClient,
         patch_get_settings: MagicMock,
-        patch_image_embedding_config: MagicMock,
-        patch_clip_client: MagicMock,
+        patch_embedding_config: MagicMock,
+        patch_embedding_provider: MagicMock,
         mock_image_vector_db_provider: MagicMock,
     ) -> None:
         """Test successful image search with Qdrant provider.
@@ -110,8 +110,8 @@ class TestImageSearchEndpoint:
         self,
         test_client: TestClient,
         patch_get_settings: MagicMock,
-        patch_image_embedding_config: MagicMock,
-        patch_clip_client: MagicMock,
+        patch_embedding_config: MagicMock,
+        patch_embedding_provider: MagicMock,
     ) -> None:
         """Test successful image search with Weaviate provider.
 
@@ -156,8 +156,8 @@ class TestImageSearchEndpoint:
         self,
         test_client: TestClient,
         patch_get_settings: MagicMock,
-        patch_image_embedding_config: MagicMock,
-        patch_clip_client: MagicMock,
+        patch_embedding_config: MagicMock,
+        patch_embedding_provider: MagicMock,
         mock_image_vector_db_provider: MagicMock,
     ) -> None:
         """Test image search uses default provider from settings when not specified.
@@ -200,8 +200,8 @@ class TestImageSearchEndpoint:
         self,
         test_client: TestClient,
         patch_get_settings: MagicMock,
-        patch_image_embedding_config: MagicMock,
-        patch_clip_client: MagicMock,
+        patch_embedding_config: MagicMock,
+        patch_embedding_provider: MagicMock,
         mock_image_vector_db_provider: MagicMock,
     ) -> None:
         """Test image search with empty query returns 400 Bad Request.
@@ -223,8 +223,8 @@ class TestImageSearchEndpoint:
         self,
         test_client: TestClient,
         patch_get_settings: MagicMock,
-        patch_image_embedding_config: MagicMock,
-        patch_clip_client: MagicMock,
+        patch_embedding_config: MagicMock,
+        patch_embedding_provider: MagicMock,
         mock_image_vector_db_provider: MagicMock,
     ) -> None:
         """Test image search with custom collection name.
@@ -246,15 +246,15 @@ class TestImageSearchEndpoint:
         self,
         test_client: TestClient,
         patch_get_settings: MagicMock,
-        patch_image_embedding_config: MagicMock,
-        patch_clip_client: MagicMock,
+        patch_embedding_config: MagicMock,
+        patch_embedding_provider: MagicMock,
         mock_image_vector_db_provider: MagicMock,
     ) -> None:
         """Test image search returns CLIP model name in response.
 
         **Why this test is important:**
           - Validates model name is included in response
-          - Tests ImageEmbeddingConfig integration
+          - Tests EmbeddingConfig integration
         """
         with patch(
             "api.routes.create_vector_db_provider",
@@ -264,14 +264,14 @@ class TestImageSearchEndpoint:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["model"] == "ViT-B/32"  # From mock_image_embedding_config
+        assert data["model"] == "ViT-B/32"  # From mock_embedding_config
 
     def test_image_search_handles_upstream_error(
         self,
         test_client: TestClient,
         patch_get_settings: MagicMock,
-        patch_image_embedding_config: MagicMock,
-        patch_clip_client: MagicMock,
+        patch_embedding_config: MagicMock,
+        patch_embedding_provider: MagicMock,
     ) -> None:
         """Test that image search handles upstream service errors correctly.
 
@@ -299,23 +299,23 @@ class TestImageSearchEndpoint:
         self,
         test_client: TestClient,
         patch_get_settings: MagicMock,
-        patch_image_embedding_config: MagicMock,
+        patch_embedding_config: MagicMock,
         mock_image_vector_db_provider: MagicMock,
     ) -> None:
-        """Test that image search handles CLIP client errors correctly.
+        """Test that image search handles embedding provider errors correctly.
 
         **Why this test is important:**
-          - Validates error handling for CLIP failures
+          - Validates error handling for embedding provider failures
           - Tests exception translation to HTTP status
           - Ensures proper error messages
         """
-        # Mock CLIP client that raises UpstreamError
-        mock_clip = MagicMock()
-        mock_clip.embed_text_async = AsyncMock(side_effect=UpstreamError("CLIP connection failed"))
+        # Mock embedding provider that raises UpstreamError
+        mock_provider = MagicMock()
+        mock_provider.embed_text = AsyncMock(side_effect=UpstreamError("Embedding connection failed"))
 
         with patch(
-            "api.routes.CLIPClient.from_config",
-            return_value=mock_clip,
+            "api.routes.create_embedding_provider",
+            return_value=mock_provider,
         ):
             with patch(
                 "api.routes.create_vector_db_provider",
@@ -331,8 +331,8 @@ class TestImageSearchEndpoint:
         self,
         test_client: TestClient,
         patch_get_settings: MagicMock,
-        patch_image_embedding_config: MagicMock,
-        patch_clip_client: MagicMock,
+        patch_embedding_config: MagicMock,
+        patch_embedding_provider: MagicMock,
     ) -> None:
         """Test that image search handles optional fields being null.
 
@@ -519,7 +519,7 @@ class TestDatabricksJobEndpoints:
                     mock_minio.return_value.access_key_id = "minioadmin"
                     mock_minio.return_value.secret_access_key = "minioadmin"
                     mock_minio.return_value.bucket = "pipeline"
-                    with patch("api.routes.ImageEmbeddingConfig.from_env") as mock_embed_cfg:
+                    with patch("api.routes.EmbeddingConfig.from_env") as mock_embed_cfg:
                         mock_embed_cfg.return_value = MagicMock()
                         response = test_client.post(
                             "/databricks/jobs/images",
@@ -548,7 +548,7 @@ class TestDatabricksJobEndpoints:
             with patch("api.routes.get_settings") as mock_settings:
                 mock_settings.return_value.k8s_namespace = "ml-system"
                 with patch("api.routes.MinIOConfig.from_env") as mock_minio:
-                    with patch("api.routes.ImageEmbeddingConfig.from_env") as mock_embed_cfg:
+                    with patch("api.routes.EmbeddingConfig.from_env") as mock_embed_cfg:
                         mock_embed_cfg.return_value = MagicMock()
                         response = test_client.post(
                             "/databricks/jobs/images",
@@ -566,7 +566,7 @@ class TestDatabricksJobEndpoints:
         mock_minio.assert_not_called()
         mock_service.submit_inat_image_job.assert_called_once_with(
             namespace="ml-system",
-            image_embedding_config=mock_embed_cfg.return_value,
+            embedding_config=mock_embed_cfg.return_value,
             collection="documents",
         )
         mock_service.submit_image_job.assert_not_called()
@@ -585,7 +585,7 @@ class TestDatabricksJobEndpoints:
                     mock_minio.return_value.access_key_id = "minioadmin"
                     mock_minio.return_value.secret_access_key = "minioadmin"
                     mock_minio.return_value.bucket = "pipeline"
-                    with patch("api.routes.ImageEmbeddingConfig.from_env") as mock_embed_cfg:
+                    with patch("api.routes.EmbeddingConfig.from_env") as mock_embed_cfg:
                         mock_embed_cfg.return_value = MagicMock()
                         response = test_client.post(
                             "/databricks/jobs/images",

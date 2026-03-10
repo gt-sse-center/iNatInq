@@ -73,16 +73,26 @@ Both decorators:
 
 import functools
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from datetime import timedelta
-from typing import NoReturn
+from typing import Any, Concatenate, NoReturn, ParamSpec, TypeVar
 
 import aiobreaker
 import pybreaker
+from typing_extensions import override
 
+from core.metrics.registry import CIRCUIT_BREAKER_STATE, CIRCUIT_BREAKER_TRANSITIONS
 from foundation.exceptions import UpstreamError
 
 logger = logging.getLogger("foundation.circuit_breaker")
+
+# Maps circuit breaker state names to Prometheus gauge values.
+# 0=closed (healthy), 1=open (failing), 2=half_open (recovering).
+_STATE_GAUGE_MAP: dict[str, int] = {"closed": 0, "open": 1, "half_open": 2}
+
+P = ParamSpec("P")
+R = TypeVar("R")
+SelfT = TypeVar("SelfT")
 
 
 class CircuitBreakerListener(pybreaker.CircuitBreakerListener):
@@ -92,33 +102,47 @@ class CircuitBreakerListener(pybreaker.CircuitBreakerListener):
     for observability and debugging.
     """
 
+    @override
     def state_change(
         self,
         cb: pybreaker.CircuitBreaker,
         old_state: pybreaker.CircuitBreakerState | None,
         new_state: pybreaker.CircuitBreakerState,
     ) -> None:
-        """Log circuit breaker state transitions.
+        """Log circuit breaker state transitions and emit Prometheus metrics.
 
         Args:
             cb: The circuit breaker instance.
             old_state: Previous state.
             new_state: New state.
         """
+        old_state_str = (old_state.name.lower() if old_state is not None else cb.state.name.lower()).replace(
+            "-", "_"
+        )
+        new_state_str = new_state.name.lower().replace("-", "_")
+
         logger.warning(
             "Circuit breaker state changed",
             extra={
                 "circuit_breaker": cb.name,
-                "old_state": str(old_state),
-                "new_state": str(new_state),
+                "old_state": old_state_str,
+                "new_state": new_state_str,
                 "failure_count": cb.fail_counter,
             },
         )
 
+        CIRCUIT_BREAKER_STATE.labels(breaker=cb.name).set(_STATE_GAUGE_MAP[new_state_str])
+        CIRCUIT_BREAKER_TRANSITIONS.labels(
+            breaker=cb.name,
+            from_state=old_state_str,
+            to_state=new_state_str,
+        ).inc()
+
     @staticmethod
+    @override
     def before_call(
         cb: pybreaker.CircuitBreaker,
-        func: Callable,
+        func: Callable[P, R],
         *args: object,
         **kwargs: object,
     ) -> None:
@@ -139,6 +163,7 @@ class CircuitBreakerListener(pybreaker.CircuitBreakerListener):
             },
         )
 
+    @override
     def failure(
         self,
         cb: pybreaker.CircuitBreaker,
@@ -161,6 +186,7 @@ class CircuitBreakerListener(pybreaker.CircuitBreakerListener):
             },
         )
 
+    @override
     def success(self, cb: pybreaker.CircuitBreaker) -> None:
         """Log successful call.
 
@@ -176,6 +202,50 @@ class CircuitBreakerListener(pybreaker.CircuitBreakerListener):
         )
 
 
+class AsyncCircuitBreakerListener(aiobreaker.CircuitBreakerListener):
+    """Logging and metrics listener for async circuit breaker state changes.
+
+    Mirrors the behavior of CircuitBreakerListener for aiobreaker-based breakers,
+    emitting the same Prometheus metrics on state transitions.
+    """
+
+    @override
+    def state_change(
+        self,
+        breaker: aiobreaker.CircuitBreaker,
+        old: aiobreaker.state.CircuitBreakerBaseState,
+        new: aiobreaker.state.CircuitBreakerBaseState,
+    ) -> None:
+        """Log async circuit breaker state transitions and emit Prometheus metrics.
+
+        aiobreaker passes CircuitBreakerBaseState instances (not enum members);
+        each instance exposes its enum value via the ``.state`` property.
+
+        Args:
+            breaker: The async circuit breaker instance.
+            old: Previous state instance.
+            new: New state instance.
+        """
+        old_state_str = old.state.name.lower()
+        new_state_str = new.state.name.lower()
+
+        logger.warning(
+            "Async circuit breaker state changed",
+            extra={
+                "circuit_breaker": breaker.name,
+                "old_state": old.state.name,
+                "new_state": new.state.name,
+            },
+        )
+
+        CIRCUIT_BREAKER_STATE.labels(breaker=breaker.name).set(_STATE_GAUGE_MAP[new_state_str])
+        CIRCUIT_BREAKER_TRANSITIONS.labels(
+            breaker=breaker.name,
+            from_state=old_state_str,
+            to_state=new_state_str,
+        ).inc()
+
+
 def create_circuit_breaker(
     name: str,
     failure_threshold: int = 5,
@@ -188,7 +258,7 @@ def create_circuit_breaker(
         failure_threshold: Number of consecutive failures before opening
         circuit. Default: 5.
         recovery_timeout: Seconds to wait before attempting recovery (moving to
-            half-open state). Default: 60.
+            half_open state). Default: 60.
 
     Returns:
         Configured CircuitBreaker instance with logging listener.
@@ -223,12 +293,15 @@ def create_circuit_breaker(
         - HALF_OPEN → CLOSED: After first successful call
         - HALF_OPEN → OPEN: If call fails during recovery
     """
-    return pybreaker.CircuitBreaker(
+    breaker = pybreaker.CircuitBreaker(
         name=name,
         fail_max=failure_threshold,
         reset_timeout=recovery_timeout,
         listeners=[CircuitBreakerListener()],
     )
+    # Set initial gauge to 0 (closed) so the metric exists from breaker creation.
+    CIRCUIT_BREAKER_STATE.labels(breaker=name).set(_STATE_GAUGE_MAP["closed"])
+    return breaker
 
 
 def handle_circuit_breaker_error(service_name: str) -> NoReturn:
@@ -282,7 +355,9 @@ def _get_breaker_or_raise(instance: object) -> pybreaker.CircuitBreaker:
     return breaker
 
 
-def with_circuit_breaker(service_name: str):
+def with_circuit_breaker(
+    service_name: str,
+) -> Callable[[Callable[Concatenate[SelfT, P], R]], Callable[Concatenate[SelfT, P], R]]:
     """Decorator to wrap synchronous method calls with circuit breaker protection.
 
     This decorator eliminates the need for nested function definitions and
@@ -320,9 +395,9 @@ def with_circuit_breaker(service_name: str):
         with_circuit_breaker_async: Async version for coroutine methods.
     """
 
-    def decorator(func):
+    def decorator(func: Callable[Concatenate[SelfT, P], R]) -> Callable[Concatenate[SelfT, P], R]:
         @functools.wraps(func)
-        def wrapper(self, *args, **kwargs):
+        def wrapper(self: SelfT, *args: P.args, **kwargs: P.kwargs) -> R:
             breaker = _get_breaker_or_raise(self)
 
             # Check if open first (fail fast)
@@ -343,7 +418,12 @@ def with_circuit_breaker(service_name: str):
     return decorator
 
 
-def with_circuit_breaker_async(service_name: str):
+def with_circuit_breaker_async(
+    service_name: str,
+) -> Callable[
+    [Callable[Concatenate[SelfT, P], Coroutine[Any, Any, R]]],
+    Callable[Concatenate[SelfT, P], Coroutine[Any, Any, R]],
+]:
     """Decorator to wrap async method calls with circuit breaker protection.
 
     This is the async version of `with_circuit_breaker`. It works with
@@ -391,9 +471,11 @@ def with_circuit_breaker_async(service_name: str):
         create_async_circuit_breaker: Factory for async circuit breakers.
     """
 
-    def decorator(func):
+    def decorator(
+        func: Callable[Concatenate[SelfT, P], Coroutine[Any, Any, R]],
+    ) -> Callable[Concatenate[SelfT, P], Coroutine[Any, Any, R]]:
         @functools.wraps(func)
-        async def wrapper(self, *args, **kwargs):
+        async def wrapper(self: SelfT, *args: P.args, **kwargs: P.kwargs) -> R:
             # Get async breaker - requires _async_breaker (aiobreaker.CircuitBreaker)
             breaker = getattr(self, "_async_breaker", None)
             if breaker is None:
@@ -467,8 +549,12 @@ def create_async_circuit_breaker(
         - HALF_OPEN → CLOSED: After first successful call
         - HALF_OPEN → OPEN: If call fails during recovery
     """
-    return aiobreaker.CircuitBreaker(
+    breaker = aiobreaker.CircuitBreaker(
         fail_max=failure_threshold,
         timeout_duration=timedelta(seconds=recovery_timeout),
         name=name,
+        listeners=[AsyncCircuitBreakerListener()],
     )
+    # Set initial gauge to 0 (closed) so the metric exists from breaker creation.
+    CIRCUIT_BREAKER_STATE.labels(breaker=name).set(_STATE_GAUGE_MAP["closed"])
+    return breaker

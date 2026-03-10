@@ -14,7 +14,7 @@ set -euo pipefail
 
 export QDRANT_URL
 export QDRANT_API_KEY
-export CLIP_BACKEND="${CLIP_BACKEND:-hosted_clip}"
+export EMBEDDING_PROVIDER="${EMBEDDING_PROVIDER:-hosted_clip}"
 export CLIP_URL
 export CLIP_API_KEY
 export CLIP_MODEL="${CLIP_MODEL:-ViT-B/32}"

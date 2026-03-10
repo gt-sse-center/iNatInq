@@ -11,12 +11,42 @@ the correct format for embedding models like CLIP.
 
 from __future__ import annotations
 
+import base64
 import io
 import logging
 
+import filetype
 from PIL import Image
 
 logger = logging.getLogger("pipeline.ingestion.image")
+
+
+def encode_image_base64(image_bytes: bytes, *, include_mime_type: bool) -> str:
+    """Encode image bytes to base64 string.
+
+    Args:
+        image_bytes: Raw image data.
+        include_mime_type: Whether to include the image's mime type in the encoded string.
+
+    Returns:
+        Base64-encoded string.
+
+    Raises:
+        ValueError: If image_bytes is empty.
+    """
+    if not image_bytes:
+        msg = "Image bytes cannot be empty"
+        raise ValueError(msg)
+
+    b64_data = base64.b64encode(image_bytes).decode("utf-8")
+
+    if include_mime_type:
+        mime_type = filetype.guess_mime(image_bytes)
+        if mime_type is None or not isinstance(mime_type, str):
+            mime_type = "image/png"
+        return f"data:{mime_type};base64,{b64_data}"
+
+    return b64_data
 
 
 def validate_image(image_bytes: bytes) -> tuple[bool, str]:

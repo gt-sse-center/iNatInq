@@ -237,7 +237,7 @@ def ollama_client(ollama_url: str) -> OllamaClient:
         "Created Ollama client for integration tests", extra={"url": ollama_url, "model": "all-minilm"}
     )
     yield client
-    client.close()
+    asyncio.run(client.close())
 
 
 # =============================================================================
@@ -317,3 +317,43 @@ def clip_container():
 def clip_url(clip_container: DockerContainer) -> str:
     """Get CLIP connection URL."""
     return _get_clip_url(clip_container)
+
+
+# =============================================================================
+# Redis Container Fixtures
+# =============================================================================
+
+
+@pytest.fixture(scope="session")
+def redis_container() -> tuple[str, int]:
+    """Start Redis test container.
+
+    Returns:
+        (container_host_ip: str, container_port: int)
+    """
+    REDIS_PORT = 6379
+    logger.info("Starting Redis container...")
+    container = DockerContainer(image="redis:latest").with_exposed_ports(REDIS_PORT)
+    container.start()
+
+    HEALTHCHECK_TIMEOUT = 60
+
+    def is_healthy() -> bool:
+        """Ping the container until healthy or timeout expires."""
+        start_time = time.time()
+        while time.time() - start_time < HEALTHCHECK_TIMEOUT:
+            res = container.exec(["redis-cli", "ping"])
+            if res.exit_code == 0:
+                return True
+            time.sleep(1.0)
+        return False
+
+    if not is_healthy():
+        raise TimeoutError(f"Redis container not healthy after {HEALTHCHECK_TIMEOUT} seconds")
+
+    container_host = container.get_container_host_ip()
+    container_port = container.get_exposed_port(REDIS_PORT)
+    logger.info("Redis container started", extra={"redis_host": container_host, "redis_port": container_port})
+    yield container_host, container_port
+    logger.info("Stopping Redis container...")
+    container.stop()

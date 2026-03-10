@@ -6,8 +6,7 @@ Concrete implementations live in the parent `clients` package (e.g., `OllamaClie
 """
 
 from abc import ABC, abstractmethod
-
-from config import EmbeddingConfig
+from config import EmbeddingConfig, ProviderType
 
 
 class EmbeddingProvider(ABC):
@@ -52,25 +51,14 @@ class EmbeddingProvider(ABC):
             UpstreamError: If the embedding service is unreachable or returns
                 an error.
             ValueError: If texts is empty.
-
-        Example:
-            ```python
-            vectors = await provider.embed_batch_async(["hello", "world"])
-            # Returns: [[0.1, 0.2, ...], [0.3, 0.4, ...]]
-            ```
         """
 
     @abstractmethod
-    async def embed_image(self, image_bytes: bytes, text: str | None = None) -> list[float]:
+    async def embed_image(self, image_bytes: bytes) -> list[float]:
         """Generate embedding for a single image (async).
 
         Args:
-            image_bytes: Raw image bytes (JPEG, PNG, WebP, or GIF format).
-            text: Optional text to embed alongside the image. This enables
-                multi-modal embeddings where both image and text are encoded
-                into the same vector space. Implementations can ignore this
-                parameter if not supported. Useful for future filter support
-                and combined image+metadata embeddings.
+            image_bytes: Bytes containing the image to embed.
 
         Returns:
             List of floats representing the image embedding vector.
@@ -82,18 +70,11 @@ class EmbeddingProvider(ABC):
         """
 
     @abstractmethod
-    async def embed_image_batch(
-        self, images: list[bytes], texts: list[str] | None = None
-    ) -> list[list[float]]:
+    async def embed_image_batch(self, images_bytes: list[bytes]) -> list[list[float]]:
         """Generate embeddings for multiple images in one call (async).
 
         Args:
-            images: List of raw image bytes to embed.
-            texts: Optional list of text strings to embed alongside images.
-                If provided, must have the same length as images. Each text
-                will be embedded with its corresponding image. Implementations
-                can ignore this parameter if not supported. Useful for future
-                filter support and combined image+metadata embeddings.
+            images_bytes: List of images in byte format.
 
         Returns:
             List of embedding vectors, one per input image.
@@ -103,16 +84,6 @@ class EmbeddingProvider(ABC):
                 an error.
             ValueError: If images is empty or contains invalid image data, or
                 if texts is provided but has a different length than images.
-        """
-
-    @property
-    @abstractmethod
-    def vector_size(self) -> int:
-        """Return the dimension of vectors produced by this provider.
-
-        Returns:
-            Vector dimension (e.g., 768 for nomic-embed-text, 1536 for
-            text-embedding-ada-002).
         """
 
     async def close(self) -> None:  # noqa: B027
@@ -126,6 +97,26 @@ class EmbeddingProvider(ABC):
             need cleanup. Subclasses should override if they maintain resources.
         """
         ...  # noqa: PIE790
+
+    @property
+    @abstractmethod
+    def vector_size(self) -> int:
+        """Return the dimension of vectors produced by this provider.
+
+        Returns:
+            Vector dimension (e.g., 768 for nomic-embed-text, 1536 for
+            text-embedding-ada-002).
+        """
+
+    @property
+    @abstractmethod
+    def model_name(self) -> str:
+        """Name of the provider's underlying embedding model.
+
+        Returns:
+            Canonical model name used by the provider (e.g., "nomic-embed-text"
+            or "clip-vit-large-patch14").
+        """
 
     @classmethod
     @abstractmethod
@@ -152,10 +143,10 @@ class EmbeddingProvider(ABC):
 
 # Provider registry: maps provider_type to provider class
 # Each provider class must inherit from EmbeddingProvider and implement the interface
-_PROVIDER_REGISTRY: dict[str, type[EmbeddingProvider]] = {}
+_PROVIDER_REGISTRY: dict[ProviderType, type[EmbeddingProvider]] = {}
 
 
-def register_provider(provider_type: str, provider_class: type[EmbeddingProvider]) -> None:
+def register_provider(provider_type: ProviderType, provider_class: type[EmbeddingProvider]) -> None:
     """Register an embedding provider class.
 
     This function allows providers to register themselves in the factory registry.
