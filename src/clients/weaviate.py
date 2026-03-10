@@ -264,6 +264,9 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
 
         self._client = _client_instance
 
+        # Initialize sync circuit breaker from base class
+        self._init_circuit_breaker()
+
         # Initialize async circuit breaker using aiobreaker
         name, fail_max, timeout = self._circuit_breaker_config()
         object.__setattr__(

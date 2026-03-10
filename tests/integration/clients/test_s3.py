@@ -163,9 +163,6 @@ class TestRetrySuccess:
             retry_max_wait=0.1,
         )
 
-        # Ensure bucket exists
-        client.client.create_bucket(Bucket=test_bucket)
-
         call_count = 0
         original_put = client._client.put_object
 
@@ -210,8 +207,6 @@ class TestRetrySuccess:
             retry_min_wait=0.01,
             retry_max_wait=0.1,
         )
-
-        client.client.create_bucket(Bucket=test_bucket)
 
         call_count = 0
         original_get = client._client.get_object
@@ -271,8 +266,6 @@ class TestRetryExhaustion:
             retry_min_wait=0.01,
             retry_max_wait=0.05,
         )
-
-        client.client.create_bucket(Bucket=test_bucket)
 
         call_count = 0
 
@@ -404,8 +397,6 @@ class TestCircuitBreakerOpens:
             retry_min_wait=0.001,
             retry_max_wait=0.01,
         )
-
-        client.client.create_bucket(Bucket=test_bucket)
 
         # Circuit breaker threshold is 5 failures
         failure_count = 0
@@ -642,8 +633,6 @@ class TestObservability:
             retry_max_wait=0.05,
         )
 
-        client.client.create_bucket(Bucket=test_bucket)
-
         call_count = 0
 
         def fail_once(*_args, **_kwargs):
@@ -682,8 +671,6 @@ class TestObservability:
             retry_min_wait=0.01,
             retry_max_wait=0.05,
         )
-
-        client.client.create_bucket(Bucket=test_bucket)
 
         def always_fail(*_args, **_kwargs):
             raise EndpointConnectionError(endpoint_url="http://test")
