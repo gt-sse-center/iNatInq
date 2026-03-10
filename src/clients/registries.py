@@ -6,7 +6,10 @@ interface definitions and concrete implementations.
 """
 
 from config import ProviderType
+
 from .clip import CLIPClient
+from .infinity import InfinityClient
+from .interfaces.embedding import register_image_provider
 from .interfaces.embedding import register_provider as register_embedding_provider
 from .interfaces.vector_db import register_provider as register_vector_db_provider
 from .ollama import OllamaClient
@@ -19,6 +22,13 @@ def _register_embedding_providers() -> None:
     register_embedding_provider(ProviderType.OLLAMA, OllamaClient)
     register_embedding_provider(ProviderType.LOCAL_CLIP, CLIPClient)
     register_embedding_provider(ProviderType.HOSTED_CLIP, CLIPClient)
+    register_embedding_provider(ProviderType.INFINITY, InfinityClient)
+
+
+def _register_image_embedding_providers() -> None:
+    """Register default image embedding providers."""
+    register_image_provider("clip", CLIPClient)
+    register_image_provider("infinity", InfinityClient)
 
 
 def _register_vector_db_providers() -> None:
@@ -35,6 +45,7 @@ def register_all_providers() -> None:
     functions from the interface modules.
     """
     _register_embedding_providers()
+    _register_image_embedding_providers()
     _register_vector_db_providers()
 
 

@@ -317,3 +317,58 @@ def clip_container():
 def clip_url(clip_container: DockerContainer) -> str:
     """Get CLIP connection URL."""
     return _get_clip_url(clip_container)
+
+
+# =============================================================================
+# Infinity Container Fixtures (michaelf34/infinity — SigLIP)
+# =============================================================================
+
+
+def _get_infinity_url(container: DockerContainer) -> str:
+    host = container.get_container_host_ip()
+    port = container.get_exposed_port(7997)
+    return f"http://{host}:{port}"
+
+
+def _wait_for_infinity_health(container: DockerContainer, timeout: int = 300) -> None:
+    url = _get_infinity_url(container)
+    health_url = f"{url}/health"
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            response = httpx.get(health_url, timeout=5.0)
+            if response.status_code == 200:
+                logger.info("Infinity container healthy at %s", health_url)
+                return
+        except httpx.RequestError:
+            pass
+        time.sleep(2.0)
+    raise TimeoutError(f"Infinity container not healthy after {timeout}s")
+
+
+@pytest.fixture(scope="session")
+def infinity_container():
+    """Start an Infinity container for SigLIP image/text embedding tests.
+
+    Uses the michaelf34/infinity image with google/siglip-so400m-patch14-384 model.
+    First start downloads the model (~1.7 GB). Subsequent runs use Docker layer
+    caching but still need to load the model into memory (~30-60s).
+    """
+    logger.info("Starting Infinity container (michaelf34/infinity)...")
+    container = (
+        DockerContainer("michaelf34/infinity:latest")
+        .with_exposed_ports(7997)
+        .with_command("v2 --model-id google/siglip-so400m-patch14-384 --port 7997")
+    )
+    container.start()
+    _wait_for_infinity_health(container, timeout=300)
+    logger.info("Infinity container started", extra={"url": _get_infinity_url(container)})
+    yield container
+    logger.info("Stopping Infinity container...")
+    container.stop()
+
+
+@pytest.fixture(scope="session")
+def infinity_url(infinity_container: DockerContainer) -> str:
+    """Get Infinity connection URL."""
+    return _get_infinity_url(infinity_container)
