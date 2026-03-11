@@ -49,6 +49,11 @@ from config import EmbeddingConfig, ProviderType
 
 logger = logging.getLogger(__name__)
 
+# Mark all tests in this module as integration AND slow (SigLIP model download ~1.7 GB).
+# CI runs with '-m "integration and not slow"' to skip these.
+# Run locally: uv run pytest tests/integration/clients/test_infinity.py -v -s
+pytestmark = [pytest.mark.integration, pytest.mark.slow]
+
 
 def _create_solid_color_png(color: tuple[int, int, int], size: int = 10) -> bytes:
     """Create a solid color PNG image.
@@ -125,7 +130,6 @@ def mock_image_bytes() -> bytes:
 # =============================================================================
 
 
-@pytest.mark.integration
 class TestHappyPath:
     """Test suite for basic successful operations.
 
@@ -183,7 +187,6 @@ class TestHappyPath:
 # =============================================================================
 
 
-@pytest.mark.integration
 class TestBatchOperations:
     """Test suite for batch embedding operations.
 
@@ -235,7 +238,6 @@ class TestBatchOperations:
 # =============================================================================
 
 
-@pytest.mark.integration
 class TestCircuitBreaker:
     """Test suite for circuit breaker behavior.
 
@@ -263,7 +265,6 @@ class TestCircuitBreaker:
 # =============================================================================
 
 
-@pytest.mark.integration
 class TestErrorHandling:
     """Test suite for error handling behavior.
 
@@ -350,7 +351,6 @@ class TestErrorHandling:
 # =============================================================================
 
 
-@pytest.mark.integration
 class TestResourceCleanup:
     """Test suite for resource cleanup behavior.
 
@@ -394,7 +394,6 @@ class TestResourceCleanup:
 # =============================================================================
 
 
-@pytest.mark.integration
 class TestFactoryMethod:
     """Test suite for from_config factory method.
 
@@ -446,7 +445,6 @@ class TestFactoryMethod:
 # =============================================================================
 
 
-@pytest.mark.integration
 class TestTextEmbedding:
     """Test suite for text embedding operations.
 
@@ -496,7 +494,6 @@ class TestTextEmbedding:
 # =============================================================================
 
 
-@pytest.mark.integration
 class TestTextEmbeddingValidation:
     """Test suite for text embedding input validation."""
 
@@ -595,7 +592,6 @@ class TestTextEmbeddingValidation:
 # =============================================================================
 
 
-@pytest.mark.integration
 class TestCrossModalSearch:
     """Test suite for cross-modal (text-to-image) search scenarios.
 

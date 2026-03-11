@@ -120,7 +120,7 @@ jobs:
 
       - name: Validate Integration Tests
         if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: COVERAGE_FILE=.coverage.integration uv run pytest ${{ inputs.integration_tests_path }} -v -m integration -n auto --cov-fail-under=0 --cov-report=
+        run: COVERAGE_FILE=.coverage.integration uv run pytest ${{ inputs.integration_tests_path }} -v -m "integration and not slow" -n auto --cov-fail-under=0 --cov-report=
 
       - name: Coverage report (combined)
         run: |
