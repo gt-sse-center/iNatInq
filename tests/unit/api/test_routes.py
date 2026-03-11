@@ -605,6 +605,49 @@ class TestDatabricksJobEndpoints:
         assert call_kw["s3_prefix"] == ""
         mock_service.submit_inat_image_job.assert_not_called()
 
+    def test_submit_databricks_image_job_rejects_s3_autoloader_source(self, test_client: TestClient) -> None:
+        """Image job endpoint should reject s3_autoloader source."""
+        response = test_client.post(
+            "/databricks/jobs/images",
+            json={
+                "source": "s3_autoloader",
+                "collection": "documents",
+            },
+        )
+
+        assert response.status_code == 422
+
+    def test_submit_databricks_cdc_producer_job_success(self, test_client: TestClient) -> None:
+        """CDC producer submission should use dedicated Databricks service method."""
+        with patch("api.routes.DatabricksRayService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.submit_s3_autoloader_job.return_value = 222
+            mock_service_cls.return_value = mock_service
+
+            with patch("api.routes.get_settings") as mock_settings:
+                mock_settings.return_value.k8s_namespace = "ml-system"
+                response = test_client.post("/databricks/jobs/cdc-producer")
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["run_id"] == "222"
+        assert data["status"] == "submitted"
+        assert data["namespace"] == "ml-system"
+        mock_service.submit_s3_autoloader_job.assert_called_once_with(namespace="ml-system")
+        mock_service.submit_image_job.assert_not_called()
+        mock_service.submit_inat_image_job.assert_not_called()
+
+    def test_submit_databricks_cdc_producer_job_failure_returns_500(self, test_client: TestClient) -> None:
+        """CDC producer submission returns 500 on Databricks service error."""
+        with patch("api.routes.DatabricksRayService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.submit_s3_autoloader_job.side_effect = Exception("boom")
+            mock_service_cls.return_value = mock_service
+
+            response = test_client.post("/databricks/jobs/cdc-producer")
+
+        assert response.status_code == 500
+
     def test_get_databricks_job_status_success(self, test_client: TestClient) -> None:
         """Test getting Databricks job status."""
         with patch("api.routes.DatabricksRayService") as mock_service_cls:

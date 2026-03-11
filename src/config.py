@@ -158,6 +158,7 @@ defaults):
 - `DATABRICKS_TOKEN`: Databricks access token
 - `DATABRICKS_JOB_ID`: Databricks job ID (integer)
 - `DATABRICKS_INAT_JOB_ID`: Optional dedicated Databricks iNaturalist image job ID
+- `DATABRICKS_S3_AUTOLOADER_JOB_ID`: Optional dedicated Databricks S3 Auto Loader job ID
 - `DATABRICKS_TASK_TYPE`: Task parameter style (`python` only, default: `python`)
 - `DATABRICKS_WORKSPACE_PATH`: Optional workspace path (if used)
 
@@ -1231,7 +1232,9 @@ class DatabricksRayJobConfig(BaseModel):
     Attributes:
         host: Databricks workspace host URL.
         token: Databricks access token.
-        job_id: Databricks job ID.
+        job_id: Databricks job ID. Optional when `require_job_id=False`.
+        inat_job_id: Optional dedicated Databricks iNaturalist image job ID.
+        s3_autoloader_job_id: Optional dedicated Databricks S3 Auto Loader job ID.
         task_type: Parameter style for job tasks.
             Supported value: "python".
         workspace_path: Optional workspace path (used by notebook tasks).
@@ -1239,15 +1242,16 @@ class DatabricksRayJobConfig(BaseModel):
 
     host: str
     token: str
-    job_id: int
+    job_id: int | None = None
     inat_job_id: int | None = None
+    s3_autoloader_job_id: int | None = None
     task_type: Literal["python"] = "python"
     workspace_path: str | None = None
 
     model_config = SettingsConfigDict(frozen=True)
 
     @classmethod
-    def from_env(cls) -> "DatabricksRayJobConfig":
+    def from_env(cls, *, require_job_id: bool = True) -> "DatabricksRayJobConfig":
         """Create DatabricksRayJobConfig from environment variables.
 
         Environment Variables:
@@ -1255,32 +1259,41 @@ class DatabricksRayJobConfig(BaseModel):
             DATABRICKS_TOKEN: Databricks access token.
             DATABRICKS_JOB_ID: Databricks job ID (integer).
             DATABRICKS_INAT_JOB_ID: Optional dedicated iNaturalist image job ID (integer).
+            DATABRICKS_S3_AUTOLOADER_JOB_ID: Optional dedicated S3 Auto Loader job ID (integer).
             DATABRICKS_TASK_TYPE: Task parameter style ("python" only).
             DATABRICKS_WORKSPACE_PATH: Optional workspace path.
+
+        Args:
+            require_job_id: If True, DATABRICKS_JOB_ID must be set and valid.
+                When False, DATABRICKS_JOB_ID is optional (used by CDC producer
+                submission, which only needs DATABRICKS_S3_AUTOLOADER_JOB_ID).
         """
         host = os.getenv("DATABRICKS_HOST")
         token = os.getenv("DATABRICKS_TOKEN")
         job_id_raw = os.getenv("DATABRICKS_JOB_ID")
         inat_job_id_raw = os.getenv("DATABRICKS_INAT_JOB_ID")
+        s3_autoloader_job_id_raw = os.getenv("DATABRICKS_S3_AUTOLOADER_JOB_ID")
         task_type = os.getenv("DATABRICKS_TASK_TYPE", "python").lower()
         workspace_path = os.getenv("DATABRICKS_WORKSPACE_PATH")
 
-        missing = [
-            name
-            for name, value in (
-                ("DATABRICKS_HOST", host),
-                ("DATABRICKS_TOKEN", token),
-                ("DATABRICKS_JOB_ID", job_id_raw),
-            )
-            if not value
+        required_pairs: list[tuple[str, str | None]] = [
+            ("DATABRICKS_HOST", host),
+            ("DATABRICKS_TOKEN", token),
         ]
+        if require_job_id:
+            required_pairs.append(("DATABRICKS_JOB_ID", job_id_raw))
+        missing = [name for name, value in required_pairs if not value]
         if missing:
             raise ValueError(f"Missing required Databricks config: {', '.join(missing)}")
+        assert host is not None
+        assert token is not None
 
-        try:
-            job_id = int(job_id_raw)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("DATABRICKS_JOB_ID must be an integer") from exc
+        job_id: int | None = None
+        if job_id_raw:
+            try:
+                job_id = int(job_id_raw)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("DATABRICKS_JOB_ID must be an integer") from exc
 
         inat_job_id: int | None = None
         if inat_job_id_raw:
@@ -1288,6 +1301,13 @@ class DatabricksRayJobConfig(BaseModel):
                 inat_job_id = int(inat_job_id_raw)
             except (TypeError, ValueError) as exc:
                 raise ValueError("DATABRICKS_INAT_JOB_ID must be an integer") from exc
+
+        s3_autoloader_job_id: int | None = None
+        if s3_autoloader_job_id_raw:
+            try:
+                s3_autoloader_job_id = int(s3_autoloader_job_id_raw)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("DATABRICKS_S3_AUTOLOADER_JOB_ID must be an integer") from exc
 
         valid_task_types = ("python",)
         if task_type not in valid_task_types:
@@ -1299,6 +1319,7 @@ class DatabricksRayJobConfig(BaseModel):
             token=token,
             job_id=job_id,
             inat_job_id=inat_job_id,
+            s3_autoloader_job_id=s3_autoloader_job_id,
             task_type=task_type,
             workspace_path=workspace_path,
         )

@@ -23,6 +23,7 @@ from core.services.ingestion_params import (
     add_ray_tuning_env,
     build_image_ingestion_env,
     build_inat_image_ingestion_env,
+    build_s3_autoloader_env,
 )
 from foundation.logger import LOGGING_CONFIG
 
@@ -89,6 +90,8 @@ class DatabricksRayService:
             UpstreamError: If submission fails.
         """
         databricks_config = DatabricksRayJobConfig.from_env()
+        if databricks_config.job_id is None:
+            raise ValueError("Missing required Databricks config: DATABRICKS_JOB_ID")
         env_vars = build_image_ingestion_env(
             namespace=namespace,
             s3_endpoint=s3_endpoint,
@@ -161,6 +164,37 @@ class DatabricksRayService:
         except Exception as e:
             logger.exception("Failed to submit Databricks iNaturalist image job", extra={"error": str(e)})
             raise UpstreamError(f"Failed to submit Databricks iNaturalist image job: {e}") from e
+
+    def submit_s3_autoloader_job(
+        self,
+        *,
+        namespace: str,
+    ) -> int:
+        """Submit the dedicated Databricks Auto Loader producer job."""
+        databricks_config = DatabricksRayJobConfig.from_env(require_job_id=False)
+        if databricks_config.s3_autoloader_job_id is None:
+            raise ValueError("Missing required Databricks config: DATABRICKS_S3_AUTOLOADER_JOB_ID")
+
+        env_vars = build_s3_autoloader_env(
+            namespace=namespace,
+            extra_env_keys=("INATINQ_SRC_DIR",),
+        )
+        python_params = [f"{key}={value}" for key, value in env_vars.items()]
+
+        try:
+            logger.info(
+                "Submitting Databricks S3 Auto Loader job",
+                extra={"job_id": databricks_config.s3_autoloader_job_id},
+            )
+            return self._submit_python_job(
+                host=databricks_config.host,
+                token=databricks_config.token,
+                job_id=databricks_config.s3_autoloader_job_id,
+                python_params=python_params,
+            )
+        except Exception as e:
+            logger.exception("Failed to submit Databricks S3 Auto Loader job", extra={"error": str(e)})
+            raise UpstreamError(f"Failed to submit Databricks S3 Auto Loader job: {e}") from e
 
     def stop_run(self, run_id: int | str) -> None:
         """Stop a running Databricks job run.

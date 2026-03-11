@@ -16,9 +16,12 @@ from collections.abc import Iterable
 
 from config import EmbeddingConfig
 from core.ingestion.shared.env_keys import (
+    AUTOLOADER_OPTIONAL_ENV_KEYS as _AUTOLOADER_OPTIONAL_ENV_KEYS,
+    AUTOLOADER_REQUIRED_ENV_KEYS as _AUTOLOADER_REQUIRED_ENV_KEYS,
     IMAGE_OPTIONAL_ENV_KEYS as _IMAGE_OPTIONAL_ENV_KEYS,
     INAT_IMAGE_ENV_KEYS as _INAT_IMAGE_ENV_KEYS,
     OLLAMA_TUNING_ENV_KEYS as _OLLAMA_TIMEOUT_ENV_KEYS,
+    S3_CONNECTION_ENV_KEYS as _S3_CONNECTION_ENV_KEYS,
     S3_TUNING_ENV_KEYS as _S3_TUNING_ENV_KEYS,
     VECTOR_ENV_KEYS as _VECTOR_ENV_KEYS,
     VECTOR_TIMEOUT_ENV_KEYS as _VECTOR_TIMEOUT_ENV_KEYS,
@@ -253,4 +256,56 @@ def build_inat_image_ingestion_env(
     if extra_env_keys:
         _passthrough_env_vars(env_vars, extra_env_keys)
 
+    return env_vars
+
+
+def build_s3_autoloader_env(
+    *,
+    namespace: str,
+    extra_env_keys: Iterable[str] | None = None,
+) -> dict[str, str]:
+    """Build env-style params for S3 Auto Loader ingestion jobs.
+
+    Required Auto Loader keys are copied from the current process environment.
+    """
+    env_vars = {"K8S_NAMESPACE": namespace}
+    _passthrough_env_vars(
+        env_vars,
+        _AUTOLOADER_REQUIRED_ENV_KEYS,
+        _AUTOLOADER_OPTIONAL_ENV_KEYS,
+        _S3_CONNECTION_ENV_KEYS,
+        _S3_TUNING_ENV_KEYS,
+    )
+
+    # Normalize copied values; trim whitespace and drop empty values.
+    for key in (
+        *_AUTOLOADER_REQUIRED_ENV_KEYS,
+        *_AUTOLOADER_OPTIONAL_ENV_KEYS,
+        *_S3_CONNECTION_ENV_KEYS,
+        *_S3_TUNING_ENV_KEYS,
+    ):
+        value = env_vars.get(key)
+        if value is None:
+            continue
+        normalized = value.strip()
+        if normalized:
+            env_vars[key] = normalized
+        else:
+            env_vars.pop(key, None)
+
+    missing = [key for key in _AUTOLOADER_REQUIRED_ENV_KEYS if key not in env_vars]
+    if missing:
+        raise ValueError(f"Missing required Auto Loader config: {', '.join(missing)}")
+
+    minio_group = {
+        "S3_ENDPOINT": env_vars.get("S3_ENDPOINT"),
+        "S3_ACCESS_KEY_ID": env_vars.get("S3_ACCESS_KEY_ID"),
+        "S3_SECRET_ACCESS_KEY": env_vars.get("S3_SECRET_ACCESS_KEY"),
+    }
+    if any(minio_group.values()) and not all(minio_group.values()):
+        missing = [key for key, value in minio_group.items() if not value]
+        raise ValueError(f"Missing required MinIO S3 config for Auto Loader: {', '.join(missing)}")
+
+    if extra_env_keys:
+        _passthrough_env_vars(env_vars, extra_env_keys)
     return env_vars

@@ -23,7 +23,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from config import EmbeddingConfig, EmbeddingConfig, ProviderType
+from config import EmbeddingConfig, ProviderType
 from core.exceptions import UpstreamError
 from core.services.databricks_ray_service import DatabricksRayService
 
@@ -159,6 +159,37 @@ class TestDatabricksRayServiceSubmitImageJob:
                 collection="test-image-collection",
             )
 
+    @patch("core.services.databricks_ray_service.DatabricksRayJobConfig.from_env")
+    def test_submit_image_job_raises_without_job_id(
+        self,
+        mock_config: MagicMock,
+    ) -> None:
+        """Primary image submission requires DATABRICKS_JOB_ID."""
+        mock_databricks_config = MagicMock()
+        mock_databricks_config.host = "https://dbc.example.cloud"
+        mock_databricks_config.token = "databricks-token"
+        mock_databricks_config.job_id = None
+        mock_config.return_value = mock_databricks_config
+
+        embedding_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
+            clip_url="http://clip.test:8000",
+            clip_model="ViT-B/32",
+        )
+
+        service = DatabricksRayService()
+        with pytest.raises(ValueError, match="DATABRICKS_JOB_ID"):
+            service.submit_image_job(
+                namespace="test-namespace",
+                s3_endpoint="http://minio.test:9000",
+                s3_access_key_id="test-key",
+                s3_secret_access_key="test-secret",
+                s3_bucket="test-bucket",
+                s3_prefix="images/",
+                embedding_config=embedding_config,
+                collection="test-image-collection",
+            )
+
 
 class TestDatabricksRayServiceSubmitINatImageJob:
     """Test suite for DatabricksRayService.submit_inat_image_job."""
@@ -242,6 +273,83 @@ class TestDatabricksRayServiceSubmitINatImageJob:
                 embedding_config=embedding_config,
                 collection="test-image-collection",
             )
+
+
+class TestDatabricksRayServiceSubmitS3CDCJobs:
+    """Test suite for Databricks Auto Loader producer submission."""
+
+    @patch.dict(
+        "os.environ",
+        {
+            "S3_BUCKET": "pipeline",
+            "S3_PREFIX": "images",
+            "AUTOLOADER_BRONZE_TABLE": "main.default.images_bronze",
+            "AUTOLOADER_SCHEMA_LOCATION": "dbfs:/pipelines/schema",
+            "AUTOLOADER_CHECKPOINT_LOCATION": "dbfs:/pipelines/checkpoints",
+            "S3_ENDPOINT": "http://minio.test:9000",
+            "S3_ACCESS_KEY_ID": "test-key",
+            "S3_SECRET_ACCESS_KEY": "test-secret",
+            "S3_USE_SSL": "false",
+            "S3_PATH_STYLE": "true",
+            "INATINQ_SRC_DIR": "/Workspace/Users/test/iNatInq/src",
+        },
+        clear=False,
+    )
+    @patch("core.services.databricks_ray_service.DatabricksRayJobConfig.from_env")
+    @patch("core.services.databricks_ray_service.WorkspaceClient")
+    def test_submit_s3_autoloader_job_success(
+        self,
+        mock_client_cls: MagicMock,
+        mock_config: MagicMock,
+    ) -> None:
+        """Auto Loader submission should target dedicated job id."""
+        mock_databricks_config = MagicMock()
+        mock_databricks_config.host = "https://dbc.example.cloud"
+        mock_databricks_config.token = "databricks-token"
+        mock_databricks_config.s3_autoloader_job_id = 321
+        mock_config.return_value = mock_databricks_config
+
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.run_id = 654
+        mock_client.jobs.run_now.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        service = DatabricksRayService()
+        run_id = service.submit_s3_autoloader_job(namespace="test-namespace")
+
+        assert run_id == 654
+        mock_config.assert_called_once_with(require_job_id=False)
+        call_kwargs = mock_client.jobs.run_now.call_args.kwargs
+        assert call_kwargs["job_id"] == 321
+        params = call_kwargs["python_params"]
+        assert "K8S_NAMESPACE=test-namespace" in params
+        assert "S3_BUCKET=pipeline" in params
+        assert "S3_PREFIX=images" in params
+        assert "AUTOLOADER_BRONZE_TABLE=main.default.images_bronze" in params
+        assert "AUTOLOADER_SCHEMA_LOCATION=dbfs:/pipelines/schema" in params
+        assert "AUTOLOADER_CHECKPOINT_LOCATION=dbfs:/pipelines/checkpoints" in params
+        assert "S3_ENDPOINT=http://minio.test:9000" in params
+        assert "S3_ACCESS_KEY_ID=test-key" in params
+        assert "S3_SECRET_ACCESS_KEY=test-secret" in params
+        assert "S3_USE_SSL=false" in params
+        assert "S3_PATH_STYLE=true" in params
+        assert "INATINQ_SRC_DIR=/Workspace/Users/test/iNatInq/src" in params
+
+    @patch("core.services.databricks_ray_service.DatabricksRayJobConfig.from_env")
+    def test_submit_s3_autoloader_job_raises_without_dedicated_job_id(
+        self,
+        mock_config: MagicMock,
+    ) -> None:
+        """Dedicated Auto Loader job id should be required."""
+        mock_databricks_config = MagicMock()
+        mock_databricks_config.s3_autoloader_job_id = None
+        mock_config.return_value = mock_databricks_config
+
+        service = DatabricksRayService()
+        with pytest.raises(ValueError, match="DATABRICKS_S3_AUTOLOADER_JOB_ID"):
+            service.submit_s3_autoloader_job(namespace="test-namespace")
+        mock_config.assert_called_once_with(require_job_id=False)
 
 
 # =============================================================================
