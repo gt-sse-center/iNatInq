@@ -729,33 +729,35 @@ class TestInfinityClientFromConfig:
 class TestInfinityClientRegistration:
     """Tests for provider registry integration."""
 
-    def test_image_provider_registry_clip(self) -> None:
-        """Test that 'clip' is registered in image provider registry.
+    def test_provider_registry_clip(self) -> None:
+        """Test that 'clip' is registered in the unified provider registry.
 
         **Why this test is important:**
           - Registry enables factory pattern for provider creation
-          - Ensures CLIPClient is available
+          - Ensures CLIPClient is available via unified registry
 
         **What it tests:**
-          - 'clip' key exists in _IMAGE_PROVIDER_REGISTRY
+          - 'clip' key exists in _PROVIDER_REGISTRY
         """
-        from clients.interfaces.embedding import _IMAGE_PROVIDER_REGISTRY
+        from clients.interfaces.embedding import _PROVIDER_REGISTRY
+        from config import ProviderType
 
-        assert "clip" in _IMAGE_PROVIDER_REGISTRY
+        assert ProviderType.LOCAL_CLIP in _PROVIDER_REGISTRY
 
-    def test_image_provider_registry_infinity(self) -> None:
-        """Test that 'infinity' is registered in image provider registry.
+    def test_provider_registry_infinity(self) -> None:
+        """Test that 'infinity' is registered in the unified provider registry.
 
         **Why this test is important:**
           - Registry enables factory pattern for provider creation
-          - Ensures InfinityClient is available
+          - Ensures InfinityClient is available via unified registry
 
         **What it tests:**
-          - 'infinity' key exists in _IMAGE_PROVIDER_REGISTRY
+          - 'infinity' key exists in _PROVIDER_REGISTRY
         """
-        from clients.interfaces.embedding import _IMAGE_PROVIDER_REGISTRY
+        from clients.interfaces.embedding import _PROVIDER_REGISTRY
+        from config import ProviderType
 
-        assert "infinity" in _IMAGE_PROVIDER_REGISTRY
+        assert ProviderType.INFINITY in _PROVIDER_REGISTRY
 
 
 class TestInfinityClientConfigFields:

@@ -462,8 +462,7 @@ class EmbeddingConfig(BaseModel):
     clip_max_batch_size: int = 8
     clip_vector_size: int | None = None
 
-    # Infinity settings (image embedding provider)
-    image_provider_type: str = "clip"
+    # Infinity settings
     infinity_url: str | None = None
     infinity_model: str | None = None
     infinity_timeout: int = 120
@@ -561,8 +560,7 @@ class EmbeddingConfig(BaseModel):
         clip_vector_size_str = os.getenv("CLIP_VECTOR_SIZE")
         clip_vector_size: int | None = int(clip_vector_size_str) if clip_vector_size_str else None
 
-        # Infinity / image embeddings
-        image_provider_type = os.getenv("IMAGE_PROVIDER_TYPE", "clip")
+        # Infinity settings
         infinity_url: str | None = None
         infinity_model: str | None = None
         infinity_timeout = int(os.getenv("INFINITY_TIMEOUT", "120"))
@@ -639,7 +637,6 @@ class EmbeddingConfig(BaseModel):
             clip_max_batch_size=clip_max_batch_size,
             clip_vector_size=clip_vector_size,
             # Infinity
-            image_provider_type=image_provider_type,
             infinity_url=infinity_url,
             infinity_model=infinity_model,
             infinity_timeout=infinity_timeout,
