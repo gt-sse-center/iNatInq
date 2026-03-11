@@ -302,3 +302,4 @@ class TestOpenAPIRouteRegistration:
         assert "/search/images" in paths
         assert "/ray/jobs/images" in paths
         assert "/databricks/jobs/images" in paths
+        assert "/databricks/jobs/cdc-producer" in paths

@@ -201,7 +201,10 @@ class DatabricksImageJobRequest(BaseModel):
         ```
     """
 
-    source: Literal["s3", "inat"] = Field("s3", description="Image source type")
+    source: Literal["s3", "inat"] = Field(
+        "s3",
+        description="Image source type",
+    )
     s3_prefix: str | None = Field(
         "",
         json_schema_extra={"example": "images/"},
@@ -256,6 +259,15 @@ class DatabricksImageJobResponse(BaseModel):
     source: Literal["s3", "inat"]
     s3_prefix: str | None
     collection: str
+    submitted_at: str
+
+
+class DatabricksCdcProducerJobResponse(BaseModel):
+    """Response after submitting a Databricks CDC producer job."""
+
+    run_id: str
+    status: str
+    namespace: str
     submitted_at: str
 
 

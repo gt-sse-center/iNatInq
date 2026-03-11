@@ -10,6 +10,7 @@ iNatInq pipeline.
 - `azure-databricks-build.py`: Create or update the cluster from the spec.
 - `azure-databricks-up.py`: Start the cluster.
 - `azure-databricks-down.py`: Terminate the cluster.
+- `azure-databricks-configure-minio-s3a.py`: Create secret scope entries and apply S3A Spark conf on a cluster.
 
 ## Local environment
 
@@ -38,6 +39,7 @@ Databricks job/CLI settings:
 - `DATABRICKS_TOKEN`
 - `DATABRICKS_JOB_ID`
 - `DATABRICKS_INAT_JOB_ID` (required for dedicated iNaturalist image job submission)
+- `DATABRICKS_S3_AUTOLOADER_JOB_ID` (required for dedicated Auto Loader job submission)
 - `DATABRICKS_TASK_TYPE` (default: `python`)
 - `DATABRICKS_CLUSTER_ID` (optional override for cluster start/stop)
 - `INATINQ_SRC_DIR` (optional; override the workspace src path)
@@ -51,6 +53,31 @@ Databricks job/CLI settings:
 
 - S3 image job: `run_ingest_image.py` -> `process_s3_images.py`
 - iNaturalist image job: `run_ingest_inat_image.py` -> `process_inat_images.py`
+- Auto Loader Bronze job: `run_ingest_s3_autoloader.py` -> `process_s3_autoloader.py`
+
+### CDC Auto Loader runtime params
+
+Auto Loader job required params:
+
+- `S3_BUCKET`
+- `AUTOLOADER_BRONZE_TABLE`
+- `AUTOLOADER_SCHEMA_LOCATION`
+- `AUTOLOADER_CHECKPOINT_LOCATION`
+
+Auto Loader optional params:
+
+- `AUTOLOADER_FILE_FORMAT` (default: `binaryFile`)
+- `AUTOLOADER_INCLUDE_EXISTING_FILES` (default: `true`)
+- `AUTOLOADER_MAX_FILES_PER_TRIGGER`
+- `AUTOLOADER_TRIGGER_MODE` (`availableNow`, `once`, `processingTime`)
+- `AUTOLOADER_TRIGGER_INTERVAL` (for `processingTime`)
+
+MinIO-backed Auto Loader:
+
+- Set `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, and `S3_SECRET_ACCESS_KEY`.
+- Optional MinIO flags: `S3_USE_SSL` and `S3_PATH_STYLE`.
+- Source path is derived from `S3_BUCKET` and optional `S3_PREFIX` (`s3://<bucket>/<prefix>`).
+- Derived source path is normalized to `s3a://...` when explicit `S3_ENDPOINT` is set.
 
 ### iNaturalist image job (`run_ingest_inat_image.py` -> `process_inat_images.py`)
 
@@ -96,6 +123,7 @@ Weaviate Cloud:
 - `S3_ACCESS_KEY_ID`
 - `S3_SECRET_ACCESS_KEY`
 - `S3_BUCKET`
+- `S3_PREFIX`
 - `S3_USE_SSL`
 - `S3_PATH_STYLE`
 - `S3_TIMEOUT`
@@ -114,7 +142,19 @@ These targets use `zarf/databricks/dev/.env.local` and
 make azure-databricks-build
 make azure-databricks-up
 make azure-databricks-down
+make azure-databricks-configure-minio-s3a
 ```
+
+`azure-databricks-configure-minio-s3a.py` reads `ENV_FILE` (default:
+`zarf/databricks/dev/.env.local`) and uses:
+
+- `DATABRICKS_HOST`, `DATABRICKS_TOKEN`, `DATABRICKS_CLUSTER_ID`
+- `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`
+- Optional:
+  - `DATABRICKS_S3_SECRET_SCOPE` (default: `inatinq-minio`)
+  - `DATABRICKS_S3_ACCESS_KEY_NAME` (default: `s3-access-key`)
+  - `DATABRICKS_S3_SECRET_KEY_NAME` (default: `s3-secret-key`)
+  - `DATABRICKS_RESTART_CLUSTER_AFTER_S3A_CONFIG` (`true`/`false`, default: `false`)
 
 ## Passing iNat params to the Databricks run
 

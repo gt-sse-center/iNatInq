@@ -76,3 +76,19 @@ resources:
                 package: weaviate-client==4.9.3
       queue:
         enabled: true
+    inatinq_ml_pipeline_autoloader_job:
+      name: inatinq-ml-pipeline-autoloader-job
+      tasks:
+        - task_key: inatinq-ml-pipeline-autoloader
+          spark_python_task:
+            python_file: /Workspace/Users/<user>/iNatInq/apps/src/core/ingestion/databricks/run_ingest_s3_autoloader.py
+          existing_cluster_id: <cluster-id>
+          libraries:
+            - pypi:
+                package: pyspark==3.5.2
+            - pypi:
+                package: pydantic==2.0.0
+            - pypi:
+                package: pydantic-settings==2.0.0
+      queue:
+        enabled: true
