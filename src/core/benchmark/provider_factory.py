@@ -1,7 +1,7 @@
 """Resolve provider names to client instances for benchmarking.
 
 Given a provider name (e.g., ``"qdrant"``), this module constructs the
-full search pipeline: VectorDBProvider + CLIPClient + S3KeyIDMapper →
+full search pipeline: VectorDBProvider + EmbeddingProvider + S3KeyIDMapper →
 CLIPSearchPipeline.
 
 Example:
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 
-from clients.clip import CLIPClient
+from clients.interfaces.embedding import create_embedding_provider
 from clients.interfaces.vector_db import VectorDBProvider, create_vector_db_provider
 from config import EmbeddingConfig, VectorDBConfig
 from core.benchmark.id_mapping import S3KeyIDMapper
@@ -37,7 +37,7 @@ def resolve_search_pipeline(
 
     Constructs the full pipeline from environment configuration:
     1. VectorDBConfig → VectorDBProvider (via factory + registry)
-    2. EmbeddingConfig → CLIPClient
+    2. EmbeddingConfig → EmbeddingProvider (via factory + registry)
     3. S3KeyIDMapper for ID translation
     4. Compose into CLIPSearchPipeline
 
@@ -63,14 +63,14 @@ def resolve_search_pipeline(
     vdb_config = VectorDBConfig.from_env_for_provider(provider_name)
     vector_provider = create_vector_db_provider(vdb_config)
 
-    # Build Embedding client from env config
+    # Build embedding provider from env config
     emb_config = EmbeddingConfig.from_env()
-    clip_client = CLIPClient.from_config(emb_config)
+    image_provider = create_embedding_provider(emb_config)
 
     # Compose the pipeline
     id_mapper = S3KeyIDMapper()
     pipeline = CLIPSearchPipeline(
-        clip_client=clip_client,
+        clip_client=image_provider,
         vector_provider=vector_provider,
         id_mapper=id_mapper,
     )
@@ -79,7 +79,6 @@ def resolve_search_pipeline(
         "Resolved search pipeline",
         extra={
             "provider": provider_name,
-            "clip_is_hosted": clip_client.is_hosted,
             "clip_url": emb_config.clip_url,
         },
     )

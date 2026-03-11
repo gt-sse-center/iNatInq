@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -36,8 +36,8 @@ class TestCLIPSearchPipeline:
 
     @pytest.mark.asyncio
     async def test_search_embed_then_search_then_map(self):
-        """Pipeline calls embed_text, then search_async, then maps IDs."""
-        clip_client = MagicMock()
+        """Pipeline calls embed_text (async), then search_async, then maps IDs."""
+        clip_client = AsyncMock()
         clip_client.embed_text.return_value = [0.1, 0.2, 0.3]
 
         vector_provider = AsyncMock()
@@ -67,7 +67,7 @@ class TestCLIPSearchPipeline:
     @pytest.mark.asyncio
     async def test_search_falls_back_to_point_id_without_s3_key(self):
         """When payload lacks s3_key, doc_id falls back to point_id."""
-        clip_client = MagicMock()
+        clip_client = AsyncMock()
         clip_client.embed_text.return_value = [0.1]
 
         vector_provider = AsyncMock()
@@ -88,7 +88,7 @@ class TestCLIPSearchPipeline:
     @pytest.mark.asyncio
     async def test_search_preserves_raw_results(self):
         """Raw SearchResults are preserved in the pipeline result."""
-        clip_client = MagicMock()
+        clip_client = AsyncMock()
         clip_client.embed_text.return_value = [0.5]
 
         raw = _make_search_results(("uuid-1", {"s3_key": "42"}))
@@ -107,7 +107,7 @@ class TestCLIPSearchPipeline:
     @pytest.mark.asyncio
     async def test_search_empty_results(self):
         """Pipeline handles empty search results."""
-        clip_client = MagicMock()
+        clip_client = AsyncMock()
         clip_client.embed_text.return_value = [0.1]
 
         vector_provider = AsyncMock()
