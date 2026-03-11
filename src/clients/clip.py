@@ -43,22 +43,22 @@ The client class:
 import asyncio
 import logging
 from typing import Any, Literal
-from pydantic import BaseModel, TypeAdapter, ValidationError
-from typing_extensions import override
 
 import aiobreaker
 import attrs
 import httpx
+from pydantic import BaseModel, TypeAdapter, ValidationError
+from typing_extensions import override
 
 from clients.interfaces import EmbeddingProvider
 from config import EmbeddingConfig, ProviderType
-from core.exceptions import UpstreamError
-from core.metrics.decorators import with_client_metrics_async
 from foundation.circuit_breaker import (
     create_async_circuit_breaker,
     with_circuit_breaker_async,
 )
+from foundation.exceptions import UpstreamError
 from foundation.image import encode_image_base64
+from foundation.metrics.decorators import with_client_metrics_async
 from foundation.retry import HTTPErrorClassifier, async_retry_call, create_retry_logger
 
 from .mixins import ConfigValidationMixin, LoggerMixin
@@ -321,7 +321,7 @@ class CLIPClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
             }
         }
 
-    async def _request_images(self, images_b64: list[str]) -> list[list[float]]:
+    async def _request_images(self, images_b64: list[str], operation: str) -> list[list[float]]:
         async def do_request() -> list[list[float]]:
             client = await self._get_async_client()
 
@@ -347,7 +347,8 @@ class CLIPClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
             max_wait=self.retry_max_wait,
             is_retriable=_clip_classifier.is_retriable,
             before_sleep=_clip_log_retry,
-            operation="CLIP embed_image_async",
+            client="clip",
+            operation=operation,
         )
 
     @override
@@ -355,7 +356,7 @@ class CLIPClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
     @with_circuit_breaker_async("clip")
     async def embed_image(self, image_bytes: bytes) -> list[float]:
         image_b64 = encode_image_base64(image_bytes, include_mime_type=(not self.is_hosted))
-        return (await self._request_images([image_b64]))[0]
+        return (await self._request_images([image_b64], "embed_image"))[0]
 
     @override
     @with_client_metrics_async("clip", "embed_image_batch")
@@ -378,7 +379,7 @@ class CLIPClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
             encode_image_base64(image, include_mime_type=(not self.is_hosted)) for image in images_bytes
         ]
 
-        return await self._request_images(encoded_images)
+        return await self._request_images(encoded_images, "embed_image_batch")
 
     def _parse_local_clip_response(self, data: object, *, count: int) -> list[list[float]]:
         try:
@@ -408,7 +409,7 @@ class CLIPClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
             raise UpstreamError(f"Hosted CLIP server returned {len(vectors)} vectors, expected {count}")
         return vectors
 
-    async def _request_texts(self, texts: list[str]) -> list[list[float]]:
+    async def _request_texts(self, texts: list[str], operation: str) -> list[list[float]]:
         async def _do_request() -> list[list[float]]:
             client = await self._get_async_client()
             url = self.base_url if self.is_hosted else f"{self.base_url}/embedding/text"
@@ -433,7 +434,8 @@ class CLIPClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
             max_wait=self.retry_max_wait,
             is_retriable=_clip_classifier.is_retriable,
             before_sleep=_clip_log_retry,
-            operation="CLIP embed_text_async",
+            client="clip",
+            operation=operation,
         )
 
     @override
@@ -443,7 +445,7 @@ class CLIPClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
         if not text or not text.strip():
             msg = "Text cannot be empty"
             raise ValueError(msg)
-        return (await self._request_texts([text]))[0]
+        return (await self._request_texts([text], "embed_text"))[0]
 
     @override
     @with_client_metrics_async("clip", "embed_text_batch")
@@ -467,7 +469,7 @@ class CLIPClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
                 msg = "Text cannot be empty"
                 raise ValueError(msg)
 
-        return await self._request_texts(texts)
+        return await self._request_texts(texts, "embed_text_batch")
 
     @override
     @classmethod

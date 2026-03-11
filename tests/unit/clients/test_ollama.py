@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 """Unit tests for clients.ollama module.
 
 This file tests the OllamaClient class which provides embedding generation
@@ -25,11 +27,12 @@ Run with: uv run pytest tests/unit/clients/test_ollama.py
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiobreaker
+import httpx
 import pytest
 
 from clients.ollama import OllamaClient
 from config import EmbeddingConfig, ProviderType
-from core.exceptions import UpstreamError
+from foundation.exceptions import UpstreamError
 
 # =============================================================================
 # Client Initialization Tests
@@ -356,8 +359,6 @@ class TestOllamaClientEmbedText:
         Note: 500 errors are retriable, so the error message comes from the
         retry wrapper after all retries are exhausted.
         """
-        import httpx
-
         mock_response = MagicMock()
         mock_response.status_code = 500
         mock_response.text = "Internal Server Error"
@@ -370,7 +371,7 @@ class TestOllamaClientEmbedText:
         mock_client.__aexit__.return_value = None
         mock_async_client_cls.return_value = mock_client
 
-        with pytest.raises(UpstreamError, match="Ollama _request_texts failed after"):
+        with pytest.raises(UpstreamError, match="Ollama embed_text failed after"):
             await ollama_client.embed_text("hello world")
 
     @patch("clients.ollama.httpx.AsyncClient")
@@ -383,15 +384,13 @@ class TestOllamaClientEmbedText:
         Note: RequestError (base class, not ConnectError) is non-retriable
         so the error wraps immediately via async_retry_call.
         """
-        import httpx
-
         mock_client = AsyncMock()
         mock_client.post.side_effect = httpx.RequestError("Connection failed")
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__.return_value = None
         mock_async_client_cls.return_value = mock_client
 
-        with pytest.raises(UpstreamError, match="Ollama _request_texts failed"):
+        with pytest.raises(UpstreamError, match="Ollama embed_text failed"):
             await ollama_client.embed_text("hello world")
 
     @patch("clients.ollama.httpx.AsyncClient")
@@ -652,15 +651,13 @@ class TestOllamaClientEmbedImage:
           - RequestException is caught and wrapped
           - Error message is descriptive
         """
-        import httpx
-
         mock_client = AsyncMock()
         mock_client.post.side_effect = httpx.ConnectError("Connection refused")
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__.return_value = None
         mock_async_client_cls.return_value = mock_client
 
-        with pytest.raises(UpstreamError, match="Ollama _request_images failed"):
+        with pytest.raises(UpstreamError, match="Ollama embed_image failed"):
             await ollama_client.embed_image(b"fake-image-data")
 
     @patch("clients.ollama.httpx.AsyncClient")

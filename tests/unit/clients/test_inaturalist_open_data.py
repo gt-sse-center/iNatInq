@@ -17,7 +17,7 @@ from clients.inaturalist_open_data import (
     SUPPORTED_IMAGE_SIZES,
     SUPPORTED_METADATA_DATASETS,
 )
-from core.exceptions import UpstreamError
+from foundation.exceptions import UpstreamError
 
 
 def _make_metadata_response(content: bytes) -> MagicMock:

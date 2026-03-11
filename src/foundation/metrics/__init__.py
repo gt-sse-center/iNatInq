@@ -7,7 +7,7 @@ HTTP metrics from ``prometheus-fastapi-instrumentator``.
 
 Usage::
 
-    from core.metrics import CLIENT_REQUEST_DURATION, classify_error
+    from foundation.metrics import CLIENT_REQUEST_DURATION, classify_error
 
     CLIENT_REQUEST_DURATION.labels(
         client="ollama", operation="embed", status="success"
@@ -17,9 +17,9 @@ All label values are drawn from fixed allow-lists defined in ADR-0001 to
 prevent cardinality explosion.
 """
 
-from core.metrics.classify import classify_error
-from core.metrics.decorators import with_client_metrics, with_client_metrics_async
-from core.metrics.registry import (
+from foundation.metrics.classify import classify_error
+from foundation.metrics.decorators import with_client_metrics, with_client_metrics_async
+from foundation.metrics.registry import (
     CIRCUIT_BREAKER_STATE,
     CIRCUIT_BREAKER_TRANSITIONS,
     CLIENT_ERRORS_TOTAL,

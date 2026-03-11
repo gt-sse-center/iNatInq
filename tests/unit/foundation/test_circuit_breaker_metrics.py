@@ -243,11 +243,11 @@ class TestAsyncCircuitBreakerListenerMetrics:
 
         # First failure
         with pytest.raises(ConnectionError):
-            await cb.call_async(failing)  # pyright: ignore[reportUnknownMemberType]
+            await cb.call_async(failing)
 
         # Second failure
-        with pytest.raises(aiobreaker.CircuitBreakerError):
-            await cb.call_async(failing)  # pyright: ignore[reportUnknownMemberType]
+        with pytest.raises(aiobreaker.state.CircuitBreakerError):
+            await cb.call_async(failing)
 
         assert cb.state.state.name.lower() == "open"
         assert _gauge(name) == 1.0

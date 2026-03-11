@@ -44,7 +44,7 @@ class TestWithClientMetrics:
           - Counter has correct labels: client, operation, status="success"
         """
         # Arrange
-        from core.metrics.decorators import with_client_metrics
+        from foundation.metrics.decorators import with_client_metrics
 
         class DummyClient:
             @with_client_metrics("test_client", "test_operation")
@@ -90,7 +90,7 @@ class TestWithClientMetrics:
           - Histogram sample count increments by 1
         """
         # Arrange
-        from core.metrics.decorators import with_client_metrics
+        from foundation.metrics.decorators import with_client_metrics
 
         class DummyClient:
             @with_client_metrics("test_client", "test_op_histogram")
@@ -139,7 +139,7 @@ class TestWithClientMetrics:
           - Counter increments with status="error"
         """
         # Arrange
-        from core.metrics.decorators import with_client_metrics
+        from foundation.metrics.decorators import with_client_metrics
 
         class DummyClient:
             @with_client_metrics("test_client", "test_error")
@@ -202,7 +202,7 @@ class TestWithClientMetrics:
           - No exception wrapping or modification
         """
         # Arrange
-        from core.metrics.decorators import with_client_metrics
+        from foundation.metrics.decorators import with_client_metrics
 
         class DummyClient:
             @with_client_metrics("test_client", "test_reraise")
@@ -232,7 +232,7 @@ class TestWithClientMetricsAsync:
           - Counter has correct labels: client, operation, status="success"
         """
         # Arrange
-        from core.metrics.decorators import with_client_metrics_async
+        from foundation.metrics.decorators import with_client_metrics_async
 
         class DummyAsyncClient:
             @with_client_metrics_async("test_async_client", "test_async_operation")
@@ -279,7 +279,7 @@ class TestWithClientMetricsAsync:
           - Counter increments with status="error"
         """
         # Arrange
-        from core.metrics.decorators import with_client_metrics_async
+        from foundation.metrics.decorators import with_client_metrics_async
 
         class DummyAsyncClient:
             @with_client_metrics_async("test_async_client", "test_async_error")
@@ -348,7 +348,7 @@ class TestDecoratorBehavior:
           - No dynamic label values from function arguments
         """
         # Arrange
-        from core.metrics.decorators import with_client_metrics
+        from foundation.metrics.decorators import with_client_metrics
 
         class DummyClient:
             @with_client_metrics("fixed_client", "fixed_operation")
@@ -387,7 +387,7 @@ class TestDecoratorBehavior:
           - Attribute value matches (client, operation) arguments
         """
         # Arrange
-        from core.metrics.decorators import with_client_metrics
+        from foundation.metrics.decorators import with_client_metrics
 
         class DummyClient:
             @with_client_metrics("test_marker", "test_op")
@@ -419,7 +419,7 @@ class TestCancellationSignalsPassthrough:
           - KeyboardInterrupt is re-raised
           - CLIENT_ERRORS_TOTAL is not incremented
         """
-        from core.metrics.decorators import with_client_metrics
+        from foundation.metrics.decorators import with_client_metrics
 
         class DummyClient:
             @with_client_metrics("test_client", "test_kb_interrupt")
@@ -462,7 +462,7 @@ class TestCancellationSignalsPassthrough:
         """
         import asyncio
 
-        from core.metrics.decorators import with_client_metrics_async
+        from foundation.metrics.decorators import with_client_metrics_async
 
         class DummyAsyncClient:
             @with_client_metrics_async("test_async_client", "test_cancelled")

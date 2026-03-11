@@ -648,7 +648,7 @@ class TestNonRetriableErrors:
                 )
             )
 
-        assert "Qdrant search failed" in str(exc_info.value)
+        assert "Qdrant search_async failed" in str(exc_info.value)
 
 
 # =============================================================================

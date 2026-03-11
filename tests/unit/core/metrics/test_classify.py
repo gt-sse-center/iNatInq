@@ -19,7 +19,7 @@ Run with: uv run pytest tests/unit/core/metrics/test_classify.py -v
 
 import requests.exceptions
 
-from core.metrics.classify import classify_error
+from foundation.metrics.classify import classify_error
 from foundation.exceptions import UpstreamError
 
 
