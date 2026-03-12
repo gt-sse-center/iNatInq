@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 """Unit tests for CLIPClient image embedding client.
 
 Tests for the CLIPClient class that generates image embeddings via CLIP-compatible
@@ -8,11 +10,14 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiobreaker
+import httpx
 import pytest
 
 from clients.clip import CLIP_VECTOR_SIZES, CLIPClient
 from clients.interfaces import EmbeddingProvider
 from config import EmbeddingConfig, ProviderType
+from foundation.exceptions import UpstreamError
 
 
 class TestCLIPClientInit:
@@ -286,10 +291,6 @@ class TestCLIPClientErrorHandling:
           - RequestException is caught and wrapped
           - Error message is descriptive
         """
-        import httpx
-
-        from core.exceptions import UpstreamError
-
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
         mock_client.__aenter__.return_value = mock_client
@@ -297,7 +298,7 @@ class TestCLIPClientErrorHandling:
         mock_async_client_cls.return_value = mock_client
 
         client = CLIPClient(base_url="http://localhost:11434", model="llava", is_hosted=False)
-        with pytest.raises(UpstreamError, match="CLIP embed_image_async failed"):
+        with pytest.raises(UpstreamError, match="Clip embed_image failed"):
             await client.embed_image(b"fake image")
 
     @patch("clients.clip.httpx.AsyncClient")
@@ -325,8 +326,6 @@ class TestCLIPClientErrorHandling:
         mock_client.__aexit__.return_value = None
         mock_async_client_cls.return_value = mock_client
 
-        from core.exceptions import UpstreamError
-
         client = CLIPClient(base_url="http://localhost:11434", model="llava", is_hosted=False)
         with pytest.raises(UpstreamError, match="Unexpected response"):
             await client.embed_image(b"fake image")
@@ -345,10 +344,6 @@ class TestCLIPClientErrorHandling:
         **What it tests:**
           - HTTP errors are wrapped in UpstreamError
         """
-        import httpx
-
-        from core.exceptions import UpstreamError
-
         mock_response = MagicMock()
         mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
             "500 Server Error",
@@ -362,7 +357,7 @@ class TestCLIPClientErrorHandling:
         mock_async_client_cls.return_value = mock_client
 
         client = CLIPClient(base_url="http://localhost:11434", model="llava", is_hosted=False)
-        with pytest.raises(UpstreamError, match="CLIP embed_image_async failed"):
+        with pytest.raises(UpstreamError, match="Clip embed_image failed"):
             await client.embed_image(b"fake image")
 
     @patch("clients.clip.httpx.AsyncClient")
@@ -379,10 +374,6 @@ class TestCLIPClientErrorHandling:
         **What it tests:**
           - httpx.HTTPError is wrapped in UpstreamError
         """
-        import httpx
-
-        from core.exceptions import UpstreamError
-
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(side_effect=httpx.HTTPError("Connection failed"))
         mock_client.__aenter__.return_value = mock_client
@@ -390,7 +381,7 @@ class TestCLIPClientErrorHandling:
         mock_async_client_cls.return_value = mock_client
 
         client = CLIPClient(base_url="http://localhost:11434", model="llava", is_hosted=False)
-        with pytest.raises(UpstreamError, match="CLIP embed_image_async failed"):
+        with pytest.raises(UpstreamError, match="Clip embed_image failed"):
             await client.embed_image(b"fake image")
 
     @patch("clients.clip.httpx.AsyncClient")
@@ -417,8 +408,6 @@ class TestCLIPClientErrorHandling:
         mock_client.__aexit__.return_value = None
         mock_async_client_cls.return_value = mock_client
 
-        from core.exceptions import UpstreamError
-
         client = CLIPClient(base_url="http://localhost:11434", model="llava", is_hosted=False)
         with pytest.raises(UpstreamError, match="Unexpected response"):
             await client.embed_image(b"fake image")
@@ -437,8 +426,6 @@ class TestCLIPClientCircuitBreaker:
         **What it tests:**
           - Async breaker exists and is closed
         """
-        import aiobreaker
-
         client = CLIPClient(base_url="http://localhost:11434", model="llava", is_hosted=False)
 
         assert client._async_breaker is not None

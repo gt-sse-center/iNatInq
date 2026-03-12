@@ -43,7 +43,7 @@ class TestMetricDefinitions:
           - classify_error function is importable
         """
         # Arrange & Act
-        from core.metrics import (
+        from foundation.metrics import (
             CLIENT_ERRORS_TOTAL,
             CLIENT_REQUEST_DURATION,
             CLIENT_REQUEST_TOTAL,
@@ -94,7 +94,7 @@ class TestMetricDefinitions:
           - Each metric's labelnames match the plan's specification exactly
         """
         # Arrange
-        from core.metrics import (
+        from foundation.metrics import (
             CLIENT_ERRORS_TOTAL,
             CLIENT_REQUEST_DURATION,
             CLIENT_REQUEST_TOTAL,
@@ -139,7 +139,7 @@ class TestMetricDefinitions:
           - RESULT_COUNT_BUCKETS matches expected count ranges
         """
         # Arrange
-        from core.metrics import FAST_BUCKETS, RESULT_COUNT_BUCKETS, SLOW_BUCKETS
+        from foundation.metrics import FAST_BUCKETS, RESULT_COUNT_BUCKETS, SLOW_BUCKETS
 
         # Expected values from plan
         expected_fast = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
@@ -166,7 +166,7 @@ class TestMetricDefinitions:
           - Filters out default collectors (python_info, python_gc_*)
         """
         # Arrange
-        import core.metrics  # noqa: F401 - import to trigger registration
+        import foundation.metrics  # noqa: F401 - import to trigger registration
 
         # Act - collect metric family names from REGISTRY (not sample names)
         inatinq_names = set()
@@ -214,7 +214,7 @@ class TestClassifyError:
           - requests.exceptions.Timeout returns "timeout" (requests library)
         """
         # Arrange
-        from core.metrics import classify_error
+        from foundation.metrics import classify_error
 
         # Act & Assert
         assert classify_error(TimeoutError()) == "timeout"
@@ -235,7 +235,7 @@ class TestClassifyError:
           - requests.exceptions.ConnectionError returns "connection"
         """
         # Arrange
-        from core.metrics import classify_error
+        from foundation.metrics import classify_error
 
         # Act & Assert
         assert classify_error(ConnectionError()) == "connection"
@@ -254,7 +254,7 @@ class TestClassifyError:
           - UpstreamError returns "upstream"
         """
         # Arrange
-        from core.metrics import classify_error
+        from foundation.metrics import classify_error
 
         # Act & Assert
         assert classify_error(UpstreamError("service unavailable")) == "upstream"
@@ -274,7 +274,7 @@ class TestClassifyError:
             the metrics decorator sees the exception.
         """
         # Arrange
-        from core.metrics import classify_error
+        from foundation.metrics import classify_error
 
         # Act & Assert — the circuit breaker decorator wraps the raw error
         assert classify_error(UpstreamError("breaker open", error_kind="circuit_open")) == "circuit_open"
@@ -292,7 +292,7 @@ class TestClassifyError:
           - Acts as catch-all for unmapped exception types
         """
         # Arrange
-        from core.metrics import classify_error
+        from foundation.metrics import classify_error
 
         # Act & Assert
         assert classify_error(ValueError("some error")) == "unknown"
@@ -312,7 +312,7 @@ class TestClassifyError:
           - Guards against OSError check matching TimeoutError first
         """
         # Arrange
-        from core.metrics import classify_error
+        from foundation.metrics import classify_error
 
         # Act
         result = classify_error(TimeoutError())

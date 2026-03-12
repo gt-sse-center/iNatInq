@@ -29,7 +29,7 @@ import pytest
 from botocore.exceptions import ClientError
 
 from clients.s3 import S3ClientWrapper
-from core.exceptions import UpstreamError
+from foundation.exceptions import UpstreamError
 
 # =============================================================================
 # Client Initialization Tests

@@ -38,6 +38,7 @@ from urllib.parse import urlparse
 
 import aiobreaker
 import attrs
+from typing_extensions import override
 from weaviate import WeaviateAsyncClient
 from weaviate.auth import AuthApiKey
 from weaviate.classes.config import Configure, DataType, Property, VectorDistances
@@ -46,22 +47,21 @@ from weaviate.classes.init import Timeout
 from weaviate.config import AdditionalConfig
 from weaviate.connect import ConnectionParams
 from weaviate.exceptions import (
+    UnexpectedStatusCodeError,
     WeaviateConnectionError,
     WeaviateGRPCUnavailableError,
     WeaviateTimeoutError,
-    UnexpectedStatusCodeError,
 )
 
 from config import VectorDBConfig
-from core.exceptions import UpstreamError
 from core.models import SearchResultItem, SearchResults
-from core.metrics.decorators import with_client_metrics_async
 from foundation.circuit_breaker import (
     create_async_circuit_breaker,
     with_circuit_breaker_async,
 )
+from foundation.exceptions import UpstreamError
+from foundation.metrics.decorators import with_client_metrics_async
 from foundation.retry import HTTPErrorClassifier, async_retry_call, create_retry_logger
-from typing_extensions import override
 
 from .base import VectorDBClientBase
 from .interfaces.vector_db import VectorDBProvider
@@ -366,6 +366,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             is_retriable=_weaviate_classifier.is_retriable,
             before_sleep=_weaviate_log_retry,
             operation="Weaviate ensure_collection",
+            client="weaviate",
         )
 
     @staticmethod
@@ -474,6 +475,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             is_retriable=_weaviate_classifier.is_retriable,
             before_sleep=_weaviate_log_retry,
             operation="Weaviate ensure_image_collection",
+            client="weaviate",
         )
 
     @with_client_metrics_async("weaviate", "search_async")
@@ -554,6 +556,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
                 max_wait=self.retry_max_wait,
                 is_retriable=_weaviate_classifier.is_retriable,
                 before_sleep=_weaviate_log_retry,
+                client="weaviate",
                 operation="Weaviate search",
             )
         except UpstreamError:
@@ -605,7 +608,8 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             max_wait=self.retry_max_wait,
             is_retriable=_weaviate_classifier.is_retriable,
             before_sleep=_weaviate_log_retry,
-            operation="Weaviate batch_upsert",
+            client="weaviate",
+            operation="batch_upsert_async",
         )
 
     @override

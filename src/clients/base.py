@@ -10,8 +10,8 @@ from typing import Any
 import aiobreaker.state as aio_state
 import attrs
 
-from core.exceptions import UpstreamError
 from foundation.circuit_breaker import handle_circuit_breaker_error
+from foundation.exceptions import UpstreamError
 
 from .mixins import CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin
 
@@ -73,7 +73,7 @@ class VectorDBClientBase(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin
             await self._do_batch_upsert(collection=collection, points=points)
         except Exception as e:
             service_name, _, _ = self._circuit_breaker_config()
-            msg = f"{service_name.capitalize()} batch upsert failed: {e}"
+            msg = f"{service_name.capitalize()} batch_upsert_async failed: {e}"
             raise UpstreamError(msg) from e
 
     @abstractmethod

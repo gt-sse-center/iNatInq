@@ -12,17 +12,16 @@ import csv
 import gzip
 import io
 import itertools
-from urllib.parse import urlparse
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 import attrs
 import requests
-
-from core.exceptions import UpstreamError
-from foundation.circuit_breaker import with_circuit_breaker
-from foundation.http import create_retry_session
-
 from typing_extensions import override
+
+from foundation.circuit_breaker import with_circuit_breaker
+from foundation.exceptions import UpstreamError
+from foundation.http import create_retry_session
 
 from .mixins import CircuitBreakerMixin, LoggerMixin
 

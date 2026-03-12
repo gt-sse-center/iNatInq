@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 """Unit tests for clients.weaviate module.
 
 This file tests the WeaviateClientWrapper class which provides vector database operations
@@ -32,8 +34,8 @@ from weaviate.classes.config import VectorDistances
 
 from clients.weaviate import WeaviateClientWrapper, WeaviateDataObject, _DISTANCE_METRIC_MAP
 from config import VectorDBConfig
-from core.exceptions import UpstreamError
 from core.models import SearchResults
+from foundation.exceptions import UpstreamError
 
 # =============================================================================
 # Client Initialization Tests
@@ -950,7 +952,7 @@ class TestWeaviateClientWrapperBatchUpsert:
 
         points = [WeaviateDataObject(uuid="uuid-1", properties={"text": "hello"}, vector=[0.1, 0.2])]
 
-        with pytest.raises(UpstreamError, match="Weaviate batch upsert failed"):
+        with pytest.raises(UpstreamError, match="Weaviate batch_upsert_async failed"):
             await weaviate_client.batch_upsert_async(
                 collection="test-collection", points=points, vector_size=768
             )
