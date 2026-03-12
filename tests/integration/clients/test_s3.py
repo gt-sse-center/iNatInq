@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 """Integration tests for S3ClientWrapper using real MinIO container.
 
 This module tests the S3ClientWrapper against a real MinIO instance to validate:
@@ -43,8 +45,10 @@ import pybreaker
 import pytest
 from botocore.exceptions import ClientError, EndpointConnectionError, ReadTimeoutError
 
-from clients.s3 import S3ClientWrapper, _is_retriable_error
-from core.exceptions import UpstreamError
+from clients.s3 import S3ClientWrapper, _s3_classifier
+
+_is_retriable_error = _s3_classifier.is_retriable
+from foundation.exceptions import UpstreamError
 from foundation.circuit_breaker import create_circuit_breaker
 
 logger = logging.getLogger(__name__)
@@ -276,7 +280,7 @@ class TestRetryExhaustion:
 
         with (
             patch.object(client._client, "get_object", side_effect=always_fail),
-            pytest.raises(UpstreamError, match="failed after 2 attempts"),
+            pytest.raises(UpstreamError, match="S3 get_object failed after 2 attempts"),
         ):
             client.get_object(bucket=test_bucket, key="exhaustion-test")
 

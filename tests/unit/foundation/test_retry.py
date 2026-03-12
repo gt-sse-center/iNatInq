@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 """Unit tests for foundation.retry module.
 
 This file tests the retry utilities including:
@@ -30,6 +32,7 @@ Run with: pytest tests/unit/foundation/test_retry.py
 
 import logging
 from typing import Any
+from typing_extensions import override
 from unittest.mock import MagicMock
 
 import pytest
@@ -553,12 +556,14 @@ class TestRetryWithBackoff:
 class ConcreteHTTPErrorClassifier(HTTPErrorClassifier):
     """Concrete implementation for testing the abstract base class."""
 
+    @override
     def is_retriable(self, exc: BaseException) -> bool:
         """Simple implementation that uses HTTP status from exception."""
         if hasattr(exc, "status_code"):
             return self.is_retriable_http_status(exc.status_code)
         return False
 
+    @override
     def get_error_details(self, exc: BaseException) -> dict[str, Any]:
         """Extract error details from exception."""
         if hasattr(exc, "status_code"):

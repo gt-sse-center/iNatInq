@@ -39,8 +39,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from types import CoroutineType
 
-from core.metrics.classify import classify_error
-from core.metrics.registry import (
+from foundation.metrics.classify import classify_error
+from foundation.metrics.registry import (
     CLIENT_ERRORS_TOTAL,
     CLIENT_REQUEST_DURATION,
     CLIENT_REQUEST_TOTAL,
@@ -117,7 +117,7 @@ def with_client_metrics(
                 raise
 
         # Marker for introspection tests (test_all_clients_instrumented)
-        wrapper._client_metrics = (client, operation)  # type: ignore[attr-defined]
+        wrapper._client_metrics = (client, operation)  # pyright: ignore[reportAttributeAccessIssue]
         return wrapper
 
     return decorator
@@ -180,7 +180,7 @@ def with_client_metrics_async(
                 raise
 
         # Marker for introspection tests (test_all_clients_instrumented)
-        wrapper._client_metrics = (client, operation)  # type: ignore[attr-defined]
+        wrapper._client_metrics = (client, operation)  # pyright: ignore[reportAttributeAccessIssue]
         return wrapper
 
     return decorator

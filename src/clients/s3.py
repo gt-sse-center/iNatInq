@@ -75,19 +75,12 @@ from botocore.exceptions import (  # type: ignore[import-untyped]
     EndpointConnectionError,
     ReadTimeoutError,
 )
-from tenacity import (
-    RetryError,
-    Retrying,
-    retry_if_exception,
-    stop_after_attempt,
-    wait_exponential,
-)
-
-from core.exceptions import UpstreamError
-from core.metrics.decorators import with_client_metrics
-from foundation.circuit_breaker import with_circuit_breaker
-from foundation.retry import HTTPErrorClassifier, create_retry_logger
 from typing_extensions import override
+
+from foundation.circuit_breaker import with_circuit_breaker
+from foundation.exceptions import UpstreamError
+from foundation.metrics.decorators import with_client_metrics
+from foundation.retry import HTTPErrorClassifier, RetryWithBackoff
 
 from .mixins import CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin
 
@@ -239,27 +232,8 @@ class S3ErrorClassifier(HTTPErrorClassifier):
         return {}
 
 
-# Create singleton classifier and retry logger
+# Create singleton classifier
 _s3_classifier = S3ErrorClassifier()
-_log_retry = create_retry_logger(
-    logger,
-    _s3_classifier.get_error_details,
-    "S3 operation failed, retrying",
-)
-
-
-def _is_retriable_error(exc: BaseException) -> bool:
-    """Check if an exception is retriable using the S3 classifier.
-
-    This function is used as the retry predicate for tenacity.
-
-    Args:
-        exc: Exception to check.
-
-    Returns:
-        True if retriable, False otherwise.
-    """
-    return _s3_classifier.is_retriable(exc)
 
 
 # =============================================================================
@@ -394,31 +368,28 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         Raises:
             UpstreamError: If all retries are exhausted or non-retriable error occurs.
         """
+        retry = RetryWithBackoff(
+            max_attempts=self.max_retries,
+            wait_min=self.retry_min_wait,
+            wait_max=self.retry_max_wait,
+            is_retriable=_s3_classifier.is_retriable,
+            logger=logger,
+            client="s3",
+            operation=operation,
+        )
         try:
-            for attempt in Retrying(
-                stop=stop_after_attempt(self.max_retries),
-                wait=wait_exponential(min=self.retry_min_wait, max=self.retry_max_wait),
-                retry=retry_if_exception(_is_retriable_error),
-                before_sleep=_log_retry,
-                reraise=False,  # Wrap in RetryError on exhaustion
-            ):
-                with attempt:
-                    return func(*args, **kwargs)
-        except RetryError as e:
-            # All retries exhausted - wrap in UpstreamError
-            exc = e.last_attempt.exception() if e.last_attempt else e
-            msg = f"S3 {operation} failed after {self.max_retries} attempts: {exc}"
-            logger.exception(msg, extra={"operation": operation, "attempts": self.max_retries})
-            raise UpstreamError(msg) from exc
+            return retry.call(func, *args, **kwargs)
         except ClientError as e:
-            # Non-retriable ClientError (4xx, auth issues)
             error_code = e.response.get("Error", {}).get("Code", "")
-            msg = f"S3 {operation} failed: {error_code}"
+            attempts = retry.last_attempt_number
+            suffix = f" after {attempts} attempts" if attempts > 1 else ""
+            msg = f"S3 {operation} failed{suffix}: {error_code}"
             logger.exception(msg, extra={"operation": operation, "error_code": error_code})
             raise UpstreamError(msg) from e
         except BotoCoreError as e:
-            # Other boto errors (non-retriable)
-            msg = f"S3 {operation} failed: {e}"
+            attempts = retry.last_attempt_number
+            suffix = f" after {attempts} attempts" if attempts > 1 else ""
+            msg = f"S3 {operation} failed{suffix}: {e}"
             logger.exception(msg, extra={"operation": operation})
             raise UpstreamError(msg) from e
 
