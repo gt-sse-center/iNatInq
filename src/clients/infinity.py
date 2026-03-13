@@ -47,7 +47,7 @@ from typing import Any
 import aiobreaker
 import attrs
 import httpx
-from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic import BaseModel, ValidationError
 from typing_extensions import override
 
 from clients.interfaces import EmbeddingProvider
@@ -125,9 +125,6 @@ class InfinityResponseData(BaseModel):
     """Pydantic model for Infinity response wrapper."""
 
     data: list[InfinityResponseEntry]
-
-
-InfinityResponse = TypeAdapter(InfinityResponseData)
 
 
 @attrs.define(frozen=False, slots=True)
@@ -339,7 +336,7 @@ class InfinityClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
             UpstreamError: If response format is invalid.
         """
         try:
-            validated_data = InfinityResponse.validate_python(data)
+            validated_data = InfinityResponseData.model_validate(data)
         except ValidationError as e:
             raise UpstreamError(f"Unexpected response format from Infinity server: {e}") from e
 
