@@ -13,7 +13,7 @@ from core.benchmark.id_mapping import S3KeyIDMapper
 from core.benchmark.metrics.base import Metric
 from core.benchmark.runner.base import BenchmarkResult
 from core.benchmark.runner.default import DefaultBenchmarkRunner
-from core.benchmark.search_pipeline import CLIPSearchPipeline, SearchPipelineResult
+from core.benchmark.search_pipeline import SearchPipeline, SearchPipelineResult
 from core.models import SearchResultItem, SearchResults
 
 
@@ -84,7 +84,7 @@ class TestDefaultBenchmarkRunnerWithPipeline:
     @pytest.mark.asyncio
     async def test_uses_pipeline_doc_ids_for_metrics(self, dataset: StubDataset):
         """When search_pipeline is set, metrics receive doc_ids from pipeline."""
-        mock_pipeline = AsyncMock(spec=CLIPSearchPipeline)
+        mock_pipeline = AsyncMock(spec=SearchPipeline)
         mock_pipeline.search.return_value = _make_pipeline_result("100", "300")
 
         spy_metric = StubMetric()
@@ -110,7 +110,7 @@ class TestDefaultBenchmarkRunnerWithPipeline:
     @pytest.mark.asyncio
     async def test_pipeline_uses_collection_override(self, dataset: StubDataset):
         """Pipeline is called with the collection override, not dataset.name."""
-        mock_pipeline = AsyncMock(spec=CLIPSearchPipeline)
+        mock_pipeline = AsyncMock(spec=SearchPipeline)
         mock_pipeline.search.return_value = _make_pipeline_result("100")
 
         runner = DefaultBenchmarkRunner(
@@ -132,7 +132,7 @@ class TestDefaultBenchmarkRunnerWithPipeline:
     @pytest.mark.asyncio
     async def test_pipeline_uses_dataset_name_without_collection_override(self, dataset: StubDataset):
         """Without collection override, pipeline uses dataset.name."""
-        mock_pipeline = AsyncMock(spec=CLIPSearchPipeline)
+        mock_pipeline = AsyncMock(spec=SearchPipeline)
         mock_pipeline.search.return_value = _make_pipeline_result("100")
 
         runner = DefaultBenchmarkRunner(search_pipeline=mock_pipeline)
@@ -177,7 +177,7 @@ class TestDefaultBenchmarkRunnerWithPipeline:
     @pytest.mark.asyncio
     async def test_pipeline_result_returns_benchmark_result(self, dataset: StubDataset):
         """Runner still returns a proper BenchmarkResult with pipeline."""
-        mock_pipeline = AsyncMock(spec=CLIPSearchPipeline)
+        mock_pipeline = AsyncMock(spec=SearchPipeline)
         mock_pipeline.search.return_value = _make_pipeline_result("100")
 
         runner = DefaultBenchmarkRunner(

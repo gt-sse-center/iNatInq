@@ -13,7 +13,7 @@ class TestResolveSearchPipeline:
     """Tests for resolve_search_pipeline."""
 
     def test_qdrant_provider_creates_pipeline(self, mocker):
-        """resolve_search_pipeline for 'qdrant' creates a CLIPSearchPipeline with image provider."""
+        """resolve_search_pipeline for 'qdrant' creates a SearchPipeline with image provider."""
         mock_vdb_config_cls = mocker.patch("core.benchmark.provider_factory.VectorDBConfig")
         mock_emb_config_cls = mocker.patch("core.benchmark.provider_factory.EmbeddingConfig")
         mock_create_image_provider = mocker.patch("core.benchmark.provider_factory.create_embedding_provider")
@@ -36,7 +36,7 @@ class TestResolveSearchPipeline:
 
         # Verify pipeline was constructed correctly
         assert provider is mock_provider
-        assert pipeline.clip_client is mock_image_provider
+        assert pipeline.embedding_provider is mock_image_provider
         assert pipeline.vector_provider is mock_provider
 
     def test_qdrant_passes_collection_to_config(self, mocker):
