@@ -879,6 +879,7 @@ class TestDatabricksJobEndpoints:
         assert response.status_code == 500
 
 
+
 class TestIngestionMetricsEndpoint:
     """Test suite for POST /ingestion/metrics endpoint."""
 
@@ -971,3 +972,205 @@ class TestIngestionMetricsEndpoint:
         response = test_client.post("/ingestion/metrics", json={"successful": 5})
 
         assert response.status_code == 422
+
+
+# =============================================================================
+# Auto-Detect Image Provider Tests
+# =============================================================================
+
+
+class TestAutoDetectImageProvider:
+    """Test suite for auto_detect_image_provider helper."""
+
+    def test_auto_detect_siglip_returns_infinity(self) -> None:
+        """SigLIP model names should resolve to INFINITY provider."""
+        from api.routes import auto_detect_image_provider
+        from config import ProviderType
+
+        assert auto_detect_image_provider("google/siglip-so400m-patch14-384") == ProviderType.INFINITY
+
+    def test_auto_detect_siglip2_returns_infinity(self) -> None:
+        """SigLIP2 model names should also resolve to INFINITY provider."""
+        from api.routes import auto_detect_image_provider
+        from config import ProviderType
+
+        assert auto_detect_image_provider("google/siglip2-base-patch16-224") == ProviderType.INFINITY
+
+    def test_auto_detect_llava_returns_clip(self) -> None:
+        """LLaVA model names should resolve to LOCAL_CLIP provider."""
+        from api.routes import auto_detect_image_provider
+        from config import ProviderType
+
+        assert auto_detect_image_provider("llava") == ProviderType.LOCAL_CLIP
+
+    def test_auto_detect_unknown_returns_clip(self) -> None:
+        """Unknown model names should fall back to LOCAL_CLIP provider."""
+        from api.routes import auto_detect_image_provider
+        from config import ProviderType
+
+        assert auto_detect_image_provider("some-unknown-model") == ProviderType.LOCAL_CLIP
+
+
+# =============================================================================
+# Image Search Model Override Tests
+# =============================================================================
+
+
+class TestImageSearchModelOverride:
+    """Test suite for per-request model override on /search/images."""
+
+    def test_search_with_model_override(
+        self,
+        test_client: TestClient,
+        patch_get_settings: MagicMock,
+        mock_image_vector_db_provider: MagicMock,
+    ) -> None:
+        """Passing ?model=google/siglip-so400m-patch14-384 should use Infinity provider."""
+        from config import ProviderType
+
+        with (
+            patch("api.routes.EmbeddingConfig.from_env") as mock_from_env,
+            patch("api.routes.create_embedding_provider") as mock_create_embed,
+            patch("api.routes.create_vector_db_provider", return_value=mock_image_vector_db_provider),
+        ):
+            from config import EmbeddingConfig
+
+            base_config = EmbeddingConfig(provider_type=ProviderType.LOCAL_CLIP, clip_model="ViT-B/32")
+            mock_from_env.return_value = base_config
+
+            mock_provider = MagicMock()
+            mock_provider.embed_text = AsyncMock(return_value=[0.1] * 768)
+            mock_provider.vector_size = 768
+            mock_provider.model_name = "google/siglip-so400m-patch14-384"
+            mock_create_embed.return_value = mock_provider
+
+            response = test_client.get("/search/images?q=test&model=google/siglip-so400m-patch14-384")
+
+        assert response.status_code == 200
+        # Verify create_embedding_provider was called with Infinity provider type
+        called_config = mock_create_embed.call_args[0][0]
+        assert called_config.provider_type == ProviderType.INFINITY
+        assert called_config.infinity_model == "google/siglip-so400m-patch14-384"
+
+    def test_search_with_model_and_provider(
+        self,
+        test_client: TestClient,
+        patch_get_settings: MagicMock,
+        mock_image_vector_db_provider: MagicMock,
+    ) -> None:
+        """Explicit image_provider should override auto-detection."""
+        from config import ProviderType
+
+        with (
+            patch("api.routes.EmbeddingConfig.from_env") as mock_from_env,
+            patch("api.routes.create_embedding_provider") as mock_create_embed,
+            patch("api.routes.create_vector_db_provider", return_value=mock_image_vector_db_provider),
+        ):
+            from config import EmbeddingConfig
+
+            base_config = EmbeddingConfig(provider_type=ProviderType.LOCAL_CLIP, clip_model="ViT-B/32")
+            mock_from_env.return_value = base_config
+
+            mock_provider = MagicMock()
+            mock_provider.embed_text = AsyncMock(return_value=[0.1] * 768)
+            mock_provider.vector_size = 768
+            mock_provider.model_name = "custom-model"
+            mock_create_embed.return_value = mock_provider
+
+            response = test_client.get("/search/images?q=test&model=custom-model&image_provider=clip")
+
+        assert response.status_code == 200
+        called_config = mock_create_embed.call_args[0][0]
+        assert called_config.provider_type == ProviderType.LOCAL_CLIP
+        assert called_config.clip_model == "custom-model"
+
+    def test_search_without_model_uses_default(
+        self,
+        test_client: TestClient,
+        patch_get_settings: MagicMock,
+        patch_embedding_config: MagicMock,
+        patch_embedding_provider: MagicMock,
+        mock_image_vector_db_provider: MagicMock,
+    ) -> None:
+        """Without ?model param, embedding config should be used as-is (no override)."""
+        with patch(
+            "api.routes.create_vector_db_provider",
+            return_value=mock_image_vector_db_provider,
+        ):
+            response = test_client.get("/search/images?q=test")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["model"] == "ViT-B/32"  # Default from mock fixture
+
+    def test_response_reflects_override_model(
+        self,
+        test_client: TestClient,
+        patch_get_settings: MagicMock,
+        mock_image_vector_db_provider: MagicMock,
+    ) -> None:
+        """Response 'model' field should reflect the overridden model name."""
+        from config import ProviderType
+
+        with (
+            patch("api.routes.EmbeddingConfig.from_env") as mock_from_env,
+            patch("api.routes.create_embedding_provider") as mock_create_embed,
+            patch("api.routes.create_vector_db_provider", return_value=mock_image_vector_db_provider),
+        ):
+            from config import EmbeddingConfig
+
+            base_config = EmbeddingConfig(provider_type=ProviderType.LOCAL_CLIP, clip_model="ViT-B/32")
+            mock_from_env.return_value = base_config
+
+            mock_provider = MagicMock()
+            mock_provider.embed_text = AsyncMock(return_value=[0.1] * 768)
+            mock_provider.vector_size = 768
+            mock_provider.model_name = "google/siglip-so400m-patch14-384"
+            mock_create_embed.return_value = mock_provider
+
+            response = test_client.get("/search/images?q=test&model=google/siglip-so400m-patch14-384")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["model"] == "google/siglip-so400m-patch14-384"
+
+    def test_vector_size_mismatch_returns_400(
+        self,
+        test_client: TestClient,
+        patch_get_settings: MagicMock,
+    ) -> None:
+        """When model vector size doesn't match collection, should return 400."""
+        from config import ProviderType
+
+        from core.models import CollectionInfo
+
+        mock_vector_db = MagicMock()
+        mock_vector_db.search_async = AsyncMock()
+        # Collection expects 512-d vectors
+        mock_vector_db.get_collection_info_async = AsyncMock(
+            return_value=CollectionInfo(name="documents", vector_size=512)
+        )
+        mock_vector_db.close = MagicMock()
+
+        with (
+            patch("api.routes.EmbeddingConfig.from_env") as mock_from_env,
+            patch("api.routes.create_embedding_provider") as mock_create_embed,
+            patch("api.routes.create_vector_db_provider", return_value=mock_vector_db),
+        ):
+            from config import EmbeddingConfig
+
+            base_config = EmbeddingConfig(provider_type=ProviderType.LOCAL_CLIP, clip_model="ViT-B/32")
+            mock_from_env.return_value = base_config
+
+            mock_provider = MagicMock()
+            mock_provider.embed_text = AsyncMock(return_value=[0.1] * 768)
+            # Model produces 768-d but collection has 512-d
+            mock_provider.vector_size = 768
+            mock_provider.model_name = "google/siglip-so400m-patch14-384"
+            mock_create_embed.return_value = mock_provider
+
+            response = test_client.get("/search/images?q=test&model=google/siglip-so400m-patch14-384")
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "mismatch" in data["message"].lower()

@@ -54,7 +54,7 @@ from weaviate.exceptions import (
 )
 
 from config import VectorDBConfig
-from core.models import SearchResultItem, SearchResults
+from core.models import CollectionInfo, SearchResultItem, SearchResults
 from foundation.circuit_breaker import (
     create_async_circuit_breaker,
     with_circuit_breaker_async,
@@ -476,6 +476,46 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             before_sleep=_weaviate_log_retry,
             operation="Weaviate ensure_image_collection",
             client="weaviate",
+        )
+
+    @with_client_metrics_async("weaviate", "get_collection_info_async")
+    @with_circuit_breaker_async("weaviate")
+    async def get_collection_info_async(self, *, collection: str) -> CollectionInfo:
+        """Retrieve collection metadata from Weaviate.
+
+        Weaviate may not expose vector dimensions depending on vectorizer
+        configuration. When the dimension is unavailable, ``vector_size=0``
+        is returned so callers can skip validation.
+
+        Args:
+            collection: Collection name to query.
+
+        Returns:
+            CollectionInfo with the collection name and vector dimension.
+        """
+
+        async def _do_get_info() -> CollectionInfo:
+            class_name = self._to_class_name(collection)
+            async with self._client:
+                col = self._client.collections.get(class_name)
+                cfg = await col.config.get()
+                # Attempt to extract vector dimension from the config
+                vector_size = 0
+                if hasattr(cfg, "vectorizer_config") and cfg.vectorizer_config:
+                    vec_cfg = cfg.vectorizer_config
+                    if hasattr(vec_cfg, "vector_dimension"):
+                        vector_size = int(vec_cfg.vector_dimension or 0)  # type: ignore[attr-defined]
+                return CollectionInfo(name=collection, vector_size=vector_size)
+
+        return await async_retry_call(
+            _do_get_info,
+            max_retries=self.max_retries,
+            min_wait=self.retry_min_wait,
+            max_wait=self.retry_max_wait,
+            is_retriable=_weaviate_classifier.is_retriable,
+            before_sleep=_weaviate_log_retry,
+            client="weaviate",
+            operation="get_collection_info_async",
         )
 
     @with_client_metrics_async("weaviate", "search_async")

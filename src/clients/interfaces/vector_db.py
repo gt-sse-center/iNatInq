@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, TypeAlias
 
 from config import VectorDBConfig
-from core.models import SearchResults, VectorPoint
+from core.models import CollectionInfo, SearchResults, VectorPoint
 
 if TYPE_CHECKING:
     from clients.weaviate import WeaviateDataObject
@@ -88,6 +88,22 @@ class VectorDBProvider(ABC):
 
         Raises:
             UpstreamError: If collection doesn't exist or search fails.
+        """
+
+    @abstractmethod
+    async def get_collection_info_async(self, *, collection: str) -> CollectionInfo:
+        """Retrieve metadata about a vector database collection.
+
+        Args:
+            collection: Collection name to query.
+
+        Returns:
+            CollectionInfo with the collection name and vector dimension.
+            If the provider cannot determine the vector size, it should
+            return ``vector_size=0``.
+
+        Raises:
+            UpstreamError: If the collection does not exist or the query fails.
         """
 
     @abstractmethod

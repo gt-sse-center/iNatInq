@@ -39,7 +39,7 @@ from qdrant_client.models import PointStruct  # Qdrant's native point type
 from typing_extensions import override
 
 from config import VectorDBConfig
-from core.models import SearchResultItem, SearchResults
+from core.models import CollectionInfo, SearchResultItem, SearchResults
 from foundation.async_utils import close_async_resource
 from foundation.circuit_breaker import (
     create_async_circuit_breaker,
@@ -338,6 +338,42 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             before_sleep=_qdrant_log_retry,
             client="qdrant",
             operation="ensure_image_collection_async",
+        )
+
+    @with_client_metrics_async("qdrant", "get_collection_info_async")
+    @with_circuit_breaker_async("qdrant")
+    async def get_collection_info_async(self, *, collection: str) -> CollectionInfo:
+        """Retrieve collection metadata from Qdrant.
+
+        Args:
+            collection: Collection name to query.
+
+        Returns:
+            CollectionInfo with the collection name and vector dimension.
+        """
+
+        async def _do_get_info() -> CollectionInfo:
+            info = await self._client.get_collection(collection_name=collection)
+            vectors_config = info.config.params.vectors
+            if isinstance(vectors_config, qmodels.VectorParams):
+                size = vectors_config.size
+            elif isinstance(vectors_config, dict):
+                # Named vectors — use the first vector config's size
+                first = next(iter(vectors_config.values()), None)
+                size = first.size if first is not None else 0
+            else:
+                size = 0
+            return CollectionInfo(name=collection, vector_size=size)
+
+        return await async_retry_call(
+            _do_get_info,
+            max_retries=self.max_retries,
+            min_wait=self.retry_min_wait,
+            max_wait=self.retry_max_wait,
+            is_retriable=_qdrant_classifier.is_retriable,
+            before_sleep=_qdrant_log_retry,
+            client="qdrant",
+            operation="get_collection_info_async",
         )
 
     @with_client_metrics_async("qdrant", "search_async")

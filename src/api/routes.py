@@ -38,6 +38,7 @@ FastAPI automatically generates OpenAPI/Swagger documentation at:
 - `/openapi.json`: OpenAPI schema JSON
 """
 
+import logging
 from datetime import datetime, timezone
 from typing import Annotated
 
@@ -47,7 +48,7 @@ from api import models
 from clients.cache import get_semantic_cache
 from clients.interfaces.embedding import create_embedding_provider
 from clients.interfaces.vector_db import create_vector_db_provider
-from config import EmbeddingConfig, MinIOConfig, VectorDBConfig, get_settings
+from config import EmbeddingConfig, MinIOConfig, ProviderType, VectorDBConfig, get_settings
 from core.exceptions import BadRequestError, PipelineError
 from core.services.databricks_ray_service import DatabricksRayService
 from core.services.ray_service import RayService
@@ -59,7 +60,51 @@ from foundation.metrics.registry import (
     INGESTION_DOCS_PROCESSED,
 )
 
+_logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+# =============================================================================
+# Model Override Helpers
+# =============================================================================
+
+
+def auto_detect_image_provider(model_name: str) -> ProviderType:
+    """Infer the embedding provider type from a model name.
+
+    Args:
+        model_name: Model identifier (e.g. ``"google/siglip-so400m-patch14-384"``).
+
+    Returns:
+        The most appropriate ``ProviderType`` for the given model.
+    """
+    lower = model_name.lower()
+    if "siglip" in lower:
+        return ProviderType.INFINITY
+    if "llava" in lower:
+        return ProviderType.LOCAL_CLIP
+    return ProviderType.LOCAL_CLIP
+
+
+def _model_override_kwargs(model: str, resolved_provider: ProviderType) -> dict[str, object]:
+    """Build ``model_copy(update=...)`` kwargs for an embedding config override.
+
+    Args:
+        model: Override model name.
+        resolved_provider: The provider type to use.
+
+    Returns:
+        Dict suitable for ``EmbeddingConfig.model_copy(update=...)``.
+    """
+    base: dict[str, object] = {"provider_type": resolved_provider}
+    if resolved_provider == ProviderType.INFINITY:
+        base["infinity_model"] = model
+    elif resolved_provider in (ProviderType.LOCAL_CLIP, ProviderType.HOSTED_CLIP):
+        base["clip_model"] = model
+    elif resolved_provider == ProviderType.OLLAMA:
+        base["ollama_model"] = model
+    return base
 
 
 @router.get("/healthz", tags=["health"])
@@ -95,6 +140,17 @@ async def search_images(
         Query(
             pattern="^(qdrant|weaviate)$",
             description="Vector database provider (defaults to VECTOR_DB_PROVIDER env var)",
+        ),
+    ] = None,
+    model: Annotated[
+        str | None,
+        Query(description="Override embedding model name (e.g. google/siglip-so400m-patch14-384)"),
+    ] = None,
+    image_provider: Annotated[
+        str | None,
+        Query(
+            pattern="^(clip|hosted_clip|infinity|ollama)$",
+            description="Override embedding provider type (auto-detected from model name if omitted)",
         ),
     ] = None,
 ) -> models.ImageSearchResponse:
@@ -164,8 +220,14 @@ async def search_images(
 
     s = get_settings()
 
-    # Create embedding provider for text embedding
+    # Build embedding config — apply model override when requested
     embed_config = EmbeddingConfig.from_env(s.k8s_namespace)
+    if model:
+        resolved_provider = (
+            ProviderType(image_provider) if image_provider else auto_detect_image_provider(model)
+        )
+        embed_config = embed_config.model_copy(update=_model_override_kwargs(model, resolved_provider))
+
     embedding_provider = create_embedding_provider(embed_config)
 
     # Determine provider type: use query parameter if provided, otherwise use settings
@@ -183,6 +245,21 @@ async def search_images(
 
     vector_db_provider = create_vector_db_provider(vector_db_config)
     collection_name = collection or vector_db_config.collection
+
+    # Validate vector dimensions when model is overridden
+    if model:
+        try:
+            col_info = await vector_db_provider.get_collection_info_async(collection=collection_name)
+            if col_info.vector_size > 0 and col_info.vector_size != embedding_provider.vector_size:
+                raise BadRequestError(
+                    f"Vector size mismatch: model '{model}' produces "
+                    f"{embedding_provider.vector_size}-d vectors but collection "
+                    f"'{collection_name}' expects {col_info.vector_size}-d vectors"
+                )
+        except BadRequestError:
+            raise
+        except Exception:
+            _logger.debug("Skipping vector-size validation — collection info unavailable", exc_info=True)
 
     image_search_service = ImageSearchService(
         embedding_provider=embedding_provider,
