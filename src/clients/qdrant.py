@@ -49,7 +49,6 @@ from foundation.circuit_breaker import (
 from foundation.exceptions import UpstreamError
 from foundation.metrics.decorators import with_client_metrics, with_client_metrics_async
 from foundation.retry import HTTPErrorClassifier, async_retry_call, create_retry_logger
-from typing_extensions import override
 from clients.cache import CacheClient
 
 from .base import VectorDBClientBase
