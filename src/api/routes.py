@@ -177,6 +177,8 @@ async def search_images(
     image_search_service = ImageSearchService(
         embedding_provider=embedding_provider,
         vector_db_provider=vector_db_provider,
+        embedding_provider_name=embed_config.provider_type,
+        vector_db_provider_name=provider_type,
     )
 
     search_results = await image_search_service.search_images_async(
