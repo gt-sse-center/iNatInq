@@ -7,6 +7,7 @@ These classes are shared between Ray and Spark implementations.
 
 import asyncio
 import logging
+import os
 from typing import TYPE_CHECKING
 
 from botocore.exceptions import ClientError
@@ -315,6 +316,61 @@ class ImageContentFetcher:
         self.bucket = bucket
         self.min_size_bytes = min_size_bytes
         self.max_size_bytes = max_size_bytes
+        raw_prefix = (os.getenv("S3_PREFIX") or "").strip().strip("/")
+        self._key_prefix = f"{raw_prefix}/" if raw_prefix else ""
+
+    def _candidate_keys(self, key: str) -> tuple[str, ...]:
+        """Return ordered S3 key candidates for lookup.
+
+        For Bronze CDC consumers, keys may be stored without the source prefix.
+        We first try the raw key, then optionally prefix it with S3_PREFIX.
+        """
+        normalized_key = key.lstrip("/")
+        candidates = [normalized_key]
+        if self._key_prefix and not normalized_key.startswith(self._key_prefix):
+            candidates.append(f"{self._key_prefix}{normalized_key}")
+        return tuple(dict.fromkeys(candidates))
+
+    @staticmethod
+    def _is_missing_key_error(exc: BaseException) -> bool:
+        """Return True when the error indicates object-not-found for the tried key."""
+        if isinstance(exc, ClientError):
+            error_code = str(exc.response.get("Error", {}).get("Code", ""))
+            return error_code in {"NoSuchKey", "NotFound", "404"}
+
+        # S3ClientWrapper surfaces ClientError as UpstreamError with code in message.
+        message = str(exc)
+        return ("NoSuchKey" in message) or ("NotFound" in message) or (" 404" in message)
+
+    def _get_object_with_fallback(self, key: str) -> tuple[bytes, str]:
+        """Fetch an object by trying candidate keys in order."""
+        last_error: Exception | None = None
+        for candidate in self._candidate_keys(key):
+            try:
+                return self.s3.get_object(bucket=self.bucket, key=candidate), candidate
+            except (UpstreamError, ClientError) as exc:
+                if not self._is_missing_key_error(exc):
+                    raise
+                last_error = exc
+                continue
+        if last_error is not None:
+            raise last_error
+        raise UpstreamError("No S3 key candidates available")
+
+    async def _get_object_with_fallback_async(self, key: str) -> tuple[bytes, str]:
+        """Asynchronous variant of object fetch with key fallback."""
+        last_error: Exception | None = None
+        for candidate in self._candidate_keys(key):
+            try:
+                return await self.s3.get_object_async(bucket=self.bucket, key=candidate), candidate
+            except (UpstreamError, ClientError) as exc:
+                if not self._is_missing_key_error(exc):
+                    raise
+                last_error = exc
+                continue
+        if last_error is not None:
+            raise last_error
+        raise UpstreamError("No S3 key candidates available")
 
     def _validate_image(
         self,
@@ -360,7 +416,7 @@ class ImageContentFetcher:
             ImageContentResult if successful and valid, None if failed.
         """
         try:
-            data = self.s3.get_object(bucket=self.bucket, key=key)
+            data, resolved_key = self._get_object_with_fallback(key)
 
             # Detect format from magic bytes
             detected_format = detect_image_format(data)
@@ -380,6 +436,7 @@ class ImageContentFetcher:
                 image_bytes=data,
                 format=detected_format,  # type: ignore[arg-type]
                 size_bytes=len(data),
+                source_uri=(f"s3://{resolved_key}" if resolved_key != key else None),
             )
 
         except (UpstreamError, ClientError, OSError, ValueError) as e:
@@ -428,6 +485,7 @@ class ImageContentFetcher:
                 image_bytes=result.image_bytes,
                 format=result.format,
                 size_bytes=result.size_bytes,
+                source_uri=result.source_uri,
                 width=width,
                 height=height,
             )
@@ -484,7 +542,7 @@ class ImageContentFetcher:
             ImageContentResult if successful, None if failed.
         """
         try:
-            data = await self.s3.get_object_async(bucket=self.bucket, key=key)
+            data, resolved_key = await self._get_object_with_fallback_async(key)
 
             detected_format = detect_image_format(data)
             is_valid, error_msg = self._validate_image(key, data, detected_format)
@@ -500,6 +558,7 @@ class ImageContentFetcher:
                 image_bytes=data,
                 format=detected_format,  # type: ignore[arg-type]
                 size_bytes=len(data),
+                source_uri=(f"s3://{resolved_key}" if resolved_key != key else None),
             )
 
             if with_dimensions:
@@ -515,6 +574,7 @@ class ImageContentFetcher:
                         image_bytes=result.image_bytes,
                         format=result.format,
                         size_bytes=result.size_bytes,
+                        source_uri=result.source_uri,
                         width=width,
                         height=height,
                     )

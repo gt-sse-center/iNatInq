@@ -712,6 +712,51 @@ class TestDatabricksJobEndpoints:
 
         assert response.status_code == 500
 
+    def test_submit_databricks_cdc_consumer_job_success(self, test_client: TestClient) -> None:
+        """CDC consumer submission should use dedicated Databricks service method."""
+        with patch("api.routes.DatabricksRayService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.submit_s3_bronze_image_job.return_value = 333
+            mock_service_cls.return_value = mock_service
+
+            with patch("api.routes.get_settings") as mock_settings:
+                mock_settings.return_value.k8s_namespace = "ml-system"
+                mock_settings.return_value.vector_db.collection = "documents"
+                with patch("api.routes.MinIOConfig.from_env") as mock_minio:
+                    mock_minio.return_value.endpoint_url = "http://minio:9000"
+                    mock_minio.return_value.access_key_id = "minioadmin"
+                    mock_minio.return_value.secret_access_key = "minioadmin"
+                    mock_minio.return_value.bucket = "pipeline"
+                    with patch("api.routes.EmbeddingConfig.from_env") as mock_embed_cfg:
+                        mock_embed_cfg.return_value = MagicMock()
+                        response = test_client.post("/databricks/jobs/cdc-consumer")
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["run_id"] == "333"
+        assert data["status"] == "submitted"
+        assert data["namespace"] == "ml-system"
+        mock_service.submit_s3_bronze_image_job.assert_called_once_with(
+            namespace="ml-system",
+            s3_endpoint="http://minio:9000",
+            s3_access_key_id="minioadmin",
+            s3_secret_access_key="minioadmin",
+            s3_bucket="pipeline",
+            embedding_config=mock_embed_cfg.return_value,
+            collection="documents",
+        )
+
+    def test_submit_databricks_cdc_consumer_job_failure_returns_500(self, test_client: TestClient) -> None:
+        """CDC consumer submission returns 500 on Databricks service error."""
+        with patch("api.routes.DatabricksRayService") as mock_service_cls:
+            mock_service = MagicMock()
+            mock_service.submit_s3_bronze_image_job.side_effect = Exception("boom")
+            mock_service_cls.return_value = mock_service
+
+            response = test_client.post("/databricks/jobs/cdc-consumer")
+
+        assert response.status_code == 500
+
     def test_get_databricks_job_status_success(self, test_client: TestClient) -> None:
         """Test getting Databricks job status."""
         with patch("api.routes.DatabricksRayService") as mock_service_cls:

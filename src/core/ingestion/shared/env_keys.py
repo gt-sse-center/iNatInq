@@ -115,6 +115,14 @@ AUTOLOADER_OPTIONAL_ENV_KEYS = (
     "AUTOLOADER_TRIGGER_INTERVAL",
 )
 
+CDC_PROGRESS_ENV_KEYS = (
+    "CDC_PROGRESS_TABLE",
+    "CDC_PROGRESS_ID",
+    "CDC_WINDOW_SIZE",
+    "CDC_KEY_COL",
+    "CDC_WATERMARK_COL",
+)
+
 
 def _dedupe(keys: tuple[str, ...]) -> tuple[str, ...]:
     """Return keys preserving order and removing duplicates."""
@@ -138,6 +146,7 @@ DATABRICKS_RUNTIME_PASSTHROUGH_ENV_VARS = _dedupe(
         *INAT_IMAGE_ENV_KEYS,
         *AUTOLOADER_REQUIRED_ENV_KEYS,
         *AUTOLOADER_OPTIONAL_ENV_KEYS,
+        *CDC_PROGRESS_ENV_KEYS,
         "INATINQ_SRC_DIR",
     )
 )

@@ -33,6 +33,8 @@ resources:
             - pypi:
                 package: pillow
             - pypi:
+                package: filetype==1.2.0
+            - pypi:
                 package: qdrant-client==1.16.1
             - pypi:
                 package: weaviate-client==4.9.3
@@ -71,6 +73,8 @@ resources:
             - pypi:
                 package: pillow
             - pypi:
+                package: filetype==1.2.0
+            - pypi:
                 package: qdrant-client==1.16.1
             - pypi:
                 package: weaviate-client==4.9.3
@@ -90,5 +94,105 @@ resources:
                 package: pydantic==2.0.0
             - pypi:
                 package: pydantic-settings==2.0.0
+      queue:
+        enabled: true
+    inatinq_ml_pipeline_bronze_cdc_job:
+      name: inatinq-ml-pipeline-bronze-cdc-job
+      tasks:
+        - task_key: inatinq-ml-pipeline-bronze-cdc
+          spark_python_task:
+            python_file: /Workspace/Users/<user>/iNatInq/apps/src/core/ingestion/databricks/run_ingest_image_from_bronze.py
+          existing_cluster_id: <cluster-id>
+          libraries:
+            - pypi:
+                package: pyspark==3.5.2
+            - pypi:
+                package: ray[default]==2.53.0
+            - pypi:
+                package: boto3==1.35.0
+            - pypi:
+                package: attrs==25.4.0
+            - pypi:
+                package: pydantic==2.0.0
+            - pypi:
+                package: pydantic-settings==2.0.0
+            - pypi:
+                package: requests==2.31.0
+            - pypi:
+                package: httpx==0.27.0
+            - pypi:
+                package: tenacity==8.3.0
+            - pypi:
+                package: aiobreaker==1.2.0
+            - pypi:
+                package: pybreaker
+            - pypi:
+                package: pillow
+            - pypi:
+                package: filetype==1.2.0
+            - pypi:
+                package: qdrant-client==1.15.1
+            - pypi:
+                package: weaviate-client==4.9.3
+      queue:
+        enabled: true
+    inatinq_ml_pipeline_cdc_workflow_job:
+      name: inatinq-ml-pipeline-cdc-workflow-job
+      max_concurrent_runs: 1
+      schedule:
+        quartz_cron_expression: "0 */15 * * * ?"
+        timezone_id: "UTC"
+        pause_status: "UNPAUSED"
+      tasks:
+        - task_key: cdc-autoloader
+          spark_python_task:
+            python_file: /Workspace/Users/<user>/iNatInq/apps/src/core/ingestion/databricks/run_ingest_s3_autoloader.py
+          existing_cluster_id: <cluster-id>
+          timeout_seconds: 3600
+          libraries:
+            - pypi:
+                package: pyspark==3.5.2
+            - pypi:
+                package: pydantic==2.0.0
+            - pypi:
+                package: pydantic-settings==2.0.0
+        - task_key: cdc-bronze-ray
+          depends_on:
+            - task_key: cdc-autoloader
+          spark_python_task:
+            python_file: /Workspace/Users/<user>/iNatInq/apps/src/core/ingestion/databricks/run_ingest_image_from_bronze.py
+          existing_cluster_id: <cluster-id>
+          timeout_seconds: 7200
+          libraries:
+            - pypi:
+                package: pyspark==3.5.2
+            - pypi:
+                package: ray[default]==2.53.0
+            - pypi:
+                package: boto3==1.35.0
+            - pypi:
+                package: attrs==25.4.0
+            - pypi:
+                package: pydantic==2.0.0
+            - pypi:
+                package: pydantic-settings==2.0.0
+            - pypi:
+                package: requests==2.31.0
+            - pypi:
+                package: httpx==0.27.0
+            - pypi:
+                package: tenacity==8.3.0
+            - pypi:
+                package: aiobreaker==1.2.0
+            - pypi:
+                package: pybreaker
+            - pypi:
+                package: pillow
+            - pypi:
+                package: filetype==1.2.0
+            - pypi:
+                package: qdrant-client==1.15.1
+            - pypi:
+                package: weaviate-client==4.9.3
       queue:
         enabled: true

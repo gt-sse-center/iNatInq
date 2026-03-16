@@ -16,6 +16,7 @@ image embeddings in vector DB image collections
 - `POST /databricks/jobs/cdc-producer`: Submit Databricks CDC producer job
 - `POST /ray/jobs/process-dlq`: Process dead letter queue entries with local Ray
 - `POST /databricks/jobs/process-dlq`: Process dead letter queue entries with Ray on Databricks
+- `POST /databricks/jobs/cdc-consumer`: Submit Databricks CDC consumer job
 - `GET /ray/jobs/{job_id}`: Check status of a submitted job
 
 ## Error Handling
@@ -461,6 +462,41 @@ async def process_dlq_entries_databricks() -> models.DatabricksProcessDLQRespons
         )
     except Exception as e:
         raise PipelineError(f"Failed to submit Databricks process DLQ job: {e!s}") from e
+
+
+@router.post(
+    "/databricks/jobs/cdc-consumer",
+    response_model=models.DatabricksCdcConsumerJobResponse,
+    status_code=202,
+    tags=["databricks-jobs"],
+)
+async def submit_databricks_cdc_consumer_job() -> models.DatabricksCdcConsumerJobResponse:
+    """Submit a Databricks CDC consumer (Bronze -> Ray image) job run."""
+    try:
+        settings = get_settings()
+        namespace = settings.k8s_namespace
+
+        databricks_service = DatabricksRayService()
+        minio_cfg = MinIOConfig.from_env(namespace)
+        embed_config = EmbeddingConfig.from_env(namespace)
+        run_id = databricks_service.submit_s3_bronze_image_job(
+            namespace=namespace,
+            s3_endpoint=minio_cfg.endpoint_url,
+            s3_access_key_id=minio_cfg.access_key_id,
+            s3_secret_access_key=minio_cfg.secret_access_key,
+            s3_bucket=minio_cfg.bucket,
+            embedding_config=embed_config,
+            collection=settings.vector_db.collection,
+        )
+
+        return models.DatabricksCdcConsumerJobResponse(
+            run_id=str(run_id),
+            status="submitted",
+            namespace=namespace,
+            submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+        )
+    except Exception as e:
+        raise PipelineError(f"Failed to submit Databricks CDC consumer job: {e!s}") from e
 
 
 @router.delete(

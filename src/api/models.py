@@ -289,6 +289,15 @@ class DatabricksProcessDLQResponse(BaseModel):
     submitted_at: str
 
 
+class DatabricksCdcConsumerJobResponse(BaseModel):
+    """Response after submitting a Databricks CDC consumer job."""
+
+    run_id: str
+    status: str
+    namespace: str
+    submitted_at: str
+
+
 class DatabricksJobStopResponse(BaseModel):
     """Response after stopping a Databricks job run.
 

@@ -358,6 +358,36 @@ class TestDatabricksRayJobConfig:
             with pytest.raises(ValueError, match="DATABRICKS_S3_AUTOLOADER_JOB_ID must be an integer"):
                 DatabricksRayJobConfig.from_env()
 
+    def test_parses_optional_s3_bronze_job_id(self) -> None:
+        """Test optional DATABRICKS_FROM_BRONZE_JOB_ID parsing."""
+        with patch.dict(
+            os.environ,
+            {
+                "DATABRICKS_HOST": "https://dbc.example.cloud",
+                "DATABRICKS_TOKEN": "databricks-token",
+                "DATABRICKS_JOB_ID": "789",
+                "DATABRICKS_FROM_BRONZE_JOB_ID": "99999",
+            },
+            clear=True,
+        ):
+            config = DatabricksRayJobConfig.from_env()
+            assert config.s3_bronze_job_id == 99999
+
+    def test_invalid_s3_bronze_job_id(self) -> None:
+        """Test invalid optional s3 bronze job id is rejected."""
+        with patch.dict(
+            os.environ,
+            {
+                "DATABRICKS_HOST": "https://dbc.example.cloud",
+                "DATABRICKS_TOKEN": "databricks-token",
+                "DATABRICKS_JOB_ID": "789",
+                "DATABRICKS_FROM_BRONZE_JOB_ID": "not-an-int",
+            },
+            clear=True,
+        ):
+            with pytest.raises(ValueError, match="DATABRICKS_FROM_BRONZE_JOB_ID must be an integer"):
+                DatabricksRayJobConfig.from_env()
+
     def test_from_env_allows_missing_job_id_when_not_required(self) -> None:
         """CDC producer path should not require DATABRICKS_JOB_ID."""
         with patch.dict(

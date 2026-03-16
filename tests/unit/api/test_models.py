@@ -256,3 +256,31 @@ class TestDatabricksImageJobRequest:
                 collection="documents",
                 image_page_size=0,
             )
+
+
+class TestDatabricksCdcJobResponses:
+    """Test suite for Databricks CDC job response models."""
+
+    def test_cdc_producer_response_fields(self) -> None:
+        """Producer response should expose run metadata fields."""
+        resp = models.DatabricksCdcProducerJobResponse(
+            run_id="123",
+            status="submitted",
+            namespace="ml-system",
+            submitted_at="2026-03-09T10:59:54Z",
+        )
+        assert resp.run_id == "123"
+        assert resp.status == "submitted"
+        assert resp.namespace == "ml-system"
+
+    def test_cdc_consumer_response_fields(self) -> None:
+        """Consumer response should expose run metadata fields."""
+        resp = models.DatabricksCdcConsumerJobResponse(
+            run_id="456",
+            status="submitted",
+            namespace="ml-system",
+            submitted_at="2026-03-09T11:05:00Z",
+        )
+        assert resp.run_id == "456"
+        assert resp.status == "submitted"
+        assert resp.namespace == "ml-system"

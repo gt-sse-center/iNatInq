@@ -24,6 +24,7 @@ from core.services.ingestion_params import (
     build_image_ingestion_env,
     build_inat_image_ingestion_env,
     build_s3_autoloader_env,
+    build_s3_bronze_image_ingestion_env,
 )
 from foundation.logger import LOGGING_CONFIG
 
@@ -199,6 +200,50 @@ class DatabricksRayService:
         except Exception as e:
             logger.exception("Failed to submit Databricks S3 Auto Loader job", extra={"error": str(e)})
             raise UpstreamError(f"Failed to submit Databricks S3 Auto Loader job: {e}") from e
+
+    def submit_s3_bronze_image_job(
+        self,
+        *,
+        namespace: str,
+        s3_endpoint: str,
+        s3_access_key_id: str,
+        s3_secret_access_key: str,
+        s3_bucket: str,
+        embedding_config: EmbeddingConfig,
+        collection: str,
+    ) -> int:
+        """Submit the dedicated Databricks Bronze CDC consumer job."""
+        databricks_config = DatabricksRayJobConfig.from_env(require_job_id=False)
+        if databricks_config.s3_bronze_job_id is None:
+            raise ValueError("Missing required Databricks config: DATABRICKS_FROM_BRONZE_JOB_ID")
+
+        env_vars = build_s3_bronze_image_ingestion_env(
+            namespace=namespace,
+            s3_endpoint=s3_endpoint,
+            s3_access_key_id=s3_access_key_id,
+            s3_secret_access_key=s3_secret_access_key,
+            s3_bucket=s3_bucket,
+            embedding_config=embedding_config,
+            collection=collection,
+            extra_env_keys=("INATINQ_SRC_DIR",),
+        )
+        add_ray_tuning_env(env_vars)
+        python_params = [f"{key}={value}" for key, value in env_vars.items()]
+
+        try:
+            logger.info(
+                "Submitting Databricks Bronze CDC consumer job",
+                extra={"job_id": databricks_config.s3_bronze_job_id},
+            )
+            return self._submit_python_job(
+                host=databricks_config.host,
+                token=databricks_config.token,
+                job_id=databricks_config.s3_bronze_job_id,
+                python_params=python_params,
+            )
+        except Exception as e:
+            logger.exception("Failed to submit Databricks Bronze CDC consumer job", extra={"error": str(e)})
+            raise UpstreamError(f"Failed to submit Databricks Bronze CDC consumer job: {e}") from e
 
     def stop_run(self, run_id: int | str) -> None:
         """Stop a running Databricks job run.

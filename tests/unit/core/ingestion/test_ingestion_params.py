@@ -12,6 +12,7 @@ from core.services.ingestion_params import (
     build_image_ingestion_env,
     build_inat_image_ingestion_env,
     build_s3_autoloader_env,
+    build_s3_bronze_image_ingestion_env,
 )
 
 
@@ -225,10 +226,61 @@ def test_build_s3_autoloader_env_includes_required_and_optional(monkeypatch: pyt
     assert env_vars["S3_PATH_STYLE"] == "true"
     assert env_vars["INATINQ_SRC_DIR"] == "/Workspace/Users/test/iNatInq/src"
 
+def test_build_s3_bronze_image_ingestion_env_requires_bronze_table(monkeypatch) -> None:
+    """Bronze consumer env builder should require AUTOLOADER_BRONZE_TABLE."""
+    monkeypatch.delenv("AUTOLOADER_BRONZE_TABLE", raising=False)
+    embedding_config = EmbeddingConfig(provider_type=ProviderType.LOCAL_CLIP)
 
-def test_build_inat_image_ingestion_env_passthroughs_vector_db_targets(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    with pytest.raises(ValueError, match="AUTOLOADER_BRONZE_TABLE"):
+        build_s3_bronze_image_ingestion_env(
+            namespace="ml-system",
+            s3_endpoint="http://minio:9000",
+            s3_access_key_id="access",
+            s3_secret_access_key="secret",
+            s3_bucket="pipeline",
+            embedding_config=embedding_config,
+            collection="documents",
+        )
+
+
+def test_build_s3_bronze_image_ingestion_env_includes_cdc_keys(monkeypatch) -> None:
+    """Bronze consumer env builder should include CDC and image ingestion keys."""
+    monkeypatch.setenv("AUTOLOADER_BRONZE_TABLE", "main.default.images_bronze")
+    monkeypatch.setenv("S3_PREFIX", "images")
+    monkeypatch.setenv("CDC_PROGRESS_TABLE", "main.default.images_bronze_progress")
+    monkeypatch.setenv("CDC_WINDOW_SIZE", "2500")
+    monkeypatch.setenv("INATINQ_SRC_DIR", "/Workspace/Users/test/iNatInq/src")
+
+    embedding_config = EmbeddingConfig(
+        provider_type=ProviderType.LOCAL_CLIP,
+        clip_model="ViT-B/32",
+    )
+
+    env_vars = build_s3_bronze_image_ingestion_env(
+        namespace="ml-system",
+        s3_endpoint="http://minio:9000",
+        s3_access_key_id="access",
+        s3_secret_access_key="secret",
+        s3_bucket="pipeline",
+        embedding_config=embedding_config,
+        collection="documents",
+        extra_env_keys=["INATINQ_SRC_DIR"],
+    )
+
+    assert env_vars["K8S_NAMESPACE"] == "ml-system"
+    assert env_vars["S3_ENDPOINT"] == "http://minio:9000"
+    assert env_vars["S3_ACCESS_KEY_ID"] == "access"
+    assert env_vars["S3_SECRET_ACCESS_KEY"] == "secret"
+    assert env_vars["S3_BUCKET"] == "pipeline"
+    assert env_vars["S3_PREFIX"] == "images"
+    assert env_vars["VECTOR_DB_COLLECTION"] == "documents"
+    assert env_vars["AUTOLOADER_BRONZE_TABLE"] == "main.default.images_bronze"
+    assert env_vars["CDC_PROGRESS_TABLE"] == "main.default.images_bronze_progress"
+    assert env_vars["CDC_WINDOW_SIZE"] == "2500"
+    assert env_vars["INATINQ_SRC_DIR"] == "/Workspace/Users/test/iNatInq/src"
+
+
+def test_build_inat_image_ingestion_env_passthroughs_vector_db_targets(monkeypatch) -> None:
     """Ensure iNat image ingestion env passes through VECTOR_DB_TARGETS when set."""
     monkeypatch.setenv("VECTOR_DB_TARGETS", "qdrant")
 

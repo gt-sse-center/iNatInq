@@ -18,6 +18,7 @@ from config import EmbeddingConfig
 from core.ingestion.shared.env_keys import (
     AUTOLOADER_OPTIONAL_ENV_KEYS as _AUTOLOADER_OPTIONAL_ENV_KEYS,
     AUTOLOADER_REQUIRED_ENV_KEYS as _AUTOLOADER_REQUIRED_ENV_KEYS,
+    CDC_PROGRESS_ENV_KEYS as _CDC_PROGRESS_ENV_KEYS,
     DLQ_ENV_KEYS as _DLQ_ENV_KEYS,
     IMAGE_OPTIONAL_ENV_KEYS as _IMAGE_OPTIONAL_ENV_KEYS,
     INAT_IMAGE_ENV_KEYS as _INAT_IMAGE_ENV_KEYS,
@@ -232,6 +233,44 @@ def build_s3_autoloader_env(
     if any(minio_group.values()) and not all(minio_group.values()):
         missing = [key for key, value in minio_group.items() if not value]
         raise ValueError(f"Missing required MinIO S3 config for Auto Loader: {', '.join(missing)}")
+
+    if extra_env_keys:
+        _passthrough_env_vars(env_vars, extra_env_keys)
+    return env_vars
+
+
+def build_s3_bronze_image_ingestion_env(
+    *,
+    namespace: str,
+    s3_endpoint: str,
+    s3_access_key_id: str,
+    s3_secret_access_key: str,
+    s3_bucket: str,
+    embedding_config: EmbeddingConfig,
+    collection: str,
+    extra_env_keys: Iterable[str] | None = None,
+) -> dict[str, str]:
+    """Build env-style params for Bronze-backed incremental image ingestion."""
+    env_vars = build_image_ingestion_env(
+        namespace=namespace,
+        s3_endpoint=s3_endpoint,
+        s3_access_key_id=s3_access_key_id,
+        s3_secret_access_key=s3_secret_access_key,
+        s3_bucket=s3_bucket,
+        s3_prefix=(os.getenv("S3_PREFIX") or "").strip(),
+        embedding_config=embedding_config,
+        collection=collection,
+        pull_from_dlq=False,
+        extra_env_keys=None,
+    )
+    _passthrough_env_vars(
+        env_vars,
+        ("AUTOLOADER_BRONZE_TABLE",),
+        _CDC_PROGRESS_ENV_KEYS,
+    )
+
+    if "AUTOLOADER_BRONZE_TABLE" not in env_vars:
+        raise ValueError("Missing required Bronze CDC config: AUTOLOADER_BRONZE_TABLE")
 
     if extra_env_keys:
         _passthrough_env_vars(env_vars, extra_env_keys)
