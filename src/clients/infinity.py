@@ -369,7 +369,7 @@ class InfinityClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
             raise ValueError(msg)
 
         image_b64 = encode_image_base64(image_bytes, include_mime_type=True)
-        return (await self._request_embeddings(inputs=[image_b64], modality="image"))[0]
+        return (await self._request_embeddings(inputs=[image_b64], modality=""))[0]
 
     @override
     @with_client_metrics_async("infinity", "embed_image_batch")
@@ -402,7 +402,7 @@ class InfinityClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
         # Encode all images first
         encoded_images = [encode_image_base64(image, include_mime_type=True) for image in images_bytes]
 
-        return await self._request_embeddings(inputs=encoded_images, modality="image")
+        return await self._request_embeddings(inputs=encoded_images, modality="")
 
     @override
     @with_client_metrics_async("infinity", "embed_text")
