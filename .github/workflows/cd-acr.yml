@@ -1,0 +1,94 @@
+name: "CD: Push to ACR"
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-acr
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    name: Build & Push to ACR
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ vars.ACR_REGISTRY_NAME }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build base image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: zarf/docker/base/Dockerfile.pipeline-base
+          tags: ml/pipeline-base:0.1.0
+          load: true
+          cache-from: type=gha,scope=base
+          cache-to: type=gha,mode=max,scope=base
+
+      - name: Set short SHA
+        id: vars
+        run: echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push pipeline image
+        run: |
+          set -euo pipefail
+
+          IMAGE=${{ vars.ACR_LOGIN_SERVER }}/inatinq/pipeline
+          SHA_TAG=${{ steps.vars.outputs.sha_short }}
+
+          docker build \
+            -f zarf/docker/dev/Dockerfile.pipeline \
+            -t ${IMAGE}:latest \
+            -t ${IMAGE}:${SHA_TAG} .
+
+          docker push ${IMAGE}:latest
+          docker push ${IMAGE}:${SHA_TAG}
+
+      - name: Deploy to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_APP_SERVICE_NAME }}
+          images: ${{ vars.ACR_LOGIN_SERVER }}/inatinq/pipeline:${{ steps.vars.outputs.sha_short }}
+
+      - name: Verify deployment health
+        run: |
+          set -euo pipefail
+          APP_URL="https://${{ vars.AZURE_APP_SERVICE_NAME }}.azurewebsites.net"
+          MAX_RETRIES=10
+          RETRY_INTERVAL=15
+
+          for i in $(seq 1 $MAX_RETRIES); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${APP_URL}/healthz" || true)
+            if [ "$STATUS" = "200" ]; then
+              echo "Health check passed on attempt $i"
+              exit 0
+            fi
+            echo "Attempt $i/$MAX_RETRIES: status=$STATUS, retrying in ${RETRY_INTERVAL}s..."
+            sleep $RETRY_INTERVAL
+          done
+
+          echo "Health check failed after $MAX_RETRIES attempts"
+          exit 1
+
+      - name: Azure Logout
+        if: always()
+        run: az logout

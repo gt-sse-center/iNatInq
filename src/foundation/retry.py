@@ -63,6 +63,7 @@ from tenacity import (
 )
 
 from foundation.exceptions import UpstreamError
+from foundation.metrics.registry import RETRY_ATTEMPTS_TOTAL, RETRY_EXHAUSTIONS_TOTAL
 
 T = TypeVar("T")
 
@@ -228,6 +229,8 @@ def create_retry_logger(
     logger: logging.Logger,
     get_error_details: Callable[[BaseException], dict[str, Any]] | None = None,
     message: str = "Operation failed, retrying",
+    client: str = "",
+    operation: str = "",
 ) -> Callable[[Any], None]:
     """Create a retry logging callback for tenacity.
 
@@ -277,6 +280,9 @@ def create_retry_logger(
 
         logger.warning(message, extra=extra)
 
+        if client:
+            RETRY_ATTEMPTS_TOTAL.labels(client=client, operation=operation, outcome="retry").inc()
+
     return log_retry
 
 
@@ -321,7 +327,10 @@ class RetryWithBackoff:
         wait_max: float = 10.0,
         multiplier: float = 1.0,
         retry_exceptions: tuple[type[Exception], ...] | None = None,
+        is_retriable: Callable[[BaseException], bool] | None = None,
         logger: logging.Logger | None = None,
+        client: str = "",
+        operation: str = "",
     ) -> None:
         """Initialize retry utility.
 
@@ -331,7 +340,11 @@ class RetryWithBackoff:
             wait_max: Maximum wait time between retries (seconds).
             multiplier: Exponential backoff multiplier.
             retry_exceptions: Exception types to retry on. If None, uses default
-                transient error types.
+                transient error types. Ignored when ``is_retriable`` is set.
+            is_retriable: Optional predicate function for exception classification.
+                When provided, takes precedence over ``retry_exceptions``.
+                Use this for complex classification logic that can't be expressed
+                as a flat list of exception types (e.g. boto3 error codes).
             logger: Logger instance for structured logging. If None, uses
                 "pipeline.spark" logger.
         """
@@ -339,15 +352,20 @@ class RetryWithBackoff:
         self.wait_min = wait_min
         self.wait_max = wait_max
         self.multiplier = multiplier
-        # Use provided retry_exceptions or default to common transient errors
         self.retry_exceptions = retry_exceptions or DEFAULT_RETRY_EXCEPTIONS
+        self.is_retriable = is_retriable
+        self.last_attempt_number: int = 0
         self.logger = logger or logging.getLogger("pipeline.spark")
+        self.client = client
+        self.operation = operation
 
     @staticmethod
     def _log_retry(
         retry_state: Any,
         logger: logging.Logger,
         max_attempts: int,
+        client: str = "",
+        operation: str = "",
     ) -> None:
         """Log callback for retry attempts.
 
@@ -371,12 +389,16 @@ class RetryWithBackoff:
                 "error_type": type(exception).__name__,
             },
         )
+        if client:
+            RETRY_ATTEMPTS_TOTAL.labels(client=client, operation=operation, outcome="retry").inc()
 
     @staticmethod
     def _log_failure(
         retry_state: Any,
         logger: logging.Logger,
         max_attempts: int,
+        client: str = "",
+        operation: str = "",
     ) -> None:
         """Log callback for final failure after all retries exhausted.
 
@@ -397,6 +419,9 @@ class RetryWithBackoff:
                 "error_type": type(exception).__name__,
             },
         )
+        if client and retry_state.attempt_number >= max_attempts:
+            RETRY_ATTEMPTS_TOTAL.labels(client=client, operation=operation, outcome="exhausted").inc()
+            RETRY_EXHAUSTIONS_TOTAL.labels(client=client, operation=operation).inc()
 
     def call(
         self,
@@ -434,18 +459,27 @@ class RetryWithBackoff:
             self._log_retry,
             logger=self.logger,
             max_attempts=self.max_attempts,
+            client=self.client,
+            operation=self.operation,
         )
         log_failure = partial(
             self._log_failure,
             logger=self.logger,
             max_attempts=self.max_attempts,
+            client=self.client,
+            operation=self.operation,
         )
 
-        # Configure retry strategy
+        # Configure retry strategy — predicate takes precedence over exception types
+        retry_condition = (
+            retry_if_exception(self.is_retriable)
+            if self.is_retriable is not None
+            else retry_if_exception_type(exceptions_to_retry)
+        )
         retry = Retrying(
             stop=stop_after_attempt(self.max_attempts),
             wait=wait_strategy,
-            retry=retry_if_exception_type(exceptions_to_retry),
+            retry=retry_condition,
             before_sleep=log_retry,
             after=log_failure,
             reraise=True,
@@ -453,6 +487,10 @@ class RetryWithBackoff:
 
         try:
             result: T = retry(func, *args, **kwargs)
+            if self.client and retry.statistics.get("attempt_number", 1) > 1:
+                RETRY_ATTEMPTS_TOTAL.labels(
+                    client=self.client, operation=self.operation, outcome="success_after_retry"
+                ).inc()
             return result
         except (TypeError, AttributeError, KeyError) as e:
             # Don't retry on unexpected exceptions (programming errors, etc.)
@@ -461,6 +499,8 @@ class RetryWithBackoff:
                 extra={"error": str(e), "error_type": type(e).__name__},
             )
             raise
+        finally:
+            self.last_attempt_number = retry.statistics.get("attempt_number", 1)
 
 
 # =============================================================================
@@ -476,6 +516,7 @@ async def async_retry_call(
     max_wait: float = 10.0,
     is_retriable: Callable[[BaseException], bool],
     before_sleep: Callable[[Any], None] | None = None,
+    client: str = "",
     operation: str = "operation",
     **kwargs: Any,
 ) -> Any:
@@ -497,6 +538,7 @@ async def async_retry_call(
         max_wait: Maximum wait between retries in seconds (default: 10.0).
         is_retriable: Predicate that returns True for retriable exceptions.
         before_sleep: Optional tenacity ``before_sleep`` callback for logging.
+            Must NOT emit ``inatinq_retry_attempts_total`` when ``client`` is set — this function already does so, and a metrics-emitting callback would double-count retry attempts.
         operation: Operation name for the ``UpstreamError`` message.
         **kwargs: Keyword arguments for ``coro_func``.
 
@@ -507,25 +549,43 @@ async def async_retry_call(
         UpstreamError: If all retries are exhausted.
         Exception: Non-retriable exceptions propagate immediately.
     """
+
+    def _before_sleep(retry_state: Any) -> None:
+        if before_sleep is not None:
+            before_sleep(retry_state)
+        if client:
+            RETRY_ATTEMPTS_TOTAL.labels(client=client, operation=operation, outcome="retry").inc()
+
+    last_attempt: int = 1
+    client_op = f"{client.capitalize() + ' ' if client else ''}{operation}"
     try:
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(max_retries),
             wait=wait_exponential(min=min_wait, max=max_wait),
             retry=retry_if_exception(is_retriable),
-            before_sleep=before_sleep,
+            before_sleep=_before_sleep,
             reraise=False,
         ):
+            last_attempt = attempt.retry_state.attempt_number
             with attempt:
-                return await coro_func(*args, **kwargs)
+                result = await coro_func(*args, **kwargs)
+                if client and last_attempt > 1:
+                    RETRY_ATTEMPTS_TOTAL.labels(
+                        client=client, operation=operation, outcome="success_after_retry"
+                    ).inc()
+                return result
     except RetryError as e:
         # All retries exhausted — wrap in UpstreamError
+        if client:
+            RETRY_ATTEMPTS_TOTAL.labels(client=client, operation=operation, outcome="exhausted").inc()
+            RETRY_EXHAUSTIONS_TOTAL.labels(client=client, operation=operation).inc()
         last_exc = e.last_attempt.exception() if e.last_attempt else e
-        msg = f"{operation} failed after {max_retries} attempts: {last_exc}"
+        msg = f"{client_op} failed after {max_retries} attempts: {last_exc}"
         raise UpstreamError(msg) from last_exc
-    except (UpstreamError, aiobreaker.CircuitBreakerError):
+    except (UpstreamError, aiobreaker.state.CircuitBreakerError):
         # Already wrapped or circuit breaker — propagate as-is
         raise
     except Exception as e:
         # Non-retriable exception that was not retried — wrap in UpstreamError
-        msg = f"{operation} failed: {e}"
+        msg = f"{client_op} failed: {e}"
         raise UpstreamError(msg) from e

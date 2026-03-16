@@ -18,21 +18,21 @@ The client class:
 import asyncio
 import logging
 from typing import Any
-from pydantic import BaseModel, ValidationError
-from typing_extensions import override
 
 import aiobreaker
 import attrs
 import httpx
+from pydantic import BaseModel, ValidationError
+from typing_extensions import override
 
 from config import EmbeddingConfig
-from core.exceptions import UpstreamError
-from core.metrics.decorators import with_client_metrics_async
 from foundation.circuit_breaker import (
     create_async_circuit_breaker,
     with_circuit_breaker_async,
 )
+from foundation.exceptions import UpstreamError
 from foundation.image import encode_image_base64
+from foundation.metrics.decorators import with_client_metrics_async
 from foundation.retry import HTTPErrorClassifier, async_retry_call, create_retry_logger
 
 from .interfaces.embedding import EmbeddingProvider
@@ -237,7 +237,7 @@ class OllamaClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
     @with_client_metrics_async("ollama", "embed_text")
     @with_circuit_breaker_async("ollama")
     async def embed_text(self, text: str) -> list[float]:
-        return (await self._request_texts([text]))[0]
+        return (await self._request_texts([text], "embed_text"))[0]
 
     @override
     @with_client_metrics_async("ollama", "embed_text_batch")
@@ -250,7 +250,7 @@ class OllamaClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
             msg = f"Batch size {len(texts)} exceeds max_batch_size {self.max_batch_size}"
             raise ValueError(msg)
 
-        return await self._request_texts(texts)
+        return await self._request_texts(texts, "embed_text_batch")
 
     @property
     @override
@@ -278,7 +278,7 @@ class OllamaClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
     async def embed_image(self, image_bytes: bytes) -> list[float]:
         # Ollama does not require mime type
         image_b64 = encode_image_base64(image_bytes, include_mime_type=False)
-        return (await self._request_images([image_b64]))[0]
+        return (await self._request_images([image_b64], "embed_image"))[0]
 
     @override
     @with_client_metrics_async("ollama", "embed_image_batch")
@@ -293,7 +293,7 @@ class OllamaClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
 
         # Ollama does not require mime type
         images_b64 = [encode_image_base64(image, include_mime_type=False) for image in images_bytes]
-        return await self._request_images(images_b64)
+        return await self._request_images(images_b64, "embed_image_batch")
 
     @property
     @override
@@ -319,7 +319,7 @@ class OllamaClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
             max_batch_size=config.ollama_max_batch_size,
         )
 
-    async def _request_texts(self, texts: list[str]) -> list[list[float]]:
+    async def _request_texts(self, texts: list[str], operation: str) -> list[list[float]]:
         url = self.base_url.rstrip("/") + OLLAMA_TEXT_EMBED_ENDPOINT
         payload = {"model": self.model, "input": texts}
 
@@ -344,10 +344,11 @@ class OllamaClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
             max_wait=self.retry_max_wait,
             is_retriable=_ollama_classifier.is_retriable,
             before_sleep=_ollama_log_retry,
-            operation="Ollama _request_texts",
+            client="ollama",
+            operation=operation,
         )
 
-    async def _request_images(self, images_b64: list[str]) -> list[list[float]]:
+    async def _request_images(self, images_b64: list[str], operation: str) -> list[list[float]]:
         # Scale timeout based on batch size and multiplier
         batch_timeout = self.timeout_s * self.batch_timeout_multiplier * max(1, len(images_b64))
 
@@ -380,7 +381,8 @@ class OllamaClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
                 max_wait=self.retry_max_wait,
                 is_retriable=_ollama_classifier.is_retriable,
                 before_sleep=_ollama_log_retry,
-                operation="Ollama _request_images",
+                client="ollama",
+                operation=operation,
             )
             embeddings.append(embedding)
         if len(embeddings) != len(images_b64):

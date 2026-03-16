@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 """Unit tests for clients.qdrant module.
 
 This file tests the QdrantClientWrapper class which provides vector database operations
@@ -35,8 +37,8 @@ from qdrant_client.models import PointStruct
 
 from clients.qdrant import QdrantClientWrapper, _DISTANCE_METRIC_MAP
 from config import VectorDBConfig
-from core.exceptions import UpstreamError
 from core.models import SearchResults
+from foundation.exceptions import UpstreamError
 
 # =============================================================================
 # Client Initialization Tests
@@ -616,7 +618,7 @@ class TestQdrantClientWrapperSearch:
         """
         mock_async_client.query_points.side_effect = Exception("Search failed")
 
-        with pytest.raises(UpstreamError, match="Qdrant search failed"):
+        with pytest.raises(UpstreamError, match="Qdrant search_async failed"):
             await qdrant_client.search_async(collection="test-collection", query_vector=[0.1, 0.2], limit=10)
 
     @pytest.mark.asyncio
@@ -783,7 +785,7 @@ class TestQdrantClientWrapperBatchUpsert:
 
         points = [PointStruct(id="1", vector=[0.1, 0.2], payload={"text": "hello"})]
 
-        with pytest.raises(UpstreamError, match="Qdrant batch upsert failed"):
+        with pytest.raises(UpstreamError, match="Qdrant batch_upsert_async failed"):
             await qdrant_client.batch_upsert_async(
                 collection="test-collection", points=points, vector_size=768
             )
@@ -944,7 +946,7 @@ class TestQdrantClientWrapperAdditional:
 
         points = [PointStruct(id=1, vector=[0.1, 0.2], payload={"text": "test"})]
 
-        with pytest.raises(UpstreamError, match="Qdrant batch upsert failed"):
+        with pytest.raises(UpstreamError, match="Qdrant batch_upsert_async failed"):
             await qdrant_client.batch_upsert_async(collection="test-collection", points=points, vector_size=2)
 
     def test_close_calls_asyncio_run(

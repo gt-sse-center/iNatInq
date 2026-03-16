@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 """Unit tests for foundation.circuit_breaker module.
 
 This file tests the circuit breaker utilities which provide fault tolerance
@@ -241,8 +243,8 @@ class TestCreateCircuitBreaker:
         """
         breaker = create_circuit_breaker(name="test_service")
 
-        assert len(breaker.listeners) > 0
-        assert any(isinstance(listener, CircuitBreakerListener) for listener in breaker.listeners)
+        assert len(breaker.listeners) > 0  # pyright: ignore[reportUnknownArgumentType]
+        assert any(isinstance(listener, CircuitBreakerListener) for listener in breaker.listeners)  # pyright: ignore[reportUnknownVariableType]
 
     # =============================================================================
     # Circuit Breaker Usage Tests
@@ -271,7 +273,7 @@ class TestCreateCircuitBreaker:
         def test_func() -> str:
             return "success"
 
-        result = test_func()
+        result = test_func()  # pyright: ignore[reportUnknownVariableType]
         assert result == "success"
 
     def test_circuit_breaker_call_method(self) -> None:
@@ -642,7 +644,7 @@ class TestCreateAsyncCircuitBreaker:
 
         breaker = create_async_circuit_breaker(name="test_service")
 
-        assert isinstance(breaker, aiobreaker.CircuitBreaker)
+        assert isinstance(breaker, aiobreaker.circuitbreaker.CircuitBreaker)
         assert breaker.name == "test_service"
         assert breaker.fail_max == 5
         assert breaker.timeout_duration == timedelta(seconds=60)

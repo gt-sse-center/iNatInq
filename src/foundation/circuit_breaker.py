@@ -91,8 +91,8 @@ import aiobreaker
 import pybreaker
 from typing_extensions import override
 
-from core.metrics.registry import CIRCUIT_BREAKER_STATE, CIRCUIT_BREAKER_TRANSITIONS
 from foundation.exceptions import UpstreamError
+from foundation.metrics.registry import CIRCUIT_BREAKER_STATE, CIRCUIT_BREAKER_TRANSITIONS
 
 logger = logging.getLogger("foundation.circuit_breaker")
 
@@ -212,7 +212,7 @@ class CircuitBreakerListener(pybreaker.CircuitBreakerListener):
         )
 
 
-class AsyncCircuitBreakerListener(aiobreaker.CircuitBreakerListener):
+class AsyncCircuitBreakerListener(aiobreaker.listener.CircuitBreakerListener):
     """Logging and metrics listener for async circuit breaker state changes.
 
     Mirrors the behavior of CircuitBreakerListener for aiobreaker-based breakers,
@@ -222,7 +222,7 @@ class AsyncCircuitBreakerListener(aiobreaker.CircuitBreakerListener):
     @override
     def state_change(
         self,
-        breaker: aiobreaker.CircuitBreaker,
+        breaker: aiobreaker.circuitbreaker.CircuitBreaker,
         old: aiobreaker.state.CircuitBreakerBaseState,
         new: aiobreaker.state.CircuitBreakerBaseState,
     ) -> None:
@@ -511,7 +511,7 @@ def with_circuit_breaker_async(
             try:
                 # Use aiobreaker's call_async method for async functions
                 return await breaker.call_async(_impl)
-            except aiobreaker.CircuitBreakerError:
+            except aiobreaker.state.CircuitBreakerError:
                 handle_circuit_breaker_error(service_name)
 
         return wrapper
@@ -523,7 +523,7 @@ def create_async_circuit_breaker(
     name: str,
     failure_threshold: int = 5,
     recovery_timeout: int = 60,
-) -> aiobreaker.CircuitBreaker:
+) -> aiobreaker.circuitbreaker.CircuitBreaker:
     """Create an async-compatible circuit breaker for coroutine methods.
 
     Uses the `aiobreaker` library which provides native asyncio support,
@@ -559,7 +559,7 @@ def create_async_circuit_breaker(
         - HALF_OPEN → CLOSED: After first successful call
         - HALF_OPEN → OPEN: If call fails during recovery
     """
-    breaker = aiobreaker.CircuitBreaker(
+    breaker = aiobreaker.circuitbreaker.CircuitBreaker(
         fail_max=failure_threshold,
         timeout_duration=timedelta(seconds=recovery_timeout),
         name=name,

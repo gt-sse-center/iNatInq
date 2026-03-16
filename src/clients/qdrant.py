@@ -36,10 +36,9 @@ from qdrant_client import AsyncQdrantClient, QdrantClient
 from qdrant_client.http import models as qmodels
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 from qdrant_client.models import PointStruct  # Qdrant's native point type
+from typing_extensions import override
 
 from config import VectorDBConfig
-from core.exceptions import UpstreamError
-from core.metrics.decorators import with_client_metrics, with_client_metrics_async
 from core.models import SearchResultItem, SearchResults
 from foundation.async_utils import close_async_resource
 from foundation.circuit_breaker import (
@@ -47,6 +46,8 @@ from foundation.circuit_breaker import (
     with_circuit_breaker,
     with_circuit_breaker_async,
 )
+from foundation.exceptions import UpstreamError
+from foundation.metrics.decorators import with_client_metrics, with_client_metrics_async
 from foundation.retry import HTTPErrorClassifier, async_retry_call, create_retry_logger
 from typing_extensions import override
 from clients.cache import CacheClient
@@ -255,7 +256,8 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             max_wait=self.retry_max_wait,
             is_retriable=_qdrant_classifier.is_retriable,
             before_sleep=_qdrant_log_retry,
-            operation="Qdrant ensure_collection",
+            client="qdrant",
+            operation="ensure_collection_async",
         )
 
     @with_client_metrics_async("qdrant", "ensure_image_collection_async")
@@ -338,7 +340,8 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             max_wait=self.retry_max_wait,
             is_retriable=_qdrant_classifier.is_retriable,
             before_sleep=_qdrant_log_retry,
-            operation="Qdrant ensure_image_collection",
+            client="qdrant",
+            operation="ensure_image_collection_async",
         )
 
     @with_client_metrics_async("qdrant", "search_async")
@@ -401,7 +404,8 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             max_wait=self.retry_max_wait,
             is_retriable=_qdrant_classifier.is_retriable,
             before_sleep=_qdrant_log_retry,
-            operation="Qdrant search",
+            client="qdrant",
+            operation="search_async",
         )
 
     @with_client_metrics("qdrant", "ensure_collection_sync")
@@ -578,7 +582,8 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             max_wait=self.retry_max_wait,
             is_retriable=_qdrant_classifier.is_retriable,
             before_sleep=_qdrant_log_retry,
-            operation="Qdrant batch_upsert",
+            client="qdrant",
+            operation="_do_batch_upsert",
         )
 
     @override
