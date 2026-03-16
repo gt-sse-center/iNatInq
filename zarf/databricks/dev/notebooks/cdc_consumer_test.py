@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 import sys
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 from uuid import uuid4
 
@@ -44,7 +44,7 @@ applied_env_keys = apply_env_defaults(
 default_catalog = env_values.get("CDC_TEST_CATALOG", "hive_metastore")
 default_schema = env_values.get("CDC_TEST_SCHEMA", "default")
 default_run_suffix = env_values.get("CDC_TEST_RUN_SUFFIX", "").strip() or (
-    datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S") + "_" + uuid4().hex[:8]
+    datetime.now(UTC).strftime("%Y%m%d%H%M%S") + "_" + uuid4().hex[:8]
 )
 default_window_size = env_values.get("CDC_TEST_WINDOW_SIZE", env_values.get("CDC_WINDOW_SIZE", "5"))
 default_collection = f"documents_test_{default_run_suffix}"

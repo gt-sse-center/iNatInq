@@ -83,7 +83,12 @@ filterwarnings = [
 line-length = 110
 
 [tool.ruff.lint]
-exclude = ["tests/**", "configs/**", "scripts/**"]
+exclude = [
+    "tests/**",
+    "configs/**",
+    "scripts/**",
+    "zarf/databricks/dev/notebooks/**",
+]
 
 select = ["ALL"]
 

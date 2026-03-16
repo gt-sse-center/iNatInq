@@ -10,7 +10,7 @@
 
 # COMMAND ----------
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from uuid import uuid4
 
 from pyspark.sql import functions as F
@@ -45,7 +45,7 @@ applied_env_keys = apply_env_defaults(
 default_catalog = env_values.get("CDC_TEST_CATALOG", "hive_metastore")
 default_schema = env_values.get("CDC_TEST_SCHEMA", "default")
 default_run_suffix = env_values.get("CDC_TEST_RUN_SUFFIX", "").strip() or (
-    datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S") + "_" + uuid4().hex[:8]
+    datetime.now(UTC).strftime("%Y%m%d%H%M%S") + "_" + uuid4().hex[:8]
 )
 
 dbutils.widgets.text("catalog", default_catalog)

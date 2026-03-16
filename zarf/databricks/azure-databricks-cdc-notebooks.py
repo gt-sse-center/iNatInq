@@ -296,7 +296,7 @@ def _upload_notebook(
 
     # Databricks SOURCE import can append language extension. Upload to a
     # normalized base path to avoid accidental *.py.py notebook names.
-    upload_path = workspace_path[: -len(".py")] if workspace_path.endswith(".py") else workspace_path
+    upload_path = workspace_path.removesuffix(".py")
 
     parent = str(Path(upload_path).parent)
     client.workspace.mkdirs(path=parent)
