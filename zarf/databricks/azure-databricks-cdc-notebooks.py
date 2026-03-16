@@ -456,9 +456,7 @@ def _run_notebook(
         run = _wait_for_submit_run(submit_waiter, timeout_seconds=timeout_seconds)
     except Exception as exc:
         details = _collect_run_failure_details(client, run_id=run_id)
-        raise RuntimeError(
-            f"Notebook run failed for {notebook_path} (run_id={run_id}). {details}"
-        ) from exc
+        raise RuntimeError(f"Notebook run failed for {notebook_path} (run_id={run_id}). {details}") from exc
 
     state = run.state
     if state is None:

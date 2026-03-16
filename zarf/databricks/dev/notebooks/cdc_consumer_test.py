@@ -91,6 +91,7 @@ print(f"window_size={window_size}")
 # MAGIC %md
 # MAGIC ## Import CDC Module from `src/`
 
+
 # COMMAND ----------
 def _find_src_dir(start: Path) -> Path | None:
     src_hint = os.getenv("INATINQ_SRC_DIR", "").strip()
@@ -137,6 +138,7 @@ print(f"Imported CDC module from: {src_dir}")
 # MAGIC ## Setup Helpers
 
 # COMMAND ----------
+
 
 def _ts(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -225,6 +227,7 @@ def progress_snapshot() -> None:
             .orderBy(F.col("updated_at").desc_nulls_last())
         )
 
+
 print("Setup executes in the final results block to guarantee cleanup on failure.")
 
 # COMMAND ----------
@@ -250,6 +253,7 @@ def run_scenario(name: str, fn) -> None:
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## Scenarios
+
 
 # COMMAND ----------
 def scenario_01_ordered_happy_path() -> None:
@@ -389,7 +393,9 @@ def scenario_06_mid_window_partial_commit() -> None:
 
     cursor = load_cursor()
     assert_true(cursor is not None, message="Cursor should be written")
-    assert_equal(cursor.last_s3_key, "img/p2.jpg", message="Persisted cursor should stop at contiguous prefix")
+    assert_equal(
+        cursor.last_s3_key, "img/p2.jpg", message="Persisted cursor should stop at contiguous prefix"
+    )
 
 
 def scenario_07_recovery_after_fix() -> None:
@@ -539,7 +545,9 @@ def scenario_12_progress_reset_replays() -> None:
 
     w1 = load_window(current_cursor=None, current_window_size=10)
     commit_window(window_records=w1, successful_keys={r.s3_key for r in w1})
-    assert_equal(len(load_window(current_cursor=load_cursor(), current_window_size=10)), 0, message="Expected drained")
+    assert_equal(
+        len(load_window(current_cursor=load_cursor(), current_window_size=10)), 0, message="Expected drained"
+    )
 
     spark.sql(
         f"""
@@ -610,8 +618,7 @@ failed = [row for row in scenario_results if row["status"] == "FAIL"]
 if execution_error is not None:
     if cleanup_errors:
         raise RuntimeError(
-            f"Consumer test execution failed: {execution_error}. "
-            f"Cleanup failed: {' | '.join(cleanup_errors)}"
+            f"Consumer test execution failed: {execution_error}. Cleanup failed: {' | '.join(cleanup_errors)}"
         ) from execution_error
     raise execution_error
 if failed:

@@ -12,9 +12,7 @@ except ModuleNotFoundError:  # pragma: no cover - direct script execution fallba
 
 def _entrypoint_file() -> str:
     """Resolve entrypoint path for script and notebook exec contexts."""
-    return globals().get("__file__") or (
-        sys.argv[0] if sys.argv else "run_ingest_image_from_bronze.py"
-    )
+    return globals().get("__file__") or (sys.argv[0] if sys.argv else "run_ingest_image_from_bronze.py")
 
 
 if __name__ == "__main__":

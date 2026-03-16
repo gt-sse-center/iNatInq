@@ -16,6 +16,7 @@ from uuid import uuid4
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
 
+
 def _normalize_ts_for_assert(value: datetime) -> datetime:
     return value.replace(tzinfo=None) if value.tzinfo is not None else value
 
@@ -97,6 +98,7 @@ def run_scenario(name: str, fn) -> None:
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## Scenarios
+
 
 # COMMAND ----------
 def scenario_schema_contract() -> None:
@@ -279,9 +281,7 @@ def scenario_data_quality_detection() -> None:
     )
 
     invalid_rows = (
-        spark.table(bronze_table)
-        .where(F.col("s3_key").isNull() | F.col("discovered_at").isNull())
-        .count()
+        spark.table(bronze_table).where(F.col("s3_key").isNull() | F.col("discovered_at").isNull()).count()
     )
     assert_equal(invalid_rows, 2, message="Expected to detect two invalid Bronze rows")
 

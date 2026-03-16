@@ -101,8 +101,10 @@ def load_next_window(
 ) -> list[BronzeRecord]:
     """Load the next deterministic Bronze window after the stored cursor."""
     sf = _spark_functions()
-    base_df = spark.table(config.bronze_table).where(sf.col(config.key_col).isNotNull()).where(
-        sf.col(config.watermark_col).isNotNull()
+    base_df = (
+        spark.table(config.bronze_table)
+        .where(sf.col(config.key_col).isNotNull())
+        .where(sf.col(config.watermark_col).isNotNull())
     )
 
     if cursor is not None:
