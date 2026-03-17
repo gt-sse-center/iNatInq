@@ -510,14 +510,15 @@ class TestInfinityClientModality:
     @patch("clients.infinity.httpx.AsyncClient")
     @pytest.mark.asyncio
     async def test_modality_parameter_image(self, mock_async_client_cls: MagicMock) -> None:
-        """Test that image embedding sends modality='image' parameter.
+        """Test that image embedding omits modality for auto-detection.
 
         **Why this test is important:**
-          - Infinity uses modality to distinguish text vs image
-          - Incorrect modality returns wrong vector space
+          - Infinity auto-detects modality from base64 data URIs
+          - Omitting modality lets the server infer image vs text
 
         **What it tests:**
-          - Request payload includes modality: "image"
+          - Request payload does NOT include modality key (auto-detect)
+          - Request input is a base64 data URI
         """
         infinity_response = {"data": [{"embedding": [0.1] * 1152, "index": 0}]}
         mock_post_response = MagicMock()
@@ -537,7 +538,7 @@ class TestInfinityClientModality:
 
         call_args = mock_client.post.call_args
         payload = call_args[1]["json"]
-        assert payload["modality"] == "image"
+        assert "modality" not in payload
 
 
 class TestInfinityClientErrorHandling:
