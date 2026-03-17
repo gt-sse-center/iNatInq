@@ -38,6 +38,20 @@ class TestS3KeyIDMapper:
         result = mapper.point_id_to_doc_id("some-uuid", payload)
         assert result == "1316621"
 
+    def test_point_id_to_doc_id_strips_prefix_from_s3_key(self):
+        """point_id_to_doc_id extracts basename when s3_key has a path prefix."""
+        mapper = S3KeyIDMapper()
+        payload = {"s3_key": "benchmark-images/1009530"}
+        result = mapper.point_id_to_doc_id("some-uuid", payload)
+        assert result == "1009530"
+
+    def test_point_id_to_doc_id_strips_nested_prefix(self):
+        """point_id_to_doc_id handles deeply nested s3_key paths."""
+        mapper = S3KeyIDMapper()
+        payload = {"s3_key": "a/b/c/42"}
+        result = mapper.point_id_to_doc_id("some-uuid", payload)
+        assert result == "42"
+
     def test_point_id_to_doc_id_missing_s3_key_falls_back(self):
         """Falls back to point_id when s3_key not in payload."""
         mapper = S3KeyIDMapper()

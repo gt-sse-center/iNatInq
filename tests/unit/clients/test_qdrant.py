@@ -546,6 +546,93 @@ class TestQdrantClientWrapperEnsureCollection:
             call_kwargs = mock_async_client.create_collection.call_args[1]
             assert call_kwargs["collection_name"] == expected_name
 
+    @pytest.mark.asyncio
+    async def test_ensure_collection_passes_quantization_config(
+        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    ) -> None:
+        """Test that ensure_collection_async passes quantization_config to create_collection.
+
+        **Why this test is important:**
+          - Quantization config must be set at collection creation time
+          - Qdrant applies quantization on write when configured
+          - Enables INT8/binary quantization without a separate setup step
+
+        **What it tests:**
+          - quantization_config is forwarded to create_collection
+        """
+        mock_collections = MagicMock()
+        mock_collections.collections = []
+        mock_async_client.get_collections.return_value = mock_collections
+
+        scalar_config = qmodels.ScalarQuantization(
+            scalar=qmodels.ScalarQuantizationConfig(
+                type=qmodels.ScalarType.INT8,
+                quantile=0.99,
+                always_ram=True,
+            ),
+        )
+
+        await qdrant_client.ensure_collection_async(
+            collection="test-quantized",
+            vector_size=1152,
+            quantization_config=scalar_config,
+        )
+
+        call_kwargs = mock_async_client.create_collection.call_args[1]
+        assert call_kwargs["quantization_config"] is scalar_config
+
+    @pytest.mark.asyncio
+    async def test_ensure_collection_defaults_to_no_quantization(
+        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    ) -> None:
+        """Test that ensure_collection_async defaults to no quantization.
+
+        **Why this test is important:**
+          - Backward compatibility: existing callers must not break
+          - Default behavior should match pre-quantization behavior
+
+        **What it tests:**
+          - quantization_config defaults to None when not specified
+        """
+        mock_collections = MagicMock()
+        mock_collections.collections = []
+        mock_async_client.get_collections.return_value = mock_collections
+
+        await qdrant_client.ensure_collection_async(collection="test-default", vector_size=768)
+
+        call_kwargs = mock_async_client.create_collection.call_args[1]
+        assert call_kwargs["quantization_config"] is None
+
+    @pytest.mark.asyncio
+    async def test_ensure_image_collection_passes_quantization_config(
+        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    ) -> None:
+        """Test that ensure_image_collection_async passes quantization_config.
+
+        **Why this test is important:**
+          - Image collections are the primary ingestion path
+          - Quantization config must be threaded through to create_collection
+
+        **What it tests:**
+          - quantization_config is forwarded to create_collection for image collections
+        """
+        mock_collections = MagicMock()
+        mock_collections.collections = []
+        mock_async_client.get_collections.return_value = mock_collections
+
+        binary_config = qmodels.BinaryQuantization(
+            binary=qmodels.BinaryQuantizationConfig(always_ram=True),
+        )
+
+        await qdrant_client.ensure_image_collection_async(
+            collection="images",
+            vector_size=1152,
+            quantization_config=binary_config,
+        )
+
+        call_kwargs = mock_async_client.create_collection.call_args[1]
+        assert call_kwargs["quantization_config"] is binary_config
+
 
 # =============================================================================
 # Search Tests
@@ -599,6 +686,75 @@ class TestQdrantClientWrapperSearch:
         assert result.items[1].point_id == "2"
         assert result.items[1].score == 0.85
         assert result.total == 2
+
+    @pytest.mark.asyncio
+    async def test_search_async_passes_search_params(
+        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    ) -> None:
+        """Test that search_async passes search_params to query_points.
+
+        **Why this test is important:**
+          - Quantization benchmarking requires passing Qdrant-specific
+            SearchParams (rescore, oversampling) through to query_points.
+          - Validates that the search_params kwarg is forwarded correctly.
+
+        **What it tests:**
+          - query_points receives the search_params kwarg.
+          - None default works when search_params is omitted.
+        """
+        mock_response = MagicMock()
+        mock_response.points = []
+        mock_async_client.query_points.return_value = mock_response
+
+        search_params = qmodels.SearchParams(
+            quantization=qmodels.QuantizationSearchParams(rescore=True, oversampling=3.0)
+        )
+
+        await qdrant_client.search_async(
+            collection="test-collection",
+            query_vector=[0.1, 0.2, 0.3],
+            limit=10,
+            search_params=search_params,
+        )
+
+        mock_async_client.query_points.assert_called_once_with(
+            collection_name="test-collection",
+            query=[0.1, 0.2, 0.3],
+            limit=10,
+            with_payload=True,
+            search_params=search_params,
+        )
+
+    @pytest.mark.asyncio
+    async def test_search_async_default_search_params_is_none(
+        self, qdrant_client: QdrantClientWrapper, mock_async_client: AsyncMock
+    ) -> None:
+        """Test that search_async defaults search_params to None.
+
+        **Why this test is important:**
+          - Ensures backward compatibility: callers that omit search_params
+            get None passed through (Qdrant SDK default behavior).
+
+        **What it tests:**
+          - query_points receives search_params=None when not specified.
+        """
+        mock_response = MagicMock()
+        mock_response.points = []
+        mock_async_client.query_points.return_value = mock_response
+
+        await qdrant_client.search_async(
+            collection="test-collection",
+            query_vector=[0.1, 0.2],
+            limit=5,
+        )
+
+        mock_async_client.query_points.assert_called_once_with(
+            collection_name="test-collection",
+            query=[0.1, 0.2],
+            limit=5,
+            with_payload=True,
+            search_params=None,
+        )
 
     @pytest.mark.asyncio
     async def test_search_raises_upstream_error_on_failure(

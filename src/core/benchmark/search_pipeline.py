@@ -19,9 +19,10 @@ Example:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import attrs
+from typing_extensions import override
 
 from core.benchmark.id_mapping import S3KeyIDMapper  # noqa: TC001 — used as attrs field type at runtime
 
@@ -85,6 +86,65 @@ class SearchPipeline:
             collection=collection,
             query_vector=query_vector,
             limit=limit,
+        )
+
+        doc_ids = [self.id_mapper.point_id_to_doc_id(item.point_id, item.payload) for item in results.items]
+
+        return SearchPipelineResult(doc_ids=doc_ids, raw_results=results)
+
+
+@attrs.define(frozen=True, slots=True)
+class QdrantSearchPipeline(SearchPipeline):
+    """SearchPipeline variant that passes Qdrant-specific ``search_params``.
+
+    Used for quantization benchmarking where different search configurations
+    (e.g., rescore, oversampling) need to be tested against the same collection.
+
+    Attributes:
+        search_params: Qdrant ``SearchParams`` instance (e.g., for rescore
+            or oversampling control). Typed as ``Any`` to avoid coupling
+            the domain layer to ``qdrant_client.http.models``.
+    """
+
+    search_params: Any = None  # qmodels.SearchParams at runtime
+
+    @override
+    async def search(
+        self,
+        query_text: str,
+        *,
+        collection: str,
+        limit: int = 10,
+    ) -> SearchPipelineResult:
+        """Execute search with Qdrant-specific search params.
+
+        Embeds the query, then calls ``QdrantClientWrapper.search_async``
+        with the configured ``search_params`` for quantization control.
+
+        Args:
+            query_text: Text query to embed and search.
+            collection: Vector database collection name.
+            limit: Maximum number of results to return.
+
+        Returns:
+            SearchPipelineResult with mapped doc_ids and raw results.
+
+        Raises:
+            AssertionError: If ``vector_provider`` is not a ``QdrantClientWrapper``.
+        """
+        from clients.qdrant import QdrantClientWrapper
+
+        assert isinstance(self.vector_provider, QdrantClientWrapper), (
+            f"QdrantSearchPipeline requires QdrantClientWrapper, got {type(self.vector_provider).__name__}"
+        )
+
+        query_vector = await self.embedding_provider.embed_text(query_text)
+
+        results = await self.vector_provider.search_async(
+            collection=collection,
+            query_vector=query_vector,
+            limit=limit,
+            search_params=self.search_params,
         )
 
         doc_ids = [self.id_mapper.point_id_to_doc_id(item.point_id, item.payload) for item in results.items]

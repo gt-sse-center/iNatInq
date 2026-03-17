@@ -24,6 +24,8 @@ data/
 !syntheticdata/data/
 !syntheticdata/data/inquire/
 !syntheticdata/data/inquire/**
+# Benchmark images downloaded from remote MinIO (20K images, ~2 GB)
+syntheticdata/data/benchmark-images/
 
 **/.DS_Store
 

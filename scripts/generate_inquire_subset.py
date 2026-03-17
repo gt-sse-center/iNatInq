@@ -43,16 +43,19 @@ def _collect_unique_doc_ids(dataset: dict) -> set[str]:
     return doc_ids
 
 
-def _doc_id_to_uuid5(doc_id: str) -> str:
+def _doc_id_to_uuid5(doc_id: str, s3_prefix: str = "") -> str:
     """Convert a document ID to its UUID5 Qdrant point ID.
 
     Args:
         doc_id: Plain numeric photo ID.
+        s3_prefix: S3 prefix prepended to doc_id when computing UUID5
+            (e.g., ``"benchmark-images/"``). Must match the prefix used
+            during ingestion so the UUID5 matches the stored point ID.
 
     Returns:
         UUID5 string.
     """
-    return str(uuid5(NAMESPACE_URL, doc_id))
+    return str(uuid5(NAMESPACE_URL, s3_prefix + doc_id))
 
 
 async def _check_ids_in_qdrant(
@@ -192,7 +195,8 @@ async def _run(args: argparse.Namespace) -> None:
     logger.info("Found %d unique doc IDs across %d queries", len(all_doc_ids), len(raw["queries"]))
 
     # Convert to UUID5 point IDs
-    doc_id_to_uuid: dict[str, str] = {doc_id: _doc_id_to_uuid5(doc_id) for doc_id in all_doc_ids}
+    s3_prefix = args.s3_prefix or ""
+    doc_id_to_uuid: dict[str, str] = {doc_id: _doc_id_to_uuid5(doc_id, s3_prefix) for doc_id in all_doc_ids}
     uuid_to_doc_id: dict[str, str] = {v: k for k, v in doc_id_to_uuid.items()}
     point_ids = list(doc_id_to_uuid.values())
     logger.info("Generated %d UUID5 point IDs for lookup", len(point_ids))
@@ -277,6 +281,11 @@ def main(argv: list[str] | None = None) -> None:
         "--collection",
         required=True,
         help="Qdrant collection name to check for coverage.",
+    )
+    parser.add_argument(
+        "--s3-prefix",
+        default="",
+        help="S3 key prefix prepended to doc IDs during ingestion (e.g., 'benchmark-images/').",
     )
     parser.add_argument(
         "--batch-size",

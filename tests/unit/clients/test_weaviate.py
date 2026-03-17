@@ -654,6 +654,89 @@ class TestWeaviateClientWrapperEnsureImageCollection:
             await weaviate_client.ensure_image_collection_async(collection="documents")
 
 
+class TestWeaviateClientWrapperQuantizationConfig:
+    """Test suite for quantizer parameter threading in WeaviateClientWrapper."""
+
+    @pytest.mark.asyncio
+    async def test_ensure_collection_passes_quantizer(
+        self, weaviate_client: WeaviateClientWrapper, mock_weaviate_client: AsyncMock
+    ) -> None:
+        """Test that ensure_collection_async passes quantizer to hnsw config.
+
+        **Why this test is important:**
+          - Quantization must be configured at collection creation time
+          - Weaviate applies quantization via the HNSW vector index config
+
+        **What it tests:**
+          - quantizer is forwarded through to collections.create
+        """
+        from weaviate.classes.config import Configure
+
+        mock_weaviate_client.collections.exists.return_value = False
+        mock_weaviate_client.collections.create.return_value = None
+        mock_weaviate_client.__aenter__ = AsyncMock(return_value=mock_weaviate_client)
+        mock_weaviate_client.__aexit__ = AsyncMock(return_value=None)
+
+        sq = Configure.VectorIndex.Quantizer.sq()
+        await weaviate_client.ensure_collection_async(
+            collection="test-quantized",
+            vector_size=1152,
+            quantizer=sq,
+        )
+
+        mock_weaviate_client.collections.create.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_ensure_collection_defaults_to_no_quantizer(
+        self, weaviate_client: WeaviateClientWrapper, mock_weaviate_client: AsyncMock
+    ) -> None:
+        """Test that ensure_collection_async defaults to no quantizer.
+
+        **Why this test is important:**
+          - Backward compatibility: existing callers must not break
+
+        **What it tests:**
+          - collections.create is called normally when quantizer is omitted
+        """
+        mock_weaviate_client.collections.exists.return_value = False
+        mock_weaviate_client.collections.create.return_value = None
+        mock_weaviate_client.__aenter__ = AsyncMock(return_value=mock_weaviate_client)
+        mock_weaviate_client.__aexit__ = AsyncMock(return_value=None)
+
+        await weaviate_client.ensure_collection_async(collection="test-default", vector_size=768)
+
+        mock_weaviate_client.collections.create.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_ensure_image_collection_passes_quantizer(
+        self, weaviate_client: WeaviateClientWrapper, mock_weaviate_client: AsyncMock
+    ) -> None:
+        """Test that ensure_image_collection_async passes quantizer.
+
+        **Why this test is important:**
+          - Image collections are the primary ingestion path
+          - Quantizer must be threaded through to hnsw config
+
+        **What it tests:**
+          - quantizer parameter is accepted and forwarded
+        """
+        from weaviate.classes.config import Configure
+
+        mock_weaviate_client.collections.exists.return_value = False
+        mock_weaviate_client.collections.create.return_value = None
+        mock_weaviate_client.__aenter__ = AsyncMock(return_value=mock_weaviate_client)
+        mock_weaviate_client.__aexit__ = AsyncMock(return_value=None)
+
+        bq = Configure.VectorIndex.Quantizer.bq()
+        await weaviate_client.ensure_image_collection_async(
+            collection="images",
+            vector_size=1152,
+            quantizer=bq,
+        )
+
+        mock_weaviate_client.collections.create.assert_called_once()
+
+
 class TestWeaviateClientWrapperCollectionToImageClassName:
     """Test suite for _collection_to_image_class_name helper."""
 

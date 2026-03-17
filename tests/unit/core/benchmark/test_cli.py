@@ -202,7 +202,7 @@ class TestRunCommand:
             ],
         )
         assert result.exit_code == 0
-        mock_resolve.assert_called_once_with("qdrant", collection="my-collection")
+        mock_resolve.assert_called_once_with("qdrant", collection="my-collection", quantization_profile=None)
 
     @patch("core.benchmark.provider_factory.resolve_search_pipeline")
     def test_custom_limit_and_warmup(self, mock_resolve, valid_dataset):
