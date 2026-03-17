@@ -1,3 +1,9 @@
+"""Unit tests for the DLQ class.
+
+How to run:
+    uv run pytest tests/unit/foundation/dlq/test_dlq.py
+"""
+
 import pytest
 from unittest.mock import MagicMock
 from foundation.dead_letter_queue.dlq import DLQ

@@ -133,6 +133,13 @@ Weaviate Cloud:
 - `S3_CIRCUIT_BREAKER_THRESHOLD`
 - `S3_CIRCUIT_BREAKER_TIMEOUT`
 
+### Dead Letter Queue (optional)
+
+- `DLQ_BACKEND`
+- `DLQ_REDIS_HOST`
+- `DLQ_REDIS_PORT`
+- `DLQ_REDIS_DATABASE_NUMBER`
+
 ## Make targets (recommended)
 
 These targets use `zarf/databricks/dev/.env.local` and
