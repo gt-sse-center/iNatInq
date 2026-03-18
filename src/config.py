@@ -1349,6 +1349,52 @@ class DatabricksRayJobConfig(BaseModel):
         )
 
 
+class CacheConfig(BaseModel):
+    """Optional semantic cache configuration.
+
+    When provided to Settings, enables an in-memory Qdrant-backed
+    semantic cache for text-to-image search queries. If absent (None),
+    the system behaves exactly as it does without caching.
+
+    Attributes:
+        max_items: Maximum number of cached entries. Oldest entries are
+            evicted (FIFO) when this limit is reached.
+        cache_hit_score_threshold: Minimum cosine similarity score
+            (0.0 < threshold <= 1.0) to treat a cache lookup as a hit.
+        timeout: Timeout in seconds for the in-memory Qdrant client.
+
+    Environment Variables:
+        CACHE_MAX_ITEMS: Required to enable caching. Positive integer.
+        CACHE_HIT_SCORE_THRESHOLD: Float in (0, 1]. Default: 0.95.
+        CACHE_TIMEOUT: Positive float in seconds. Default: 5.0.
+    """
+
+    max_items: int = Field(gt=0)
+    cache_hit_score_threshold: float = Field(gt=0.0, le=1.0)
+    timeout: float = Field(gt=0.0)
+
+    model_config = SettingsConfigDict(frozen=True)
+
+    @classmethod
+    def from_env(cls) -> "CacheConfig | None":
+        """Create CacheConfig from environment variables, or None to disable.
+
+        Returns None when CACHE_MAX_ITEMS is not set, which disables
+        semantic caching entirely.
+
+        Returns:
+            Configured CacheConfig instance, or None.
+        """
+        raw = os.getenv("CACHE_MAX_ITEMS")
+        if not raw:
+            return None
+        return cls(
+            max_items=int(raw),
+            cache_hit_score_threshold=float(os.getenv("CACHE_HIT_SCORE_THRESHOLD", "0.95")),
+            timeout=float(os.getenv("CACHE_TIMEOUT", "5.0")),
+        )
+
+
 class Settings(BaseModel):
     """Immutable runtime configuration for the pipeline service.
 
@@ -1366,12 +1412,15 @@ class Settings(BaseModel):
             settings.
         k8s_namespace: Kubernetes namespace where ML components are
             deployed. Used for service discovery and resource naming.
+        cache: Optional semantic cache configuration. When None (default),
+            caching is disabled and the search pipeline is unaffected.
     """
 
     embedding: EmbeddingConfig
     vector_db: VectorDBConfig
     minio: MinIOConfig
     k8s_namespace: str
+    cache: CacheConfig | None = None
 
     model_config = SettingsConfigDict(frozen=True)
 
@@ -1393,6 +1442,7 @@ class Settings(BaseModel):
             vector_db=VectorDBConfig.from_env(namespace=ns),
             minio=MinIOConfig.from_env(namespace=ns),
             k8s_namespace=ns,
+            cache=CacheConfig.from_env(),
         )
 
 

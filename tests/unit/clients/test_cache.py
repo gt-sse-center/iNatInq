@@ -6,15 +6,11 @@ semantic cache backed by Qdrant.
 # Test Coverage
 
 The tests cover:
-  - Client Initialization: Timeout propagation, AsyncQdrantClient construction args, initialized flag
-  - Singleton Pattern: Identity across multiple instantiations, re-initialization guard
-  - Thread Safety: Concurrent creation from multiple threads yields a single instance
+  - Initialization: Collection creation, healthy flag, graceful failure
+  - Cache get: Hit, miss (empty), miss (below threshold), failure fallback
+  - Cache put: Storage, FIFO eviction when max_items exceeded
   - Close: Delegation to the underlying AsyncQdrantClient
-
-# Test Structure
-
-Tests use pytest class-based organization with a per-test fixture that resets
-the singleton state so each test starts with a fresh CacheClient.
+  - Serialization: Round-trip of SearchResults through JSON payload
 
 # Running Tests
 
@@ -22,15 +18,14 @@ Run with: uv run pytest tests/unit/clients/test_cache.py -v
 """
 
 # pylint: disable=redefined-outer-name
-# Pytest fixtures intentionally redefine fixture names - this is expected behavior
 
-import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from clients.cache import CacheClient
+from clients.cache import CacheClient, _deserialize_results, _serialize_results
+from config import CacheConfig
+from core.models import SearchResultItem, SearchResults
 
 
 # =============================================================================
@@ -38,155 +33,180 @@ from clients.cache import CacheClient
 # =============================================================================
 
 
-@pytest.fixture(autouse=True)
-def _reset_singleton():
-    """Reset CacheClient singleton state before and after every test."""
-    CacheClient._instance = None  # pylint: disable=protected-access
-    yield
-    inst = CacheClient._instance  # pylint: disable=protected-access
-    if inst is not None and hasattr(inst, "initialized"):
-        del inst.initialized
-    CacheClient._instance = None  # pylint: disable=protected-access
+def _make_config(max_items: int = 100, threshold: float = 0.9, timeout: float = 5.0) -> CacheConfig:
+    return CacheConfig(max_items=max_items, cache_hit_score_threshold=threshold, timeout=timeout)
+
+
+def _make_results(n: int = 2) -> SearchResults:
+    """Create a small SearchResults for testing."""
+    items = [
+        SearchResultItem(point_id=f"pt-{i}", score=0.9 - i * 0.1, payload={"key": f"val-{i}"})
+        for i in range(n)
+    ]
+    return SearchResults(items=items, total=n)
 
 
 @pytest.fixture
 def mock_qdrant_client() -> MagicMock:
-    """Patch AsyncQdrantClient so no real in-memory Qdrant server is created."""
+    """Patch AsyncQdrantClient so no real Qdrant is created."""
     with patch("clients.cache.AsyncQdrantClient") as patched:
-        mock_instance = AsyncMock()
-        patched.return_value = mock_instance
-        yield patched
+        instance = AsyncMock()
+        patched.return_value = instance
+        yield instance
 
 
 # =============================================================================
-# Client Initialization Tests
+# Initialization Tests
 # =============================================================================
 
 
 class TestCacheClientInit:
     """Test suite for CacheClient initialization."""
 
-    def test_creates_client_with_timeout(self, mock_qdrant_client: MagicMock) -> None:
-        """Verify timeout is stored and AsyncQdrantClient receives the correct args.
+    @pytest.mark.asyncio
+    async def test_initialize_creates_collection(self, mock_qdrant_client: AsyncMock) -> None:
+        """initialize() creates the cache collection and marks client healthy."""
+        client = CacheClient(config=_make_config(), vector_size=512)
+        await client.initialize()
 
-        **Why this test is important:**
-          - The cache must forward the timeout to the underlying Qdrant client
-          - The Qdrant client must be opened in-memory (location=":memory:")
+        mock_qdrant_client.create_collection.assert_awaited_once()
+        assert client._healthy is True
 
-        **What it tests:**
-          - CacheClient.timeout matches the provided value
-          - AsyncQdrantClient is called once with location=":memory:" and the timeout
-        """
-        cache = CacheClient(timeout=30)
+    @pytest.mark.asyncio
+    async def test_initialize_failure_marks_unhealthy(self, mock_qdrant_client: AsyncMock) -> None:
+        """If collection creation fails, the client stays unhealthy (no-op mode)."""
+        mock_qdrant_client.create_collection.side_effect = RuntimeError("boom")
+        client = CacheClient(config=_make_config(), vector_size=512)
+        await client.initialize()
 
-        assert cache.timeout == 30
-        mock_qdrant_client.assert_called_once_with(location=":memory:", timeout=30)
-
-    def test_sets_initialized_flag(self, mock_qdrant_client: MagicMock) -> None:
-        """Confirm the initialized sentinel is set after construction.
-
-        **Why this test is important:**
-          - The initialized flag gates re-initialization; if it is not set,
-            every call to __init__ would overwrite the client
-
-        **What it tests:**
-          - cache.initialized is True after first construction
-        """
-        cache = CacheClient(timeout=10)
-
-        assert cache.initialized is True
+        assert client._healthy is False
 
 
 # =============================================================================
-# Singleton Pattern Tests
+# Cache Get Tests
 # =============================================================================
 
 
-class TestCacheClientSingleton:
-    """Test suite for CacheClient singleton behaviour."""
+class TestCacheClientGet:
+    """Test suite for CacheClient.get()."""
 
-    def test_same_instance_returned(self, mock_qdrant_client: MagicMock) -> None:
-        """Two constructions must return the exact same object.
+    @pytest.mark.asyncio
+    async def test_get_returns_none_when_unhealthy(self) -> None:
+        """get() is a no-op when the cache failed to initialize."""
+        with patch("clients.cache.AsyncQdrantClient"):
+            client = CacheClient(config=_make_config(), vector_size=512)
+            result = await client.get(query_vector=[0.1, 0.2], collection="docs")
+            assert result is None
 
-        **Why this test is important:**
-          - The singleton guarantee is the core contract of CacheClient
+    @pytest.mark.asyncio
+    async def test_get_returns_none_on_empty_cache(self, mock_qdrant_client: AsyncMock) -> None:
+        """get() returns None when no points match."""
+        mock_qdrant_client.query_points.return_value = MagicMock(points=[])
+        client = CacheClient(config=_make_config(), vector_size=512)
+        await client.initialize()
 
-        **What it tests:**
-          - `a is b` identity check across two CacheClient() calls
-        """
-        a = CacheClient(timeout=10)
-        b = CacheClient(timeout=10)
+        result = await client.get(query_vector=[0.1, 0.2], collection="docs")
+        assert result is None
 
-        assert a is b
+    @pytest.mark.asyncio
+    async def test_get_returns_results_on_cache_hit(self, mock_qdrant_client: AsyncMock) -> None:
+        """get() returns cached SearchResults when score >= threshold."""
+        expected = _make_results()
+        point = MagicMock()
+        point.score = 0.95
+        point.payload = {"results_json": _serialize_results(expected), "collection": "docs"}
+        mock_qdrant_client.query_points.return_value = MagicMock(points=[point])
 
-    def test_second_init_ignored(self, mock_qdrant_client: MagicMock) -> None:
-        """A second instantiation with different args must not re-initialize.
+        client = CacheClient(config=_make_config(threshold=0.9), vector_size=512)
+        await client.initialize()
 
-        **Why this test is important:**
-          - Prevents accidental reconfiguration of the shared cache
-          - AsyncQdrantClient should be constructed exactly once
+        result = await client.get(query_vector=[0.1, 0.2], collection="docs")
+        assert result is not None
+        assert result.total == expected.total
+        assert len(result.items) == len(expected.items)
+        assert result.items[0].point_id == expected.items[0].point_id
 
-        **What it tests:**
-          - timeout remains the value from the first call
-          - AsyncQdrantClient constructor is called only once
-        """
-        first = CacheClient(timeout=10)
-        second = CacheClient(timeout=99)
+    @pytest.mark.asyncio
+    async def test_get_returns_none_below_threshold(self, mock_qdrant_client: AsyncMock) -> None:
+        """get() returns None when the best score is below threshold."""
+        point = MagicMock()
+        point.score = 0.5
+        point.payload = {"results_json": _serialize_results(_make_results()), "collection": "docs"}
+        mock_qdrant_client.query_points.return_value = MagicMock(points=[point])
 
-        assert second.timeout == 10
-        assert first is second
-        mock_qdrant_client.assert_called_once()
+        client = CacheClient(config=_make_config(threshold=0.9), vector_size=512)
+        await client.initialize()
 
-    def test_id_matches(self, mock_qdrant_client: MagicMock) -> None:
-        """id() of two constructions must be equal.
+        result = await client.get(query_vector=[0.1, 0.2], collection="docs")
+        assert result is None
 
-        **Why this test is important:**
-          - Complements the `is` check with an explicit id comparison
+    @pytest.mark.asyncio
+    async def test_get_catches_exceptions(self, mock_qdrant_client: AsyncMock) -> None:
+        """get() returns None on internal failure instead of propagating."""
+        mock_qdrant_client.query_points.side_effect = RuntimeError("network")
+        client = CacheClient(config=_make_config(), vector_size=512)
+        await client.initialize()
 
-        **What it tests:**
-          - id(a) == id(b) across two CacheClient() calls
-        """
-        a = CacheClient(timeout=5)
-        b = CacheClient(timeout=5)
-
-        assert id(a) == id(b)
+        result = await client.get(query_vector=[0.1, 0.2], collection="docs")
+        assert result is None
 
 
 # =============================================================================
-# Thread Safety Tests
+# Cache Put Tests
 # =============================================================================
 
 
-class TestCacheClientThreadSafety:
-    """Test suite for CacheClient thread safety."""
+class TestCacheClientPut:
+    """Test suite for CacheClient.put()."""
 
-    def test_concurrent_creation_returns_same_instance(self, mock_qdrant_client: MagicMock) -> None:
-        """Threads racing to create the singleton must all get the same object.
+    @pytest.mark.asyncio
+    async def test_put_skips_when_unhealthy(self) -> None:
+        """put() is a no-op when the cache is unhealthy."""
+        with patch("clients.cache.AsyncQdrantClient"):
+            client = CacheClient(config=_make_config(), vector_size=512)
+            await client.put(query_vector=[0.1], results=_make_results(), collection="docs")
 
-        **Why this test is important:**
-          - The double-checked locking in __new__ and __init__ must hold under
-            actual thread contention
-          - AsyncQdrantClient must be constructed exactly once even with races
+    @pytest.mark.asyncio
+    async def test_put_upserts_point(self, mock_qdrant_client: AsyncMock) -> None:
+        """put() upserts a point with the serialized results payload."""
+        mock_qdrant_client.count.return_value = MagicMock(count=0)
+        client = CacheClient(config=_make_config(max_items=10), vector_size=512)
+        await client.initialize()
 
-        **What it tests:**
-          - 10 threads each call CacheClient(timeout=10)
-          - All returned instances are identical (`is` check)
-          - AsyncQdrantClient constructor is invoked exactly once
-        """
-        results: list[CacheClient] = []
-        barrier = threading.Barrier(10)
+        await client.put(query_vector=[0.1, 0.2], results=_make_results(), collection="docs")
 
-        def create():
-            barrier.wait()
-            return CacheClient(timeout=10)
+        mock_qdrant_client.upsert.assert_awaited_once()
+        call_kwargs = mock_qdrant_client.upsert.call_args
+        points = call_kwargs.kwargs.get("points") or call_kwargs[1].get("points")
+        assert len(points) == 1
+        assert "results_json" in points[0].payload
+        assert points[0].payload["collection"] == "docs"
 
-        with ThreadPoolExecutor(max_workers=10) as pool:
-            futures = [pool.submit(create) for _ in range(10)]
-            results.extend(future.result() for future in as_completed(futures))
+    @pytest.mark.asyncio
+    async def test_put_evicts_when_at_capacity(self, mock_qdrant_client: AsyncMock) -> None:
+        """put() evicts oldest entries when count >= max_items."""
+        mock_qdrant_client.count.return_value = MagicMock(count=5)
+        old_point = MagicMock()
+        old_point.id = "oldest-id"
+        mock_qdrant_client.scroll.return_value = ([old_point], None)
 
-        first = results[0]
-        assert all(r is first for r in results)
-        mock_qdrant_client.assert_called_once()
+        client = CacheClient(config=_make_config(max_items=5), vector_size=512)
+        await client.initialize()
+
+        await client.put(query_vector=[0.1], results=_make_results(), collection="docs")
+
+        mock_qdrant_client.scroll.assert_awaited_once()
+        mock_qdrant_client.delete.assert_awaited_once()
+        mock_qdrant_client.upsert.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_put_catches_exceptions(self, mock_qdrant_client: AsyncMock) -> None:
+        """put() logs and swallows internal failures."""
+        mock_qdrant_client.count.side_effect = RuntimeError("disk")
+        client = CacheClient(config=_make_config(), vector_size=512)
+        await client.initialize()
+
+        await client.put(query_vector=[0.1], results=_make_results(), collection="docs")
 
 
 # =============================================================================
@@ -198,16 +218,31 @@ class TestCacheClientClose:
     """Test suite for CacheClient.close()."""
 
     @pytest.mark.asyncio
-    async def test_close_delegates_to_inner_client(self, mock_qdrant_client: MagicMock) -> None:
-        """close() must await the underlying AsyncQdrantClient.close().
+    async def test_close_delegates_to_inner_client(self, mock_qdrant_client: AsyncMock) -> None:
+        """close() awaits the underlying AsyncQdrantClient.close()."""
+        client = CacheClient(config=_make_config(), vector_size=512)
+        await client.close()
 
-        **Why this test is important:**
-          - Failing to close the inner client would leak resources
+        mock_qdrant_client.close.assert_awaited_once()
 
-        **What it tests:**
-          - cache.client.close is awaited exactly once
-        """
-        cache = CacheClient(timeout=10)
-        await cache.close()
 
-        cache.client.close.assert_awaited_once()  # pylint: disable=no-member
+# =============================================================================
+# Serialization Tests
+# =============================================================================
+
+
+class TestSerialization:
+    """Test round-trip serialization of SearchResults."""
+
+    def test_round_trip(self) -> None:
+        """Serialize then deserialize produces identical SearchResults."""
+        original = _make_results(3)
+        payload = {"results_json": _serialize_results(original)}
+        restored = _deserialize_results(payload)
+
+        assert restored.total == original.total
+        assert len(restored.items) == len(original.items)
+        for orig, rest in zip(original.items, restored.items):
+            assert rest.point_id == orig.point_id
+            assert rest.score == orig.score
+            assert rest.payload == orig.payload

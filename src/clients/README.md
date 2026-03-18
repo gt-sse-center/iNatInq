@@ -36,6 +36,7 @@ clients/
 ├── interfaces/          # Abstract Base Classes (ABCs)
 │   ├── embedding.py     # EmbeddingProvider ABC
 │   └── vector_db.py     # VectorDBProvider ABC
+├── cache.py             # CacheClient (in-memory semantic cache)
 ├── ollama.py            # OllamaClient (implements EmbeddingProvider)
 ├── qdrant.py            # QdrantClientWrapper (implements VectorDBProvider)
 ├── weaviate.py          # WeaviateClientWrapper (implements VectorDBProvider)
@@ -79,6 +80,69 @@ vector_size = provider.vector_size
 ```
 
 See `interfaces/README.md` for detailed documentation.
+
+### `cache.py`
+
+Optional in-memory semantic cache for text-to-image search queries, backed by
+an in-memory Qdrant instance (`location=":memory:"`).
+
+**Class:** `CacheClient`
+
+**Purpose:** Reduce latency and vector DB load by caching search results keyed
+on query embedding similarity. When a new query arrives, the cache performs a
+cosine similarity lookup against previously stored query embeddings. If the
+best match scores at or above a configurable threshold, the cached results are
+returned without hitting the vector database.
+
+**Configuration:**
+
+The cache is fully optional. It is enabled only when the `CACHE_MAX_ITEMS`
+environment variable is set. Configuration can also be provided via YAML config
+files (see `config_loader.py`).
+
+| Environment Variable | Description | Default |
+|---|---|---|
+| `CACHE_MAX_ITEMS` | Max cached entries (required to enable cache) | *(unset = disabled)* |
+| `CACHE_HIT_SCORE_THRESHOLD` | Min cosine similarity for a cache hit | `0.95` |
+| `CACHE_TIMEOUT` | Qdrant client timeout in seconds | `5.0` |
+
+Corresponding YAML paths: `cache.max_items`, `cache.hit_score_threshold`,
+`cache.timeout_seconds`.
+
+**Eviction:** FIFO (oldest entry evicted first) when `max_items` is reached.
+
+**Graceful Degradation:** If the in-memory Qdrant collection fails to
+initialize, the cache marks itself unhealthy and all `get()`/`put()` calls
+become silent no-ops. The search pipeline continues to function without
+caching.
+
+**Methods:**
+
+- `initialize()`: Create the cache collection (call once at startup)
+- `get(query_vector, collection) -> SearchResults | None`: Look up cached
+  results; returns `None` on miss or if unhealthy
+- `put(query_vector, results, collection)`: Store results; evicts oldest when
+  at capacity
+- `close()`: Close the underlying Qdrant client
+
+**Usage:**
+
+```python
+from clients.cache import CacheClient
+from config import CacheConfig
+
+config = CacheConfig(max_items=500, cache_hit_score_threshold=0.95, timeout=5.0)
+cache = CacheClient(config=config, vector_size=512)
+await cache.initialize()
+
+# On search request:
+cached = await cache.get(query_vector=[0.1, 0.2, ...], collection="documents")
+if cached is not None:
+    return cached  # Cache hit
+
+results = await vector_db.search_async(...)  # Cache miss — query vector DB
+await cache.put(query_vector=[0.1, 0.2, ...], results=results, collection="documents")
+```
 
 ### `s3.py`
 
