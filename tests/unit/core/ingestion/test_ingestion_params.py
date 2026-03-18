@@ -11,59 +11,11 @@ from core.services.ingestion_params import (
     add_ray_tuning_env,
     build_image_ingestion_env,
     build_inat_image_ingestion_env,
-    build_ingestion_env,
     build_s3_autoloader_env,
 )
 
 
-def test_build_ingestion_env_includes_required_and_optional(monkeypatch) -> None:
-    """Ensure required keys and optional env passthrough are included."""
-    monkeypatch.setenv("QDRANT_URL", "http://qdrant.test:6333")
-    monkeypatch.setenv("QDRANT_API_KEY", "qdrant-key")
-    monkeypatch.setenv("WEAVIATE_URL", "http://weaviate.test:8080")
-    monkeypatch.setenv("WEAVIATE_API_KEY", "weaviate-key")
-    monkeypatch.setenv("WEAVIATE_GRPC_HOST", "grpc.weaviate.test")
-    monkeypatch.setenv("EXTRA_ENV", "extra-value")
-
-    embedding_config = EmbeddingConfig(
-        provider_type=ProviderType.OLLAMA,
-        ollama_url="http://ollama.test:11434",
-        ollama_model="nomic-embed-text",
-        vector_size=768,
-    )
-
-    env_vars = build_ingestion_env(
-        namespace="ml-system",
-        s3_endpoint="http://minio.test:9000",
-        s3_access_key_id="access-key",
-        s3_secret_access_key="secret-key",
-        s3_bucket="bucket",
-        s3_prefix="inputs/",
-        embedding_config=embedding_config,
-        collection="documents",
-        extra_env_keys=["EXTRA_ENV"],
-    )
-
-    assert env_vars["K8S_NAMESPACE"] == "ml-system"
-    assert env_vars["S3_PREFIX"] == "inputs/"
-    assert env_vars["S3_ENDPOINT"] == "http://minio.test:9000"
-    assert env_vars["S3_ACCESS_KEY_ID"] == "access-key"
-    assert env_vars["S3_SECRET_ACCESS_KEY"] == "secret-key"
-    assert env_vars["S3_BUCKET"] == "bucket"
-    assert env_vars["VECTOR_DB_COLLECTION"] == "documents"
-    assert env_vars["EMBEDDING_PROVIDER"] == "ollama"
-    assert env_vars["EMBEDDING_VECTOR_SIZE"] == "768"
-    assert env_vars["OLLAMA_BASE_URL"] == "http://ollama.test:11434"
-    assert env_vars["OLLAMA_MODEL"] == "nomic-embed-text"
-    assert env_vars["QDRANT_URL"] == "http://qdrant.test:6333"
-    assert env_vars["QDRANT_API_KEY"] == "qdrant-key"
-    assert env_vars["WEAVIATE_URL"] == "http://weaviate.test:8080"
-    assert env_vars["WEAVIATE_API_KEY"] == "weaviate-key"
-    assert env_vars["WEAVIATE_GRPC_HOST"] == "grpc.weaviate.test"
-    assert env_vars["EXTRA_ENV"] == "extra-value"
-
-
-def test_add_ray_tuning_env(monkeypatch) -> None:
+def test_add_ray_tuning_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Ensure RAY_* variables are passed through."""
     monkeypatch.setenv("RAY_NUM_WORKERS", "4")
     monkeypatch.setenv("RAY_BATCH_UPSERT_SIZE", "128")
@@ -78,7 +30,10 @@ def test_add_ray_tuning_env(monkeypatch) -> None:
     assert os.environ.get("RAY_NUM_WORKERS") == "4"
 
 
-def test_build_image_ingestion_env_includes_required_and_optional(monkeypatch) -> None:
+@pytest.mark.parametrize("pull_from_dlq", [True, False])
+def test_build_image_ingestion_env_includes_required_and_optional(
+    monkeypatch: pytest.MonkeyPatch, pull_from_dlq: bool
+) -> None:
     """Ensure image ingestion env includes required keys and passthrough values."""
     monkeypatch.setenv("EMBEDDING_PROVIDER", "hosted_clip")
     monkeypatch.setenv("QDRANT_URL", "http://qdrant.test:6333")
@@ -91,6 +46,10 @@ def test_build_image_ingestion_env_includes_required_and_optional(monkeypatch) -
     monkeypatch.setenv("INAT_METADATA_URL", "s3://inaturalist-open-data/photos.csv.gz")
     monkeypatch.setenv("INAT_IMAGE_SIZE", "large")
     monkeypatch.setenv("EXTRA_ENV", "extra-value")
+    monkeypatch.setenv("DLQ_BACKEND", "redis")
+    monkeypatch.setenv("DLQ_REDIS_HOST", "redis")
+    monkeypatch.setenv("DLQ_REDIS_PORT", "6379")
+    monkeypatch.setenv("DLQ_REDIS_DATABASE_NUMBER", "0")
 
     embedding_config = EmbeddingConfig(
         provider_type=ProviderType.HOSTED_CLIP,
@@ -116,6 +75,7 @@ def test_build_image_ingestion_env_includes_required_and_optional(monkeypatch) -
         embedding_config=embedding_config,
         collection="images",
         extra_env_keys=["EXTRA_ENV"],
+        pull_from_dlq=pull_from_dlq,
     )
 
     assert env_vars["K8S_NAMESPACE"] == "ml-system"
@@ -146,50 +106,14 @@ def test_build_image_ingestion_env_includes_required_and_optional(monkeypatch) -
     assert env_vars["INAT_METADATA_URL"] == "s3://inaturalist-open-data/photos.csv.gz"
     assert env_vars["INAT_IMAGE_SIZE"] == "large"
     assert env_vars["EXTRA_ENV"] == "extra-value"
+    assert env_vars["DLQ_BACKEND"] == "redis"
+    assert env_vars["DLQ_REDIS_HOST"] == "redis"
+    assert env_vars["DLQ_REDIS_PORT"] == "6379"
+    assert env_vars["DLQ_REDIS_DATABASE_NUMBER"] == "0"
+    assert env_vars["PULL_FROM_DLQ"].lower() == ("true" if pull_from_dlq else "false")
 
 
-def test_build_ingestion_env_with_ingestion_targets(monkeypatch) -> None:
-    """Test that VECTOR_DB_TARGETS is set when ingestion_targets is provided."""
-    monkeypatch.delenv("VECTOR_DB_TARGETS", raising=False)
-    embedding_config = EmbeddingConfig(provider_type=ProviderType.OLLAMA)
-
-    env_vars = build_ingestion_env(
-        namespace="ns",
-        s3_endpoint="http://minio:9000",
-        s3_access_key_id="ak",
-        s3_secret_access_key="sk",
-        s3_bucket="b",
-        s3_prefix="p/",
-        embedding_config=embedding_config,
-        collection="col",
-        ingestion_targets=frozenset({"qdrant"}),
-    )
-
-    assert env_vars["VECTOR_DB_TARGETS"] == "qdrant"
-
-
-def test_build_ingestion_env_targets_sorted(monkeypatch) -> None:
-    """Test that VECTOR_DB_TARGETS value is sorted for deterministic output."""
-    monkeypatch.delenv("VECTOR_DB_TARGETS", raising=False)
-    embedding_config = EmbeddingConfig(provider_type=ProviderType.OLLAMA)
-
-    env_vars = build_ingestion_env(
-        namespace="ns",
-        s3_endpoint="http://minio:9000",
-        s3_access_key_id="ak",
-        s3_secret_access_key="sk",
-        s3_bucket="b",
-        s3_prefix="p/",
-        embedding_config=embedding_config,
-        collection="col",
-        ingestion_targets=frozenset({"weaviate", "qdrant"}),
-    )
-
-    assert env_vars["K8S_NAMESPACE"] == "ns"
-    assert env_vars["VECTOR_DB_TARGETS"] == "qdrant,weaviate"
-
-
-def test_build_inat_image_ingestion_env_excludes_s3_connection_keys(monkeypatch) -> None:
+def test_build_inat_image_ingestion_env_excludes_s3_connection_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     """Ensure iNat image ingestion env does not require MinIO/S3 connection values."""
     monkeypatch.setenv("QDRANT_URL", "http://qdrant.test:6333")
     monkeypatch.setenv("INAT_MAX_ROWS", "500")
@@ -229,7 +153,7 @@ def test_build_inat_image_ingestion_env_excludes_s3_connection_keys(monkeypatch)
     assert "S3_BUCKET" not in env_vars
 
 
-def test_build_s3_autoloader_env_requires_mandatory_keys(monkeypatch) -> None:
+def test_build_s3_autoloader_env_requires_mandatory_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     """Auto Loader env builder should fail fast when required keys are missing."""
     monkeypatch.delenv("S3_BUCKET", raising=False)
     monkeypatch.delenv("AUTOLOADER_BRONZE_TABLE", raising=False)
@@ -240,7 +164,7 @@ def test_build_s3_autoloader_env_requires_mandatory_keys(monkeypatch) -> None:
         build_s3_autoloader_env(namespace="ml-system")
 
 
-def test_build_s3_autoloader_env_rejects_whitespace_required_values(monkeypatch) -> None:
+def test_build_s3_autoloader_env_rejects_whitespace_required_values(monkeypatch: pytest.MonkeyPatch) -> None:
     """Whitespace-only required Auto Loader values should be treated as missing."""
     monkeypatch.setenv("S3_BUCKET", "   ")
     monkeypatch.setenv("AUTOLOADER_BRONZE_TABLE", "main.default.images_bronze")
@@ -251,7 +175,7 @@ def test_build_s3_autoloader_env_rejects_whitespace_required_values(monkeypatch)
         build_s3_autoloader_env(namespace="ml-system")
 
 
-def test_build_s3_autoloader_env_requires_complete_minio_group(monkeypatch) -> None:
+def test_build_s3_autoloader_env_requires_complete_minio_group(monkeypatch: pytest.MonkeyPatch) -> None:
     """Partial MinIO S3 settings should fail fast."""
     monkeypatch.setenv("S3_BUCKET", "pipeline")
     monkeypatch.setenv("AUTOLOADER_BRONZE_TABLE", "main.default.images_bronze")
@@ -265,7 +189,7 @@ def test_build_s3_autoloader_env_requires_complete_minio_group(monkeypatch) -> N
         build_s3_autoloader_env(namespace="ml-system")
 
 
-def test_build_s3_autoloader_env_includes_required_and_optional(monkeypatch) -> None:
+def test_build_s3_autoloader_env_includes_required_and_optional(monkeypatch: pytest.MonkeyPatch) -> None:
     """Auto Loader env builder should include required and optional keys."""
     monkeypatch.setenv("S3_BUCKET", "pipeline")
     monkeypatch.setenv("S3_PREFIX", "images")
@@ -302,7 +226,9 @@ def test_build_s3_autoloader_env_includes_required_and_optional(monkeypatch) -> 
     assert env_vars["INATINQ_SRC_DIR"] == "/Workspace/Users/test/iNatInq/src"
 
 
-def test_build_inat_image_ingestion_env_passthroughs_vector_db_targets(monkeypatch) -> None:
+def test_build_inat_image_ingestion_env_passthroughs_vector_db_targets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Ensure iNat image ingestion env passes through VECTOR_DB_TARGETS when set."""
     monkeypatch.setenv("VECTOR_DB_TARGETS", "qdrant")
 

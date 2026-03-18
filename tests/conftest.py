@@ -96,9 +96,17 @@ def pytest_runtest_setup(item) -> None:
 
 def pytest_sessionfinish(session, exitstatus) -> None:
     """Restore real ray in sys.modules so ray's atexit handler can run cleanly."""
-    if _REAL_RAY is not None:
-        sys.modules["ray"] = _REAL_RAY
-    else:
-        # If real ray was never loaded, remove mock ray so the handler sees a real (or missing) module
+    try:
+        # Ensure we have a real ray module loaded for atexit shutdown.
+        real_ray = _get_real_ray()
+    except Exception:
+        # If real ray truly cannot be imported, remove mocks so the handler
+        # either sees no ray module or handles the missing module gracefully.
         sys.modules.pop("ray", None)
         sys.modules.pop("ray.job_submission", None)
+        return
+
+    # Put the real ray back so its atexit handler sees a coherent module.
+    sys.modules["ray"] = real_ray
+    # Drop any mock-only submodules we may have registered.
+    sys.modules.pop("ray.job_submission", None)

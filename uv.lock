@@ -244,7 +244,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "qdrant-client", specifier = ">=1.15.1" },
+    { name = "qdrant-client", specifier = "==1.16.1" },
     { name = "ray", extras = ["default"], specifier = "==2.53.0" },
     { name = "redis", specifier = ">=7.2.1" },
     { name = "requests", specifier = ">=2.31" },

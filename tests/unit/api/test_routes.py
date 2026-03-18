@@ -27,7 +27,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from core.exceptions import UpstreamError
+from foundation.exceptions import UpstreamError
 from core.models import SearchResultItem, SearchResults
 
 # =============================================================================
@@ -496,6 +496,38 @@ class TestRayJobEndpoints:
         data = response.json()
         assert data["status"] == "stopped"
 
+    def test_process_dlq_entries_ray_success(
+        self,
+        test_client: TestClient,
+        mock_ray_service: MagicMock,
+    ) -> None:
+        """POST /ray/jobs/process-dlq submits image job with pull_from_dlq=True."""
+        with (
+            patch("api.routes.RayService", return_value=mock_ray_service),
+            patch("api.routes.get_settings") as mock_settings,
+            patch("api.routes.MinIOConfig.from_env") as mock_minio,
+        ):
+            mock_settings.return_value.k8s_namespace = "ml-system"
+            mock_settings.return_value.vector_db.collection = "documents"
+            mock_minio.return_value.endpoint_url = "http://minio:9000"
+            mock_minio.return_value.access_key_id = "minioadmin"
+            mock_minio.return_value.secret_access_key = "minioadmin"
+            mock_minio.return_value.bucket = "pipeline"
+
+            response = test_client.post("/ray/jobs/process-dlq")
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["status"] == "submitted"
+        assert data["namespace"] == "ml-system"
+        assert data["job_id"] == "raysubmit_1234567890"
+
+        mock_ray_service.submit_image_job.assert_called_once()
+        call_kw = mock_ray_service.submit_image_job.call_args.kwargs
+        assert call_kw["pull_from_dlq"] == True
+        assert call_kw["s3_bucket"] == "pipeline"
+        assert call_kw["collection"] == "documents"
+
 
 # =============================================================================
 # Databricks Job Management Endpoints Tests
@@ -604,6 +636,38 @@ class TestDatabricksJobEndpoints:
         call_kw = mock_service.submit_image_job.call_args.kwargs
         assert call_kw["s3_prefix"] == ""
         mock_service.submit_inat_image_job.assert_not_called()
+
+    def test_process_dlq_entries_databricks_success(self, test_client: TestClient) -> None:
+        """POST /databricks/jobs/process-dlq submits image job with pull_from_dlq=True."""
+        with (
+            patch("api.routes.DatabricksRayService") as mock_service_cls,
+            patch("api.routes.get_settings") as mock_settings,
+            patch("api.routes.MinIOConfig.from_env") as mock_minio,
+            patch("api.routes.EmbeddingConfig.from_env") as mock_embed_cfg,
+        ):
+            mock_service = MagicMock()
+            mock_service.submit_image_job.return_value = 456
+            mock_service_cls.return_value = mock_service
+            mock_settings.return_value.k8s_namespace = "ml-system"
+            mock_settings.return_value.vector_db.collection = "documents"
+            mock_minio.return_value.endpoint_url = "http://minio:9000"
+            mock_minio.return_value.access_key_id = "minioadmin"
+            mock_minio.return_value.secret_access_key = "minioadmin"
+            mock_minio.return_value.bucket = "pipeline"
+            mock_embed_cfg.return_value = MagicMock()
+            response = test_client.post("/databricks/jobs/process-dlq")
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["status"] == "submitted"
+        assert data["namespace"] == "ml-system"
+        assert data["run_id"] == "456"
+
+        mock_service.submit_image_job.assert_called_once()
+        call_kw = mock_service.submit_image_job.call_args.kwargs
+        assert call_kw["pull_from_dlq"] == True
+        assert call_kw["s3_bucket"] == "pipeline"
+        assert call_kw["collection"] == "documents"
 
     def test_submit_databricks_image_job_rejects_s3_autoloader_source(self, test_client: TestClient) -> None:
         """Image job endpoint should reject s3_autoloader source."""

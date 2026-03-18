@@ -33,7 +33,7 @@ resources:
             - pypi:
                 package: pillow
             - pypi:
-                package: qdrant-client==1.15.1
+                package: qdrant-client==1.16.1
             - pypi:
                 package: weaviate-client==4.9.3
       queue:
@@ -71,7 +71,7 @@ resources:
             - pypi:
                 package: pillow
             - pypi:
-                package: qdrant-client==1.15.1
+                package: qdrant-client==1.16.1
             - pypi:
                 package: weaviate-client==4.9.3
       queue:

@@ -23,7 +23,7 @@ from clients.s3 import S3ClientWrapper
 from clients.qdrant import QdrantClientWrapper
 from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
 from core.ingestion.databricks.batch_runner import run_ray_batch_processing
-from core.ingestion.shared.batching import iter_image_batches
+from core.ingestion.shared.batching import clear_successful_dlq_entries, iter_dlq_entries, iter_image_batches
 from core.ingestion.shared.qdrant_indexing import qdrant_indexing_disabled
 from core.ingestion.strategies import LocalRayStrategy
 from core.ingestion.tasks import process_image_batch_ray
@@ -111,15 +111,23 @@ def main() -> None:
         image_embed_batch_size = ray_cfg.image_embed_batch_size
         max_inflight_batches = max(1, ray_cfg.num_workers)
 
-        batch_gen = iter_image_batches(
-            s3=s3,
-            bucket=bucket,
-            prefix=s3_prefix,
-            processed=processed,
-            batch_size=image_batch_size,
-            max_items=image_max_items,
-            page_size=image_page_size,
-        )
+        processing_dlq = os.getenv("PULL_FROM_DLQ", "").lower() == "true"
+        if processing_dlq:
+            logger.info("Processing previously failed image ingestions from the dead letter queue")
+            batch_gen = iter_dlq_entries(
+                batch_size=image_batch_size,
+                max_items=image_max_items,
+            )
+        else:
+            batch_gen = iter_image_batches(
+                s3=s3,
+                bucket=bucket,
+                prefix=s3_prefix,
+                processed=processed,
+                batch_size=image_batch_size,
+                max_items=image_max_items,
+                page_size=image_page_size,
+            )
 
         job_logger.info(
             "Starting streaming image batch processing",
@@ -180,6 +188,8 @@ def main() -> None:
                 progress_label="Image batch progress",
                 total_expected_records=None,
             )
+        if processing_dlq:
+            clear_successful_dlq_entries(stats.successful_keys)
 
         success = stats.successful
         failed = stats.failed
