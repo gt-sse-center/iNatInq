@@ -289,6 +289,9 @@ class DatabricksProcessDLQResponse(BaseModel):
     submitted_at: str
 
 
+# Intentionally kept as a separate model from DatabricksCdcProducerJobResponse:
+# producer and consumer are distinct API contracts/endpoints, and we keep distinct
+# schema names for clarity and future evolution even though fields currently match.
 class DatabricksCdcConsumerJobResponse(BaseModel):
     """Response after submitting a Databricks CDC consumer job."""
 
