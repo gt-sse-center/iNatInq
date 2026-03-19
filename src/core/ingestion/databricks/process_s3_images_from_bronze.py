@@ -136,23 +136,23 @@ def main() -> None:
         },
     )
 
+    window_cfg = CDCWindowConfig(
+        bronze_table=cdc_cfg.bronze_table,
+        progress_table=cdc_cfg.progress_table,
+        progress_id=cdc_cfg.progress_id,
+        watermark_col=cdc_cfg.watermark_col,
+        key_col=cdc_cfg.key_col,
+        window_size=cdc_cfg.window_size,
+    )
+
     strategy = DatabricksStrategy.from_env(namespace)
     strategy.init()
 
     try:
         spark_session = _spark_session_class()
         spark = spark_session.getActiveSession() or spark_session.builder.getOrCreate()
-        _assert_table_exists(spark, table_name=cdc_cfg.bronze_table)
-        ensure_progress_table(spark, progress_table=cdc_cfg.progress_table)
-
-        window_cfg = CDCWindowConfig(
-            bronze_table=cdc_cfg.bronze_table,
-            progress_table=cdc_cfg.progress_table,
-            progress_id=cdc_cfg.progress_id,
-            watermark_col=cdc_cfg.watermark_col,
-            key_col=cdc_cfg.key_col,
-            window_size=cdc_cfg.window_size,
-        )
+        _assert_table_exists(spark, table_name=window_cfg.bronze_table)
+        ensure_progress_table(spark, progress_table=window_cfg.progress_table)
 
         cursor = load_progress_cursor(spark, config=window_cfg, collection=collection)
         if cursor is not None:

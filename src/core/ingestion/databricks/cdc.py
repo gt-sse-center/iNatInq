@@ -43,6 +43,11 @@ class CDCWindowConfig:
     key_col: str = "s3_key"
     window_size: int = 5000
 
+    def __post_init__(self) -> None:
+        """Validate table identifiers used by Spark table access and SQL."""
+        _require_safe_table_name(self.bronze_table)
+        _require_safe_table_name(self.progress_table)
+
 
 def ensure_progress_table(spark: SparkSession, *, progress_table: str) -> None:
     """Create progress Delta table if it does not already exist."""

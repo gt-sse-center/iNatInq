@@ -123,3 +123,23 @@ def test_merge_progress_cursor_uses_monotonic_when_matched_condition(monkeypatch
     merge_builder.whenMatchedUpdate.assert_called_once()
     kwargs = merge_builder.whenMatchedUpdate.call_args.kwargs
     assert kwargs["condition"] == cdc._monotonic_progress_update_condition()
+
+
+def test_cdc_window_config_rejects_unsafe_bronze_table_name() -> None:
+    """Bronze table identifiers should be validated at config construction."""
+    with pytest.raises(ValueError, match="Unsafe table identifier"):
+        CDCWindowConfig(
+            bronze_table="main.default.images bronze",
+            progress_table="main.default.images_progress",
+            progress_id="test-progress",
+        )
+
+
+def test_cdc_window_config_rejects_unsafe_progress_table_name() -> None:
+    """Progress table identifiers should be validated at config construction."""
+    with pytest.raises(ValueError, match="Unsafe table identifier"):
+        CDCWindowConfig(
+            bronze_table="main.default.images_bronze",
+            progress_table="main.default.images-progress",
+            progress_id="test-progress",
+        )
