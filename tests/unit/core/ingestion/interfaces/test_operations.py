@@ -512,7 +512,7 @@ class TestImageContentFetcher:
 
         assert result is not None
         assert result.s3_key == "photo.jpg"
-        assert result.source_uri == "s3://images/photo.jpg"
+        assert result.source_uri == "s3://pipeline/images/photo.jpg"
         assert result.format == "jpeg"
 
     def test_fetch_one_retries_with_key_prefix_for_upstream_nosuchkey(self) -> None:
@@ -533,7 +533,7 @@ class TestImageContentFetcher:
         result = fetcher.fetch_one("photo.jpg")
 
         assert result is not None
-        assert result.source_uri == "s3://images/photo.jpg"
+        assert result.source_uri == "s3://pipeline/images/photo.jpg"
 
     def test_fetch_one_does_not_retry_with_prefix_on_non_missing_error(self) -> None:
         """Non-404 errors should fail immediately without trying prefixed key."""
@@ -578,7 +578,7 @@ class TestImageContentFetcher:
         assert len(images) == 1
         assert len(failures) == 0
         assert images[0].s3_key == "photo.jpg"
-        assert images[0].source_uri == "s3://images/photo.jpg"
+        assert images[0].source_uri == "s3://pipeline/images/photo.jpg"
 
     @pytest.mark.asyncio
     async def test_fetch_all_async_does_not_retry_with_prefix_on_non_missing_error(self) -> None:

@@ -444,7 +444,7 @@ class ImageContentFetcher:
                 image_bytes=data,
                 format=detected_format,  # type: ignore[arg-type]
                 size_bytes=len(data),
-                source_uri=(f"s3://{resolved_key}" if resolved_key != key else None),
+                source_uri=(f"s3://{self.bucket}/{resolved_key}" if resolved_key != key else None),
             )
 
         except (UpstreamError, ClientError, OSError, ValueError) as e:
@@ -566,7 +566,7 @@ class ImageContentFetcher:
                 image_bytes=data,
                 format=detected_format,  # type: ignore[arg-type]
                 size_bytes=len(data),
-                source_uri=(f"s3://{resolved_key}" if resolved_key != key else None),
+                source_uri=(f"s3://{self.bucket}/{resolved_key}" if resolved_key != key else None),
             )
 
             if with_dimensions:
