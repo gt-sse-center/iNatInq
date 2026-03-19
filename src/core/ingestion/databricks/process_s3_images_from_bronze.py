@@ -117,6 +117,7 @@ def main() -> None:
     image_batch_size = max(1, ray_cfg.image_batch_size)
     image_embed_batch_size = max(1, ray_cfg.image_embed_batch_size)
     max_inflight_batches = max(1, ray_cfg.num_workers)
+    s3_key_prefix = ray_cfg.s3_prefix
 
     job_logger.info(
         "Configuration loaded",
@@ -130,6 +131,7 @@ def main() -> None:
             "image_batch_size": image_batch_size,
             "image_embed_batch_size": image_embed_batch_size,
             "max_inflight_batches": max_inflight_batches,
+            "s3_key_prefix": s3_key_prefix,
             "ingestion_targets": sorted(ingestion_targets),
         },
     )
@@ -209,6 +211,7 @@ def main() -> None:
                 retry_min_wait=ray_cfg.retry_min_wait,
                 retry_max_wait=ray_cfg.retry_max_wait,
                 ingestion_targets=ingestion_targets,
+                s3_key_prefix=s3_key_prefix,
             )
 
         should_disable_indexing = ray_cfg.disable_indexing_during_ingest and "qdrant" in ingestion_targets

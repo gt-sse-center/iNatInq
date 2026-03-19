@@ -7,7 +7,6 @@ These classes are shared between Ray and Spark implementations.
 
 import asyncio
 import logging
-import os
 from typing import TYPE_CHECKING
 
 from botocore.exceptions import ClientError
@@ -303,6 +302,7 @@ class ImageContentFetcher:
         bucket: str,
         min_size_bytes: int = DEFAULT_MIN_SIZE,
         max_size_bytes: int = DEFAULT_MAX_SIZE,
+        key_prefix: str = "",
     ) -> None:
         """Initialize the image fetcher.
 
@@ -311,19 +311,21 @@ class ImageContentFetcher:
             bucket: S3 bucket name.
             min_size_bytes: Minimum valid image size in bytes.
             max_size_bytes: Maximum valid image size in bytes.
+            key_prefix: Optional S3 key prefix for fallback lookup (for CDC keys
+                that may omit the source prefix).
         """
         self.s3 = s3_client
         self.bucket = bucket
         self.min_size_bytes = min_size_bytes
         self.max_size_bytes = max_size_bytes
-        raw_prefix = (os.getenv("S3_PREFIX") or "").strip().strip("/")
+        raw_prefix = key_prefix.strip().strip("/")
         self._key_prefix = f"{raw_prefix}/" if raw_prefix else ""
 
     def _candidate_keys(self, key: str) -> tuple[str, ...]:
         """Return ordered S3 key candidates for lookup.
 
         For Bronze CDC consumers, keys may be stored without the source prefix.
-        We first try the raw key, then optionally prefix it with S3_PREFIX.
+        We first try the raw key, then optionally prefix it with key_prefix.
         """
         normalized_key = key.lstrip("/")
         candidates = [normalized_key]

@@ -479,9 +479,22 @@ class TestImageContentFetcher:
         assert result is not None
         assert result.format == "webp"
 
-    def test_fetch_one_retries_with_s3_prefix_when_key_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Fetcher should retry with S3_PREFIX when Bronze key omits the prefix."""
+    def test_fetch_one_does_not_use_env_prefix_without_key_prefix(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Fetcher should ignore S3_PREFIX env var unless key_prefix is passed."""
         monkeypatch.setenv("S3_PREFIX", "images")
+        mock_s3 = MagicMock()
+        mock_s3.get_object.side_effect = ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline")
+        result = fetcher.fetch_one("photo.jpg")
+
+        assert result is None
+        mock_s3.get_object.assert_called_once_with(bucket="pipeline", key="photo.jpg")
+
+    def test_fetch_one_retries_with_key_prefix_when_key_missing(self) -> None:
+        """Fetcher should retry with key_prefix when Bronze key omits the prefix."""
         mock_s3 = MagicMock()
         jpeg_data = self.JPEG_HEADER + b"\x00" * 100
 
@@ -494,7 +507,7 @@ class TestImageContentFetcher:
 
         mock_s3.get_object.side_effect = side_effect
 
-        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline")
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline", key_prefix="images")
         result = fetcher.fetch_one("photo.jpg")
 
         assert result is not None
@@ -502,26 +515,20 @@ class TestImageContentFetcher:
         assert result.source_uri == "s3://images/photo.jpg"
         assert result.format == "jpeg"
 
-    def test_fetch_one_does_not_retry_with_prefix_on_non_missing_error(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_fetch_one_does_not_retry_with_prefix_on_non_missing_error(self) -> None:
         """Non-404 errors should fail immediately without trying prefixed key."""
-        monkeypatch.setenv("S3_PREFIX", "images")
         mock_s3 = MagicMock()
         mock_s3.get_object.side_effect = UpstreamError("S3 get_object failed: AccessDenied")
 
-        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline")
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline", key_prefix="images")
         result = fetcher.fetch_one("photo.jpg")
 
         assert result is None
         mock_s3.get_object.assert_called_once_with(bucket="pipeline", key="photo.jpg")
 
     @pytest.mark.asyncio
-    async def test_fetch_all_async_retries_with_s3_prefix_when_key_missing(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Async fetch path should also retry with S3_PREFIX fallback."""
-        monkeypatch.setenv("S3_PREFIX", "images")
+    async def test_fetch_all_async_retries_with_key_prefix_when_key_missing(self) -> None:
+        """Async fetch path should also retry with key_prefix fallback."""
         mock_s3 = MagicMock()
         jpeg_data = self.JPEG_HEADER + b"\x00" * 100
 
@@ -534,7 +541,7 @@ class TestImageContentFetcher:
 
         mock_s3.get_object_async = AsyncMock(side_effect=side_effect)
 
-        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline")
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline", key_prefix="images")
         images, failures = await fetcher.fetch_all_async(["photo.jpg"])
 
         assert len(images) == 1
@@ -543,15 +550,12 @@ class TestImageContentFetcher:
         assert images[0].source_uri == "s3://images/photo.jpg"
 
     @pytest.mark.asyncio
-    async def test_fetch_all_async_does_not_retry_with_prefix_on_non_missing_error(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_fetch_all_async_does_not_retry_with_prefix_on_non_missing_error(self) -> None:
         """Async path should not retry alternative key for non-missing errors."""
-        monkeypatch.setenv("S3_PREFIX", "images")
         mock_s3 = MagicMock()
         mock_s3.get_object_async = AsyncMock(side_effect=UpstreamError("S3 get_object failed: AccessDenied"))
 
-        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline")
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline", key_prefix="images")
         images, failures = await fetcher.fetch_all_async(["photo.jpg"])
 
         assert len(images) == 0
