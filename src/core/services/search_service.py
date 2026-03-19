@@ -5,12 +5,15 @@ This module provides service classes for semantic search orchestration:
 
 The services:
 1. Generate embedding for query text
-2. Search vector database for similar vectors
-3. Format and return results
+2. Check semantic cache for similar previous queries
+3. Search vector database for similar vectors (on cache miss)
+4. Store results in semantic cache for future queries
+5. Format and return results
 """
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import attrs
@@ -23,9 +26,12 @@ from foundation.metrics.registry import (
 )
 
 if TYPE_CHECKING:
+    from clients.cache import CacheClient
     from clients.interfaces.embedding import EmbeddingProvider
     from clients.interfaces.vector_db import VectorDBProvider
     from core.models import SearchResults
+
+logger = logging.getLogger("core.services.search")
 
 
 @attrs.define(frozen=True, slots=True)
@@ -44,6 +50,8 @@ class ImageSearchService:
             (e.g. ``"clip"``, ``"ollama"``). Defaults to ``"clip"``.
         vector_db_provider_name: String label for the vector DB provider used in metrics
             (e.g. ``"qdrant"``, ``"weaviate"``). Defaults to ``"qdrant"``.
+        cache: Optional ``CacheClient`` for semantic query caching.
+            When ``None`` (default), caching is disabled.
 
     Example:
         ```python
@@ -70,6 +78,7 @@ class ImageSearchService:
     vector_db_provider: VectorDBProvider
     embedding_provider_name: str = attrs.field(default="clip")
     vector_db_provider_name: str = attrs.field(default="qdrant")
+    cache: CacheClient | None = attrs.field(default=None)
 
     async def search_images_async(
         self,
@@ -103,6 +112,14 @@ class ImageSearchService:
         with SEARCH_EMBEDDING_DURATION.labels(provider=self.embedding_provider_name).time():
             query_embedding = await self.embedding_provider.embed_text(query.strip())
 
+        # Check semantic cache before hitting the vector database
+        if self.cache is not None:
+            cached = await self.cache.lookup(collection, query_embedding, limit)
+            if cached is not None:
+                logger.debug("Semantic cache hit for collection=%s", collection)
+                SEARCH_RESULT_COUNT.labels(collection=collection).observe(len(cached.items))
+                return cached
+
         with SEARCH_VECTOR_QUERY_DURATION.labels(
             provider=self.vector_db_provider_name, collection=collection
         ).time():
@@ -111,6 +128,13 @@ class ImageSearchService:
                 query_vector=query_embedding,
                 limit=limit,
             )
+
+        # Store results in semantic cache (non-fatal on failure)
+        if self.cache is not None:
+            try:
+                await self.cache.store(collection, query_embedding, query.strip(), results, limit)
+            except Exception:
+                logger.warning("Failed to store results in semantic cache", exc_info=True)
 
         # Intentionally not observed on error: SEARCH_RESULT_COUNT tracks result
         # distributions for successful queries only. Error-path searches have no

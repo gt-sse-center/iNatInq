@@ -337,3 +337,15 @@ def patch_embedding_config(mock_embedding_config: MagicMock):
         return_value=mock_embedding_config,
     ) as mock:
         yield mock
+
+
+@pytest.fixture(autouse=True)
+def patch_get_semantic_cache():
+    """Disable the semantic cache for all route tests.
+
+    The cache defaults to enabled and uses a module-level singleton.
+    Without this patch, cached results from earlier tests can leak into
+    later tests, causing vector-DB mocks to be bypassed.
+    """
+    with patch("api.routes.get_semantic_cache", return_value=None):
+        yield

@@ -14,6 +14,7 @@ ImageSearchService:
   - Async Search: Async operations, error handling
   - Input Validation: Empty queries, invalid limits
   - Error Handling: BadRequestError on validation, UpstreamError propagation
+  - Cache Integration: Cache hit/miss/error scenarios
 
 # Test Structure
 
@@ -26,7 +27,7 @@ service logic.
 Run with: pytest tests/unit/services/test_search_service.py
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import attrs.exceptions
 import pytest
@@ -625,3 +626,141 @@ class TestImageSearchServiceIntegration:
         assert len(results.items) == 1
         assert results.items[0].point_id == "cat-001"
         assert results.items[0].payload["s3_key"] == "images/cat-001.jpg"
+
+
+# =============================================================================
+# ImageSearchService Cache Integration Tests
+# =============================================================================
+
+
+class TestImageSearchServiceCacheIntegration:
+    """Test suite for semantic cache integration in ImageSearchService."""
+
+    @staticmethod
+    def _make_mock_cache() -> MagicMock:
+        """Create a mock CacheClient with AsyncMock methods."""
+        cache = MagicMock()
+        cache.lookup = AsyncMock(return_value=None)
+        cache.store = AsyncMock()
+        return cache
+
+    @staticmethod
+    def _make_cached_results() -> SearchResults:
+        """Return a SearchResults instance representing a cache hit."""
+        return SearchResults(
+            items=[
+                SearchItem(
+                    point_id="cached-1",
+                    score=0.99,
+                    payload={"s3_key": "images/cached.jpg", "s3_uri": "s3://b/cached.jpg"},
+                ),
+            ],
+            total=1,
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_cache_preserves_existing_behavior(
+        self,
+        mock_embedding_provider: MagicMock,
+        mock_image_vector_db_provider: MagicMock,
+    ) -> None:
+        """When cache is None, the service behaves identically to the uncached path."""
+        service = ImageSearchService(
+            embedding_provider=mock_embedding_provider,
+            vector_db_provider=mock_image_vector_db_provider,
+            cache=None,
+        )
+
+        result = await service.search_images_async(collection="documents", query="sunset", limit=10)
+
+        mock_embedding_provider.embed_text.assert_called_once()
+        mock_image_vector_db_provider.search_async.assert_called_once()
+        assert isinstance(result, SearchResults)
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_skips_vector_db(
+        self,
+        mock_embedding_provider: MagicMock,
+        mock_image_vector_db_provider: MagicMock,
+    ) -> None:
+        """On cache hit, vector DB search is NOT called and store is NOT called."""
+        cache = self._make_mock_cache()
+        cached = self._make_cached_results()
+        cache.lookup = AsyncMock(return_value=cached)
+
+        service = ImageSearchService(
+            embedding_provider=mock_embedding_provider,
+            vector_db_provider=mock_image_vector_db_provider,
+            cache=cache,
+        )
+
+        result = await service.search_images_async(collection="documents", query="sunset", limit=10)
+
+        assert result is cached
+        cache.lookup.assert_called_once()
+        mock_image_vector_db_provider.search_async.assert_not_called()
+        cache.store.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cache_miss_queries_db_and_stores(
+        self,
+        mock_embedding_provider: MagicMock,
+        mock_image_vector_db_provider: MagicMock,
+    ) -> None:
+        """On cache miss, vector DB is queried and results are stored in cache."""
+        cache = self._make_mock_cache()
+        cache.lookup = AsyncMock(return_value=None)
+
+        service = ImageSearchService(
+            embedding_provider=mock_embedding_provider,
+            vector_db_provider=mock_image_vector_db_provider,
+            cache=cache,
+        )
+
+        result = await service.search_images_async(collection="documents", query="sunset", limit=10)
+
+        cache.lookup.assert_called_once()
+        mock_image_vector_db_provider.search_async.assert_called_once()
+        cache.store.assert_called_once_with("documents", [0.1, 0.2, 0.3], "sunset", result, 10)
+
+    @pytest.mark.asyncio
+    async def test_cache_store_failure_is_nonfatal(
+        self,
+        mock_embedding_provider: MagicMock,
+        mock_image_vector_db_provider: MagicMock,
+    ) -> None:
+        """If cache.store raises, the search still returns DB results."""
+        cache = self._make_mock_cache()
+        cache.lookup = AsyncMock(return_value=None)
+        cache.store = AsyncMock(side_effect=RuntimeError("Redis down"))
+
+        service = ImageSearchService(
+            embedding_provider=mock_embedding_provider,
+            vector_db_provider=mock_image_vector_db_provider,
+            cache=cache,
+        )
+
+        result = await service.search_images_async(collection="documents", query="sunset", limit=10)
+
+        assert isinstance(result, SearchResults)
+        assert len(result.items) == 2
+        mock_image_vector_db_provider.search_async.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cache_lookup_passes_correct_args(
+        self,
+        mock_embedding_provider: MagicMock,
+        mock_image_vector_db_provider: MagicMock,
+    ) -> None:
+        """Verify lookup receives the collection, query_vector, and limit."""
+        cache = self._make_mock_cache()
+
+        service = ImageSearchService(
+            embedding_provider=mock_embedding_provider,
+            vector_db_provider=mock_image_vector_db_provider,
+            cache=cache,
+        )
+
+        await service.search_images_async(collection="photos", query="  fluffy cat  ", limit=5)
+
+        cache.lookup.assert_called_once_with("photos", [0.1, 0.2, 0.3], 5)
