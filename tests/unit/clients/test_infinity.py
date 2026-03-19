@@ -510,14 +510,16 @@ class TestInfinityClientModality:
     @patch("clients.infinity.httpx.AsyncClient")
     @pytest.mark.asyncio
     async def test_modality_parameter_image(self, mock_async_client_cls: MagicMock) -> None:
-        """Test that image embedding omits modality for auto-detection.
+        """Test that image embedding sends modality='image' parameter.
 
         **Why this test is important:**
-          - Infinity auto-detects modality from base64 data URIs
-          - Omitting modality lets the server infer image vs text
+          - Infinity requires explicit modality='image' to process base64 data
+            URIs through the vision encoder
+          - Without it, Infinity treats the base64 string as text input,
+            producing collapsed (identical) vectors for all images
 
         **What it tests:**
-          - Request payload does NOT include modality key (auto-detect)
+          - Request payload includes modality: "image"
           - Request input is a base64 data URI
         """
         infinity_response = {"data": [{"embedding": [0.1] * 1152, "index": 0}]}
@@ -538,7 +540,7 @@ class TestInfinityClientModality:
 
         call_args = mock_client.post.call_args
         payload = call_args[1]["json"]
-        assert "modality" not in payload
+        assert payload["modality"] == "image"
 
 
 class TestInfinityClientErrorHandling:
@@ -802,5 +804,7 @@ class TestInfinityVectorSizes:
         """
         assert "google/siglip-so400m-patch14-384" in INFINITY_VECTOR_SIZES
         assert INFINITY_VECTOR_SIZES["google/siglip-so400m-patch14-384"] == 1152
+        assert "google/siglip-base-patch16-224" in INFINITY_VECTOR_SIZES
+        assert INFINITY_VECTOR_SIZES["google/siglip-base-patch16-224"] == 768
         assert "google/siglip2-base-patch16-224" in INFINITY_VECTOR_SIZES
         assert INFINITY_VECTOR_SIZES["google/siglip2-base-patch16-224"] == 768

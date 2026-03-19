@@ -220,22 +220,23 @@ services:
   # Infinity — Image Embedding Service (SigLIP via michaelf34/infinity)
   # ---------------------------------------------------------------------------
   infinity:
-    image: michaelf34/infinity:0.0.75
+    image: michaelf34/infinity:latest
     container_name: infinity
     platform: linux/amd64
-    command: v2 --model-id google/siglip-so400m-patch14-384 --port 7997
+    command: v2 --engine torch --model-id google/siglip2-so400m-patch14-384 --port 7997
     ports:
       - "7997:7997"
     volumes:
       - infinity-cache:/app/.cache
+      - ./patches/infinity_torch_vision.py:/app/infinity_emb/transformer/vision/torch_vision.py:ro
     deploy:
       resources:
         limits:
           cpus: "2.0"
-          memory: 4g
+          memory: 6g
         reservations:
           cpus: "1.0"
-          memory: 2g
+          memory: 4g
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:7997/health || exit 1"]
       interval: 30s
@@ -355,7 +356,7 @@ services:
       - CLIP_MODEL=${CLIP_MODEL:-ViT-B/32}
       # Infinity (image embedding service — SigLIP)
       - INFINITY_URL=${INFINITY_URL:-http://host.docker.internal:7997}
-      - INFINITY_MODEL=${INFINITY_MODEL:-google/siglip-so400m-patch14-384}
+      - INFINITY_MODEL=${INFINITY_MODEL:-google/siglip2-so400m-patch14-384}
       # Qdrant (vector database)
       - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
