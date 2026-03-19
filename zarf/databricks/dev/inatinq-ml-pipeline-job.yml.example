@@ -5,7 +5,7 @@ resources:
       tasks:
         - task_key: inatinq-ml-pipeline
           spark_python_task:
-            python_file: /Workspace/Users/<user>/iNatInq/apps/src/core/ingestion/databricks/run_ingest.py
+            python_file: /Workspace/Users/<user>/iNatInq/src/core/ingestion/databricks/run_ingest.py
           existing_cluster_id: <cluster-id>
           libraries:
             - pypi:
@@ -45,7 +45,7 @@ resources:
       tasks:
         - task_key: inatinq-ml-pipeline-image
           spark_python_task:
-            python_file: /Workspace/Users/<user>/iNatInq/apps/src/core/ingestion/databricks/run_ingest_image.py
+            python_file: /Workspace/Users/<user>/iNatInq/src/core/ingestion/databricks/run_ingest_image.py
           existing_cluster_id: <cluster-id>
           libraries:
             - pypi:
@@ -85,7 +85,7 @@ resources:
       tasks:
         - task_key: inatinq-ml-pipeline-autoloader
           spark_python_task:
-            python_file: /Workspace/Users/<user>/iNatInq/apps/src/core/ingestion/databricks/run_ingest_s3_autoloader.py
+            python_file: /Workspace/Users/<user>/iNatInq/src/core/ingestion/databricks/run_ingest_s3_autoloader.py
           existing_cluster_id: <cluster-id>
           libraries:
             - pypi:
@@ -101,7 +101,7 @@ resources:
       tasks:
         - task_key: inatinq-ml-pipeline-bronze-cdc
           spark_python_task:
-            python_file: /Workspace/Users/<user>/iNatInq/apps/src/core/ingestion/databricks/run_ingest_image_from_bronze.py
+            python_file: /Workspace/Users/<user>/iNatInq/src/core/ingestion/databricks/run_ingest_image_from_bronze.py
           existing_cluster_id: <cluster-id>
           libraries:
             - pypi:
@@ -146,7 +146,7 @@ resources:
       tasks:
         - task_key: cdc-autoloader
           spark_python_task:
-            python_file: /Workspace/Users/<user>/iNatInq/apps/src/core/ingestion/databricks/run_ingest_s3_autoloader.py
+            python_file: /Workspace/Users/<user>/iNatInq/src/core/ingestion/databricks/run_ingest_s3_autoloader.py
           existing_cluster_id: <cluster-id>
           timeout_seconds: 3600
           libraries:
@@ -160,7 +160,7 @@ resources:
           depends_on:
             - task_key: cdc-autoloader
           spark_python_task:
-            python_file: /Workspace/Users/<user>/iNatInq/apps/src/core/ingestion/databricks/run_ingest_image_from_bronze.py
+            python_file: /Workspace/Users/<user>/iNatInq/src/core/ingestion/databricks/run_ingest_image_from_bronze.py
           existing_cluster_id: <cluster-id>
           timeout_seconds: 7200
           libraries:
