@@ -25,11 +25,11 @@ import pytest
 from pydantic import ValidationError
 
 from config import (
-    CacheConfig,
     DatabricksRayJobConfig,
     INatConfig,
     MinIOConfig,
     RayJobConfig,
+    SemanticCacheConfig,
     Settings,
     VectorDBConfig,
     resolve_vector_db_provider,
@@ -1070,122 +1070,76 @@ class TestINatConfig:
 
 
 # =============================================================================
-# CacheConfig Tests
+# SemanticCacheConfig Tests
 # =============================================================================
 
 
-class TestCacheConfigFromEnv:
-    """Test suite for CacheConfig.from_env() environment variable parsing."""
+class TestSemanticCacheConfig:
+    """Test suite for SemanticCacheConfig defaults, from_env, and validation."""
 
-    @patch.dict(os.environ, {}, clear=True)
-    def test_returns_none_when_env_var_unset(self) -> None:
-        """from_env() returns None when CACHE_MAX_ITEMS is absent."""
-        assert CacheConfig.from_env() is None
-
-    @patch.dict(os.environ, {"CACHE_MAX_ITEMS": ""}, clear=True)
-    def test_returns_none_when_env_var_empty(self) -> None:
-        """from_env() returns None when CACHE_MAX_ITEMS is an empty string."""
-        assert CacheConfig.from_env() is None
-
-    @patch.dict(os.environ, {"CACHE_MAX_ITEMS": "500"}, clear=True)
-    def test_defaults_applied(self) -> None:
-        """from_env() uses sensible defaults for threshold and timeout."""
-        config = CacheConfig.from_env()
-        assert config is not None
-        assert config.max_items == 500
-        assert config.cache_hit_score_threshold == 0.95
-        assert config.timeout == 5.0
+    def test_default_values(self) -> None:
+        """All defaults: enabled=True, threshold=0.95, max_entries=1000, interval=3600, timeout=5."""
+        config = SemanticCacheConfig()
+        assert config.enabled is True
+        assert config.similarity_threshold == 0.95
+        assert config.max_entries_per_collection == 1000
+        assert config.invalidation_interval_seconds == 3600
+        assert config.timeout_s == 5
 
     @patch.dict(
         os.environ,
         {
-            "CACHE_MAX_ITEMS": "1000",
-            "CACHE_HIT_SCORE_THRESHOLD": "0.8",
-            "CACHE_TIMEOUT": "2.5",
+            "SEMANTIC_CACHE_ENABLED": "false",
+            "SEMANTIC_CACHE_SIMILARITY_THRESHOLD": "0.8",
+            "SEMANTIC_CACHE_MAX_ENTRIES": "500",
+            "SEMANTIC_CACHE_INVALIDATION_INTERVAL": "1800",
+            "SEMANTIC_CACHE_TIMEOUT": "10",
         },
         clear=True,
     )
-    def test_all_fields_from_env(self) -> None:
-        """from_env() reads all three environment variables."""
-        config = CacheConfig.from_env()
-        assert config is not None
-        assert config.max_items == 1000
-        assert config.cache_hit_score_threshold == 0.8
-        assert config.timeout == 2.5
+    def test_from_env_overrides(self) -> None:
+        """Each SEMANTIC_CACHE_* env var correctly overrides its field."""
+        config = SemanticCacheConfig.from_env()
+        assert config.enabled is False
+        assert config.similarity_threshold == 0.8
+        assert config.max_entries_per_collection == 500
+        assert config.invalidation_interval_seconds == 1800
+        assert config.timeout_s == 10
 
+    def test_invalid_threshold_raises(self) -> None:
+        """Threshold outside [0.0, 1.0] raises ValidationError."""
+        with pytest.raises(ValidationError, match="similarity_threshold"):
+            SemanticCacheConfig(similarity_threshold=1.5)
+        with pytest.raises(ValidationError, match="similarity_threshold"):
+            SemanticCacheConfig(similarity_threshold=-0.1)
 
-class TestCacheConfigValidation:
-    """Test suite for CacheConfig Pydantic field validation."""
+    def test_invalid_max_entries_raises(self) -> None:
+        """max_entries_per_collection <= 0 raises ValidationError."""
+        with pytest.raises(ValidationError, match="max_entries_per_collection"):
+            SemanticCacheConfig(max_entries_per_collection=0)
+        with pytest.raises(ValidationError, match="max_entries_per_collection"):
+            SemanticCacheConfig(max_entries_per_collection=-1)
 
-    def test_valid_config(self) -> None:
-        """A well-formed config is accepted."""
-        config = CacheConfig(max_items=100, cache_hit_score_threshold=0.9, timeout=3.0)
-        assert config.max_items == 100
+    def test_settings_includes_semantic_cache(self) -> None:
+        """Settings has semantic_cache field of type SemanticCacheConfig."""
+        settings = Settings.model_construct(
+            embedding=None,
+            vector_db=None,
+            minio=None,
+            k8s_namespace="test",
+            semantic_cache=SemanticCacheConfig(),
+        )
+        assert isinstance(settings.semantic_cache, SemanticCacheConfig)
+        assert settings.semantic_cache.enabled is True
 
-    def test_rejects_max_items_zero(self) -> None:
-        """Reject max_items=0 (must be > 0)."""
-        with pytest.raises(ValidationError, match="max_items"):
-            CacheConfig(max_items=0, cache_hit_score_threshold=0.9, timeout=3.0)
-
-    def test_rejects_max_items_negative(self) -> None:
-        """Reject negative max_items."""
-        with pytest.raises(ValidationError, match="max_items"):
-            CacheConfig(max_items=-1, cache_hit_score_threshold=0.9, timeout=3.0)
-
-    def test_rejects_threshold_zero(self) -> None:
-        """Reject cache_hit_score_threshold=0 (must be > 0)."""
-        with pytest.raises(ValidationError, match="cache_hit_score_threshold"):
-            CacheConfig(max_items=100, cache_hit_score_threshold=0.0, timeout=3.0)
-
-    def test_rejects_threshold_above_one(self) -> None:
-        """Reject cache_hit_score_threshold > 1.0."""
-        with pytest.raises(ValidationError, match="cache_hit_score_threshold"):
-            CacheConfig(max_items=100, cache_hit_score_threshold=1.1, timeout=3.0)
-
-    def test_accepts_threshold_exactly_one(self) -> None:
-        """Accept cache_hit_score_threshold=1.0 (exact match only)."""
-        config = CacheConfig(max_items=100, cache_hit_score_threshold=1.0, timeout=3.0)
-        assert config.cache_hit_score_threshold == 1.0
-
-    def test_rejects_timeout_zero(self) -> None:
-        """Reject timeout=0 (must be > 0)."""
-        with pytest.raises(ValidationError, match="timeout"):
-            CacheConfig(max_items=100, cache_hit_score_threshold=0.9, timeout=0.0)
-
-    def test_rejects_timeout_negative(self) -> None:
-        """Reject negative timeout."""
-        with pytest.raises(ValidationError, match="timeout"):
-            CacheConfig(max_items=100, cache_hit_score_threshold=0.9, timeout=-1.0)
+    @patch.dict(os.environ, {"SEMANTIC_CACHE_ENABLED": "false"}, clear=True)
+    def test_disabled_via_env(self) -> None:
+        """SEMANTIC_CACHE_ENABLED=false produces enabled=False."""
+        config = SemanticCacheConfig.from_env()
+        assert config.enabled is False
 
     def test_config_is_frozen(self) -> None:
-        """CacheConfig instances are immutable."""
-        config = CacheConfig(max_items=100, cache_hit_score_threshold=0.9, timeout=3.0)
+        """SemanticCacheConfig instances are immutable."""
+        config = SemanticCacheConfig()
         with pytest.raises(ValidationError):
-            config.max_items = 200  # type: ignore[misc]
-
-
-class TestSettingsCacheIntegration:
-    """Test that Settings.cache is optional and wired correctly."""
-
-    def test_settings_cache_defaults_to_none(self) -> None:
-        """Settings without explicit cache field has cache=None."""
-        settings = Settings.model_construct(
-            embedding=None,
-            vector_db=None,
-            minio=None,
-            k8s_namespace="test",
-        )
-        assert settings.cache is None
-
-    def test_settings_accepts_cache_config(self) -> None:
-        """Settings can be constructed with a CacheConfig."""
-        cache_cfg = CacheConfig(max_items=50, cache_hit_score_threshold=0.9, timeout=2.0)
-        settings = Settings.model_construct(
-            embedding=None,
-            vector_db=None,
-            minio=None,
-            k8s_namespace="test",
-            cache=cache_cfg,
-        )
-        assert settings.cache is cache_cfg
-        assert settings.cache.max_items == 50
+            config.enabled = False  # type: ignore[misc]

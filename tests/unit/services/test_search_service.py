@@ -26,7 +26,7 @@ service logic.
 Run with: pytest tests/unit/services/test_search_service.py
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import attrs.exceptions
 import pytest
@@ -624,102 +624,3 @@ class TestImageSearchServiceIntegration:
         assert len(results.items) == 1
         assert results.items[0].point_id == "cat-001"
         assert results.items[0].payload["s3_key"] == "images/cat-001.jpg"
-
-
-# =============================================================================
-# ImageSearchService Cache Integration Tests
-# =============================================================================
-
-
-class TestImageSearchServiceCacheIntegration:
-    """Test suite for semantic cache integration in ImageSearchService."""
-
-    @pytest.mark.asyncio
-    async def test_no_cache_works_identically(
-        self,
-        mock_embedding_provider: MagicMock,
-        mock_image_vector_db_provider: MagicMock,
-    ) -> None:
-        """Service without cache behaves exactly as before (no side effects)."""
-        service = ImageSearchService(
-            embedding_provider=mock_embedding_provider,
-            vector_db_provider=mock_image_vector_db_provider,
-            cache=None,
-        )
-        result = await service.search_images_async(collection="docs", query="test", limit=5)
-
-        assert result is not None
-        mock_image_vector_db_provider.search_async.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_cache_hit_skips_vector_db(
-        self,
-        mock_embedding_provider: MagicMock,
-        mock_image_vector_db_provider: MagicMock,
-    ) -> None:
-        """When cache returns a result, the vector DB is NOT queried."""
-        cached_results = SearchResults(
-            items=[SearchItem(point_id="cached-1", score=0.99, payload={"s3_key": "cached.jpg"})],
-            total=1,
-        )
-        mock_cache = AsyncMock()
-        mock_cache.get = AsyncMock(return_value=cached_results)
-
-        service = ImageSearchService(
-            embedding_provider=mock_embedding_provider,
-            vector_db_provider=mock_image_vector_db_provider,
-            cache=mock_cache,
-        )
-        result = await service.search_images_async(collection="docs", query="test", limit=5)
-
-        assert result is cached_results
-        mock_cache.get.assert_awaited_once()
-        mock_image_vector_db_provider.search_async.assert_not_called()
-        mock_cache.put.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_cache_miss_queries_vector_db_and_stores(
-        self,
-        mock_embedding_provider: MagicMock,
-        mock_image_vector_db_provider: MagicMock,
-    ) -> None:
-        """On cache miss, results come from vector DB and are stored in cache."""
-        mock_cache = AsyncMock()
-        mock_cache.get = AsyncMock(return_value=None)
-
-        service = ImageSearchService(
-            embedding_provider=mock_embedding_provider,
-            vector_db_provider=mock_image_vector_db_provider,
-            cache=mock_cache,
-        )
-        result = await service.search_images_async(collection="docs", query="test", limit=5)
-
-        assert result is not None
-        mock_cache.get.assert_awaited_once()
-        mock_image_vector_db_provider.search_async.assert_called_once()
-        mock_cache.put.assert_awaited_once()
-
-        put_kwargs = mock_cache.put.call_args[1]
-        assert put_kwargs["collection"] == "docs"
-        assert put_kwargs["results"] is result
-
-    @pytest.mark.asyncio
-    async def test_cache_get_passes_collection_name(
-        self,
-        mock_embedding_provider: MagicMock,
-        mock_image_vector_db_provider: MagicMock,
-    ) -> None:
-        """cache.get() receives both the query vector and collection name."""
-        mock_cache = AsyncMock()
-        mock_cache.get = AsyncMock(return_value=None)
-
-        service = ImageSearchService(
-            embedding_provider=mock_embedding_provider,
-            vector_db_provider=mock_image_vector_db_provider,
-            cache=mock_cache,
-        )
-        await service.search_images_async(collection="photos", query="sunset", limit=3)
-
-        get_kwargs = mock_cache.get.call_args[1]
-        assert get_kwargs["collection"] == "photos"
-        assert get_kwargs["query_vector"] == [0.1, 0.2, 0.3]

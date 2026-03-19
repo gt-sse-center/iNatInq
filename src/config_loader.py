@@ -230,10 +230,12 @@ YAML_TO_ENV_MAP: dict[str, str] = {
     "databricks.job_id": "DATABRICKS_JOB_ID",
     "databricks.task_type": "DATABRICKS_TASK_TYPE",
     "databricks.workspace_path": "DATABRICKS_WORKSPACE_PATH",
-    # Cache
-    "cache.max_items": "CACHE_MAX_ITEMS",
-    "cache.hit_score_threshold": "CACHE_HIT_SCORE_THRESHOLD",
-    "cache.timeout_seconds": "CACHE_TIMEOUT",
+    # Semantic Cache
+    "semantic_cache.enabled": "SEMANTIC_CACHE_ENABLED",
+    "semantic_cache.similarity_threshold": "SEMANTIC_CACHE_SIMILARITY_THRESHOLD",
+    "semantic_cache.max_entries": "SEMANTIC_CACHE_MAX_ENTRIES",
+    "semantic_cache.invalidation_interval": "SEMANTIC_CACHE_INVALIDATION_INTERVAL",
+    "semantic_cache.timeout": "SEMANTIC_CACHE_TIMEOUT",
     # Environment
     "environment.mode": "PIPELINE_ENV",
     "environment.k8s_namespace": "K8S_NAMESPACE",

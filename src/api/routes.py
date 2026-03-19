@@ -43,35 +43,15 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from api import models
-from clients.cache import CacheClient
 from clients.interfaces.embedding import create_embedding_provider
 from clients.interfaces.vector_db import create_vector_db_provider
-from config import CacheConfig, EmbeddingConfig, MinIOConfig, VectorDBConfig, get_settings
+from config import EmbeddingConfig, MinIOConfig, VectorDBConfig, get_settings
 from core.exceptions import BadRequestError, PipelineError
 from core.services.databricks_ray_service import DatabricksRayService
 from core.services.ray_service import RayService
 from core.services.search_service import ImageSearchService
 
 router = APIRouter()
-
-_cache_client: CacheClient | None = None
-_cache_initialized: bool = False
-
-
-async def get_cache_client(cache_config: CacheConfig, vector_size: int) -> CacheClient | None:
-    """Return the shared ``CacheClient`` singleton, creating it on first call.
-
-    Returns ``None`` when initialization fails so the search pipeline
-    degrades gracefully.
-    """
-    global _cache_client, _cache_initialized  # noqa: PLW0603
-    if _cache_initialized:
-        return _cache_client
-    _cache_initialized = True
-    client = CacheClient(config=cache_config, vector_size=vector_size)
-    await client.initialize()
-    _cache_client = client
-    return _cache_client
 
 
 @router.get("/healthz", tags=["health"])
@@ -196,16 +176,11 @@ async def search_images(
     vector_db_provider = create_vector_db_provider(vector_db_config)
     collection_name = collection or vector_db_config.collection
 
-    cache_client = None
-    if s.cache is not None:
-        cache_client = await get_cache_client(s.cache, vector_size=embedding_provider.vector_size)
-
     image_search_service = ImageSearchService(
         embedding_provider=embedding_provider,
         vector_db_provider=vector_db_provider,
         embedding_provider_name=embed_config.provider_type,
         vector_db_provider_name=provider_type,
-        cache=cache_client,
     )
 
     search_results = await image_search_service.search_images_async(

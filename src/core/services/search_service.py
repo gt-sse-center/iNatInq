@@ -23,7 +23,6 @@ from foundation.metrics.registry import (
 )
 
 if TYPE_CHECKING:
-    from clients.cache import CacheClient
     from clients.interfaces.embedding import EmbeddingProvider
     from clients.interfaces.vector_db import VectorDBProvider
     from core.models import SearchResults
@@ -35,9 +34,8 @@ class ImageSearchService:
 
     This service orchestrates text-to-image search by:
     1. Generating text embedding for the query via EmbeddingProvider
-    2. (Optional) Checking the semantic cache for a matching result
-    3. Searching image collections in vector database on cache miss
-    4. (Optional) Storing the result in the semantic cache
+    2. Searching image collections in vector database
+    3. Returning formatted results
 
     Attributes:
         embedding_provider: EmbeddingProvider instance for generating text embeddings.
@@ -46,8 +44,6 @@ class ImageSearchService:
             (e.g. ``"clip"``, ``"ollama"``). Defaults to ``"clip"``.
         vector_db_provider_name: String label for the vector DB provider used in metrics
             (e.g. ``"qdrant"``, ``"weaviate"``). Defaults to ``"qdrant"``.
-        cache: Optional ``CacheClient`` instance.  When ``None`` (default), the
-            search pipeline operates without caching.
 
     Example:
         ```python
@@ -74,7 +70,6 @@ class ImageSearchService:
     vector_db_provider: VectorDBProvider
     embedding_provider_name: str = attrs.field(default="clip")
     vector_db_provider_name: str = attrs.field(default="qdrant")
-    cache: CacheClient | None = attrs.field(default=None)
 
     async def search_images_async(
         self,
@@ -108,11 +103,6 @@ class ImageSearchService:
         with SEARCH_EMBEDDING_DURATION.labels(provider=self.embedding_provider_name).time():
             query_embedding = await self.embedding_provider.embed_text(query.strip())
 
-        if self.cache is not None:
-            cached = await self.cache.get(query_vector=query_embedding, collection=collection)
-            if cached is not None:
-                return cached
-
         with SEARCH_VECTOR_QUERY_DURATION.labels(
             provider=self.vector_db_provider_name, collection=collection
         ).time():
@@ -121,9 +111,6 @@ class ImageSearchService:
                 query_vector=query_embedding,
                 limit=limit,
             )
-
-        if self.cache is not None:
-            await self.cache.put(query_vector=query_embedding, results=results, collection=collection)
 
         # Intentionally not observed on error: SEARCH_RESULT_COUNT tracks result
         # distributions for successful queries only. Error-path searches have no
