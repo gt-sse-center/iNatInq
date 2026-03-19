@@ -340,10 +340,9 @@ class ImageContentFetcher:
             error_code = str(exc.response.get("Error", {}).get("Code", ""))
             return error_code in {"NoSuchKey", "NotFound", "404"}
 
-        # S3ClientWrapper._with_retry wraps ClientError as:
-        # "S3 <operation> failed[ after N attempts]: <error_code>"
-        # Parse the trailing error code and compare exactly to avoid brittle
-        # substring matching like "Endpoint NotFound".
+        # S3ClientWrapper._with_retry wraps ClientError into an UpstreamError
+        # message that ends with the error code after the last colon.
+        # Parse that trailing code exactly to avoid brittle substring matching.
         message = str(exc)
         if ":" in message:
             error_code = message.rsplit(":", 1)[-1].strip()
