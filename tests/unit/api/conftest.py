@@ -341,11 +341,16 @@ def patch_embedding_config(mock_embedding_config: MagicMock):
 
 @pytest.fixture(autouse=True)
 def patch_get_semantic_cache():
-    """Disable the semantic cache for all route tests.
+    """Disable the semantic cache for all route and lifespan tests.
 
     The cache defaults to enabled and uses a module-level singleton.
     Without this patch, cached results from earlier tests can leak into
-    later tests, causing vector-DB mocks to be bypassed.
+    later tests, causing vector-DB mocks to be bypassed.  The lifespan
+    patch prevents TestClient creation from instantiating a real
+    in-memory Qdrant client.
     """
-    with patch("api.routes.get_semantic_cache", return_value=None):
+    with (
+        patch("api.routes.get_semantic_cache", return_value=None),
+        patch("api.app.get_semantic_cache", return_value=None),
+    ):
         yield

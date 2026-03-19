@@ -54,6 +54,11 @@ class CacheClient:
         self._known_collections: set[str] = set()
         self._lock = asyncio.Lock()
 
+    @property
+    def config(self) -> SemanticCacheConfig:
+        """Return the cache configuration (read-only)."""
+        return self._config
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------

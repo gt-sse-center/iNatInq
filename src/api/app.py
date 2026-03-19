@@ -48,7 +48,10 @@ FastAPI automatically generates OpenAPI 3.0 documentation:
 The OpenAPI schema includes detailed descriptions from route docstrings and Pydantic models.
 """
 
+import asyncio
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, suppress
 from logging.config import dictConfig
 
 from api.middleware import (
@@ -57,12 +60,41 @@ from api.middleware import (
     LoggerMiddleware,
 )
 from api.routes import router
+from clients.cache import CacheClient, get_semantic_cache
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from foundation.logger import LOGGING_CONFIG
 from prometheus_fastapi_instrumentator import Instrumentator
 
 logger = logging.getLogger("uvicorn.error")
+
+
+async def _cache_invalidation_loop(cache: CacheClient, interval: int) -> None:
+    """Periodically invalidate the semantic cache."""
+    while True:
+        await asyncio.sleep(interval)
+        logger.info("Running periodic cache invalidation")
+        await cache.invalidate()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
+    """Manage startup/shutdown lifecycle for cache invalidation."""
+    cache = get_semantic_cache()
+    invalidation_task: asyncio.Task[None] | None = None
+    if cache is not None:
+        invalidation_task = asyncio.create_task(
+            _cache_invalidation_loop(cache, cache.config.invalidation_interval_seconds)
+        )
+        logger.info("Started cache invalidation background task")
+    yield
+    if invalidation_task is not None:
+        invalidation_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await invalidation_task
+    if cache is not None:
+        await cache.close()
+        logger.info("Closed semantic cache client")
 
 
 def create_app() -> FastAPI:
@@ -99,6 +131,7 @@ def create_app() -> FastAPI:
     dictConfig(config=LOGGING_CONFIG)
 
     app = FastAPI(
+        lifespan=lifespan,
         title="Pipeline API",
         description=(
             "ML pipeline orchestrator service for end-to-end data processing workflows. "
@@ -143,6 +176,10 @@ def create_app() -> FastAPI:
                     "Submits runs to Databricks Jobs API with ingestion parameters."
                 ),
             },
+            {
+                "name": "cache",
+                "description": "Semantic cache management (invalidation and busting)",
+            },
         ],
     )
 
@@ -158,7 +195,7 @@ def create_app() -> FastAPI:
         middleware_class=CORSMiddleware,
         allow_origins=["*"],  # In production, configure via settings
         allow_credentials=True,
-        allow_methods=["POST", "GET", "OPTIONS"],
+        allow_methods=["POST", "GET", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
 

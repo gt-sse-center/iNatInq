@@ -651,6 +651,23 @@ async def get_ray_job_logs(job_id: str) -> models.RayJobLogsResponse:
         raise PipelineError(f"Failed to get job logs: {e!s}") from e
 
 
+@router.delete("/cache", tags=["cache"])
+async def bust_cache() -> dict[str, str]:
+    """Invalidate the entire semantic cache on demand.
+
+    Returns:
+        Confirmation dict: ``{"status": "cache invalidated"}``.
+
+    Raises:
+        HTTPException(400): If the semantic cache is not enabled.
+    """
+    cache = get_semantic_cache()
+    if cache is None:
+        raise BadRequestError("Semantic cache is not enabled")
+    await cache.invalidate()
+    return {"status": "cache invalidated"}
+
+
 @router.delete("/ray/jobs/{job_id}", response_model=models.RayJobStopResponse, tags=["ray-jobs"])
 async def stop_ray_job(job_id: str) -> models.RayJobStopResponse:
     """Stop a running Ray job.
