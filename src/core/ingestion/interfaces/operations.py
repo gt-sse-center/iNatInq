@@ -340,9 +340,15 @@ class ImageContentFetcher:
             error_code = str(exc.response.get("Error", {}).get("Code", ""))
             return error_code in {"NoSuchKey", "NotFound", "404"}
 
-        # S3ClientWrapper surfaces ClientError as UpstreamError with code in message.
+        # S3ClientWrapper._with_retry wraps ClientError as:
+        # "S3 <operation> failed[ after N attempts]: <error_code>"
+        # Parse the trailing error code and compare exactly to avoid brittle
+        # substring matching like "Endpoint NotFound".
         message = str(exc)
-        return ("NoSuchKey" in message) or ("NotFound" in message) or (" 404" in message)
+        if ":" in message:
+            error_code = message.rsplit(":", 1)[-1].strip()
+            return error_code in {"NoSuchKey", "NotFound", "404"}
+        return message.strip() == "NoSuchKey"
 
     def _get_object_with_fallback(self, key: str) -> tuple[bytes, str]:
         """Fetch an object by trying candidate keys in order."""

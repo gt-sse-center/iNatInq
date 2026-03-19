@@ -515,10 +515,41 @@ class TestImageContentFetcher:
         assert result.source_uri == "s3://images/photo.jpg"
         assert result.format == "jpeg"
 
+    def test_fetch_one_retries_with_key_prefix_for_upstream_nosuchkey(self) -> None:
+        """UpstreamError with NoSuchKey code should trigger prefixed fallback."""
+        mock_s3 = MagicMock()
+        jpeg_data = self.JPEG_HEADER + b"\x00" * 100
+
+        def side_effect(*, bucket: str, key: str) -> bytes:
+            if key == "photo.jpg":
+                raise UpstreamError("S3 get_object failed: NoSuchKey")
+            if key == "images/photo.jpg":
+                return jpeg_data
+            raise AssertionError(f"Unexpected key lookup: {key}")
+
+        mock_s3.get_object.side_effect = side_effect
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline", key_prefix="images")
+        result = fetcher.fetch_one("photo.jpg")
+
+        assert result is not None
+        assert result.source_uri == "s3://images/photo.jpg"
+
     def test_fetch_one_does_not_retry_with_prefix_on_non_missing_error(self) -> None:
         """Non-404 errors should fail immediately without trying prefixed key."""
         mock_s3 = MagicMock()
         mock_s3.get_object.side_effect = UpstreamError("S3 get_object failed: AccessDenied")
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline", key_prefix="images")
+        result = fetcher.fetch_one("photo.jpg")
+
+        assert result is None
+        mock_s3.get_object.assert_called_once_with(bucket="pipeline", key="photo.jpg")
+
+    def test_fetch_one_does_not_retry_with_prefix_on_upstream_endpoint_notfound(self) -> None:
+        """Do not treat unrelated NotFound text as a missing-key signal."""
+        mock_s3 = MagicMock()
+        mock_s3.get_object.side_effect = UpstreamError("S3 get_object failed: Endpoint NotFound")
 
         fetcher = ImageContentFetcher(mock_s3, bucket="pipeline", key_prefix="images")
         result = fetcher.fetch_one("photo.jpg")
