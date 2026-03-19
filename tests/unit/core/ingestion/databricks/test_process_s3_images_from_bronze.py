@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from core.ingestion.databricks.cdc import CDCWindowConfig
 from core.ingestion.databricks.process_s3_images_from_bronze import BronzeRayCDCConfig, _iter_key_batches
 
 
@@ -38,3 +39,25 @@ def test_iter_key_batches_emits_fixed_size_batches() -> None:
     keys = ["k1", "k2", "k3", "k4", "k5"]
     batches = list(_iter_key_batches(keys, batch_size=2))
     assert batches == [["k1", "k2"], ["k3", "k4"], ["k5"]]
+
+
+def test_bronze_cdc_config_to_window_config_maps_fields_1_to_1() -> None:
+    """to_window_config should provide a centralized, exact field mapping."""
+    cfg = BronzeRayCDCConfig(
+        bronze_table="main.default.images_bronze",
+        progress_table="main.default.images_progress",
+        progress_id="s3_bronze_image_ingestion",
+        key_col="s3_key",
+        watermark_col="discovered_at",
+        window_size=5000,
+    )
+
+    window_cfg = cfg.to_window_config()
+
+    assert isinstance(window_cfg, CDCWindowConfig)
+    assert window_cfg.bronze_table == cfg.bronze_table
+    assert window_cfg.progress_table == cfg.progress_table
+    assert window_cfg.progress_id == cfg.progress_id
+    assert window_cfg.key_col == cfg.key_col
+    assert window_cfg.watermark_col == cfg.watermark_col
+    assert window_cfg.window_size == cfg.window_size

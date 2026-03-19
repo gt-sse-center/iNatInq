@@ -681,16 +681,21 @@ class TestDatabricksJobEndpoints:
 
         assert response.status_code == 422
 
-    def test_submit_databricks_cdc_producer_job_success(self, test_client: TestClient) -> None:
+    @patch("api.routes.get_settings")
+    @patch("api.routes.DatabricksRayService")
+    def test_submit_databricks_cdc_producer_job_success(
+        self,
+        mock_service_cls: MagicMock,
+        mock_settings: MagicMock,
+        test_client: TestClient,
+    ) -> None:
         """CDC producer submission should use dedicated Databricks service method."""
-        with patch("api.routes.DatabricksRayService") as mock_service_cls:
-            mock_service = MagicMock()
-            mock_service.submit_s3_autoloader_job.return_value = 222
-            mock_service_cls.return_value = mock_service
+        mock_service = MagicMock()
+        mock_service.submit_s3_autoloader_job.return_value = 222
+        mock_service_cls.return_value = mock_service
+        mock_settings.return_value.k8s_namespace = "ml-system"
 
-            with patch("api.routes.get_settings") as mock_settings:
-                mock_settings.return_value.k8s_namespace = "ml-system"
-                response = test_client.post("/databricks/jobs/cdc-producer")
+        response = test_client.post("/databricks/jobs/cdc-producer")
 
         assert response.status_code == 202
         data = response.json()
@@ -712,24 +717,31 @@ class TestDatabricksJobEndpoints:
 
         assert response.status_code == 500
 
-    def test_submit_databricks_cdc_consumer_job_success(self, test_client: TestClient) -> None:
+    @patch("api.routes.EmbeddingConfig.from_env")
+    @patch("api.routes.MinIOConfig.from_env")
+    @patch("api.routes.get_settings")
+    @patch("api.routes.DatabricksRayService")
+    def test_submit_databricks_cdc_consumer_job_success(
+        self,
+        mock_service_cls: MagicMock,
+        mock_settings: MagicMock,
+        mock_minio: MagicMock,
+        mock_embed_cfg: MagicMock,
+        test_client: TestClient,
+    ) -> None:
         """CDC consumer submission should use dedicated Databricks service method."""
-        with patch("api.routes.DatabricksRayService") as mock_service_cls:
-            mock_service = MagicMock()
-            mock_service.submit_s3_bronze_image_job.return_value = 333
-            mock_service_cls.return_value = mock_service
+        mock_service = MagicMock()
+        mock_service.submit_s3_bronze_image_job.return_value = 333
+        mock_service_cls.return_value = mock_service
+        mock_settings.return_value.k8s_namespace = "ml-system"
+        mock_settings.return_value.vector_db.collection = "documents"
+        mock_minio.return_value.endpoint_url = "http://minio:9000"
+        mock_minio.return_value.access_key_id = "minioadmin"
+        mock_minio.return_value.secret_access_key = "minioadmin"
+        mock_minio.return_value.bucket = "pipeline"
+        mock_embed_cfg.return_value = MagicMock()
 
-            with patch("api.routes.get_settings") as mock_settings:
-                mock_settings.return_value.k8s_namespace = "ml-system"
-                mock_settings.return_value.vector_db.collection = "documents"
-                with patch("api.routes.MinIOConfig.from_env") as mock_minio:
-                    mock_minio.return_value.endpoint_url = "http://minio:9000"
-                    mock_minio.return_value.access_key_id = "minioadmin"
-                    mock_minio.return_value.secret_access_key = "minioadmin"
-                    mock_minio.return_value.bucket = "pipeline"
-                    with patch("api.routes.EmbeddingConfig.from_env") as mock_embed_cfg:
-                        mock_embed_cfg.return_value = MagicMock()
-                        response = test_client.post("/databricks/jobs/cdc-consumer")
+        response = test_client.post("/databricks/jobs/cdc-consumer")
 
         assert response.status_code == 202
         data = response.json()

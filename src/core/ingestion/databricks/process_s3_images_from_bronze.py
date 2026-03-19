@@ -54,6 +54,17 @@ class BronzeRayCDCConfig:
     watermark_col: str
     window_size: int
 
+    def to_window_config(self) -> CDCWindowConfig:
+        """Convert runtime env config to CDC window selection config."""
+        return CDCWindowConfig(
+            bronze_table=self.bronze_table,
+            progress_table=self.progress_table,
+            progress_id=self.progress_id,
+            watermark_col=self.watermark_col,
+            key_col=self.key_col,
+            window_size=self.window_size,
+        )
+
     @classmethod
     def from_env(cls) -> BronzeRayCDCConfig:
         """Load Bronze CDC read/progress settings from environment variables."""
@@ -136,14 +147,7 @@ def main() -> None:
         },
     )
 
-    window_cfg = CDCWindowConfig(
-        bronze_table=cdc_cfg.bronze_table,
-        progress_table=cdc_cfg.progress_table,
-        progress_id=cdc_cfg.progress_id,
-        watermark_col=cdc_cfg.watermark_col,
-        key_col=cdc_cfg.key_col,
-        window_size=cdc_cfg.window_size,
-    )
+    window_cfg = cdc_cfg.to_window_config()
 
     strategy = DatabricksStrategy.from_env(namespace)
     strategy.init()
