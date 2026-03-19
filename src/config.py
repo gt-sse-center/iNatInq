@@ -361,6 +361,7 @@ class ProviderType(StrEnum):
     SAGEMAKER = "sagemaker"
     LOCAL_CLIP = "clip"
     HOSTED_CLIP = "hosted_clip"
+    INFINITY = "infinity"
 
 
 class EmbeddingConfig(BaseModel):
@@ -461,6 +462,12 @@ class EmbeddingConfig(BaseModel):
     clip_max_batch_size: int = 8
     clip_vector_size: int | None = None
 
+    # Infinity settings
+    infinity_url: str | None = None
+    infinity_model: str | None = None
+    infinity_timeout: int = 120
+    infinity_vector_size: int | None = None
+
     model_config = SettingsConfigDict(frozen=True)
 
     @classmethod
@@ -553,6 +560,13 @@ class EmbeddingConfig(BaseModel):
         clip_vector_size_str = os.getenv("CLIP_VECTOR_SIZE")
         clip_vector_size: int | None = int(clip_vector_size_str) if clip_vector_size_str else None
 
+        # Infinity settings
+        infinity_url: str | None = None
+        infinity_model: str | None = None
+        infinity_timeout = int(os.getenv("INFINITY_TIMEOUT", "120"))
+        infinity_vector_size_str = os.getenv("INFINITY_VECTOR_SIZE")
+        infinity_vector_size: int | None = int(infinity_vector_size_str) if infinity_vector_size_str else None
+
         # Provider-specific validation
         if provider_type is ProviderType.OLLAMA:
             default_url = f"http://ollama.{namespace}:11434" if in_cluster else "http://localhost:11434"
@@ -582,6 +596,11 @@ class EmbeddingConfig(BaseModel):
             clip_url = os.getenv("CLIP_URL") or os.getenv("OLLAMA_BASE_URL", default_url)
             default_model = "ViT-B/32"
             clip_model = os.getenv("CLIP_MODEL", default_model)
+
+        elif provider_type is ProviderType.INFINITY:
+            default_url = f"http://infinity.{namespace}:7997" if in_cluster else "http://localhost:7997"
+            infinity_url = os.getenv("INFINITY_URL") or default_url
+            infinity_model = os.getenv("INFINITY_MODEL") or "google/siglip-so400m-patch14-384"
 
         # Single construction with all resolved values
         return cls(
@@ -617,6 +636,11 @@ class EmbeddingConfig(BaseModel):
             clip_circuit_breaker_timeout=clip_circuit_breaker_timeout,
             clip_max_batch_size=clip_max_batch_size,
             clip_vector_size=clip_vector_size,
+            # Infinity
+            infinity_url=infinity_url,
+            infinity_model=infinity_model,
+            infinity_timeout=infinity_timeout,
+            infinity_vector_size=infinity_vector_size,
         )
 
 

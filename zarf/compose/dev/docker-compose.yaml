@@ -11,6 +11,7 @@
 #   - weaviate-console: Weaviate Web UI
 #   - ollama:           Text embedding service (local LLM)
 #   - clip:             Image embedding service (CLIP)
+#   - infinity:         Image embedding service (SigLIP via Infinity)
 #   - ray-head:         Ray cluster head node
 #   - ray-worker:       Ray cluster worker node(s)
 #   - pipeline:         FastAPI pipeline service
@@ -30,6 +31,7 @@
 #   - 8080: Weaviate HTTP API
 #   - 8081: Weaviate Console
 #   - 11434: Ollama API
+#   - 7997: Infinity Embedding Service
 #   - 8265: Ray Dashboard
 #   - 10001: Ray Client
 
@@ -215,6 +217,34 @@ services:
     networks: [ml-network]
 
   # ---------------------------------------------------------------------------
+  # Infinity — Image Embedding Service (SigLIP via michaelf34/infinity)
+  # ---------------------------------------------------------------------------
+  infinity:
+    image: michaelf34/infinity:latest
+    container_name: infinity
+    command: v2 --model-id google/siglip-so400m-patch14-384 --port 7997
+    ports:
+      - "7997:7997"
+    volumes:
+      - infinity-cache:/app/.cache
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4g
+        reservations:
+          cpus: "1.0"
+          memory: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:7997/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+    networks: [ml-network]
+
+  # ---------------------------------------------------------------------------
   # Ray Head — Control Plane
   # ---------------------------------------------------------------------------
   ray-head:
@@ -322,6 +352,9 @@ services:
       # CLIP (image embedding service)
       - CLIP_URL=${CLIP_URL:-http://clip:8000}
       - CLIP_MODEL=${CLIP_MODEL:-ViT-B/32}
+      # Infinity (image embedding service — SigLIP)
+      - INFINITY_URL=${INFINITY_URL:-http://infinity:7997}
+      - INFINITY_MODEL=${INFINITY_MODEL:-google/siglip-so400m-patch14-384}
       # Qdrant (vector database)
       - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
@@ -358,6 +391,7 @@ volumes:
   qdrant-data:
   weaviate-data:
   ollama-models:
+  infinity-cache:
   pipeline-data:
 
 networks:

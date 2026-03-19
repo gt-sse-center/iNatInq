@@ -6,7 +6,9 @@ interface definitions and concrete implementations.
 """
 
 from config import ProviderType
+
 from .clip import CLIPClient
+from .infinity import InfinityClient
 from .interfaces.embedding import register_provider as register_embedding_provider
 from .interfaces.vector_db import register_provider as register_vector_db_provider
 from .ollama import OllamaClient
@@ -19,6 +21,7 @@ def _register_embedding_providers() -> None:
     register_embedding_provider(ProviderType.OLLAMA, OllamaClient)
     register_embedding_provider(ProviderType.LOCAL_CLIP, CLIPClient)
     register_embedding_provider(ProviderType.HOSTED_CLIP, CLIPClient)
+    register_embedding_provider(ProviderType.INFINITY, InfinityClient)
 
 
 def _register_vector_db_providers() -> None:
