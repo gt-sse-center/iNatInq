@@ -90,31 +90,6 @@ jobs:
       - name: Validate Unit Tests
         run: COVERAGE_FILE=.coverage.unit uv run pytest ${{ inputs.unit_tests_path }} --cov-fail-under=0 --cov-report=
       
-      - name: Setup Docker services for integration tests
-        if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: |
-          # Start only the external services needed by integration tests
-          # (pipeline image is NOT built here — it is built and deployed
-          # exclusively by the cd-acr workflow on merge to main)
-          docker compose -f zarf/compose/dev/docker-compose.yaml up -d \
-            minio minio-init qdrant ollama ollama-init clip infinity ray-head ray-worker
-
-          echo "Waiting for init containers..."
-          docker wait minio-init ollama-init || true
-
-          echo "Waiting for core services to be up..."
-          for i in {1..60}; do
-            if curl -sf http://localhost:9000/minio/health/live \
-              && curl -sf http://localhost:6333/healthz \
-              && curl -sf http://localhost:11434/api/version \
-              && curl -sf http://localhost:8001/; then
-              echo "All core services are responding"
-              break
-            fi
-            echo "Services not ready yet, retrying..."
-            sleep 5
-          done
-
       - name: Validate Integration Tests
         if: ${{ matrix.os == 'ubuntu-latest' }}
         run: COVERAGE_FILE=.coverage.integration uv run pytest ${{ inputs.integration_tests_path }} -v -m "integration and not slow" -n auto --cov-fail-under=0 --cov-report=
