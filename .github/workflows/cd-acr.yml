@@ -39,7 +39,7 @@ jobs:
         with:
           context: .
           file: zarf/docker/base/Dockerfile.pipeline-base
-          tags: inatinq/pipeline-base:0.1.0
+          tags: ml/pipeline-base:0.1.0
           load: true
           cache-from: type=gha,scope=base
           cache-to: type=gha,mode=max,scope=base
