@@ -176,6 +176,15 @@ class RayImageJobResponse(BaseModel):
     submitted_at: str
 
 
+class RayProcessDLQResponse(BaseModel):
+    """Response after submitting a Ray process dead letter queue job."""
+
+    job_id: str
+    status: str
+    namespace: str
+    submitted_at: str
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Databricks Job Management Models
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -264,6 +273,15 @@ class DatabricksImageJobResponse(BaseModel):
 
 class DatabricksCdcProducerJobResponse(BaseModel):
     """Response after submitting a Databricks CDC producer job."""
+
+    run_id: str
+    status: str
+    namespace: str
+    submitted_at: str
+
+
+class DatabricksProcessDLQResponse(BaseModel):
+    """Response after submitting a Databricks process dead letter queue job."""
 
     run_id: str
     status: str

@@ -24,7 +24,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from config import EmbeddingConfig, ProviderType
-from core.exceptions import UpstreamError
+from foundation.exceptions import UpstreamError
 from core.services.databricks_ray_service import DatabricksRayService
 
 # =============================================================================

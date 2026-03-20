@@ -18,6 +18,7 @@ from config import EmbeddingConfig
 from core.ingestion.shared.env_keys import (
     AUTOLOADER_OPTIONAL_ENV_KEYS as _AUTOLOADER_OPTIONAL_ENV_KEYS,
     AUTOLOADER_REQUIRED_ENV_KEYS as _AUTOLOADER_REQUIRED_ENV_KEYS,
+    DLQ_ENV_KEYS as _DLQ_ENV_KEYS,
     IMAGE_OPTIONAL_ENV_KEYS as _IMAGE_OPTIONAL_ENV_KEYS,
     INAT_IMAGE_ENV_KEYS as _INAT_IMAGE_ENV_KEYS,
     OLLAMA_TUNING_ENV_KEYS as _OLLAMA_TIMEOUT_ENV_KEYS,
@@ -49,81 +50,6 @@ def _passthrough_env_vars(
                 env_vars[key] = value
 
 
-def build_ingestion_env(
-    *,
-    namespace: str,
-    s3_endpoint: str,
-    s3_access_key_id: str,
-    s3_secret_access_key: str,
-    s3_bucket: str,
-    s3_prefix: str,
-    embedding_config: EmbeddingConfig,
-    collection: str,
-    ingestion_targets: frozenset[str] | None = None,
-    extra_env_keys: Iterable[str] | None = None,
-) -> dict[str, str]:
-    """Build env-style params for ingestion jobs (Ray/Databricks).
-
-    This function returns a dictionary of environment variables that configure
-    the ingestion pipeline entrypoint. It includes:
-      - Namespace and S3 connection details
-      - Vector DB collection name and ingestion targets
-      - Embedding provider settings
-      - Optional vector DB credentials from the current process environment
-
-    Args:
-        namespace: Kubernetes namespace (used for service discovery).
-        s3_endpoint: S3/MinIO endpoint URL.
-        s3_access_key_id: S3 access key.
-        s3_secret_access_key: S3 secret key.
-        s3_bucket: S3 bucket name.
-        s3_prefix: S3 prefix to filter objects.
-        embedding_config: Embedding provider configuration.
-        collection: Vector DB collection name.
-        ingestion_targets: Set of vector DBs to index. If provided, written
-            as VECTOR_DB_TARGETS env var.
-        extra_env_keys: Optional iterable of env var names to pass through
-            from the current process if set.
-
-    Returns:
-        Dictionary of environment variables suitable for Ray runtime_env or
-        Databricks python_params conversion.
-    """
-    env_vars = {
-        "K8S_NAMESPACE": namespace,
-        "S3_PREFIX": s3_prefix,
-        "S3_ENDPOINT": s3_endpoint,
-        "S3_ACCESS_KEY_ID": s3_access_key_id,
-        "S3_SECRET_ACCESS_KEY": s3_secret_access_key,
-        "S3_BUCKET": s3_bucket,
-        "VECTOR_DB_COLLECTION": collection,
-        "EMBEDDING_PROVIDER": embedding_config.provider_type,
-    }
-
-    if ingestion_targets:
-        env_vars["VECTOR_DB_TARGETS"] = ",".join(sorted(ingestion_targets))
-
-    if embedding_config.vector_size is not None:
-        env_vars["EMBEDDING_VECTOR_SIZE"] = str(embedding_config.vector_size)
-    if embedding_config.ollama_url:
-        env_vars["OLLAMA_BASE_URL"] = embedding_config.ollama_url
-    if embedding_config.ollama_model:
-        env_vars["OLLAMA_MODEL"] = embedding_config.ollama_model
-
-    _passthrough_env_vars(
-        env_vars,
-        _VECTOR_ENV_KEYS,
-        _VECTOR_TIMEOUT_ENV_KEYS,
-        _S3_TUNING_ENV_KEYS,
-        _OLLAMA_TIMEOUT_ENV_KEYS,
-    )
-
-    if extra_env_keys:
-        _passthrough_env_vars(env_vars, extra_env_keys)
-
-    return env_vars
-
-
 def add_ray_tuning_env(env_vars: dict[str, str]) -> None:
     """Add RAY_* tuning env vars from the current process.
 
@@ -148,12 +74,10 @@ def build_image_ingestion_env(
     s3_prefix: str,
     embedding_config: EmbeddingConfig,
     collection: str,
+    pull_from_dlq: bool,
     extra_env_keys: Iterable[str] | None = None,
 ) -> dict[str, str]:
     """Build env-style params for image ingestion jobs (Ray/Databricks).
-
-    This mirrors build_ingestion_env() but includes image embedding configuration
-    and CLIP/image processing settings.
 
     Args:
         namespace: Kubernetes namespace (used for service discovery).
@@ -164,6 +88,7 @@ def build_image_ingestion_env(
         s3_prefix: S3 prefix to filter objects.
         embedding_config: Image embedding provider configuration.
         collection: Vector DB base collection name.
+        pull_from_dlq: Whether the pipeline should process dead letter queue entries
         extra_env_keys: Optional iterable of env var names to pass through
             from the current process if set.
 
@@ -187,6 +112,7 @@ def build_image_ingestion_env(
         "IMAGE_BATCH_SIZE": str(embedding_config.image_batch_size),
         "IMAGE_MAX_SIZE_MB": str(embedding_config.image_max_size_mb),
         "IMAGE_TARGET_SIZE": str(embedding_config.image_target_size),
+        "PULL_FROM_DLQ": str(pull_from_dlq),
     }
 
     if embedding_config.clip_url:
@@ -203,6 +129,7 @@ def build_image_ingestion_env(
         _S3_TUNING_ENV_KEYS,
         _OLLAMA_TIMEOUT_ENV_KEYS,
         _INAT_IMAGE_ENV_KEYS,
+        _DLQ_ENV_KEYS,
     )
     _passthrough_env_vars(env_vars, _IMAGE_OPTIONAL_ENV_KEYS, overwrite=False)
 
