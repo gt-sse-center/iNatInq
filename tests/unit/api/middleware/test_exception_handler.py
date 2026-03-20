@@ -32,11 +32,11 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from api.middleware.exception_handler import ExceptionHandlerMiddleware
+from foundation.exceptions import UpstreamError
 from core.exceptions import (
     BadRequestError,
     PipelineError,
     PipelineTimeoutError,
-    UpstreamError,
 )
 
 logger = logging.getLogger("uvicorn.error")

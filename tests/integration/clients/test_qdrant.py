@@ -42,7 +42,7 @@ from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import PointStruct
 
 from clients.qdrant import QdrantClientWrapper
-from core.exceptions import UpstreamError
+from foundation.exceptions import UpstreamError
 
 
 def _make_uuid() -> str:

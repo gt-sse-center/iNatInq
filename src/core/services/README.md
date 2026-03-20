@@ -108,7 +108,8 @@ results = await service.search_documents_async(
 ```python
 from fastapi import APIRouter
 from core.services import SearchService
-from core.exceptions import BadRequestError, UpstreamError
+from core.exceptions import BadRequestError
+from foundation.exceptions import UpstreamError
 
 router = APIRouter()
 
@@ -238,7 +239,7 @@ service.stop_job(job_id, namespace="ml-system")
 
 ## Error Handling
 
-Services raise exceptions from the `core.exceptions` hierarchy:
+Services raise exceptions from the `core.exceptions` & `foundation.` hierarchy:
 
 - `BadRequestError`: Invalid client input (e.g., empty query, invalid limit)
 - `UpstreamError`: External service failure (e.g., Qdrant unavailable, S3 error)
@@ -248,7 +249,8 @@ Services raise exceptions from the `core.exceptions` hierarchy:
 
 ```python
 from core.services import SearchService
-from core.exceptions import BadRequestError, UpstreamError
+from core.exceptions import BadRequestError
+from foundation.exceptions import UpstreamError
 
 try:
     results = service.search_documents(
@@ -384,10 +386,10 @@ def search_documents(self, query: str, limit: int):
     # Validate early
     if not query or not query.strip():
         raise BadRequestError("Query cannot be empty")
-    
+
     if limit < 1 or limit > 100:
         raise BadRequestError("Limit must be between 1 and 100")
-    
+
     # Call clients only after validation
     embedding = self.embedding_provider.embed(query)
     return self.vector_db_provider.search(...)
