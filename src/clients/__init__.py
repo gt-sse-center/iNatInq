@@ -83,7 +83,7 @@ def create_vector_db_client(
         get_settings().
 
     Returns:
-        VectorDBProvider instance (QdrantClientWrapper, WeaviateClient, etc.).
+        VectorDBProvider instance (QdrantClientWrapper).
 
     Example:
         ```python

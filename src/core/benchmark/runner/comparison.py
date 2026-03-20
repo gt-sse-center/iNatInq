@@ -8,7 +8,7 @@ Example:
     from core.benchmark.runner.comparison import ComparisonRunner
 
     runner = ComparisonRunner(
-        providers=[qdrant_provider, weaviate_provider],
+        providers=[qdrant_provider],
         reporters=[console_reporter, json_reporter],
     )
     results = await runner.compare(dataset, metrics=[PrecisionAtK(), RecallAtK()])

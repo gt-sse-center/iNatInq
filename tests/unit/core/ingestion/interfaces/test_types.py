@@ -12,6 +12,7 @@ The tests cover:
   - ProcessingConfig: Configuration, defaults, immutability
   - RateLimitConfig: Rate limit settings
   - ProcessingClients: Client bundle, close methods
+  - UpsertResult: Upsert tracking, noop factory
 
 # Test Structure
 
@@ -476,7 +477,7 @@ class TestBatchEmbeddingResult:
           - Empty batch created correctly
           - is_empty returns True
         """
-        batch = BatchEmbeddingResult(qdrant_points=[], weaviate_objects=[])
+        batch = BatchEmbeddingResult(qdrant_points=[])
 
         assert len(batch) == 0
         assert batch.is_empty() is True
@@ -486,18 +487,16 @@ class TestBatchEmbeddingResult:
 
         **Why this test is important:**
           - Normal use case
-          - Validates both database lists
+          - Validates Qdrant points list
 
         **What it tests:**
           - Points stored correctly
           - Length matches
         """
         qdrant_point = VectorPoint(id="1", vector=[0.1, 0.2])
-        weaviate_obj = MagicMock()
 
         batch = BatchEmbeddingResult(
             qdrant_points=[qdrant_point],
-            weaviate_objects=[weaviate_obj],
         )
 
         assert len(batch) == 1
@@ -515,7 +514,7 @@ class TestBatchEmbeddingResult:
           - len() returns qdrant_points count
         """
         points = [VectorPoint(id=str(i), vector=[0.1]) for i in range(5)]
-        batch = BatchEmbeddingResult(qdrant_points=points, weaviate_objects=[])
+        batch = BatchEmbeddingResult(qdrant_points=points)
 
         assert len(batch) == 5
 
@@ -528,7 +527,7 @@ class TestBatchEmbeddingResult:
         **What it tests:**
           - Modification raises FrozenInstanceError
         """
-        batch = BatchEmbeddingResult(qdrant_points=[], weaviate_objects=[])
+        batch = BatchEmbeddingResult(qdrant_points=[])
 
         with pytest.raises(attrs.exceptions.FrozenInstanceError):
             batch.qdrant_points = []
@@ -542,12 +541,11 @@ class TestBatchEmbeddingResult:
 class TestUpsertResult:
     """Test suite for UpsertResult helper factories and properties."""
 
-    def test_noop_factory_disables_all_backends(self) -> None:
-        """noop() should report a successful no-op with no targets enabled."""
+    def test_noop_factory_reports_success(self) -> None:
+        """noop() should report a successful no-op."""
         result = UpsertResult.noop()
 
-        assert result.qdrant_enabled is False
-        assert result.weaviate_enabled is False
+        assert result.success is True
         assert result.any_success is True
         assert result.all_success is True
 
@@ -556,8 +554,7 @@ class TestUpsertResult:
         result = UpsertResult.noop()
 
         assert result.batch_size == 0
-        assert result.qdrant_enabled is False
-        assert result.weaviate_enabled is False
+        assert result.success is True
         assert result.any_success is True
         assert result.all_success is True
 
@@ -734,21 +731,18 @@ class TestProcessingClients:
         mock_s3 = MagicMock()
         mock_embedder = MagicMock()
         mock_qdrant = MagicMock()
-        mock_weaviate = MagicMock()
         mock_session = MagicMock()
 
         clients = ProcessingClients(
             s3=mock_s3,
             embedder=mock_embedder,
             qdrant_db=mock_qdrant,
-            weaviate_db=mock_weaviate,
             session=mock_session,
         )
 
         assert clients.s3 == mock_s3
         assert clients.embedder == mock_embedder
         assert clients.qdrant_db == mock_qdrant
-        assert clients.weaviate_db == mock_weaviate
         assert clients.session == mock_session
 
     def test_close_sync_calls_all_closes(self) -> None:
@@ -764,21 +758,18 @@ class TestProcessingClients:
         mock_s3 = MagicMock()
         mock_embedder = MagicMock()
         mock_qdrant = MagicMock()
-        mock_weaviate = MagicMock()
         mock_session = MagicMock()
 
         clients = ProcessingClients(
             s3=mock_s3,
             embedder=mock_embedder,
             qdrant_db=mock_qdrant,
-            weaviate_db=mock_weaviate,
             session=mock_session,
         )
 
         clients.close_sync()
 
         mock_qdrant.close.assert_called_once()
-        mock_weaviate.close.assert_called_once()
         mock_session.close.assert_called_once()
 
     def test_close_sync_handles_errors(self) -> None:
@@ -795,14 +786,12 @@ class TestProcessingClients:
         mock_embedder = MagicMock()
         mock_qdrant = MagicMock()
         mock_qdrant.close.side_effect = Exception("Close failed")
-        mock_weaviate = MagicMock()
         mock_session = MagicMock()
 
         clients = ProcessingClients(
             s3=mock_s3,
             embedder=mock_embedder,
             qdrant_db=mock_qdrant,
-            weaviate_db=mock_weaviate,
             session=mock_session,
         )
 
@@ -810,7 +799,6 @@ class TestProcessingClients:
         clients.close_sync()
 
         # Other closes still called
-        mock_weaviate.close.assert_called_once()
         mock_session.close.assert_called_once()
 
     @pytest.mark.asyncio
@@ -829,22 +817,17 @@ class TestProcessingClients:
         mock_qdrant = MagicMock()
         mock_qdrant._client = MagicMock()
         mock_qdrant._client.close = AsyncMock()
-        mock_weaviate = MagicMock()
-        mock_weaviate._client = MagicMock()
-        mock_weaviate._client.close = AsyncMock()
         mock_session = MagicMock()
 
         clients = ProcessingClients(
             s3=mock_s3,
             embedder=mock_embedder,
             qdrant_db=mock_qdrant,
-            weaviate_db=mock_weaviate,
             session=mock_session,
         )
 
         await clients.close_async()
 
         mock_qdrant._client.close.assert_awaited_once()
-        mock_weaviate._client.close.assert_awaited_once()
         # session.close() is synchronous (requests.Session), not awaited
         mock_session.close.assert_called_once()

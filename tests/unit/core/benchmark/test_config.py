@@ -56,9 +56,9 @@ class TestBenchmarkConfig:
 
     def test_env_providers(self, monkeypatch):
         """providers can be set via BENCHMARK_PROVIDERS env var."""
-        monkeypatch.setenv("BENCHMARK_PROVIDERS", '["qdrant", "weaviate"]')
+        monkeypatch.setenv("BENCHMARK_PROVIDERS", '["qdrant", "qdrant-v2"]')
         config = BenchmarkConfig()
-        assert config.providers == ["qdrant", "weaviate"]
+        assert config.providers == ["qdrant", "qdrant-v2"]
 
     def test_invalid_k_values_empty(self):
         """Empty k_values raises ValidationError."""

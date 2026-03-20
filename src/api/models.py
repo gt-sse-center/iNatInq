@@ -27,7 +27,7 @@ class ImageSearchResult(BaseModel):
     """A single image search result from a vector database.
 
     Attributes:
-        id: Point/object ID (UUID string from Qdrant or Weaviate).
+        id: Point/object ID (UUID string from Qdrant).
         score: Similarity score (0.0 to 1.0, higher is more similar).
         s3_key: S3 object key for the image.
         s3_uri: Full S3 URI (e.g., s3://bucket/key).
@@ -57,7 +57,7 @@ class ImageSearchResponse(BaseModel):
         query: The original text query string.
         model: The CLIP model used for text embedding.
         collection: The image collection that was searched.
-        provider: The vector database provider that was used ("qdrant" or "weaviate").
+        provider: The vector database provider that was used ("qdrant").
         results: List of image search results, ordered by similarity (highest first).
         total: Total number of results found.
     """
@@ -65,7 +65,7 @@ class ImageSearchResponse(BaseModel):
     query: str = Field(description="Original text query string")
     model: str = Field(description="CLIP model used for text embedding")
     collection: str = Field(description="Image collection that was searched")
-    provider: str = Field(description="Vector database provider used (qdrant or weaviate)")
+    provider: str = Field(description="Vector database provider used (qdrant)")
     results: list[ImageSearchResult] = Field(description="Image results ordered by similarity")
     total: int = Field(ge=0, description="Total number of results found")
 

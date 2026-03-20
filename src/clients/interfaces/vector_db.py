@@ -6,28 +6,16 @@ Concrete implementations live in the parent `clients` package (e.g., `QdrantClie
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, TypeAlias
 
 from config import VectorDBConfig
 from core.models import CollectionInfo, SearchResults, VectorPoint
-
-if TYPE_CHECKING:
-    from clients.weaviate import WeaviateDataObject
-else:
-    # Runtime stub to avoid importing WeaviateDataObject at runtime
-    # (avoids circular dependency - registration happens in clients.registries)
-    WeaviateDataObject = object  # type: ignore[assignment, misc]
-
-# Type alias for batch_upsert points parameter.  Qdrant uses VectorPoint (our
-# wrapper), Weaviate uses WeaviateDataObject
-VectorDBPoint: TypeAlias = VectorPoint | WeaviateDataObject
 
 
 class VectorDBProvider(ABC):
     """Abstract base class for vector database providers.
 
     This class defines the interface that all vector database providers must implement.
-    Each provider (QdrantClientWrapper, WeaviateClient, etc.) inherits from this class
+    Each provider (QdrantClientWrapper) inherits from this class
     and implements the required methods.
 
     Example:
@@ -44,7 +32,7 @@ class VectorDBProvider(ABC):
                 ...
 
             async def batch_upsert_async(
-                self, *, collection: str, points: list[VECTOR_DB_POINT], vector_size: int
+                self, *, collection: str, points: list[VectorPoint], vector_size: int
             ) -> None:
                 # Implementation
                 ...
@@ -111,7 +99,7 @@ class VectorDBProvider(ABC):
         self,
         *,
         collection: str,
-        points: list[VectorDBPoint],
+        points: list[VectorPoint],
         vector_size: int,
     ) -> None:
         """Batch upsert points/objects into a collection.
@@ -122,9 +110,8 @@ class VectorDBProvider(ABC):
 
         Args:
             collection: Collection name to upsert into.
-            points: List of points/objects to upsert. Must not be empty.
-                - Qdrant: List of VectorPoint instances (from core.models)
-                - Weaviate: List of WeaviateDataObject instances (from clients.weaviate)
+            points: List of VectorPoint instances (from core.models) to upsert.
+                Must not be empty.
             vector_size: Vector dimension (e.g., 768 for nomic-embed-text).
                 Used to ensure collection exists with correct dimensions.
 
@@ -180,7 +167,7 @@ def register_provider(provider_type: str, provider_class: type[VectorDBProvider]
     This makes the factory extensible without needing to modify it for each new provider.
 
     Args:
-        provider_type: Provider type identifier (e.g., "qdrant", "weaviate").
+        provider_type: Provider type identifier (e.g., "qdrant").
         provider_class: Provider class that inherits from VectorDBProvider.
 
     Example:
@@ -207,7 +194,7 @@ def create_vector_db_provider(config: VectorDBConfig) -> "VectorDBProvider":
         config: Vector database configuration.
 
     Returns:
-        VectorDBProvider instance (QdrantClientWrapper, WeaviateClient, etc.).
+        VectorDBProvider instance (QdrantClientWrapper).
 
     Raises:
         ValueError: If provider type is not registered or required config is missing.

@@ -24,7 +24,7 @@ flowchart TB
         J[Fetch S3 Content]
         K[Rate-Limited<br/>Embedding Generation]
         L[Create Vector Points]
-        M[Batch Upsert to<br/>Vector Databases]
+        M[Batch Upsert to<br/>Qdrant]
     end
 
     subgraph Workers["Worker Tasks"]
@@ -36,7 +36,6 @@ flowchart TB
         P[(MinIO/S3)]
         Q[(Ollama)]
         R[(Qdrant)]
-        S[(Weaviate)]
     end
 
     A --> B
@@ -58,7 +57,6 @@ flowchart TB
     Q --> L
     L --> M
     M --> R
-    M --> S
 
     subgraph Response["Job Response"]
         T[202 Accepted<br/>+ Job ID]
@@ -72,7 +70,6 @@ flowchart TB
     style P fill:#fff9c4
     style Q fill:#fff3e0
     style R fill:#fce4ec
-    style S fill:#f3e5f5
     style N fill:#e8f5e9
     style O fill:#e3f2fd
 ```
@@ -87,5 +84,5 @@ flowchart TB
 6. **Content Fetch**: Each worker fetches assigned S3 objects
 7. **Embedding Generation**: Rate-limited calls to Ollama for vector embeddings
 8. **Vector Point Creation**: Constructs points with embeddings + metadata
-9. **Database Upsert**: Batch upserts to both Qdrant and Weaviate
+9. **Database Upsert**: Batch upserts to Qdrant
 10. **Async Response**: Returns job ID immediately (202 Accepted)

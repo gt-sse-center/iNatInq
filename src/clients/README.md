@@ -6,7 +6,7 @@ This directory contains object-oriented client wrapper classes around external
 services used by the pipeline:
 
 - **S3/MinIO**: Object storage for pipeline inputs/outputs
-- **Vector Databases**: Qdrant, Weaviate (future), etc.
+- **Vector Databases**: Qdrant
 - **Embedding Providers**: Ollama, OpenAI (future), etc.
 - **Kubernetes**: Spark job submission and management
 
@@ -39,7 +39,6 @@ clients/
 ├── cache.py             # CacheClient (in-memory semantic cache)
 ├── ollama.py            # OllamaClient (implements EmbeddingProvider)
 ├── qdrant.py            # QdrantClientWrapper (implements VectorDBProvider)
-├── weaviate.py          # WeaviateClientWrapper (implements VectorDBProvider)
 ├── s3.py                # S3ClientWrapper
 └── k8s_spark.py         # SparkJobClient (Kubernetes Spark Operator)
 ```
@@ -393,7 +392,6 @@ Defines the interface for vector database operations (all async):
 **Implementations:**
 
 - `QdrantClientWrapper`: Qdrant vector database (async-only)
-- `WeaviateClientWrapper`: Weaviate vector database (async-only)
 
 ### Factory Functions
 
@@ -457,7 +455,6 @@ jobs:
   handled by boto3)
 - **QdrantClientWrapper**: Reuses AsyncQdrantClient internally (connection pooling
   handled by qdrant-client)
-- **WeaviateClientWrapper**: Reuses WeaviateAsyncClient internally
 - **KubernetesClient**: Lazy initialization of Batch API client
 
 **Example with shared session:**

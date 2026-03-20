@@ -188,7 +188,6 @@ class TestDatabricksImageJobMain:
                                     mock_embed_cfg.return_value = embed_cfg
                                     mock_vector_cfg.return_value = MagicMock(
                                         collection="documents",
-                                        ingestion_targets=frozenset({"qdrant", "weaviate"}),
                                         qdrant_url="http://localhost:6333",
                                         qdrant_api_key=None,
                                     )

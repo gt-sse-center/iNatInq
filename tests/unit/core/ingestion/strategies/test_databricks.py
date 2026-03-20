@@ -144,16 +144,6 @@ class TestDatabricksStrategyRuntimeEnv:
 
         assert env["env_vars"]["PYTHONPATH"] == "/custom/path"
 
-    def test_get_runtime_env_defaults_vector_targets_when_missing(self, ray_job_config: RayJobConfig):
-        """get_runtime_env() sets default VECTOR_DB_TARGETS when missing."""
-        strategy = DatabricksStrategy(config=ray_job_config)
-
-        with patch.dict(os.environ, {"INATINQ_SRC_DIR": "/workspace/src"}, clear=True):
-            with patch("pathlib.Path.is_dir", return_value=True):
-                env = strategy.get_runtime_env()
-
-        assert env["env_vars"]["VECTOR_DB_TARGETS"] == "qdrant,weaviate"
-
     def test_get_runtime_env_raises_without_src_dir(self, ray_job_config: RayJobConfig):
         """get_runtime_env() raises RuntimeError without INATINQ_SRC_DIR.
 
@@ -230,12 +220,10 @@ class TestDatabricksStrategyRuntimeEnv:
         **What it tests:**
         - S3_ENDPOINT is in passthrough list
         - QDRANT_URL is in passthrough list
-        - WEAVIATE_URL is in passthrough list
         - OLLAMA_BASE_URL is in passthrough list
         """
         assert "S3_ENDPOINT" in _PASSTHROUGH_ENV_VARS
         assert "QDRANT_URL" in _PASSTHROUGH_ENV_VARS
-        assert "WEAVIATE_URL" in _PASSTHROUGH_ENV_VARS
         assert "OLLAMA_BASE_URL" in _PASSTHROUGH_ENV_VARS
         assert "INAT_MAX_ROWS" in _PASSTHROUGH_ENV_VARS
         assert "INAT_METADATA_URL" in _PASSTHROUGH_ENV_VARS

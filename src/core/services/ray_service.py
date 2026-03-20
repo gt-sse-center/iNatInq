@@ -127,7 +127,6 @@ class RayService:
                         "pydantic-settings",
                         "httpx",
                         "qdrant-client==1.16.1",
-                        "weaviate-client",
                         "tenacity",
                         "pybreaker",
                         "aiobreaker",

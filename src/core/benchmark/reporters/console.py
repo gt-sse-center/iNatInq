@@ -7,7 +7,7 @@ Example:
     from core.benchmark.reporters.console import ConsoleReporter
 
     reporter = ConsoleReporter()
-    await reporter.report({"qdrant": result_a, "weaviate": result_b})
+    await reporter.report({"qdrant": result_a})
     ```
 """
 

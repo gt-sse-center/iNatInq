@@ -4,7 +4,7 @@ Abstract Base Classes (ABCs) that define provider-agnostic interfaces for
 embedding generation and vector database operations.
 
 This sub-package contains the abstraction layer that allows the pipeline to work
-with different providers (Ollama, OpenAI, Qdrant, Weaviate, etc.) without code
+with different providers (Ollama, OpenAI, Qdrant, etc.) without code
 changes.
 
 ## Design Principles
@@ -127,9 +127,9 @@ Abstract interface for vector database providers.
 
 **Configuration:** `VectorDBConfig`
 
-- `provider_type: VectorDBProviderType`: Provider type ("qdrant", "weaviate",
+- `provider_type: VectorDBProviderType`: Provider type ("qdrant",
   etc.)
-- Provider-specific fields (e.g., `qdrant_url`, `weaviate_url`)
+- Provider-specific fields (e.g., `qdrant_url`)
 
 **Factory Function:**
 `create_vector_db_provider(config: VectorDBConfig) -> VectorDBProvider`
@@ -146,7 +146,7 @@ from clients.interfaces.vector_db import (
 # Create config from environment
 config = VectorDBConfig.from_env()
 
-# Create provider (returns QdrantClientWrapper, WeaviateClient, etc.)
+# Create provider (returns QdrantClientWrapper, etc.)
 provider = create_vector_db_provider(config)
 
 # Use provider (agnostic to implementation)
@@ -161,7 +161,6 @@ results = provider.search(
 **Implementations:**
 
 - `QdrantClientWrapper` (in `clients/qdrant.py`)
-- `WeaviateClient` (future)
 
 **Registering New Providers:**
 

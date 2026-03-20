@@ -50,13 +50,13 @@ class TestConsoleReporter:
 
         results = {
             "qdrant": _make_result(metrics={"precision@k": 0.85}),
-            "weaviate": _make_result(metrics={"precision@k": 0.72}),
+            "milvus": _make_result(metrics={"precision@k": 0.72}),
         }
         await reporter.report(results)
 
         output = stream.getvalue()
         assert "qdrant" in output
-        assert "weaviate" in output
+        assert "milvus" in output
         assert "0.8500" in output
         assert "0.7200" in output
 

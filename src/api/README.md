@@ -22,7 +22,7 @@ FastAPI HTTP layer for the pipeline service: request/response serialization, val
 | ------ | ---------------- | ------------------------------------------------------------------------ |
 | `GET`  | `/search/images` | Text-to-image search over vector DB image collections (CLIP embeddings). |
 
-**Query:** `q` (required), `limit` (default 10, max 100), `collection` (optional), `provider` (`qdrant` \| `weaviate`, optional).  
+**Query:** `q` (required), `limit` (default 10, max 100), `collection` (optional), `provider` (`qdrant`, optional).
 **Response:** `query`, `model`, `collection`, `provider`, `results` (id, score, s3_key, s3_uri, format, width, height, thumbnail_key), `total`.  
 **Errors:** 400 (empty/invalid query or limit), 404 (collection missing), 502 (CLIP or vector DB failure).
 

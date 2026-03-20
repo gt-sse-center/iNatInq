@@ -80,7 +80,7 @@ class TestBenchmarkResult:
     def test_multiple_metrics(self):
         """BenchmarkResult holds multiple metrics."""
         result = BenchmarkResult(
-            provider="weaviate",
+            provider="milvus",
             dataset="gold",
             metrics={
                 "precision@k": 0.85,

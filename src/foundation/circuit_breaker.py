@@ -55,7 +55,7 @@ class MyClient(CircuitBreakerMixin):
 - recovery_timeout: 30s (try recovery after 30 seconds)
 - Rationale: Embedding is on critical path, fail fast to avoid blocking users
 
-**Qdrant/Weaviate (Vector Database)**:
+**Qdrant (Vector Database)**:
 - failure_threshold: 3 (fail after 3 consecutive errors)
 - recovery_timeout: 60s (longer recovery for database)
 - Rationale: Database failures indicate serious issues, longer recovery time

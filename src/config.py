@@ -206,15 +206,11 @@ defaults):
   embedding (default: `224`, standard CLIP input size)
 
 **Vector Database Provider Configuration**
-- `VECTOR_DB_PROVIDER`: Provider type - `qdrant` or `weaviate`
+- `VECTOR_DB_PROVIDER`: Provider type - `qdrant`
   (default: `qdrant`)
 - `VECTOR_DB_COLLECTION`: Collection name (default: `documents`)
 - `QDRANT_URL`: Qdrant service URL (backward compatible,
   auto-detected if not set)
-- `WEAVIATE_URL`: Weaviate service URL (required if
-  `VECTOR_DB_PROVIDER=weaviate`)
-- `WEAVIATE_API_KEY`: Weaviate API key (optional, for authenticated
-  instances)
 
 **Kubernetes**
 - `K8S_NAMESPACE`: Kubernetes namespace for ML components
@@ -250,7 +246,6 @@ This module uses Pydantic Settings for configuration management, providing:
 - Multiple configuration sources (env vars)
 """
 
-import logging
 import os
 from enum import StrEnum
 from functools import lru_cache
@@ -320,37 +315,6 @@ def resolve_vector_db_provider(provider: str | None = None, default: str = "qdra
     raw_value = provider if provider is not None else os.getenv("VECTOR_DB_PROVIDER")
     normalized = (raw_value or "").strip().lower()
     return normalized or default
-
-
-def resolve_vector_db_targets(
-    provider: str | None = None, *, logger: logging.Logger | None = None
-) -> tuple[bool, bool]:
-    """Resolve which vector DB targets should be enabled.
-
-    Args:
-        provider: Optional provider override. If None, reads
-            ``VECTOR_DB_PROVIDER`` from the environment.
-        logger: Optional logger used for invalid provider warnings.
-
-    Returns:
-        Tuple of ``(use_qdrant, use_weaviate)``.
-    """
-    normalized_provider = resolve_vector_db_provider(provider=provider, default="both")
-    target_mapping: dict[str, tuple[bool, bool]] = {
-        "both": (True, True),
-        "qdrant": (True, False),
-        "weaviate": (False, True),
-    }
-    targets = target_mapping.get(normalized_provider)
-    if targets is not None:
-        return targets
-
-    if logger is not None:
-        logger.warning(
-            "Invalid VECTOR_DB_PROVIDER; defaulting to both",
-            extra={"vector_db_provider": normalized_provider},
-        )
-    return target_mapping["both"]
 
 
 class ProviderType(StrEnum):
@@ -736,15 +700,12 @@ class MinIOConfig(BaseModel):
 class VectorDBConfig(BaseModel):
     """Configuration for vector database provider.
 
-    This configuration class supports Qdrant and Weaviate vector databases.
+    This configuration class supports Qdrant vector database.
 
     Attributes:
-        provider_type: Type of vector database provider. Must be one of:
-            "qdrant" or "weaviate".
+        provider_type: Type of vector database provider. Must be "qdrant".
         collection: Default collection name to use for storing and
             querying vectors.
-        ingestion_targets: Set of vector DBs to index during ingestion.
-            Defaults to both ("qdrant", "weaviate"). At least one required.
         qdrant_url: Qdrant service URL. Required if
             provider_type="qdrant". Auto-detected based on environment
             if not set.
@@ -754,21 +715,10 @@ class VectorDBConfig(BaseModel):
             Default: 3.
         qdrant_circuit_breaker_timeout: Circuit recovery timeout in seconds.
             Default: 60.
-        weaviate_url: Weaviate service URL. Required if
-            provider_type="weaviate". Auto-detected based on environment
-            if not set.
-        weaviate_api_key: Weaviate API key. Optional, for authenticated
-            instances.
-        weaviate_timeout: Weaviate request timeout in seconds. Default: 300.
-        weaviate_circuit_breaker_threshold: Failures before circuit opens.
-            Default: 3.
-        weaviate_circuit_breaker_timeout: Circuit recovery timeout in seconds.
-            Default: 60.
     """
 
-    provider_type: Literal["qdrant", "weaviate"]
+    provider_type: Literal["qdrant"]
     collection: str
-    ingestion_targets: frozenset[str] = frozenset({"qdrant", "weaviate"})
 
     # Qdrant settings
     qdrant_url: str | None = None
@@ -777,58 +727,16 @@ class VectorDBConfig(BaseModel):
     qdrant_circuit_breaker_threshold: int = 3
     qdrant_circuit_breaker_timeout: int = 60
 
-    # Weaviate settings
-    weaviate_url: str | None = None
-    weaviate_api_key: str | None = None
-    weaviate_grpc_host: str | None = None
-    weaviate_grpc_port: int | None = None  # Custom gRPC port for testcontainers
-    weaviate_timeout: int = 300
-    weaviate_circuit_breaker_threshold: int = 3
-    weaviate_circuit_breaker_timeout: int = 60
-
     model_config = SettingsConfigDict(frozen=True)
-
-    @staticmethod
-    def parse_targets_from_env() -> frozenset[str]:
-        """Parse VECTOR_DB_TARGETS from environment.
-
-        Reads a comma-separated list of target database names. Each entry
-        must be one of {"qdrant", "weaviate"}. At least one is required.
-
-        Returns:
-            Frozenset of validated target names.
-
-        Raises:
-            ValueError: If targets are empty or contain invalid names.
-        """
-        raw = os.getenv("VECTOR_DB_TARGETS")
-        if not raw:
-            return frozenset({"qdrant", "weaviate"})
-
-        valid = {"qdrant", "weaviate"}
-        targets = frozenset(t.strip().lower() for t in raw.split(",") if t.strip())
-
-        if not targets:
-            raise ValueError("VECTOR_DB_TARGETS must contain at least one target")
-
-        invalid = targets - valid
-        if invalid:
-            msg = f"Invalid VECTOR_DB_TARGETS: {', '.join(sorted(invalid))}. Must be subset of: {valid}"
-            raise ValueError(msg)
-
-        return targets
 
     @classmethod
     def from_env(cls, namespace: str = "ml-system") -> "VectorDBConfig":
         """Create VectorDBConfig from environment variables.
 
         Supports:
-        - VECTOR_DB_PROVIDER: Provider type (qdrant, weaviate, etc.)
+        - VECTOR_DB_PROVIDER: Provider type (qdrant)
         - VECTOR_DB_COLLECTION: Collection name (default: "documents")
-        - VECTOR_DB_TARGETS: Comma-separated ingestion targets (default: "qdrant,weaviate")
         - QDRANT_URL: Qdrant service URL (backward compatible)
-        - WEAVIATE_URL: Weaviate service URL
-        - WEAVIATE_API_KEY: Weaviate API key (optional)
 
         Args:
             namespace: Kubernetes namespace for service discovery.
@@ -840,43 +748,26 @@ class VectorDBConfig(BaseModel):
         provider_type = resolve_vector_db_provider()
 
         # Validate provider type
-        valid_providers = ("qdrant", "weaviate")
+        valid_providers = ("qdrant",)
         if provider_type not in valid_providers:
             msg = f"Invalid VECTOR_DB_PROVIDER: {provider_type}. Must be one of: {valid_providers}"
             raise ValueError(msg)
 
         in_cluster = _is_in_cluster()
-        ingestion_targets = cls.parse_targets_from_env()
 
         # Build config based on provider type
         collection = os.getenv("VECTOR_DB_COLLECTION", "documents")
 
-        if provider_type == "qdrant":
-            # Default URL based on environment
-            default_url = f"http://qdrant.{namespace}:6333" if in_cluster else "http://localhost:6333"
-            return cls(
-                provider_type="qdrant",
-                collection=collection,
-                ingestion_targets=ingestion_targets,
-                qdrant_url=os.getenv("QDRANT_URL", default_url),
-                qdrant_api_key=os.getenv("QDRANT_API_KEY"),
-                qdrant_timeout=int(os.getenv("QDRANT_TIMEOUT", "300")),
-                qdrant_circuit_breaker_threshold=int(os.getenv("QDRANT_CIRCUIT_BREAKER_THRESHOLD", "3")),
-                qdrant_circuit_breaker_timeout=int(os.getenv("QDRANT_CIRCUIT_BREAKER_TIMEOUT", "60")),
-            )
-
-        # Weaviate is the only other valid option
-        default_url = f"http://weaviate.{namespace}:8080" if in_cluster else "http://localhost:8080"
+        # Default URL based on environment
+        default_url = f"http://qdrant.{namespace}:6333" if in_cluster else "http://localhost:6333"
         return cls(
-            provider_type="weaviate",
+            provider_type="qdrant",
             collection=collection,
-            ingestion_targets=ingestion_targets,
-            weaviate_url=os.getenv("WEAVIATE_URL", default_url),
-            weaviate_api_key=os.getenv("WEAVIATE_API_KEY"),
-            weaviate_grpc_host=os.getenv("WEAVIATE_GRPC_HOST"),
-            weaviate_timeout=int(os.getenv("WEAVIATE_TIMEOUT", "300")),
-            weaviate_circuit_breaker_threshold=int(os.getenv("WEAVIATE_CIRCUIT_BREAKER_THRESHOLD", "3")),
-            weaviate_circuit_breaker_timeout=int(os.getenv("WEAVIATE_CIRCUIT_BREAKER_TIMEOUT", "60")),
+            qdrant_url=os.getenv("QDRANT_URL", default_url),
+            qdrant_api_key=os.getenv("QDRANT_API_KEY"),
+            qdrant_timeout=int(os.getenv("QDRANT_TIMEOUT", "300")),
+            qdrant_circuit_breaker_threshold=int(os.getenv("QDRANT_CIRCUIT_BREAKER_THRESHOLD", "3")),
+            qdrant_circuit_breaker_timeout=int(os.getenv("QDRANT_CIRCUIT_BREAKER_TIMEOUT", "60")),
         )
 
     @classmethod
@@ -888,7 +779,7 @@ class VectorDBConfig(BaseModel):
         need to target a specific provider regardless of the default configuration.
 
         Args:
-            provider_type: Provider type ("qdrant" or "weaviate").
+            provider_type: Provider type ("qdrant").
             namespace: Kubernetes namespace for service discovery.
 
         Returns:
@@ -897,37 +788,20 @@ class VectorDBConfig(BaseModel):
         Raises:
             ValueError: If provider type is invalid or required config is missing.
         """
-        valid_providers = ("qdrant", "weaviate")
+        valid_providers = ("qdrant",)
         if provider_type not in valid_providers:
             msg = f"Invalid provider type: {provider_type}. Must be one of: {valid_providers}"
             raise ValueError(msg)
 
         in_cluster = _is_in_cluster()
         collection = os.getenv("VECTOR_DB_COLLECTION", "documents")
-        ingestion_targets = cls.parse_targets_from_env()
 
-        if provider_type == "qdrant":
-            default_url = f"http://qdrant.{namespace}:6333" if in_cluster else "http://localhost:6333"
-            return cls(
-                provider_type="qdrant",
-                collection=collection,
-                ingestion_targets=ingestion_targets,
-                qdrant_url=os.getenv("QDRANT_URL", default_url),
-                qdrant_api_key=os.getenv("QDRANT_API_KEY"),
-            )
-
-        # Weaviate is the only other valid option
-        default_url = f"http://weaviate.{namespace}:8080" if in_cluster else "http://localhost:8080"
+        default_url = f"http://qdrant.{namespace}:6333" if in_cluster else "http://localhost:6333"
         return cls(
-            provider_type="weaviate",
+            provider_type="qdrant",
             collection=collection,
-            ingestion_targets=ingestion_targets,
-            weaviate_url=os.getenv("WEAVIATE_URL", default_url),
-            weaviate_api_key=os.getenv("WEAVIATE_API_KEY"),
-            weaviate_grpc_host=os.getenv("WEAVIATE_GRPC_HOST"),
-            weaviate_timeout=int(os.getenv("WEAVIATE_TIMEOUT", "300")),
-            weaviate_circuit_breaker_threshold=int(os.getenv("WEAVIATE_CIRCUIT_BREAKER_THRESHOLD", "3")),
-            weaviate_circuit_breaker_timeout=int(os.getenv("WEAVIATE_CIRCUIT_BREAKER_TIMEOUT", "60")),
+            qdrant_url=os.getenv("QDRANT_URL", default_url),
+            qdrant_api_key=os.getenv("QDRANT_API_KEY"),
         )
 
 
@@ -1422,7 +1296,7 @@ class Settings(BaseModel):
             Supports multiple providers: ollama, openai, huggingface,
             sagemaker.
         vector_db: Vector database provider configuration
-            (provider-agnostic). Supports providers: qdrant, weaviate.
+            (provider-agnostic). Supports providers: qdrant.
         minio: MinIO/S3 configuration for object storage. Contains
             endpoint URL, credentials, bucket name, and connection
             settings.

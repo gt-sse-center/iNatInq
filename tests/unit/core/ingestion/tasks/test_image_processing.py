@@ -329,8 +329,7 @@ class TestImageProcessingPipelineAsync:
         pipeline = ImageProcessingPipeline(config)
         mock_clip = MagicMock()
         mock_qdrant = MagicMock()
-        mock_weaviate = MagicMock()
-        results = await pipeline._process_images_async([], mock_clip, mock_qdrant, mock_weaviate)
+        results = await pipeline._process_images_async([], mock_clip, mock_qdrant)
         assert results == []
 
     @pytest.mark.asyncio
@@ -357,10 +356,6 @@ class TestImageProcessingPipelineAsync:
         mock_qdrant.batch_upsert_async = AsyncMock()
         mock_qdrant.ensure_image_collection_async = AsyncMock()
 
-        mock_weaviate = MagicMock()
-        mock_weaviate.batch_upsert_async = AsyncMock()
-        mock_weaviate.ensure_image_collection_async = AsyncMock()
-
         image = ImageContentResult(
             s3_key="image.jpg",
             image_bytes=b"invalid_image_data",
@@ -373,7 +368,7 @@ class TestImageProcessingPipelineAsync:
             side_effect=Exception("Resize failed"),
         ):
             # Should not raise, but use original image bytes as fallback
-            results = await pipeline._process_images_async([image], mock_clip, mock_qdrant, mock_weaviate)
+            results = await pipeline._process_images_async([image], mock_clip, mock_qdrant)
 
         assert len(results) == 1
 
@@ -399,8 +394,6 @@ class TestImageProcessingPipelineAsync:
 
         mock_qdrant = MagicMock()
         mock_qdrant.ensure_image_collection_async = AsyncMock()
-        mock_weaviate = MagicMock()
-        mock_weaviate.ensure_image_collection_async = AsyncMock()
 
         image = ImageContentResult(
             s3_key="image.jpg",
@@ -410,23 +403,22 @@ class TestImageProcessingPipelineAsync:
         )
 
         with patch("core.ingestion.tasks.image_processing.resize_for_embedding", return_value=b"resized"):
-            results = await pipeline._process_images_async([image], mock_clip, mock_qdrant, mock_weaviate)
+            results = await pipeline._process_images_async([image], mock_clip, mock_qdrant)
 
         assert len(results) == 1
         assert results[0].success is False
 
     @pytest.mark.asyncio
     async def test_process_images_async_handles_qdrant_upsert_failure(self, config):
-        """Verify _process_images_async handles Qdrant upsert failures as partial success.
+        """Verify _process_images_async handles Qdrant upsert failures.
 
         **Why this test is important:**
         - Database failures should not crash the pipeline
-        - When one DB fails but another succeeds, the result is partial success
         - Pipeline should handle vector DB errors gracefully
 
         **What it tests:**
         - Qdrant batch_upsert_async exception is caught
-        - Result is marked as SUCCESS because Weaviate upsert succeeded (partial failure)
+        - Result is marked as FAILURE since the only DB failed
         - Pipeline completes without raising exception
         """
         pipeline = ImageProcessingPipeline(config)
@@ -439,10 +431,6 @@ class TestImageProcessingPipelineAsync:
         mock_qdrant.batch_upsert_async = AsyncMock(side_effect=Exception("Qdrant error"))
         mock_qdrant.ensure_image_collection_async = AsyncMock()
 
-        mock_weaviate = MagicMock()
-        mock_weaviate.batch_upsert_async = AsyncMock()
-        mock_weaviate.ensure_image_collection_async = AsyncMock()
-
         image = ImageContentResult(
             s3_key="image.jpg",
             image_bytes=b"image_data",
@@ -453,10 +441,10 @@ class TestImageProcessingPipelineAsync:
         )
 
         with patch("core.ingestion.tasks.image_processing.resize_for_embedding", return_value=b"resized"):
-            results = await pipeline._process_images_async([image], mock_clip, mock_qdrant, mock_weaviate)
+            results = await pipeline._process_images_async([image], mock_clip, mock_qdrant)
 
         assert len(results) == 1
-        assert results[0].success is True
+        assert results[0].success is False
 
     @pytest.mark.asyncio
     async def test_process_images_async_uses_s3_uri_when_source_uri_provided(self, config):
@@ -471,10 +459,6 @@ class TestImageProcessingPipelineAsync:
         mock_qdrant.batch_upsert_async = AsyncMock()
         mock_qdrant.ensure_image_collection_async = AsyncMock()
 
-        mock_weaviate = MagicMock()
-        mock_weaviate.batch_upsert_async = AsyncMock()
-        mock_weaviate.ensure_image_collection_async = AsyncMock()
-
         image = ImageContentResult(
             s3_key="photos/21213/medium.jpg",
             image_bytes=b"image_data",
@@ -487,7 +471,7 @@ class TestImageProcessingPipelineAsync:
             patch.dict(os.environ, {"VECTOR_DB_PROVIDER": "qdrant"}, clear=False),
             patch("core.ingestion.tasks.image_processing.resize_for_embedding", return_value=b"resized"),
         ):
-            results = await pipeline._process_images_async([image], mock_clip, mock_qdrant, mock_weaviate)
+            results = await pipeline._process_images_async([image], mock_clip, mock_qdrant)
 
         assert len(results) == 1
         assert results[0].success is True
@@ -518,10 +502,6 @@ class TestImageProcessingPipelineAsync:
         mock_qdrant.batch_upsert_async = AsyncMock()
         mock_qdrant.ensure_image_collection_async = AsyncMock()
 
-        mock_weaviate = MagicMock()
-        mock_weaviate.batch_upsert_async = AsyncMock()
-        mock_weaviate.ensure_image_collection_async = AsyncMock()
-
         s3_key = "photos/12345/medium.jpg"
         image = ImageContentResult(
             s3_key=s3_key,
@@ -534,12 +514,12 @@ class TestImageProcessingPipelineAsync:
 
         with patch("core.ingestion.tasks.image_processing.resize_for_embedding", return_value=b"resized"):
             # Run twice with the same key
-            await pipeline._process_images_async([image], mock_clip, mock_qdrant, mock_weaviate)
+            await pipeline._process_images_async([image], mock_clip, mock_qdrant)
             first_call_points = mock_qdrant.batch_upsert_async.await_args.kwargs["points"]
             first_uuid = first_call_points[0].id
 
             mock_qdrant.batch_upsert_async.reset_mock()
-            await pipeline._process_images_async([image], mock_clip, mock_qdrant, mock_weaviate)
+            await pipeline._process_images_async([image], mock_clip, mock_qdrant)
             second_call_points = mock_qdrant.batch_upsert_async.await_args.kwargs["points"]
             second_uuid = second_call_points[0].id
 
@@ -549,17 +529,16 @@ class TestImageProcessingPipelineAsync:
         assert first_uuid == second_uuid
 
     @pytest.mark.asyncio
-    async def test_partial_upsert_marks_success_when_one_db_succeeds(self, config):
-        """Verify that partial upsert failure still marks images as success.
+    async def test_successful_upsert_marks_success(self, config):
+        """Verify that successful upsert marks images as success.
 
         **Why this test is important:**
-        - Partial failures should not discard work that succeeded in other DBs
-        - Users can repair the failed DB later without re-ingesting
-        - Documents the new partial-success semantics
+        - Successful Qdrant upsert should mark images as success
+        - Validates happy path for multi-image batch
 
         **What it tests:**
-        - Qdrant upsert succeeds, Weaviate upsert fails
-        - Images are marked as SUCCESS (not failure)
+        - Qdrant upsert succeeds
+        - Images are marked as SUCCESS
         """
         pipeline = ImageProcessingPipeline(config)
 
@@ -570,10 +549,6 @@ class TestImageProcessingPipelineAsync:
         mock_qdrant = MagicMock()
         mock_qdrant.batch_upsert_async = AsyncMock()
         mock_qdrant.ensure_image_collection_async = AsyncMock()
-
-        mock_weaviate = MagicMock()
-        mock_weaviate.batch_upsert_async = AsyncMock(side_effect=Exception("Weaviate timeout"))
-        mock_weaviate.ensure_image_collection_async = AsyncMock()
 
         images = [
             ImageContentResult(
@@ -595,25 +570,24 @@ class TestImageProcessingPipelineAsync:
         ]
 
         with patch("core.ingestion.tasks.image_processing.resize_for_embedding", return_value=b"resized"):
-            results = await pipeline._process_images_async(images, mock_clip, mock_qdrant, mock_weaviate)
+            results = await pipeline._process_images_async(images, mock_clip, mock_qdrant)
 
         assert len(results) == 2
         assert results[0].success is True
         assert results[1].success is True
 
     @pytest.mark.asyncio
-    async def test_all_db_failure_marks_failure(self, config):
-        """Verify that images are marked as failure when ALL DB upserts fail.
+    async def test_db_failure_marks_failure(self, config):
+        """Verify that images are marked as failure when DB upsert fails.
 
         **Why this test is important:**
-        - If no DB accepted the data, the image truly failed to ingest
-        - Error messages must identify all failed DBs for debugging
-        - Differentiates total failure from partial failure
+        - If the DB did not accept the data, the image truly failed to ingest
+        - Error messages must identify the failure for debugging
 
         **What it tests:**
-        - Both Qdrant and Weaviate upsert fail
+        - Qdrant upsert fails
         - Images are marked as FAILURE
-        - Error message contains all failed DB names
+        - Error message contains failure information
         """
         pipeline = ImageProcessingPipeline(config)
 
@@ -625,10 +599,6 @@ class TestImageProcessingPipelineAsync:
         mock_qdrant.batch_upsert_async = AsyncMock(side_effect=Exception("Qdrant connection refused"))
         mock_qdrant.ensure_image_collection_async = AsyncMock()
 
-        mock_weaviate = MagicMock()
-        mock_weaviate.batch_upsert_async = AsyncMock(side_effect=Exception("Weaviate timeout"))
-        mock_weaviate.ensure_image_collection_async = AsyncMock()
-
         image = ImageContentResult(
             s3_key="image.jpg",
             image_bytes=b"image_data",
@@ -639,13 +609,10 @@ class TestImageProcessingPipelineAsync:
         )
 
         with patch("core.ingestion.tasks.image_processing.resize_for_embedding", return_value=b"resized"):
-            results = await pipeline._process_images_async([image], mock_clip, mock_qdrant, mock_weaviate)
+            results = await pipeline._process_images_async([image], mock_clip, mock_qdrant)
 
         assert len(results) == 1
         assert results[0].success is False
-        assert "Upsert failed for all DBs" in results[0].error_message
-        assert "qdrant" in results[0].error_message
-        assert "weaviate" in results[0].error_message
 
 
 class TestProcessImageBatchRay:

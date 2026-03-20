@@ -1,4 +1,4 @@
-"""Databricks Ray job: iNaturalist metadata → images → CLIP → vector DBs.
+"""Databricks Ray job: iNaturalist metadata → images → CLIP → Qdrant.
 
 This entrypoint mirrors process_s3_images.py, but sources images from
 iNaturalist open-data metadata using INaturalistOpenDataClient.
@@ -99,7 +99,6 @@ def process_inat_photo_batch_ray(
     retry_max_attempts: int = 3,
     retry_min_wait: float = 1.0,
     retry_max_wait: float = 10.0,
-    ingestion_targets: frozenset[str] | None = None,
     inat_photo_base_url: str = "https://inaturalist-open-data.s3.amazonaws.com/photos",
     inat_timeout_s: int = 120,
     inat_cb_failure_threshold: int = 5,
@@ -120,7 +119,6 @@ def process_inat_photo_batch_ray(
         image_batch_size=image_batch_size,
         image_embed_batch_size=image_embed_batch_size,
         namespace=namespace,
-        ingestion_targets=ingestion_targets or frozenset({"qdrant", "weaviate"}),
         max_concurrency=pipeline_concurrency,
         circuit_breaker_threshold=circuit_breaker_threshold,
         circuit_breaker_timeout=circuit_breaker_timeout,
@@ -199,8 +197,6 @@ def main() -> None:
     inat_cb_failure_threshold = inat_cfg.cb_failure_threshold
     inat_cb_recovery_timeout_s = inat_cfg.cb_recovery_timeout_s
     image_max_items = inat_cfg.image_max_items
-    ingestion_targets = vector_cfg.ingestion_targets
-
     job_logger.info(
         "Configuration loaded",
         extra={
@@ -208,7 +204,6 @@ def main() -> None:
             "collection": collection,
             "num_workers": ray_cfg.num_workers,
             "image_batch_size": ray_cfg.image_batch_size,
-            "ingestion_targets": sorted(ingestion_targets),
             "metadata_url": metadata_url or "default:s3://inaturalist-open-data/photos.csv.gz",
             "image_size": image_size,
             "max_rows": max_rows,
@@ -274,14 +269,13 @@ def main() -> None:
                 retry_max_attempts=ray_cfg.retry_max_attempts,
                 retry_min_wait=ray_cfg.retry_min_wait,
                 retry_max_wait=ray_cfg.retry_max_wait,
-                ingestion_targets=ingestion_targets,
                 inat_photo_base_url=inat_photo_base_url,
                 inat_timeout_s=inat_timeout_s,
                 inat_cb_failure_threshold=inat_cb_failure_threshold,
                 inat_cb_recovery_timeout_s=inat_cb_recovery_timeout_s,
             )
 
-        should_disable_indexing = ray_cfg.disable_indexing_during_ingest and "qdrant" in ingestion_targets
+        should_disable_indexing = ray_cfg.disable_indexing_during_ingest
 
         qdrant_wrapper = QdrantClientWrapper.from_config(vector_cfg) if should_disable_indexing else None
 

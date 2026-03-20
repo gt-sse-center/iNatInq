@@ -123,7 +123,7 @@ def main() -> None:
     parser.add_argument(
         "--provider",
         "-p",
-        choices=["qdrant", "weaviate"],
+        choices=["qdrant"],
         default="qdrant",
         help="Vector DB provider (default: qdrant)",
     )

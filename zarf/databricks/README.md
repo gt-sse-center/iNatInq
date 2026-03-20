@@ -174,19 +174,13 @@ Optional (with defaults):
 
 Provider selection:
 
-- `VECTOR_DB_PROVIDER` (`qdrant` or `weaviate`)
+- `VECTOR_DB_PROVIDER` (`qdrant`)
 - `VECTOR_DB_COLLECTION` (optional)
 
 Qdrant Cloud:
 
 - `QDRANT_URL`
 - `QDRANT_API_KEY`
-
-Weaviate Cloud:
-
-- `WEAVIATE_URL`
-- `WEAVIATE_API_KEY`
-- `WEAVIATE_GRPC_HOST`
 
 ### Ollama (optional external)
 

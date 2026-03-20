@@ -7,7 +7,7 @@ Tests cover request/response handling, error cases, and service integration.
 
 The tests cover:
   - Health check endpoint (/healthz)
-  - Search endpoint (/search) with Qdrant and Weaviate providers
+  - Search endpoint (/search) with Qdrant provider
   - Image search endpoint (/search/images) with CLIP embeddings
   - Ray job management endpoints (/ray/jobs/*)
   - Error handling and validation
@@ -118,52 +118,6 @@ class TestImageSearchEndpoint:
         assert data["results"][0]["format"] == "jpeg"
         assert data["results"][0]["width"] == 1920
         assert data["results"][0]["height"] == 1080
-
-    def test_image_search_with_weaviate_provider_success(
-        self,
-        test_client: TestClient,
-        patch_get_settings: MagicMock,
-        patch_embedding_config: MagicMock,
-        patch_embedding_provider: MagicMock,
-    ) -> None:
-        """Test successful image search with Weaviate provider.
-
-        **Why this test is important:**
-          - Validates Weaviate provider integration for image search
-          - Tests provider switching capability
-          - Ensures multi-provider support works
-        """
-        # Mock Weaviate provider with AsyncMock for search_async
-        mock_weaviate = MagicMock()
-        mock_weaviate.search_async = AsyncMock(
-            return_value=SearchResults(
-                items=[
-                    SearchResultItem(
-                        point_id="weaviate-img-id",
-                        score=0.88,
-                        payload={
-                            "s3_key": "images/cat.jpg",
-                            "s3_uri": "s3://bucket/images/cat.jpg",
-                            "format": "jpeg",
-                        },
-                    )
-                ],
-                total=1,
-            )
-        )
-        mock_weaviate.close = MagicMock()
-
-        with patch(
-            "api.routes.create_vector_db_provider",
-            return_value=mock_weaviate,
-        ):
-            response = test_client.get("/search/images?q=fluffy%20cat&limit=5&provider=weaviate")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["provider"] == "weaviate"
-        assert data["results"][0]["id"] == "weaviate-img-id"
-        assert data["results"][0]["s3_key"] == "images/cat.jpg"
 
     def test_image_search_with_default_provider_from_settings(
         self,

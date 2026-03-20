@@ -1,4 +1,4 @@
-"""Ray job: S3 images → CLIP embeddings → Qdrant/Weaviate image collections.
+"""Ray job: S3 images → CLIP embeddings → Qdrant image collections.
 
 This script processes S3 image objects using Ray for parallel execution.
 It lists objects under the given prefix, filters for likely image keys
@@ -60,7 +60,6 @@ def main() -> None:
     s3_prefix = ray_cfg.s3_prefix
     collection = vector_cfg.collection
     bucket = minio_cfg.bucket
-    ingestion_targets = vector_cfg.ingestion_targets
     image_max_items = ray_cfg.image_max_items
     image_page_size = ray_cfg.image_page_size
 
@@ -73,7 +72,6 @@ def main() -> None:
             "collection": collection,
             "num_workers": ray_cfg.num_workers,
             "image_batch_size": ray_cfg.image_batch_size,
-            "ingestion_targets": sorted(ingestion_targets),
             "image_max_items": image_max_items,
             "image_page_size": image_page_size,
         },
@@ -165,10 +163,9 @@ def main() -> None:
                 retry_max_attempts=ray_cfg.retry_max_attempts,
                 retry_min_wait=ray_cfg.retry_min_wait,
                 retry_max_wait=ray_cfg.retry_max_wait,
-                ingestion_targets=ingestion_targets,
             )
 
-        should_disable_indexing = ray_cfg.disable_indexing_during_ingest and "qdrant" in ingestion_targets
+        should_disable_indexing = ray_cfg.disable_indexing_during_ingest
         qdrant_wrapper = QdrantClientWrapper.from_config(vector_cfg) if should_disable_indexing else None
 
         with (

@@ -30,7 +30,6 @@ dependencies = [
     "tenacity>=8.3.0",
     "tqdm>=4.67.1",
     "uvicorn>=0.32.0",
-    "weaviate-client>=4.9.3",
     "pre-commit>=4.5.1",
     "redis>=7.2.1",
     "filetype>=1.2.0",
@@ -75,7 +74,6 @@ markers = [
 filterwarnings = [
     "ignore:.*@wait_container_is_ready decorator is deprecated.*:DeprecationWarning",
     "ignore:.*wait_for_logs function.*is deprecated.*:DeprecationWarning",
-    "ignore:.*vector_index_config.*argument.*is deprecated.*:DeprecationWarning",
     "ignore::RuntimeWarning",
 ]
 

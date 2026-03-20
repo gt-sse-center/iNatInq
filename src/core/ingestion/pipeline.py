@@ -219,10 +219,7 @@ class IngestionPipeline:
         # Create rate limiter and submit tasks
         rate_limiter = RateLimiterActor.remote(rate_per_sec=self.ray_config.ollama_requests_per_second)
 
-        should_disable_indexing = (
-            self.ray_config.disable_indexing_during_ingest
-            and "qdrant" in self.vector_config.ingestion_targets
-        )
+        should_disable_indexing = self.ray_config.disable_indexing_during_ingest
 
         qdrant_wrapper = (
             QdrantClientWrapper.from_config(self.vector_config) if should_disable_indexing else None

@@ -507,9 +507,8 @@ class TestAllClientsInstrumented:
         from clients.ollama import OllamaClient
         from clients.qdrant import QdrantClientWrapper
         from clients.s3 import S3ClientWrapper
-        from clients.weaviate import WeaviateClientWrapper
 
-        return [OllamaClient, QdrantClientWrapper, WeaviateClientWrapper, S3ClientWrapper, CLIPClient]
+        return [OllamaClient, QdrantClientWrapper, S3ClientWrapper, CLIPClient]
 
     def test_all_clients_instrumented(self) -> None:
         """Test that every circuit-breaker-decorated method also has a metrics decorator.
