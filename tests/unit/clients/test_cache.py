@@ -42,12 +42,14 @@ def _make_config(
     threshold: float = 0.95,
     max_entries: int = 1000,
     timeout: int = 5,
+    invalidation_interval: int = 3600,
 ) -> SemanticCacheConfig:
     return SemanticCacheConfig(
         enabled=True,
         similarity_threshold=threshold,
         max_entries_per_collection=max_entries,
         timeout_s=timeout,
+        invalidation_interval_seconds=invalidation_interval,
     )
 
 
@@ -234,6 +236,30 @@ class TestCacheClientInvalidate:
 
             assert await client.size("alpha") == 0
             assert await client.size("beta") == 0
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_lookup_triggers_periodic_invalidation(self) -> None:
+        """lookup() invalidates and returns None when the interval has elapsed."""
+        client = CacheClient(config=_make_config(threshold=0.90, invalidation_interval=1))
+        try:
+            vec = _make_vector()
+            await client.store(
+                collection="docs",
+                query_vector=vec,
+                query_text="test",
+                results=_make_results(),
+                limit=10,
+            )
+            assert await client.size("docs") > 0
+
+            # Simulate the interval having elapsed
+            client._last_invalidation -= 2  # push 2 seconds into the past
+
+            hit = await client.lookup(collection="docs", query_vector=vec, limit=10)
+            assert hit is None
+            assert await client.size("docs") == 0
         finally:
             await client.close()
 

@@ -53,6 +53,7 @@ class CacheClient:
         self._config = config
         self._known_collections: set[str] = set()
         self._lock = asyncio.Lock()
+        self._last_invalidation: float = time.monotonic()
 
     @property
     def config(self) -> SemanticCacheConfig:
@@ -83,6 +84,14 @@ class CacheClient:
         Returns:
             Cached ``SearchResults`` truncated to *limit*, or ``None``.
         """
+        # Periodic invalidation: if enough time has passed, flush and miss
+        interval = self._config.invalidation_interval_seconds
+        if interval > 0 and (time.monotonic() - self._last_invalidation) >= interval:
+            logger.info("Periodic cache invalidation triggered on lookup")
+            await self.invalidate()
+            self._last_invalidation = time.monotonic()
+            return None
+
         cache_col = _cache_collection_name(collection)
         if cache_col not in self._known_collections:
             return None

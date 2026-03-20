@@ -48,10 +48,9 @@ FastAPI automatically generates OpenAPI 3.0 documentation:
 The OpenAPI schema includes detailed descriptions from route docstrings and Pydantic models.
 """
 
-import asyncio
 import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from logging.config import dictConfig
 
 from api.middleware import (
@@ -60,7 +59,7 @@ from api.middleware import (
     LoggerMiddleware,
 )
 from api.routes import router
-from clients.cache import CacheClient, get_semantic_cache
+from clients.cache import get_semantic_cache
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from foundation.logger import LOGGING_CONFIG
@@ -69,29 +68,16 @@ from prometheus_fastapi_instrumentator import Instrumentator
 logger = logging.getLogger("uvicorn.error")
 
 
-async def _cache_invalidation_loop(cache: CacheClient, interval: int) -> None:
-    """Periodically invalidate the semantic cache."""
-    while True:
-        await asyncio.sleep(interval)
-        logger.info("Running periodic cache invalidation")
-        await cache.invalidate()
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
-    """Manage startup/shutdown lifecycle for cache invalidation."""
+    """Manage startup/shutdown lifecycle for the semantic cache.
+
+    Periodic invalidation is handled inline by ``CacheClient.lookup()``
+    so no background task is needed here — only resource cleanup on
+    shutdown.
+    """
     cache = get_semantic_cache()
-    invalidation_task: asyncio.Task[None] | None = None
-    if cache is not None:
-        invalidation_task = asyncio.create_task(
-            _cache_invalidation_loop(cache, cache.config.invalidation_interval_seconds)
-        )
-        logger.info("Started cache invalidation background task")
     yield
-    if invalidation_task is not None:
-        invalidation_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await invalidation_task
     if cache is not None:
         await cache.close()
         logger.info("Closed semantic cache client")

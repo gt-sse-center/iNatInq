@@ -1,7 +1,4 @@
-"""Unit tests for the DELETE /cache endpoint.
-
-Validates the manual cache-busting route added in Story 6.4.
-"""
+"""Unit tests for the DELETE /cache endpoint."""
 
 from __future__ import annotations
 
