@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
 from core.benchmark.id_mapping import S3KeyIDMapper
-from core.benchmark.search_pipeline import CLIPSearchPipeline, SearchPipelineResult
+from core.benchmark.search_pipeline import SearchPipeline, SearchPipelineResult
 from core.models import SearchResultItem, SearchResults
 
 
@@ -31,14 +31,14 @@ class TestSearchPipelineResult:
         assert result.raw_results is raw
 
 
-class TestCLIPSearchPipeline:
-    """Tests for CLIPSearchPipeline."""
+class TestSearchPipeline:
+    """Tests for SearchPipeline."""
 
     @pytest.mark.asyncio
     async def test_search_embed_then_search_then_map(self):
-        """Pipeline calls embed_text, then search_async, then maps IDs."""
-        clip_client = MagicMock()
-        clip_client.embed_text.return_value = [0.1, 0.2, 0.3]
+        """Pipeline calls embed_text (async), then search_async, then maps IDs."""
+        embedding_provider = AsyncMock()
+        embedding_provider.embed_text.return_value = [0.1, 0.2, 0.3]
 
         vector_provider = AsyncMock()
         vector_provider.search_async.return_value = _make_search_results(
@@ -47,15 +47,15 @@ class TestCLIPSearchPipeline:
         )
 
         mapper = S3KeyIDMapper()
-        pipeline = CLIPSearchPipeline(
-            clip_client=clip_client,
+        pipeline = SearchPipeline(
+            embedding_provider=embedding_provider,
             vector_provider=vector_provider,
             id_mapper=mapper,
         )
 
         result = await pipeline.search("red bird", collection="test-col", limit=10)
 
-        clip_client.embed_text.assert_called_once_with("red bird")
+        embedding_provider.embed_text.assert_called_once_with("red bird")
         vector_provider.search_async.assert_called_once_with(
             collection="test-col",
             query_vector=[0.1, 0.2, 0.3],
@@ -67,8 +67,8 @@ class TestCLIPSearchPipeline:
     @pytest.mark.asyncio
     async def test_search_falls_back_to_point_id_without_s3_key(self):
         """When payload lacks s3_key, doc_id falls back to point_id."""
-        clip_client = MagicMock()
-        clip_client.embed_text.return_value = [0.1]
+        embedding_provider = AsyncMock()
+        embedding_provider.embed_text.return_value = [0.1]
 
         vector_provider = AsyncMock()
         vector_provider.search_async.return_value = _make_search_results(
@@ -76,8 +76,8 @@ class TestCLIPSearchPipeline:
         )
 
         mapper = S3KeyIDMapper()
-        pipeline = CLIPSearchPipeline(
-            clip_client=clip_client,
+        pipeline = SearchPipeline(
+            embedding_provider=embedding_provider,
             vector_provider=vector_provider,
             id_mapper=mapper,
         )
@@ -88,15 +88,15 @@ class TestCLIPSearchPipeline:
     @pytest.mark.asyncio
     async def test_search_preserves_raw_results(self):
         """Raw SearchResults are preserved in the pipeline result."""
-        clip_client = MagicMock()
-        clip_client.embed_text.return_value = [0.5]
+        embedding_provider = AsyncMock()
+        embedding_provider.embed_text.return_value = [0.5]
 
         raw = _make_search_results(("uuid-1", {"s3_key": "42"}))
         vector_provider = AsyncMock()
         vector_provider.search_async.return_value = raw
 
-        pipeline = CLIPSearchPipeline(
-            clip_client=clip_client,
+        pipeline = SearchPipeline(
+            embedding_provider=embedding_provider,
             vector_provider=vector_provider,
             id_mapper=S3KeyIDMapper(),
         )
@@ -107,14 +107,14 @@ class TestCLIPSearchPipeline:
     @pytest.mark.asyncio
     async def test_search_empty_results(self):
         """Pipeline handles empty search results."""
-        clip_client = MagicMock()
-        clip_client.embed_text.return_value = [0.1]
+        embedding_provider = AsyncMock()
+        embedding_provider.embed_text.return_value = [0.1]
 
         vector_provider = AsyncMock()
         vector_provider.search_async.return_value = SearchResults(items=[], total=0)
 
-        pipeline = CLIPSearchPipeline(
-            clip_client=clip_client,
+        pipeline = SearchPipeline(
+            embedding_provider=embedding_provider,
             vector_provider=vector_provider,
             id_mapper=S3KeyIDMapper(),
         )

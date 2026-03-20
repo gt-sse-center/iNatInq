@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from clients.interfaces.vector_db import VectorDBProvider
     from core.benchmark.datasets.base import Dataset, Query
     from core.benchmark.metrics.base import Metric
-    from core.benchmark.search_pipeline import CLIPSearchPipeline, SearchPipelineResult
+    from core.benchmark.search_pipeline import SearchPipeline, SearchPipelineResult
     from core.models import SearchResults
 
 logger = logging.getLogger("benchmark.runner.default")
@@ -54,7 +54,7 @@ class DefaultBenchmarkRunner(BenchmarkRunner):
     Queries are consumed lazily from the dataset iterator in batches to
     avoid materializing all queries into memory at once.
 
-    When a ``search_pipeline`` is provided, queries are embedded via CLIP
+    When a ``search_pipeline`` is provided, queries are embedded via the embedding provider
     and searched through the pipeline. Otherwise, the runner falls back
     to the provider's ``search_async`` with a placeholder vector.
     """
@@ -63,7 +63,7 @@ class DefaultBenchmarkRunner(BenchmarkRunner):
         self,
         *,
         batch_size: int = 100,
-        search_pipeline: CLIPSearchPipeline | None = None,
+        search_pipeline: SearchPipeline | None = None,
         collection: str | None = None,
     ) -> None:
         """Initialize the runner.
@@ -71,8 +71,8 @@ class DefaultBenchmarkRunner(BenchmarkRunner):
         Args:
             batch_size: Number of queries to process per batch during
                 the measurement phase (default: 100).
-            search_pipeline: Optional CLIPSearchPipeline for embed→search→map.
-                When set, queries are embedded via CLIP and searched through
+            search_pipeline: Optional SearchPipeline for embed→search→map.
+                When set, queries are embedded via the embedding provider and searched through
                 the pipeline. When None, falls back to provider.search_async
                 with a placeholder vector.
             collection: Optional collection name override. When set, this
@@ -172,7 +172,7 @@ class DefaultBenchmarkRunner(BenchmarkRunner):
         """Execute a single search query against the provider.
 
         When ``search_pipeline`` is set, uses it to embed the query via
-        CLIP, search the vector DB, and map point IDs to document IDs.
+        the embedding provider, search the vector DB, and map point IDs to document IDs.
         Returns a ``(SearchResults, doc_ids)`` tuple.
 
         Without a pipeline, falls back to ``provider.search_async`` with

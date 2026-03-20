@@ -1,14 +1,14 @@
-"""Search pipeline composing CLIP embedding, vector search, and ID mapping.
+"""Search pipeline composing embedding provider, vector search, and ID mapping.
 
-Provides an end-to-end pipeline: text query → CLIP embedding → vector DB
+Provides an end-to-end pipeline: text query → embedding provider → vector DB
 search → document ID extraction.
 
 Example:
     ```python
-    from core.benchmark.search_pipeline import CLIPSearchPipeline
+    from core.benchmark.search_pipeline import SearchPipeline
 
-    pipeline = CLIPSearchPipeline(
-        clip_client=clip_client,
+    pipeline = SearchPipeline(
+        embedding_provider=provider,  # EmbeddingProvider (CLIP, Infinity, etc.)
         vector_provider=qdrant_provider,
         id_mapper=mapper,
     )
@@ -26,7 +26,7 @@ import attrs
 from core.benchmark.id_mapping import S3KeyIDMapper  # noqa: TC001 — used as attrs field type at runtime
 
 if TYPE_CHECKING:
-    from clients.clip import CLIPClient
+    from clients.interfaces.embedding import EmbeddingProvider
     from clients.interfaces.vector_db import VectorDBProvider
     from core.models import SearchResults
 
@@ -45,16 +45,16 @@ class SearchPipelineResult:
 
 
 @attrs.define(frozen=True, slots=True)
-class CLIPSearchPipeline:
-    """Pipeline: text query → CLIP embed → vector search → ID mapping.
+class SearchPipeline:
+    """Pipeline: text query → embedding → vector search → ID mapping.
 
     Attributes:
-        clip_client: CLIPClient for generating text embeddings.
+        embedding_provider: EmbeddingProvider for generating text embeddings.
         vector_provider: VectorDBProvider for similarity search.
         id_mapper: S3KeyIDMapper for translating point IDs to doc IDs.
     """
 
-    clip_client: CLIPClient
+    embedding_provider: EmbeddingProvider
     vector_provider: VectorDBProvider
     id_mapper: S3KeyIDMapper
 
@@ -67,19 +67,19 @@ class CLIPSearchPipeline:
     ) -> SearchPipelineResult:
         """Execute a full search pipeline.
 
-        1. Embed ``query_text`` via CLIP.
+        1. Embed ``query_text`` via embedding provider.
         2. Search the vector DB collection.
         3. Map point IDs to document IDs via the ID mapper.
 
         Args:
             query_text: Text query to embed and search.
-            collection: Qdrant collection name.
+            collection: Vector database collection name.
             limit: Maximum number of results to return.
 
         Returns:
             SearchPipelineResult with mapped doc_ids and raw results.
         """
-        query_vector = self.clip_client.embed_text(query_text)
+        query_vector = await self.embedding_provider.embed_text(query_text)
 
         results = await self.vector_provider.search_async(
             collection=collection,
