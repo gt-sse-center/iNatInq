@@ -226,6 +226,7 @@ def test_build_s3_autoloader_env_includes_required_and_optional(monkeypatch: pyt
     assert env_vars["S3_PATH_STYLE"] == "true"
     assert env_vars["INATINQ_SRC_DIR"] == "/Workspace/Users/test/iNatInq/src"
 
+
 def test_build_s3_bronze_image_ingestion_env_requires_bronze_table(monkeypatch) -> None:
     """Bronze consumer env builder should require AUTOLOADER_BRONZE_TABLE."""
     monkeypatch.delenv("AUTOLOADER_BRONZE_TABLE", raising=False)
