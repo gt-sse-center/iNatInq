@@ -60,7 +60,7 @@ from foundation.metrics.registry import (
     INGESTION_DOCS_PROCESSED,
 )
 
-_logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -228,7 +228,10 @@ async def search_images(
         )
         embed_config = embed_config.model_copy(update=_model_override_kwargs(model, resolved_provider))
 
-    embedding_provider = create_embedding_provider(embed_config)
+    try:
+        embedding_provider = create_embedding_provider(embed_config)
+    except ValueError as e:
+        raise BadRequestError(str(e)) from e
 
     # Determine provider type: use query parameter if provided, otherwise use settings
     if provider:
@@ -259,7 +262,7 @@ async def search_images(
         except BadRequestError:
             raise
         except Exception:
-            _logger.debug("Skipping vector-size validation — collection info unavailable", exc_info=True)
+            logger.debug("Skipping vector-size validation — collection info unavailable", exc_info=True)
 
     image_search_service = ImageSearchService(
         embedding_provider=embedding_provider,

@@ -1174,3 +1174,34 @@ class TestImageSearchModelOverride:
         assert response.status_code == 400
         data = response.json()
         assert "mismatch" in data["message"].lower()
+
+    def test_model_override_missing_provider_config_returns_400(
+        self,
+        test_client: TestClient,
+        patch_get_settings: MagicMock,
+    ) -> None:
+        """Override to a provider whose URL is not configured should return 400."""
+        from config import ProviderType
+
+        with (
+            patch("api.routes.EmbeddingConfig.from_env") as mock_from_env,
+            patch(
+                "api.routes.create_embedding_provider",
+                side_effect=ValueError("clip_url is required in EmbeddingConfig"),
+            ),
+        ):
+            from config import EmbeddingConfig
+
+            # Base config is Infinity — clip_url is not set
+            base_config = EmbeddingConfig(
+                provider_type=ProviderType.INFINITY,
+                infinity_url="http://localhost:7997",
+                infinity_model="google/siglip-so400m-patch14-384",
+            )
+            mock_from_env.return_value = base_config
+
+            response = test_client.get("/search/images?q=test&model=ViT-B/32&image_provider=clip")
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "clip_url" in data["message"]
