@@ -20,10 +20,10 @@ backend (``location=":memory:"``).
 
 ```bash
 # Run cache integration tests only
-pytest tests/integration/clients/test_cache.py -v
+uv run pytest tests/integration/clients/test_cache.py -v
 
 # Run with specific test class
-pytest tests/integration/clients/test_cache.py::TestHappyPath -v
+uv run pytest tests/integration/clients/test_cache.py::TestHappyPath -v
 ```
 """
 

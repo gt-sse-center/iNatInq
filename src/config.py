@@ -1423,7 +1423,7 @@ class Settings(BaseModel):
     vector_db: VectorDBConfig
     minio: MinIOConfig
     k8s_namespace: str
-    semantic_cache: SemanticCacheConfig = SemanticCacheConfig()
+    semantic_cache: SemanticCacheConfig
 
     model_config = SettingsConfigDict(frozen=True)
 
