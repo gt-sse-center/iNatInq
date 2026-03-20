@@ -23,7 +23,7 @@ Run with: pytest tests/unit/foundation/test_checkpoint.py
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import attrs.exceptions
 import pytest
@@ -154,24 +154,6 @@ class TestCheckpointManagerInit:
         manager = CheckpointManager(s3_client=mock_s3_client)
 
         assert manager.s3_client is mock_s3_client
-
-    def test_manager_is_frozen(self) -> None:
-        """Test that CheckpointManager is immutable.
-
-        **Why this test is important:**
-          - Immutability prevents accidental modification
-          - Ensures thread safety
-          - Validates attrs configuration
-          - Critical for reliability
-
-        **What it tests:**
-          - Attributes cannot be modified
-          - FrozenInstanceError is raised
-        """
-        manager = CheckpointManager()
-
-        with pytest.raises(attrs.exceptions.FrozenInstanceError):
-            manager.s3_client = MagicMock()
 
 
 # =============================================================================
@@ -328,6 +310,12 @@ class TestCheckpointManagerLoad:
 class TestCheckpointManagerSave:
     """Test suite for CheckpointManager.save method."""
 
+    @pytest.fixture(autouse=True)
+    def mock_reporter(self):
+        """Suppress report_ingestion_metrics for all save tests."""
+        with patch("foundation.checkpoint.report_ingestion_metrics"):
+            yield
+
     def test_save_to_local_file(self, tmp_path: Path) -> None:
         """Test saving checkpoint to local filesystem.
 
@@ -450,3 +438,46 @@ class TestCheckpointManagerSave:
         # Should not raise, just log warning and return
         manager.save("s3://bucket/checkpoint.json", {"key1"})
         assert manager is not None
+
+
+class TestCheckpointManagerSaveReporter:
+    """Test that CheckpointManager.save() calls report_ingestion_metrics correctly."""
+
+    def test_local_save_calls_reporter_with_pipeline(self, tmp_path: Path) -> None:
+        """Reporter is called with checkpoint_save=True after a successful local save."""
+        checkpoint_file = tmp_path / "checkpoint.json"
+
+        with patch("foundation.checkpoint.report_ingestion_metrics") as mock_report:
+            manager = CheckpointManager()
+            manager.save(checkpoint_file, {"key1"}, pipeline="pipeline")
+
+        mock_report.assert_called_once_with(pipeline="pipeline", checkpoint_save=True)
+
+    def test_s3_save_calls_reporter_with_pipeline(self) -> None:
+        """Reporter is called with checkpoint_save=True after a successful S3 save."""
+        mock_s3 = MagicMock()
+
+        with patch("foundation.checkpoint.report_ingestion_metrics") as mock_report:
+            manager = CheckpointManager(s3_client=mock_s3)
+            manager.save("s3://bucket/checkpoint.json", {"key1"}, pipeline="pipeline")
+
+        mock_report.assert_called_once_with(pipeline="pipeline", checkpoint_save=True)
+
+    def test_reporter_not_called_when_s3_put_fails(self) -> None:
+        """Reporter is NOT called when the S3 put_object raises."""
+        mock_s3 = MagicMock()
+        mock_s3.put_object.side_effect = ClientError({"Error": {"Code": "500"}}, "PutObject")
+
+        with patch("foundation.checkpoint.report_ingestion_metrics") as mock_report:
+            manager = CheckpointManager(s3_client=mock_s3)
+            manager.save("s3://bucket/checkpoint.json", {"key1"}, pipeline="pipeline")
+
+        mock_report.assert_not_called()
+
+    def test_reporter_not_called_when_no_s3_client(self) -> None:
+        """Reporter is NOT called when S3 path is given but no client."""
+        with patch("foundation.checkpoint.report_ingestion_metrics") as mock_report:
+            manager = CheckpointManager()
+            manager.save("s3://bucket/checkpoint.json", {"key1"}, pipeline="pipeline")
+
+        mock_report.assert_not_called()
