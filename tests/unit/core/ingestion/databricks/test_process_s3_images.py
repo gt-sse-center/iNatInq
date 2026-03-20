@@ -15,10 +15,10 @@ uv run pytest tests/unit/core/ingestion/databricks/test_process_s3_images.py -v
 ```
 """
 
+import pytest
 import os
 from unittest.mock import MagicMock, patch
-
-import pytest
+from core.ingestion.databricks.batch_runner import BatchRunStats
 
 
 class TestApplyPythonParams:
@@ -527,3 +527,41 @@ class TestDatabricksImageJobMain:
             collection="documents",
             vector_size=mock_dependencies["embed_cfg"].clip_vector_size,
         )
+
+    def test_main_pull_from_dlq_uses_dlq_iterator_and_clears_successes(
+        self, mock_dependencies, mock_ray: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ):
+        """PULL_FROM_DLQ=true switches to DLQ batching and clears successful keys."""
+        from core.ingestion.databricks.process_s3_images import main
+
+        dlq_batches = iter([["glad.jpeg", "mad.jpeg"]])
+        stats = BatchRunStats(
+            successful_keys={"glad.jpeg"},
+            successful=1,
+            failed=0,
+            completed_records=1,
+            submitted_records=2,
+            num_batches=1,
+        )
+
+        with (
+            patch("sys.argv", ["script.py"]),
+            patch("core.ingestion.databricks.process_s3_images.clear_successful_dlq_entries") as mock_clear,
+            patch(
+                "core.ingestion.databricks.process_s3_images.iter_dlq_entries", return_value=dlq_batches
+            ) as mock_iter_dlq,
+            patch(
+                "core.ingestion.databricks.process_s3_images.run_ray_batch_processing", return_value=stats
+            ) as mock_run,
+        ):
+            monkeypatch.setenv("PULL_FROM_DLQ", "true")
+            main()
+
+        # iter_image_batches is patched by the fixture; ensure it wasn't used when DLQ mode is on
+        mock_dependencies["iter_batches"].assert_not_called()
+        mock_iter_dlq.assert_called_once_with(
+            batch_size=mock_dependencies["ray_cfg"].return_value.image_batch_size,
+            max_items=mock_dependencies["ray_cfg"].return_value.image_max_items,
+        )
+        assert mock_run.call_args.kwargs["batches"] is dlq_batches
+        mock_clear.assert_called_once_with(stats.successful_keys)

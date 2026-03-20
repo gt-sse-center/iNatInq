@@ -22,7 +22,7 @@ import attrs
 from ray.job_submission import JobSubmissionClient
 
 from config import EmbeddingConfig, RayJobConfig
-from core.exceptions import UpstreamError
+from foundation.exceptions import UpstreamError
 from core.services.ingestion_params import build_image_ingestion_env
 
 logger = logging.getLogger("pipeline.ray.service")
@@ -48,6 +48,7 @@ class RayService:
         s3_prefix: str = "",
         collection: str,
         embedding_config: EmbeddingConfig | None = None,
+        pull_from_dlq: bool = False,
         image_max_items: int | None = None,
         image_page_size: int | None = None,
     ) -> str:
@@ -66,6 +67,7 @@ class RayService:
             s3_prefix: S3 prefix to process (default: "" for bucket root).
             collection: Base collection name.
             embedding_config: Image embedding configuration. If None, loaded from env.
+            pull_from_dlq: Optional bool indicating image keys should be pulled from the dead letter queue.
             image_max_items: Optional limit on number of images to process.
             image_page_size: Optional S3 listing page size override.
 
@@ -99,7 +101,9 @@ class RayService:
             s3_prefix=s3_prefix,
             embedding_config=embedding_config,
             collection=collection,
+            pull_from_dlq=pull_from_dlq,
         )
+
         if image_max_items is not None:
             env_vars["IMAGE_MAX_ITEMS"] = str(image_max_items)
         if image_page_size is not None:
@@ -116,11 +120,13 @@ class RayService:
                     },
                     "pip": [
                         "boto3",
+                        "filetype",
+                        "redis",
                         "attrs",
                         "pydantic",
                         "pydantic-settings",
                         "httpx",
-                        "qdrant-client>=1.12.0,<1.13.0",
+                        "qdrant-client==1.16.1",
                         "weaviate-client",
                         "tenacity",
                         "pybreaker",

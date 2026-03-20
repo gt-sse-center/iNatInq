@@ -1,14 +1,17 @@
-"""Streaming S3 pagination → filter → batch utilities for image pipelines."""
+"""Streaming S3 pagination → filter → batch & DLQ batching utilities for image pipelines."""
 
 from __future__ import annotations
 
+import itertools
 import logging
 from typing import TYPE_CHECKING
 
+from foundation.dead_letter_queue import get_dlq_backend
+from foundation.exceptions import UpstreamError
 from core.ingestion.interfaces.operations import ImageContentFetcher
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Generator, Iterable
 
     from clients.s3 import S3ClientWrapper
 
@@ -119,3 +122,54 @@ def iter_image_batches(
             "total_skipped": skipped,
         },
     )
+
+
+def iter_dlq_entries(
+    batch_size: int,
+    max_items: int | None,
+) -> Generator[list[str], None, None]:
+    """Iterate through keys in the dead letter queue.
+
+    Yielded keys should be removed from the dead letter queue following successful processing.
+
+    Args:
+        batch_size: Number of keys per yielded batch.
+        max_items: Optional cap on total keys yielded. `None` means no limit.
+
+    Yields:
+        lists of keys from the dead letter queue
+    """
+    backend = get_dlq_backend()
+    if backend is None:
+        logger.warning("DLQ backend is not configured. No keys will be processed.")
+        return
+
+    total_keys_processed = 0
+    dlq_entries_iter = backend.get_queue_contents()
+    while batch := list(itertools.islice(dlq_entries_iter, batch_size)):
+        total_keys_processed += len(batch)
+        if max_items is not None and total_keys_processed >= max_items:
+            logger.info("iter_dlq_entries: max_items reached (%d), stopping", max_items)
+            remaining = max((max_items - total_keys_processed + len(batch)), 0)
+            yield batch[:remaining]
+            return
+        yield batch
+
+
+def clear_successful_dlq_entries(successful_keys: Iterable[str]) -> None:
+    """Remove successfully processed keys from the dead letter queue.
+
+    Args:
+        successful_keys: iterable collection of successful keys.
+    """
+    backend = get_dlq_backend()
+    if backend is None:
+        logger.warning("DLQ backend is not configured. No keys will be removed.")
+        return
+
+    try:
+        backend.delete(successful_keys)
+    except UpstreamError:
+        logger.exception(
+            "Failed to remove successful keys from DLQ",
+        )

@@ -18,7 +18,7 @@ import attrs
 from databricks.sdk import WorkspaceClient
 
 from config import DatabricksRayJobConfig, EmbeddingConfig
-from core.exceptions import UpstreamError
+from foundation.exceptions import UpstreamError
 from core.services.ingestion_params import (
     add_ray_tuning_env,
     build_image_ingestion_env,
@@ -63,6 +63,7 @@ class DatabricksRayService:
         s3_prefix: str = "",
         embedding_config: EmbeddingConfig,
         collection: str,
+        pull_from_dlq: bool = False,
         image_max_items: int | None = None,
         image_page_size: int | None = None,
     ) -> int:
@@ -80,6 +81,7 @@ class DatabricksRayService:
             s3_prefix: S3 prefix to filter objects (default: "" for bucket root).
             embedding_config: Image embedding provider configuration.
             collection: Vector DB base collection name.
+            pull_from_dlq: Optional bool indicating image keys should be pulled from the dead letter queue.
             image_max_items: Optional limit on number of images to process.
             image_page_size: Optional S3 listing page size override.
 
@@ -101,8 +103,10 @@ class DatabricksRayService:
             s3_prefix=s3_prefix,
             embedding_config=embedding_config,
             collection=collection,
+            pull_from_dlq=pull_from_dlq,
             extra_env_keys=("INATINQ_SRC_DIR",),
         )
+
         add_ray_tuning_env(env_vars)
         if image_max_items is not None:
             env_vars["IMAGE_MAX_ITEMS"] = str(image_max_items)

@@ -31,7 +31,7 @@ RUN pip install --no-cache-dir uv
 RUN --mount=type=cache,target=/root/.cache/pip \
     uv pip install --system \
     "ray[default]==2.53.0" \
-    "qdrant-client>=1.15.1" \
+    "qdrant-client==1.16.1" \
     "weaviate-client>=4.9.3" \
     "boto3>=1.35.0" \
     "requests>=2.31"

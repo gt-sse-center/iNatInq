@@ -6,9 +6,13 @@ filtering, checkpoint-skipping, and batching.
 Run with: uv run pytest tests/unit/core/ingestion/shared/test_batching.py -v
 """
 
+import pytest
+
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
-from core.ingestion.shared.batching import iter_image_batches
+from core.ingestion.shared.batching import clear_successful_dlq_entries, iter_dlq_entries, iter_image_batches
+from foundation.exceptions import UpstreamError
 
 
 class TestIterImageBatches:
@@ -219,3 +223,86 @@ class TestIterImageBatches:
             )
 
         s3.iter_objects.assert_called_once_with(bucket="b", prefix="p/", page_size=500)
+
+
+@pytest.fixture
+def mock_get_dlq_backend() -> Generator[MagicMock]:
+    with patch("core.ingestion.shared.batching.get_dlq_backend") as mock_get_dlq_backend:
+        yield mock_get_dlq_backend
+
+
+class TestIterDlqEntries:
+    def test_yields_nothing_if_backend_not_configured(
+        self, caplog: pytest.LogCaptureFixture, mock_get_dlq_backend: MagicMock
+    ):
+        mock_get_dlq_backend.return_value = None
+        with caplog.at_level("WARNING"):
+            entries = list(iter_dlq_entries(batch_size=10, max_items=None))
+        assert entries == []
+        assert "DLQ backend is not configured" in caplog.text
+
+    def test_yields_batches(self, mock_get_dlq_backend: MagicMock):
+        backend = MagicMock()
+        backend.get_queue_contents.return_value = iter(["1", "2", "3", "4", "5"])
+        mock_get_dlq_backend.return_value = backend
+
+        batches = list(iter_dlq_entries(batch_size=2, max_items=None))
+
+        assert batches == [["1", "2"], ["3", "4"], ["5"]]
+
+    def test_respects_max_items_mid_batch(self, mock_get_dlq_backend: MagicMock):
+        backend = MagicMock()
+        backend.get_queue_contents.return_value = iter(["1", "2", "3", "4", "5"])
+        mock_get_dlq_backend.return_value = backend
+
+        batches = list(iter_dlq_entries(batch_size=3, max_items=4))
+
+        assert batches == [["1", "2", "3"], ["4"]]
+
+    def test_respects_max_items_batch_boundary(self, mock_get_dlq_backend: MagicMock):
+        """If max_items lands exactly on a batch boundary, don't yield an empty tail batch."""
+        backend = MagicMock()
+        backend.get_queue_contents.return_value = iter(["1", "2", "3", "4", "5"])
+        mock_get_dlq_backend.return_value = backend
+
+        batches = list(iter_dlq_entries(batch_size=3, max_items=3))
+
+        assert batches == [["1", "2", "3"]]
+
+    def test_propagates_backend_iterator_failure(self, mock_get_dlq_backend: MagicMock):
+        backend = MagicMock()
+        backend.get_queue_contents.side_effect = UpstreamError("uh oh, stinky")
+        mock_get_dlq_backend.return_value = backend
+
+        with pytest.raises(UpstreamError, match="uh oh, stinky"):
+            list(iter_dlq_entries(batch_size=10, max_items=None))
+
+
+class TestClearSuccessfulDlqEntries:
+    def test_noop_if_backend_not_configured(
+        self, caplog: pytest.LogCaptureFixture, mock_get_dlq_backend: MagicMock
+    ):
+        mock_get_dlq_backend.return_value = None
+        with caplog.at_level("WARNING"):
+            clear_successful_dlq_entries([])
+        assert "DLQ backend is not configured" in caplog.text
+
+    def test_calls_backend_delete(self, mock_get_dlq_backend: MagicMock):
+        backend = MagicMock()
+        mock_get_dlq_backend.return_value = backend
+
+        keys = ["1", "2", "3"]
+        clear_successful_dlq_entries(keys)
+
+        backend.delete.assert_called_once_with(keys)
+
+    def test_logs_upstream_error_from_delete(
+        self, caplog: pytest.LogCaptureFixture, mock_get_dlq_backend: MagicMock
+    ):
+        backend = MagicMock()
+        backend.delete.side_effect = UpstreamError("oopsie daisies")
+        mock_get_dlq_backend.return_value = backend
+        with caplog.at_level("ERROR"):
+            clear_successful_dlq_entries(["1", "2", "3"])
+
+        assert "Failed to remove successful keys from DLQ" in caplog.text

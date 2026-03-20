@@ -14,6 +14,8 @@ This module defines all HTTP endpoints for the pipeline service. It handles:
 image embeddings in vector DB image collections
 - `POST /databricks/jobs/images`: Submit Databricks job to process S3 images
 - `POST /databricks/jobs/cdc-producer`: Submit Databricks CDC producer job
+- `POST /ray/jobs/process-dlq`: Process dead letter queue entries with local Ray
+- `POST /databricks/jobs/process-dlq`: Process dead letter queue entries with Ray on Databricks
 - `GET /ray/jobs/{job_id}`: Check status of a submitted job
 
 ## Error Handling
@@ -188,19 +190,19 @@ async def search_images(
     )
 
     # Convert SearchResultItem to Pydantic ImageSearchResult
-    pydantic_results = []
+    pydantic_results: list[models.ImageSearchResult] = []
     for item in search_results.items:
         payload = item.payload
         pydantic_results.append(
             models.ImageSearchResult(
                 id=item.point_id,
                 score=item.score,
-                s3_key=payload.get("s3_key", ""),
-                s3_uri=payload.get("s3_uri", ""),
-                format=payload.get("format"),
-                width=payload.get("width"),
-                height=payload.get("height"),
-                thumbnail_key=payload.get("thumbnail_key"),
+                s3_key=payload.get("s3_key", ""),  # pyright: ignore[reportArgumentType]
+                s3_uri=payload.get("s3_uri", ""),  # pyright: ignore[reportArgumentType]
+                format=payload.get("format"),  # pyright: ignore[reportArgumentType]
+                width=payload.get("width"),  # pyright: ignore[reportArgumentType]
+                height=payload.get("height"),  # pyright: ignore[reportArgumentType]
+                thumbnail_key=payload.get("thumbnail_key"),  # pyright: ignore[reportArgumentType]
             )
         )
 
@@ -212,11 +214,6 @@ async def search_images(
         results=pydantic_results,
         total=search_results.total,
     )
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Ray Job Management Endpoints
-# ═══════════════════════════════════════════════════════════════════════════════
 
 
 @router.post(
@@ -393,6 +390,77 @@ async def submit_databricks_cdc_producer_job() -> models.DatabricksCdcProducerJo
         )
     except Exception as e:
         raise PipelineError(f"Failed to submit Databricks CDC producer job: {e!s}") from e
+
+
+@router.post(
+    "/ray/jobs/process-dlq",
+    response_model=models.RayProcessDLQResponse,
+    status_code=202,
+    tags=["ray-jobs"],
+)
+async def process_dlq_entries_ray() -> models.RayProcessDLQResponse:
+    """Process previously failed image ingestions in the dead letter queue via Ray."""
+    try:
+        settings = get_settings()
+        namespace = settings.k8s_namespace
+
+        ray_service = RayService()
+        minio_cfg = MinIOConfig.from_env(namespace)
+
+        job_id = ray_service.submit_image_job(
+            namespace=namespace,
+            s3_endpoint=minio_cfg.endpoint_url,
+            s3_access_key_id=minio_cfg.access_key_id,
+            s3_secret_access_key=minio_cfg.secret_access_key,
+            s3_bucket=minio_cfg.bucket,
+            collection=settings.vector_db.collection,
+            pull_from_dlq=True,
+        )
+
+        return models.RayProcessDLQResponse(
+            job_id=job_id,
+            status="submitted",
+            namespace=namespace,
+            submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+        )
+    except Exception as e:
+        raise PipelineError(f"Failed to submit Ray process DLQ job: {e!s}") from e
+
+
+@router.post(
+    "/databricks/jobs/process-dlq",
+    response_model=models.DatabricksProcessDLQResponse,
+    status_code=202,
+    tags=["databricks-jobs"],
+)
+async def process_dlq_entries_databricks() -> models.DatabricksProcessDLQResponse:
+    """Process previously failed image ingestions in the dead letter queue via Databricks."""
+    try:
+        settings = get_settings()
+        namespace = settings.k8s_namespace
+
+        databricks_service = DatabricksRayService()
+        embed_config = EmbeddingConfig.from_env(namespace)
+        minio_cfg = MinIOConfig.from_env(namespace)
+        run_id = databricks_service.submit_image_job(
+            namespace=namespace,
+            s3_endpoint=minio_cfg.endpoint_url,
+            s3_access_key_id=minio_cfg.access_key_id,
+            s3_secret_access_key=minio_cfg.secret_access_key,
+            s3_bucket=minio_cfg.bucket,
+            embedding_config=embed_config,
+            collection=settings.vector_db.collection,
+            pull_from_dlq=True,
+        )
+
+        return models.DatabricksProcessDLQResponse(
+            run_id=str(run_id),
+            status="submitted",
+            namespace=namespace,
+            submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+        )
+    except Exception as e:
+        raise PipelineError(f"Failed to submit Databricks process DLQ job: {e!s}") from e
 
 
 @router.delete(
