@@ -151,30 +151,6 @@ class TestQdrantClientWrapperInit:
         )
 
     @patch("clients.qdrant.AsyncQdrantClient")
-    def test_falls_back_when_pool_size_is_unsupported(
-        self,
-        mock_async_qdrant_client: MagicMock,
-    ) -> None:
-        """Client should retry without pool_size for older qdrant-client versions."""
-        mock_async_client = AsyncMock()
-
-        def _ctor(**kwargs):
-            if "pool_size" in kwargs:
-                raise TypeError("AsyncQdrantClient.__init__() got an unexpected keyword argument 'pool_size'")
-            return mock_async_client
-
-        mock_async_qdrant_client.side_effect = _ctor
-
-        client = QdrantClientWrapper(url="http://qdrant.example.com:6333")
-
-        assert client._client == mock_async_client
-        assert mock_async_qdrant_client.call_count == 2
-        first_call_kwargs = mock_async_qdrant_client.call_args_list[0].kwargs
-        second_call_kwargs = mock_async_qdrant_client.call_args_list[1].kwargs
-        assert first_call_kwargs["pool_size"] == 10
-        assert "pool_size" not in second_call_kwargs
-
-    @patch("clients.qdrant.AsyncQdrantClient")
     def test_creates_client_with_api_key(
         self,
         mock_async_qdrant_client: MagicMock,

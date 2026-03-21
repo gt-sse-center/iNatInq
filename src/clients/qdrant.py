@@ -153,13 +153,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             "api_key": self.api_key,
             "timeout": self.timeout_s,
         }
-        try:
-            self._client = AsyncQdrantClient(**client_kwargs, pool_size=10)
-        except TypeError as exc:
-            # Some qdrant-client versions don't accept `pool_size`.
-            if "pool_size" not in str(exc):
-                raise
-            self._client = AsyncQdrantClient(**client_kwargs)
+        self._client = AsyncQdrantClient(**client_kwargs, pool_size=10)
         self._sync_client = QdrantClient(url=self.url, api_key=self.api_key, timeout=self.timeout_s)
 
         # Initialize circuit breaker from base class
