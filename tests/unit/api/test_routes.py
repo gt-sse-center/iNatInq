@@ -879,7 +879,6 @@ class TestDatabricksJobEndpoints:
         assert response.status_code == 500
 
 
-
 class TestIngestionMetricsEndpoint:
     """Test suite for POST /ingestion/metrics endpoint."""
 
