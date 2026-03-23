@@ -27,6 +27,12 @@ from qdrant_client.http import models as qmodels
 
 from config import SemanticCacheConfig
 from core.models import SearchResultItem, SearchResults
+from foundation.metrics import (
+    CACHE_EVICTIONS_TOTAL,
+    CACHE_INVALIDATIONS_TOTAL,
+    CACHE_SIZE,
+    CACHE_STORE_DURATION,
+)
 
 logger = logging.getLogger("clients.cache")
 
@@ -95,6 +101,7 @@ class CacheClient:
         cache_col = _cache_collection_name(collection)
         if cache_col not in self._known_collections:
             return None
+
         try:
             hits = await self._client.query_points(
                 collection_name=cache_col,
@@ -112,7 +119,7 @@ class CacheClient:
                 results = _deserialize_results(best.payload or {})
                 # Truncate to requested limit
                 if len(results.items) > limit:
-                    return SearchResults(items=results.items[:limit], total=results.total)
+                    results = SearchResults(items=results.items[:limit], total=results.total)
                 return results
 
             logger.debug(
@@ -154,21 +161,26 @@ class CacheClient:
                 await self._evict_random(cache_col)
 
             point_id = str(uuid.uuid4())
-            await self._client.upsert(
-                collection_name=cache_col,
-                points=[
-                    qmodels.PointStruct(
-                        id=point_id,
-                        vector=query_vector,
-                        payload={
-                            "query_text": query_text,
-                            "results_json": _serialize_results(results),
-                            "stored_at": time.time(),
-                            "original_limit": limit,
-                        },
-                    )
-                ],
-            )
+            with CACHE_STORE_DURATION.labels(collection=collection).time():
+                await self._client.upsert(
+                    collection_name=cache_col,
+                    points=[
+                        qmodels.PointStruct(
+                            id=point_id,
+                            vector=query_vector,
+                            payload={
+                                "query_text": query_text,
+                                "results_json": _serialize_results(results),
+                                "stored_at": time.time(),
+                                "original_limit": limit,
+                            },
+                        )
+                    ],
+                )
+
+            # Update size gauge
+            new_count = await self._client.count(collection_name=cache_col, exact=True)
+            CACHE_SIZE.labels(collection=collection).set(new_count.count)
         except Exception:
             logger.warning("Cache store failed; skipping", exc_info=True)
 
@@ -185,10 +197,18 @@ class CacheClient:
                 if cache_col in self._known_collections:
                     await self._client.delete_collection(collection_name=cache_col)
                     self._known_collections.discard(cache_col)
+                    # Update metrics
+                    CACHE_INVALIDATIONS_TOTAL.inc()
+                    CACHE_SIZE.labels(collection=collection).set(0)
             else:
                 for cache_col in list(self._known_collections):
                     await self._client.delete_collection(collection_name=cache_col)
+                    # Extract user collection name and update size gauge
+                    user_collection = cache_col.replace("cache_", "", 1)
+                    CACHE_SIZE.labels(collection=user_collection).set(0)
                 self._known_collections.clear()
+                # Increment invalidation counter once for full invalidation
+                CACHE_INVALIDATIONS_TOTAL.inc()
         except Exception:
             logger.warning("Cache invalidate failed", exc_info=True)
 
@@ -247,6 +267,10 @@ class CacheClient:
                 points_selector=qmodels.PointIdsList(points=ids),
             )
             logger.debug("Evicted 1 cache entry from %s", cache_col)
+
+            # Extract user collection name from cache_col (remove "cache_" prefix)
+            collection = cache_col.replace("cache_", "", 1)
+            CACHE_EVICTIONS_TOTAL.labels(collection=collection).inc()
 
 
 # =============================================================================
