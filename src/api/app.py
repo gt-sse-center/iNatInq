@@ -49,6 +49,8 @@ The OpenAPI schema includes detailed descriptions from route docstrings and Pyda
 """
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from logging.config import dictConfig
 
 from api.middleware import (
@@ -57,12 +59,28 @@ from api.middleware import (
     LoggerMiddleware,
 )
 from api.routes import router
+from clients.cache import get_semantic_cache
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from foundation.logger import LOGGING_CONFIG
 from prometheus_fastapi_instrumentator import Instrumentator
 
 logger = logging.getLogger("uvicorn.error")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
+    """Manage startup/shutdown lifecycle for the semantic cache.
+
+    Periodic invalidation is handled inline by ``CacheClient.lookup()``
+    so no background task is needed here — only resource cleanup on
+    shutdown.
+    """
+    cache = get_semantic_cache()
+    yield
+    if cache is not None:
+        await cache.close()
+        logger.info("Closed semantic cache client")
 
 
 def create_app() -> FastAPI:
@@ -99,6 +117,7 @@ def create_app() -> FastAPI:
     dictConfig(config=LOGGING_CONFIG)
 
     app = FastAPI(
+        lifespan=lifespan,
         title="Pipeline API",
         description=(
             "ML pipeline orchestrator service for end-to-end data processing workflows. "
@@ -143,6 +162,10 @@ def create_app() -> FastAPI:
                     "Submits runs to Databricks Jobs API with ingestion parameters."
                 ),
             },
+            {
+                "name": "cache",
+                "description": "Semantic cache management (invalidation and busting)",
+            },
         ],
     )
 
@@ -158,7 +181,7 @@ def create_app() -> FastAPI:
         middleware_class=CORSMiddleware,
         allow_origins=["*"],  # In production, configure via settings
         allow_credentials=True,
-        allow_methods=["POST", "GET", "OPTIONS"],
+        allow_methods=["POST", "GET", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
 
