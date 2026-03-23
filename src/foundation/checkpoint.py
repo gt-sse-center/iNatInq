@@ -15,6 +15,8 @@ from typing import Any
 import attrs
 from botocore.exceptions import BotoCoreError, ClientError
 
+from foundation.metrics.job_metrics_reporter import PipelineType, report_ingestion_metrics
+
 logger = logging.getLogger("pipeline.checkpoint")
 
 __all__ = ["CheckpointManager", "is_s3_path"]
@@ -157,7 +159,9 @@ class CheckpointManager:
             )
             return set()
 
-    def save(self, checkpoint_path: str | Path, processed_keys: set[str]) -> None:
+    def save(
+        self, checkpoint_path: str | Path, processed_keys: set[str], pipeline: PipelineType = ""
+    ) -> None:
         """Save checkpoint of processed items.
 
         Supports both local filesystem and S3 storage. If checkpoint_path is an S3 URI
@@ -208,6 +212,8 @@ class CheckpointManager:
                     "Saved checkpoint to S3",
                     extra={"path": checkpoint_str, "count": len(processed_keys)},
                 )
+                if pipeline:
+                    report_ingestion_metrics(pipeline=pipeline, checkpoint_save=True)
             except (ClientError, BotoCoreError, OSError, ValueError) as e:
                 logger.warning(
                     "Failed to save checkpoint to S3",
@@ -229,6 +235,8 @@ class CheckpointManager:
                 "Saved checkpoint",
                 extra={"path": checkpoint_str, "count": len(processed_keys)},
             )
+            if pipeline:
+                report_ingestion_metrics(pipeline=pipeline, checkpoint_save=True)
         except OSError as e:
             logger.warning(
                 "Failed to save checkpoint",

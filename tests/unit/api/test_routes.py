@@ -23,12 +23,25 @@ Fixtures from conftest.py provide mocked services and providers.
 Run with: pytest tests/unit/api/test_routes.py
 """
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
+from prometheus_client import REGISTRY
 
-from foundation.exceptions import UpstreamError
 from core.models import SearchResultItem, SearchResults
+from foundation.exceptions import UpstreamError
+
+
+def _counter(name: str, labels: dict[Any, Any]) -> float:
+    """Return current counter value from the global registry (0.0 if unseen)."""
+    return REGISTRY.get_sample_value(name, labels) or 0.0
+
+
+def _histogram_count(name: str, labels: dict[Any, Any]) -> float:
+    """Return the _count sample for a histogram (0.0 if unseen)."""
+    return REGISTRY.get_sample_value(f"{name}_count", labels) or 0.0
+
 
 # =============================================================================
 # Health Check Tests
@@ -864,3 +877,97 @@ class TestDatabricksJobEndpoints:
             response = test_client.delete("/databricks/jobs/789")
 
         assert response.status_code == 500
+
+
+class TestIngestionMetricsEndpoint:
+    """Test suite for POST /ingestion/metrics endpoint."""
+
+    def test_successful_images_increment_counter(self, test_client: TestClient) -> None:
+        """Successful count from payload increments status=success counter."""
+        before = _counter(
+            "inatinq_ingestion_documents_processed_total",
+            {"status": "success", "pipeline": "local ray ingestion pipeline"},
+        )
+
+        for _ in range(8):
+            test_client.post(
+                "/ingestion/metrics", json={"pipeline": "local ray ingestion pipeline", "successful": 1}
+            )
+        test_client.post(
+            "/ingestion/metrics", json={"pipeline": "local ray ingestion pipeline", "successful": 2}
+        )
+
+        after = _counter(
+            "inatinq_ingestion_documents_processed_total",
+            {"status": "success", "pipeline": "local ray ingestion pipeline"},
+        )
+        assert after - before == 10
+
+    def test_failed_images_increment_counter(self, test_client: TestClient) -> None:
+        """Failed count from payload increments status=failed counter."""
+        before = _counter(
+            "inatinq_ingestion_documents_processed_total",
+            {"status": "failed", "pipeline": "local ray ingestion pipeline"},
+        )
+        for _ in range(3):
+            test_client.post(
+                "/ingestion/metrics", json={"pipeline": "local ray ingestion pipeline", "failed": 1}
+            )
+
+        after = _counter(
+            "inatinq_ingestion_documents_processed_total",
+            {"status": "failed", "pipeline": "local ray ingestion pipeline"},
+        )
+        assert after - before == 3
+
+    def test_batch_duration_observed_in_histogram(self, test_client: TestClient) -> None:
+        """batch_duration_seconds is recorded as a histogram observation."""
+        before = _histogram_count(
+            "inatinq_ingestion_batch_duration_seconds",
+            {"pipeline": "local ray ingestion pipeline"},
+        )
+
+        test_client.post(
+            "/ingestion/metrics",
+            json={"pipeline": "local ray ingestion pipeline", "successful": 5, "batch_duration_seconds": 8.5},
+        )
+
+        after = _histogram_count(
+            "inatinq_ingestion_batch_duration_seconds",
+            {"pipeline": "local ray ingestion pipeline"},
+        )
+        assert after - before == 1
+
+    def test_checkpoint_save_increments_counter(self, test_client: TestClient) -> None:
+        """checkpoint_save=True increments the checkpoint saves counter."""
+        before = _counter(
+            "inatinq_ingestion_checkpoint_saves_total",
+            {"pipeline": "databricks ingestion pipeline"},
+        )
+
+        test_client.post(
+            "/ingestion/metrics",
+            json={"pipeline": "databricks ingestion pipeline", "checkpoint_save": True},
+        )
+
+        after = _counter(
+            "inatinq_ingestion_checkpoint_saves_total",
+            {"pipeline": "databricks ingestion pipeline"},
+        )
+        assert after - before == 1
+
+    def test_endpoint_returns_ok(self, test_client: TestClient) -> None:
+        """Endpoint returns 200 with {"status": "ok"}."""
+        response = test_client.post(
+            "/ingestion/metrics",
+            json={"pipeline": "local ray ingestion pipeline", "successful": 1},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
+
+    def test_missing_pipeline_returns_422(self, test_client: TestClient) -> None:
+        """Missing pipeline field returns HTTP 422."""
+        response = test_client.post("/ingestion/metrics", json={"successful": 5})
+
+        assert response.status_code == 422

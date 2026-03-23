@@ -11,11 +11,12 @@ import logging
 import os
 import sys
 import time
+from contextlib import nullcontext
 from logging.config import dictConfig
 from typing import Any
 
-from clients.s3 import S3ClientWrapper
 from clients.qdrant import QdrantClientWrapper
+from clients.s3 import S3ClientWrapper
 from config import EmbeddingConfig, MinIOConfig, RayJobConfig, VectorDBConfig
 from core.ingestion.databricks.batch_runner import run_ray_batch_processing
 from core.ingestion.databricks.runtime import (
@@ -27,11 +28,12 @@ from core.ingestion.strategies import DatabricksStrategy
 from core.ingestion.tasks import process_image_batch_ray
 from foundation.checkpoint import CheckpointManager, is_s3_path
 from foundation.logger import LOGGING_CONFIG
-from contextlib import nullcontext
 
 dictConfig(LOGGING_CONFIG)
 
 logger = logging.getLogger("pipeline.ray.databricks")
+
+PIPELINE_LABEL = "databricks ingestion pipeline"
 
 
 def main() -> None:
@@ -176,6 +178,7 @@ def main() -> None:
                 max_inflight_batches=max_inflight_batches,
                 job_logger=job_logger,
                 progress_label="Image batch progress",
+                pipeline=PIPELINE_LABEL,
                 total_expected_records=None,
             )
         if processing_dlq:
@@ -187,7 +190,7 @@ def main() -> None:
         # Save checkpoint if enabled
         if ray_cfg.checkpoint_enabled and checkpoint_path:
             processed.update(stats.successful_keys)
-            checkpoint_manager.save(checkpoint_path, processed)
+            checkpoint_manager.save(checkpoint_path, processed, PIPELINE_LABEL)
 
         elapsed = round(time.time() - start, 2)
         rate = round(stats.completed_records / elapsed, 2) if elapsed > 0 else 0

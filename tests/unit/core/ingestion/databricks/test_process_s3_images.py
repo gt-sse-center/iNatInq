@@ -111,6 +111,12 @@ class TestApplyPythonParams:
 class TestDatabricksImageJobMain:
     """Tests for the main() function in process_s3_images."""
 
+    @pytest.fixture(autouse=True)
+    def mock_reporter(self):
+        """Suppress report_ingestion_metrics for all main() tests."""
+        with patch("core.ingestion.databricks.batch_runner.report_ingestion_metrics"):
+            yield
+
     @pytest.fixture
     def mock_dependencies(self, mock_ray):
         """Set up common mocks for main() tests.
