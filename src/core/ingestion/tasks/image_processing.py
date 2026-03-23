@@ -74,6 +74,7 @@ class RayImageProcessingConfig:
     retry_max_wait: float = 10.0
     image_preprocess_max_size: int = DEFAULT_IMAGE_PREPROCESS_MAX_SIZE
     s3_fetch_concurrency: int = 20
+    s3_key_prefix: str = ""
 
 
 # =============================================================================
@@ -127,7 +128,11 @@ class ImageProcessingPipeline:
             access_key_id=self._config.s3_access_key,
             secret_access_key=self._config.s3_secret_key,
         )
-        fetcher = ImageContentFetcher(s3, self._config.s3_bucket)
+        fetcher = ImageContentFetcher(
+            s3,
+            self._config.s3_bucket,
+            key_prefix=self._config.s3_key_prefix,
+        )
         images, fetch_failures = fetcher.fetch_all(keys, with_dimensions=True)
 
         if not images:
@@ -190,7 +195,11 @@ class ImageProcessingPipeline:
             List of processing results.
         """
         try:
-            fetcher = ImageContentFetcher(s3, self._config.s3_bucket)
+            fetcher = ImageContentFetcher(
+                s3,
+                self._config.s3_bucket,
+                key_prefix=self._config.s3_key_prefix,
+            )
             images, fetch_failures = await fetcher.fetch_all_async(
                 keys, with_dimensions=True, max_concurrent=self._config.s3_fetch_concurrency
             )
@@ -400,6 +409,7 @@ def process_image_batch_ray(
     retry_min_wait: float = 1.0,
     retry_max_wait: float = 10.0,
     ingestion_targets: frozenset[str] | None = None,
+    s3_key_prefix: str = "",
 ) -> list[tuple[str, bool, str]]:
     """Process a batch of images through the embedding pipeline.
 
@@ -424,6 +434,7 @@ def process_image_batch_ray(
         retry_max_attempts: Max retry attempts.
         retry_min_wait: Min wait between retries (seconds).
         retry_max_wait: Max wait between retries (seconds).
+        s3_key_prefix: Optional S3 key prefix for fallback fetch resolution.
 
     Returns:
         List of (s3_key, success, error_message) tuples.
@@ -452,6 +463,7 @@ def process_image_batch_ray(
         retry_max_attempts=retry_max_attempts,
         retry_min_wait=retry_min_wait,
         retry_max_wait=retry_max_wait,
+        s3_key_prefix=s3_key_prefix,
     )
 
     local_rate_limiter = None

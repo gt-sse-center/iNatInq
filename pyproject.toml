@@ -83,7 +83,12 @@ filterwarnings = [
 line-length = 110
 
 [tool.ruff.lint]
-exclude = ["tests/**", "configs/**", "scripts/**"]
+exclude = [
+    "tests/**",
+    "configs/**",
+    "scripts/**",
+    "zarf/databricks/dev/notebooks/**",
+]
 
 select = ["ALL"]
 
@@ -162,6 +167,7 @@ ignore_missing_imports = true
 
 [tool.basedpyright]
 typeCheckingMode = "recommended"
+exclude = ["zarf/databricks/dev/notebooks/**"]
 reportMissingTypeStubs = false
 reportUnknownMemberType = false
 reportUnusedCallResult = false

@@ -276,7 +276,7 @@ class TestDatabricksRayServiceSubmitINatImageJob:
 
 
 class TestDatabricksRayServiceSubmitS3CDCJobs:
-    """Test suite for Databricks Auto Loader producer submission."""
+    """Test suite for Databricks Auto Loader producer/consumer submission."""
 
     @patch.dict(
         "os.environ",
@@ -349,6 +349,96 @@ class TestDatabricksRayServiceSubmitS3CDCJobs:
         service = DatabricksRayService()
         with pytest.raises(ValueError, match="DATABRICKS_S3_AUTOLOADER_JOB_ID"):
             service.submit_s3_autoloader_job(namespace="test-namespace")
+        mock_config.assert_called_once_with(require_job_id=False)
+
+    @patch.dict(
+        "os.environ",
+        {
+            "S3_PREFIX": "images",
+            "AUTOLOADER_BRONZE_TABLE": "main.default.images_bronze",
+            "CDC_PROGRESS_TABLE": "main.default.images_progress",
+            "INATINQ_SRC_DIR": "/Workspace/Users/test/iNatInq/src",
+        },
+        clear=False,
+    )
+    @patch("core.services.databricks_ray_service.DatabricksRayJobConfig.from_env")
+    @patch("core.services.databricks_ray_service.WorkspaceClient")
+    def test_submit_s3_bronze_image_job_success(
+        self,
+        mock_client_cls: MagicMock,
+        mock_config: MagicMock,
+    ) -> None:
+        """Bronze incremental submission should target dedicated job id."""
+        mock_databricks_config = MagicMock()
+        mock_databricks_config.host = "https://dbc.example.cloud"
+        mock_databricks_config.token = "databricks-token"
+        mock_databricks_config.s3_bronze_job_id = 654
+        mock_config.return_value = mock_databricks_config
+
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.run_id = 987
+        mock_client.jobs.run_now.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        embedding_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
+            clip_url="http://clip.test:8000",
+            clip_model="ViT-B/32",
+        )
+        service = DatabricksRayService()
+        run_id = service.submit_s3_bronze_image_job(
+            namespace="test-namespace",
+            s3_endpoint="http://minio.test:9000",
+            s3_access_key_id="test-key",
+            s3_secret_access_key="test-secret",
+            s3_bucket="test-bucket",
+            embedding_config=embedding_config,
+            collection="test-image-collection",
+        )
+
+        assert run_id == 987
+        mock_config.assert_called_once_with(require_job_id=False)
+        call_kwargs = mock_client.jobs.run_now.call_args.kwargs
+        assert call_kwargs["job_id"] == 654
+        params = call_kwargs["python_params"]
+        assert "K8S_NAMESPACE=test-namespace" in params
+        assert "AUTOLOADER_BRONZE_TABLE=main.default.images_bronze" in params
+        assert "CDC_PROGRESS_TABLE=main.default.images_progress" in params
+        assert "S3_ENDPOINT=http://minio.test:9000" in params
+        assert "S3_ACCESS_KEY_ID=test-key" in params
+        assert "S3_SECRET_ACCESS_KEY=test-secret" in params
+        assert "S3_BUCKET=test-bucket" in params
+        assert "S3_PREFIX=images" in params
+        assert "VECTOR_DB_COLLECTION=test-image-collection" in params
+        assert "INATINQ_SRC_DIR=/Workspace/Users/test/iNatInq/src" in params
+
+    @patch("core.services.databricks_ray_service.DatabricksRayJobConfig.from_env")
+    def test_submit_s3_bronze_image_job_raises_without_dedicated_job_id(
+        self,
+        mock_config: MagicMock,
+    ) -> None:
+        """Dedicated Bronze job id should be required."""
+        mock_databricks_config = MagicMock()
+        mock_databricks_config.s3_bronze_job_id = None
+        mock_config.return_value = mock_databricks_config
+
+        embedding_config = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
+            clip_url="http://clip.test:8000",
+            clip_model="ViT-B/32",
+        )
+        service = DatabricksRayService()
+        with pytest.raises(ValueError, match="DATABRICKS_FROM_BRONZE_JOB_ID"):
+            service.submit_s3_bronze_image_job(
+                namespace="test-namespace",
+                s3_endpoint="http://minio.test:9000",
+                s3_access_key_id="test-key",
+                s3_secret_access_key="test-secret",
+                s3_bucket="test-bucket",
+                embedding_config=embedding_config,
+                collection="test-image-collection",
+            )
         mock_config.assert_called_once_with(require_job_id=False)
 
 

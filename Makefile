@@ -41,6 +41,7 @@ help:
 	@echo "│ make azure-databricks-build  Create/update cluster from spec                │"
 	@echo "│ make azure-databricks-up     Start cluster                                  │"
 	@echo "│ make azure-databricks-down   Terminate cluster                              │"
+	@echo "│ make azure-databricks-cdc-notebooks Upload + run CDC notebook validation    │"
 	@echo "│ make azure-databricks-configure-minio-s3a Configure MinIO S3A secret/conf   │"
 	@echo "├── Docker Service Logs ──────────────────────────────────────────────────────┤"
 	@echo "│ make logs-pipeline     Tail pipeline logs                                   │"
@@ -314,6 +315,13 @@ azure-databricks-up: databricks-env-check
 azure-databricks-down: databricks-env-check
 	@ENV_FILE=$(DATABRICKS_ENV_FILE) CLUSTER_SPEC_FILE=$(DATABRICKS_CLUSTER_SPEC) \
 		zarf/databricks/azure-databricks-down.py
+
+.PHONY: azure-databricks-cdc-notebooks
+azure-databricks-cdc-notebooks: databricks-env-check
+	@uv run zarf/databricks/azure-databricks-cdc-notebooks.py \
+		--env-file $(DATABRICKS_ENV_FILE) \
+		--upload-notebooks \
+		--run-notebooks
 
 .PHONY: azure-databricks-configure-minio-s3a
 azure-databricks-configure-minio-s3a: databricks-env-check
