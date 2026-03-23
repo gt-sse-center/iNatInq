@@ -51,6 +51,12 @@ from core.exceptions import BadRequestError, PipelineError
 from core.services.databricks_ray_service import DatabricksRayService
 from core.services.ray_service import RayService
 from core.services.search_service import ImageSearchService
+from foundation.metrics.job_metrics_reporter import INGESTION_METRICS_PATH
+from foundation.metrics.registry import (
+    INGESTION_BATCH_DURATION,
+    INGESTION_CHECKPOINT_SAVES,
+    INGESTION_DOCS_PROCESSED,
+)
 
 router = APIRouter()
 
@@ -674,3 +680,27 @@ async def stop_ray_job(job_id: str) -> models.RayJobStopResponse:
         return models.RayJobStopResponse(job_id=job_id, status="stopped")
     except Exception as e:
         raise PipelineError(f"Failed to stop job: {e!s}") from e
+
+
+@router.post(INGESTION_METRICS_PATH, tags=["metrics"])
+async def submit_ingestion_metrics(payload: models.IngestionMetricsPayload) -> dict[str, str]:
+    """Record ingestion job metrics into the Prometheus registry.
+
+    Ingestion jobs (Ray, Databricks) run as ephemeral processes that exit after
+    completion => metrics must be forwarded here to survive the job process exit.
+
+    Args:
+        payload: Batch stats and optional checkpoint flag from the job process.
+
+    Returns:
+        ``{"status": "ok"}`` on success.
+    """
+    if payload.successful > 0:
+        INGESTION_DOCS_PROCESSED.labels(status="success", pipeline=payload.pipeline).inc(payload.successful)
+    if payload.failed > 0:
+        INGESTION_DOCS_PROCESSED.labels(status="failed", pipeline=payload.pipeline).inc(payload.failed)
+    if payload.batch_duration_seconds > 0:
+        INGESTION_BATCH_DURATION.labels(pipeline=payload.pipeline).observe(payload.batch_duration_seconds)
+    if payload.checkpoint_save:
+        INGESTION_CHECKPOINT_SAVES.labels(pipeline=payload.pipeline).inc()
+    return {"status": "ok"}

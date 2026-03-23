@@ -16,6 +16,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from foundation.metrics.job_metrics_reporter import PipelineType
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Image Search Models
@@ -379,3 +380,26 @@ class RayJobStopResponse(BaseModel):
 
     job_id: str
     status: str
+
+
+class IngestionMetricsPayload(BaseModel):
+    """Metrics payload submitted by short-lived ingestion job processes.
+
+    Ingestion jobs (Ray, Databricks) run as ephemeral processes and cannot
+    write to the Prometheus registry directly. This is the payload that is
+    POSTed to the API, which applies the values to the in-process registry.
+
+    Attributes:
+        pipeline: String label of the pipeline.
+        successful: Number of documents successfully processed in this batch.
+        failed: Number of documents that failed in this batch.
+        batch_duration_seconds: Wall-clock seconds for the batch.
+            Zero means no duration observation is recorded.
+        checkpoint_save: When ``True``, increments the checkpoint saves counter.
+    """
+
+    pipeline: PipelineType
+    successful: int = Field(default=0, ge=0)
+    failed: int = Field(default=0, ge=0)
+    batch_duration_seconds: float = Field(default=0.0, ge=0.0)
+    checkpoint_save: bool = False

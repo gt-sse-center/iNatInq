@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Any, cast
-from foundation.dead_letter_queue import DLQ, with_dlq
 
 import attrs
 import ray
 
+from foundation.dead_letter_queue import DLQ, with_dlq
+from foundation.metrics.job_metrics_reporter import PipelineType, report_ingestion_metrics
+
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
     import logging
+    from collections.abc import Callable, Iterable
 
 
 @attrs.define(slots=True)
@@ -109,6 +112,7 @@ def run_ray_batch_processing(
     max_inflight_batches: int,
     job_logger: logging.Logger,
     progress_label: str,
+    pipeline: PipelineType = "",
     total_expected_records: int | None = None,
 ) -> BatchRunStats:
     """Submit and drain Ray tasks with bounded in-flight futures."""
@@ -118,31 +122,40 @@ def run_ray_batch_processing(
     resolved_wait_batch = max(1, wait_batch_size)
     resolved_max_inflight = max(1, max_inflight_batches)
 
+    def _drain_and_report(futures: list[Any], timeout: float | None) -> list[Any]:
+        prev_successful = stats.successful
+        prev_failed = stats.failed
+        t0 = time.monotonic()
+        result = _drain_ready_futures(
+            futures=futures,
+            stats=stats,
+            wait_batch_size=resolved_wait_batch,
+            wait_timeout=timeout,
+            total_expected_records=total_expected_records,
+            job_logger=job_logger,
+            progress_label=progress_label,
+        )
+        elapsed = time.monotonic() - t0
+        delta_successful = stats.successful - prev_successful
+        delta_failed = stats.failed - prev_failed
+        if pipeline and (delta_successful > 0 or delta_failed > 0):
+            report_ingestion_metrics(
+                pipeline=pipeline,
+                successful=delta_successful,
+                failed=delta_failed,
+                batch_duration_seconds=elapsed,
+            )
+        return result
+
     for batch in batches:
         futures.append(submit_batch(batch))
         stats.submitted_records += len(batch)
         stats.num_batches += 1
 
         while len(futures) >= resolved_max_inflight:
-            futures = _drain_ready_futures(
-                futures=futures,
-                stats=stats,
-                wait_batch_size=resolved_wait_batch,
-                wait_timeout=wait_timeout,
-                total_expected_records=total_expected_records,
-                job_logger=job_logger,
-                progress_label=progress_label,
-            )
+            futures = _drain_and_report(futures, wait_timeout)
 
     while futures:
-        futures = _drain_ready_futures(
-            futures=futures,
-            stats=stats,
-            wait_batch_size=resolved_wait_batch,
-            wait_timeout=None,
-            total_expected_records=total_expected_records,
-            job_logger=job_logger,
-            progress_label=progress_label,
-        )
+        futures = _drain_and_report(futures, None)
 
     return stats

@@ -201,7 +201,7 @@ class TestDatabricksImageJobRequest:
 
     def test_s3_prefix_defaults_empty_string(self) -> None:
         """Test that s3_prefix defaults to bucket root when omitted."""
-        req = models.DatabricksImageJobRequest(
+        req = models.DatabricksImageJobRequest(  # pyright: ignore[reportCallIssue]
             source="s3",
             collection="documents",
         )
