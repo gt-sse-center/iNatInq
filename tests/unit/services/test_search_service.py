@@ -27,6 +27,7 @@ service logic.
 Run with: pytest tests/unit/services/test_search_service.py
 """
 
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import attrs.exceptions
@@ -728,8 +729,9 @@ class TestImageSearchServiceCacheIntegration:
         self,
         mock_embedding_provider: MagicMock,
         mock_image_vector_db_provider: MagicMock,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """If cache.store raises, the search still returns DB results."""
+        """If cache.store raises, the search still returns DB results and a warning is logged."""
         cache = self._make_mock_cache()
         cache.lookup = AsyncMock(return_value=None)
         cache.store = AsyncMock(side_effect=RuntimeError("Redis down"))
@@ -740,11 +742,13 @@ class TestImageSearchServiceCacheIntegration:
             cache=cache,
         )
 
-        result = await service.search_images_async(collection="documents", query="sunset", limit=10)
+        with caplog.at_level(logging.WARNING):
+            result = await service.search_images_async(collection="documents", query="sunset", limit=10)
 
         assert isinstance(result, SearchResults)
         assert len(result.items) == 2
         mock_image_vector_db_provider.search_async.assert_called_once()
+        assert any("Failed to store results in semantic cache" in r.message for r in caplog.records)
 
     @pytest.mark.asyncio
     async def test_cache_lookup_passes_correct_args(
