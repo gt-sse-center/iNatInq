@@ -12,7 +12,8 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from typing_extensions import override
 
-from core.exceptions import BadRequestError, PipelineError, PipelineTimeoutError, UpstreamError
+from foundation.exceptions import UpstreamError
+from core.exceptions import BadRequestError, PipelineError, PipelineTimeoutError
 
 logger = logging.getLogger("uvicorn.error")
 

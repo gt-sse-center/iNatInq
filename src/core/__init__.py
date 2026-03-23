@@ -10,8 +10,8 @@ Following the Go codebase pattern, services are located in core/services/,
 matching the structure where core/domain/ contains services in the Go codebase.
 """
 
-from .exceptions import UpstreamError
-from .models import SearchResultItem, SearchResults, VectorPoint
+from foundation.exceptions import UpstreamError
+from core.models import SearchResultItem, SearchResults, VectorPoint
 
 __all__ = [
     "SearchResultItem",

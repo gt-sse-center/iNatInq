@@ -13,6 +13,7 @@ import pytest
 from clients.infinity import INFINITY_VECTOR_SIZES, InfinityClient
 from clients.interfaces import EmbeddingProvider
 from config import EmbeddingConfig, ProviderType
+from foundation.exceptions import UpstreamError
 
 
 class TestInfinityClientInit:
@@ -557,8 +558,6 @@ class TestInfinityClientErrorHandling:
         """
         import httpx
 
-        from core.exceptions import UpstreamError
-
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
         mock_client.__aenter__.return_value = mock_client
@@ -594,8 +593,6 @@ class TestInfinityClientErrorHandling:
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__.return_value = None
         mock_async_client_cls.return_value = mock_client
-
-        from core.exceptions import UpstreamError
 
         client = InfinityClient(
             base_url="http://localhost:7997",

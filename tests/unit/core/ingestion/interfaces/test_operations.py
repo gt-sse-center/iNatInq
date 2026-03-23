@@ -25,7 +25,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from botocore.exceptions import ClientError
-from core.exceptions import UpstreamError
+from foundation.exceptions import UpstreamError
 from core.ingestion.interfaces.operations import (
     BatchProcessor,
     EmbeddingGenerator,
