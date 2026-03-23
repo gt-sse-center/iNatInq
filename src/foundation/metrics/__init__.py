@@ -20,6 +20,13 @@ prevent cardinality explosion.
 from foundation.metrics.classify import classify_error
 from foundation.metrics.decorators import with_client_metrics, with_client_metrics_async
 from foundation.metrics.registry import (
+    CACHE_EVICTIONS_TOTAL,
+    CACHE_HITS_TOTAL,
+    CACHE_INVALIDATIONS_TOTAL,
+    CACHE_LOOKUP_DURATION,
+    CACHE_MISSES_TOTAL,
+    CACHE_SIZE,
+    CACHE_STORE_DURATION,
     CIRCUIT_BREAKER_STATE,
     CIRCUIT_BREAKER_TRANSITIONS,
     CLIENT_ERRORS_TOTAL,
@@ -57,6 +64,14 @@ __all__ = [  # noqa: RUF022 - organized by category, not alphabetically
     "SEARCH_EMBEDDING_DURATION",
     "SEARCH_VECTOR_QUERY_DURATION",
     "SEARCH_RESULT_COUNT",
+    # Cache metrics
+    "CACHE_HITS_TOTAL",
+    "CACHE_MISSES_TOTAL",
+    "CACHE_LOOKUP_DURATION",
+    "CACHE_STORE_DURATION",
+    "CACHE_SIZE",
+    "CACHE_EVICTIONS_TOTAL",
+    "CACHE_INVALIDATIONS_TOTAL",
     # Ingestion metrics
     "INGESTION_DOCS_PROCESSED",
     "INGESTION_BATCH_DURATION",

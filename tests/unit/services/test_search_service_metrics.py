@@ -1,8 +1,8 @@
 """Unit tests for search service Prometheus metrics.
 
-Verifies that `ImageSearchService` emits the correct histogram observations
-for embedding duration, vector query duration, and result count on both
-the happy path and error paths.
+Verifies that ``ImageSearchService`` emits the correct histogram observations
+for embedding duration, vector query duration, result count, and cache
+hit/miss/lookup duration on both the happy path and error paths.
 """
 
 from unittest.mock import AsyncMock, MagicMock
@@ -15,6 +15,11 @@ from clients.interfaces.vector_db import VectorDBProvider
 from core.models import SearchResultItem, SearchResults
 from core.services.search_service import ImageSearchService
 from foundation.exceptions import UpstreamError
+
+
+def _counter_value(metric_name: str, labels: dict[str, str]) -> float:
+    """Return the value of a counter with the given labels, or 0.0 if absent."""
+    return REGISTRY.get_sample_value(metric_name, labels) or 0.0
 
 
 def _histogram_count(metric_name: str, labels: dict[str, str]) -> float:
@@ -176,3 +181,136 @@ class TestMetricsEmittedOnError:
         assert after_vq_count == before_vq_count + 1.0
         assert after_vq_sum is not None
         assert after_vq_sum > before_vq_sum
+
+
+# =============================================================================
+# Cache metrics (hit/miss/lookup duration recorded at service layer)
+# =============================================================================
+
+
+@pytest.fixture
+def cache_hit_service(embedding_provider: MagicMock, vector_db_provider: MagicMock) -> ImageSearchService:
+    """Service with a mock cache that returns a hit."""
+    cache = MagicMock()
+    cache.lookup = AsyncMock(
+        return_value=SearchResults(
+            items=[SearchResultItem(point_id="cached-1", score=0.99, payload={})],
+            total=1,
+        )
+    )
+    cache.store = AsyncMock()
+    return ImageSearchService(
+        embedding_provider=embedding_provider,
+        vector_db_provider=vector_db_provider,
+        embedding_provider_name="clip",
+        vector_db_provider_name="qdrant",
+        cache=cache,
+    )
+
+
+@pytest.fixture
+def cache_miss_service(embedding_provider: MagicMock, vector_db_provider: MagicMock) -> ImageSearchService:
+    """Service with a mock cache that returns a miss (None)."""
+    cache = MagicMock()
+    cache.lookup = AsyncMock(return_value=None)
+    cache.store = AsyncMock()
+    return ImageSearchService(
+        embedding_provider=embedding_provider,
+        vector_db_provider=vector_db_provider,
+        embedding_provider_name="clip",
+        vector_db_provider_name="qdrant",
+        cache=cache,
+    )
+
+
+class TestCacheHitMetric:
+    """inatinq_cache_hits_total counter increments on cache hits."""
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_increments_hit_counter(self, cache_hit_service: ImageSearchService) -> None:
+        """Cache hit increments the hit counter for the collection."""
+        collection = "cache_hit_coll"
+        labels = {"collection": collection}
+        before = _counter_value("inatinq_cache_hits_total", labels)
+
+        await cache_hit_service.search_images_async(collection=collection, query="cat", limit=5)
+
+        after = _counter_value("inatinq_cache_hits_total", labels)
+        assert after == before + 1.0, f"Hit counter should increment by 1, got {after - before}"
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_does_not_increment_miss_counter(
+        self, cache_hit_service: ImageSearchService
+    ) -> None:
+        """Cache hit does not increment the miss counter."""
+        collection = "cache_hit_no_miss"
+        labels = {"collection": collection}
+        before = _counter_value("inatinq_cache_misses_total", labels)
+
+        await cache_hit_service.search_images_async(collection=collection, query="cat", limit=5)
+
+        after = _counter_value("inatinq_cache_misses_total", labels)
+        assert after == before, "Miss counter should not change on cache hit"
+
+
+class TestCacheMissMetric:
+    """inatinq_cache_misses_total counter increments on cache misses."""
+
+    @pytest.mark.asyncio
+    async def test_cache_miss_increments_miss_counter(self, cache_miss_service: ImageSearchService) -> None:
+        """Cache miss increments the miss counter for the collection."""
+        collection = "cache_miss_coll"
+        labels = {"collection": collection}
+        before = _counter_value("inatinq_cache_misses_total", labels)
+
+        await cache_miss_service.search_images_async(collection=collection, query="dog", limit=5)
+
+        after = _counter_value("inatinq_cache_misses_total", labels)
+        assert after == before + 1.0, f"Miss counter should increment by 1, got {after - before}"
+
+    @pytest.mark.asyncio
+    async def test_cache_miss_does_not_increment_hit_counter(
+        self, cache_miss_service: ImageSearchService
+    ) -> None:
+        """Cache miss does not increment the hit counter."""
+        collection = "cache_miss_no_hit"
+        labels = {"collection": collection}
+        before = _counter_value("inatinq_cache_hits_total", labels)
+
+        await cache_miss_service.search_images_async(collection=collection, query="dog", limit=5)
+
+        after = _counter_value("inatinq_cache_hits_total", labels)
+        assert after == before, "Hit counter should not change on cache miss"
+
+
+class TestCacheLookupDuration:
+    """inatinq_cache_lookup_duration_seconds histogram records lookup time."""
+
+    @pytest.mark.asyncio
+    async def test_cache_lookup_records_duration_on_hit(self, cache_hit_service: ImageSearchService) -> None:
+        """Lookup duration histogram count increments on cache hit."""
+        collection = "cache_dur_hit"
+        labels = {"collection": collection}
+        before_count = _histogram_count("inatinq_cache_lookup_duration_seconds", labels)
+        before_sum = REGISTRY.get_sample_value("inatinq_cache_lookup_duration_seconds_sum", labels) or 0.0
+
+        await cache_hit_service.search_images_async(collection=collection, query="bird", limit=5)
+
+        after_count = _histogram_count("inatinq_cache_lookup_duration_seconds", labels)
+        after_sum = REGISTRY.get_sample_value("inatinq_cache_lookup_duration_seconds_sum", labels) or 0.0
+        assert after_count == before_count + 1.0
+        assert after_sum > before_sum, "Duration sum should increase"
+
+    @pytest.mark.asyncio
+    async def test_cache_lookup_records_duration_on_miss(
+        self, cache_miss_service: ImageSearchService
+    ) -> None:
+        """Lookup duration histogram count increments on cache miss."""
+        collection = "cache_dur_miss"
+        labels = {"collection": collection}
+        before_count = _histogram_count("inatinq_cache_lookup_duration_seconds", labels)
+
+        await cache_miss_service.search_images_async(collection=collection, query="fish", limit=5)
+
+        after_count = _histogram_count("inatinq_cache_lookup_duration_seconds", labels)
+        assert after_count == before_count + 1.0

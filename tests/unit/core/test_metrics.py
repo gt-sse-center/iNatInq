@@ -30,7 +30,7 @@ class TestMetricDefinitions:
     """Test suite for metric object definitions and bucket profiles."""
 
     def test_metric_objects_are_importable(self) -> None:
-        """Test that all 13 metric objects can be imported from foundation.metrics.
+        """Test that all 20 metric objects can be imported from foundation.metrics.
 
         **Why this test is important:**
           - Verifies the module structure is correct
@@ -38,12 +38,19 @@ class TestMetricDefinitions:
           - Critical for downstream consumers
 
         **What it tests:**
-          - All 13 metric objects exist and are importable
+          - All 20 metric objects exist and are importable
           - Bucket profile tuples are importable
           - classify_error function is importable
         """
         # Arrange & Act
         from foundation.metrics import (
+            CACHE_EVICTIONS_TOTAL,
+            CACHE_HITS_TOTAL,
+            CACHE_INVALIDATIONS_TOTAL,
+            CACHE_LOOKUP_DURATION,
+            CACHE_MISSES_TOTAL,
+            CACHE_SIZE,
+            CACHE_STORE_DURATION,
             CLIENT_ERRORS_TOTAL,
             CLIENT_REQUEST_DURATION,
             CLIENT_REQUEST_TOTAL,
@@ -77,6 +84,13 @@ class TestMetricDefinitions:
         assert INGESTION_DOCS_PROCESSED is not None
         assert INGESTION_BATCH_DURATION is not None
         assert INGESTION_CHECKPOINT_SAVES is not None
+        assert CACHE_HITS_TOTAL is not None
+        assert CACHE_MISSES_TOTAL is not None
+        assert CACHE_LOOKUP_DURATION is not None
+        assert CACHE_STORE_DURATION is not None
+        assert CACHE_SIZE is not None
+        assert CACHE_EVICTIONS_TOTAL is not None
+        assert CACHE_INVALIDATIONS_TOTAL is not None
         assert FAST_BUCKETS is not None
         assert SLOW_BUCKETS is not None
         assert RESULT_COUNT_BUCKETS is not None
@@ -95,6 +109,13 @@ class TestMetricDefinitions:
         """
         # Arrange
         from foundation.metrics import (
+            CACHE_EVICTIONS_TOTAL,
+            CACHE_HITS_TOTAL,
+            CACHE_INVALIDATIONS_TOTAL,
+            CACHE_LOOKUP_DURATION,
+            CACHE_MISSES_TOTAL,
+            CACHE_SIZE,
+            CACHE_STORE_DURATION,
             CLIENT_ERRORS_TOTAL,
             CLIENT_REQUEST_DURATION,
             CLIENT_REQUEST_TOTAL,
@@ -124,6 +145,13 @@ class TestMetricDefinitions:
         assert INGESTION_DOCS_PROCESSED._labelnames == ("status", "pipeline")  # pyright: ignore[reportPrivateUsage]
         assert INGESTION_BATCH_DURATION._labelnames == ("pipeline",)  # pyright: ignore[reportPrivateUsage]
         assert INGESTION_CHECKPOINT_SAVES._labelnames == ("pipeline",)  # pyright: ignore[reportPrivateUsage]
+        assert CACHE_HITS_TOTAL._labelnames == ("collection",)  # pyright: ignore[reportPrivateUsage]
+        assert CACHE_MISSES_TOTAL._labelnames == ("collection",)  # pyright: ignore[reportPrivateUsage]
+        assert CACHE_LOOKUP_DURATION._labelnames == ("collection",)  # pyright: ignore[reportPrivateUsage]
+        assert CACHE_STORE_DURATION._labelnames == ("collection",)  # pyright: ignore[reportPrivateUsage]
+        assert CACHE_SIZE._labelnames == ("collection",)  # pyright: ignore[reportPrivateUsage]
+        assert CACHE_EVICTIONS_TOTAL._labelnames == ("collection",)  # pyright: ignore[reportPrivateUsage]
+        assert CACHE_INVALIDATIONS_TOTAL._labelnames == ()  # pyright: ignore[reportPrivateUsage]
 
     def test_histogram_bucket_profiles(self) -> None:
         """Test that the three bucket profiles have correct values.
@@ -162,7 +190,7 @@ class TestMetricDefinitions:
           - Ensures Instrumentator can discover custom metrics
 
         **What it tests:**
-          - All 13 metrics with inatinq_ prefix are in REGISTRY
+          - All 20 metrics with inatinq_ prefix are in REGISTRY
           - Filters out default collectors (python_info, python_gc_*)
         """
         # Arrange
@@ -189,6 +217,14 @@ class TestMetricDefinitions:
             "inatinq_ingestion_documents_processed",  # Counter strips _total
             "inatinq_ingestion_batch_duration_seconds",
             "inatinq_ingestion_checkpoint_saves",  # Counter strips _total
+            # Cache metrics
+            "inatinq_cache_hits",  # Counter strips _total
+            "inatinq_cache_misses",  # Counter strips _total
+            "inatinq_cache_lookup_duration_seconds",
+            "inatinq_cache_store_duration_seconds",
+            "inatinq_cache_size",
+            "inatinq_cache_evictions",  # Counter strips _total
+            "inatinq_cache_invalidations",  # Counter strips _total
         }
 
         # Assert
