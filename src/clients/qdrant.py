@@ -39,7 +39,7 @@ from qdrant_client.models import PointStruct  # Qdrant's native point type
 from typing_extensions import override
 
 from config import VectorDBConfig
-from core.models import SearchResultItem, SearchResults
+from core.models import CollectionInfo, SearchResultItem, SearchResults
 from foundation.async_utils import close_async_resource
 from foundation.circuit_breaker import (
     create_async_circuit_breaker,
@@ -212,6 +212,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         *,
         collection: str,
         vector_size: int,
+        quantization_config: qmodels.ScalarQuantization | qmodels.BinaryQuantization | None = None,
     ) -> None:
         """Create a Qdrant collection if it does not already exist.
 
@@ -223,8 +224,12 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         Args:
             collection: Collection name to ensure exists.
             vector_size: Dimension of vectors that will be stored in this
-            collection.  Must match the embedding dimension from your model
-            (e.g., 768 for `nomic-embed-text`).
+                collection.  Must match the embedding dimension from your model
+                (e.g., 768 for `nomic-embed-text`).
+            quantization_config: Optional Qdrant quantization configuration.
+                Pass ``ScalarQuantization(...)`` for INT8 or
+                ``BinaryQuantization(...)`` for binary quantization.
+                Qdrant applies quantization on write when this is set.
 
         Note:
             The collection is created with:
@@ -243,6 +248,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             await self._client.create_collection(
                 collection_name=collection,
                 vectors_config=qmodels.VectorParams(size=vector_size, distance=qmodels.Distance.COSINE),
+                quantization_config=quantization_config,
             )
 
         await async_retry_call(
@@ -264,6 +270,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         collection: str,
         vector_size: int = 512,
         distance_metric: DistanceMetric = "cosine",
+        quantization_config: qmodels.ScalarQuantization | qmodels.BinaryQuantization | None = None,
     ) -> None:
         """Create a Qdrant collection for image embeddings if it does not already exist.
 
@@ -282,6 +289,10 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
                 Default: 512 (common for CLIP models like ViT-B/32).
             distance_metric: Distance metric for vector similarity. One of "cosine",
                 "euclidean", or "dot". Default "cosine" (standard for embeddings).
+            quantization_config: Optional Qdrant quantization configuration.
+                Pass ``ScalarQuantization(...)`` for INT8 or
+                ``BinaryQuantization(...)`` for binary quantization.
+                Qdrant applies quantization on write when this is set.
 
         Note:
             The collection is created with:
@@ -297,13 +308,18 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             await client.ensure_image_collection_async(collection="photos")
             # Creates collection named "photos" with 512-dimensional vectors
 
-            # Custom vector size and distance metric
+            # With scalar INT8 quantization
             await client.ensure_image_collection_async(
                 collection="observations",
-                vector_size=768,
-                distance_metric="dot"
+                vector_size=1152,
+                quantization_config=qmodels.ScalarQuantization(
+                    scalar=qmodels.ScalarQuantizationConfig(
+                        type=qmodels.ScalarType.INT8,
+                        quantile=0.99,
+                        always_ram=True,
+                    ),
+                ),
             )
-            # Creates collection named "observations" with 768-dimensional vectors
             ```
         """
 
@@ -318,6 +334,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
                     vectors_config=qmodels.VectorParams(
                         size=vector_size, distance=_DISTANCE_METRIC_MAP[distance_metric]
                     ),
+                    quantization_config=quantization_config,
                 )
             except UnexpectedResponse as e:
                 status_code = getattr(e, "status_code", None)
@@ -340,18 +357,62 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             operation="ensure_image_collection_async",
         )
 
+    @with_client_metrics_async("qdrant", "get_collection_info_async")
+    @with_circuit_breaker_async("qdrant")
+    async def get_collection_info_async(self, *, collection: str) -> CollectionInfo:
+        """Retrieve collection metadata from Qdrant.
+
+        Args:
+            collection: Collection name to query.
+
+        Returns:
+            CollectionInfo with the collection name and vector dimension.
+        """
+
+        async def _do_get_info() -> CollectionInfo:
+            info = await self._client.get_collection(collection_name=collection)
+            vectors_config = info.config.params.vectors
+            if isinstance(vectors_config, qmodels.VectorParams):
+                size = vectors_config.size
+            elif isinstance(vectors_config, dict):
+                # Named vectors — use the first vector config's size
+                first = next(iter(vectors_config.values()), None)
+                size = first.size if first is not None else 0
+            else:
+                size = 0
+            return CollectionInfo(name=collection, vector_size=size)
+
+        return await async_retry_call(
+            _do_get_info,
+            max_retries=self.max_retries,
+            min_wait=self.retry_min_wait,
+            max_wait=self.retry_max_wait,
+            is_retriable=_qdrant_classifier.is_retriable,
+            before_sleep=_qdrant_log_retry,
+            client="qdrant",
+            operation="get_collection_info_async",
+        )
+
     @with_client_metrics_async("qdrant", "search_async")
     @with_circuit_breaker_async("qdrant")
     async def search_async(
-        self, *, collection: str, query_vector: list[float], limit: int = 10
+        self,
+        *,
+        collection: str,
+        query_vector: list[float],
+        limit: int = 10,
+        search_params: qmodels.SearchParams | None = None,
     ) -> SearchResults:
         """Search for similar vectors in a Qdrant collection.
 
         Args:
             collection: Collection name to search.
             query_vector: Query embedding vector (must match collection
-            dimension).
+                dimension).
             limit: Maximum number of results to return.
+            search_params: Optional Qdrant SearchParams for quantization
+                control (e.g., rescore, oversampling). Qdrant-specific;
+                not part of the VectorDBProvider ABC.
 
         Returns:
             A `SearchResults` instance containing:
@@ -380,6 +441,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
                 query=query_vector,
                 limit=limit,
                 with_payload=True,
+                search_params=search_params,
             )
 
             items = [
@@ -412,6 +474,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
         collection: str,
         vector_size: int = 512,
         distance_metric: qmodels.Distance = qmodels.Distance.COSINE,
+        quantization_config: qmodels.ScalarQuantization | qmodels.BinaryQuantization | None = None,
     ) -> None:
         """Create a Qdrant collection if it does not already exist (synchronous).
 
@@ -426,6 +489,10 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
             distance_metric: Distance metric for vector similarity. One of
                 ``"cosine"``, ``"euclidean"``, or ``"dot"``.
                 Default: ``"cosine"``.
+            quantization_config: Optional Qdrant quantization configuration.
+                Pass ``ScalarQuantization(...)`` for INT8 or
+                ``BinaryQuantization(...)`` for binary quantization.
+                Qdrant applies quantization on write when this is set.
 
         Raises:
             UpstreamError: If Qdrant operations fail.
@@ -442,6 +509,7 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
                         size=vector_size,
                         distance=distance_metric,
                     ),
+                    quantization_config=quantization_config,
                 )
                 self._logger.info(  # type: ignore[attr-defined]
                     "Created collection successfully",

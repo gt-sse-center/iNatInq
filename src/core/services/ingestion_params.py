@@ -122,6 +122,13 @@ def build_image_ingestion_env(
         env_vars["CLIP_MODEL"] = embedding_config.clip_model
     if embedding_config.clip_vector_size is not None:
         env_vars["CLIP_VECTOR_SIZE"] = str(embedding_config.clip_vector_size)
+    if embedding_config.infinity_url:
+        env_vars["INFINITY_URL"] = embedding_config.infinity_url
+    if embedding_config.infinity_model:
+        env_vars["INFINITY_MODEL"] = embedding_config.infinity_model
+    if embedding_config.infinity_vector_size is not None:
+        env_vars["INFINITY_VECTOR_SIZE"] = str(embedding_config.infinity_vector_size)
+    env_vars["INFINITY_TIMEOUT"] = str(embedding_config.infinity_timeout)
 
     _passthrough_env_vars(
         env_vars,
@@ -171,6 +178,13 @@ def build_inat_image_ingestion_env(
         env_vars["CLIP_MODEL"] = embedding_config.clip_model
     if embedding_config.clip_vector_size is not None:
         env_vars["CLIP_VECTOR_SIZE"] = str(embedding_config.clip_vector_size)
+    if embedding_config.infinity_url:
+        env_vars["INFINITY_URL"] = embedding_config.infinity_url
+    if embedding_config.infinity_model:
+        env_vars["INFINITY_MODEL"] = embedding_config.infinity_model
+    if embedding_config.infinity_vector_size is not None:
+        env_vars["INFINITY_VECTOR_SIZE"] = str(embedding_config.infinity_vector_size)
+    env_vars["INFINITY_TIMEOUT"] = str(embedding_config.infinity_timeout)
 
     _passthrough_env_vars(
         env_vars,

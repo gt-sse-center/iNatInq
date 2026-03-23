@@ -16,7 +16,7 @@
 
 # Use existing ml/pipeline-base image which has Ray and heavy deps
 # Build your own with: make docker-build-base
-FROM ml/pipeline-base:0.1.0
+FROM inatinq/pipeline-base:0.1.0
 
 WORKDIR /app
 

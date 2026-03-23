@@ -81,6 +81,7 @@ filterwarnings = [
 
 [tool.ruff]
 line-length = 110
+extend-exclude = ["zarf/compose/dev/patches"]
 
 [tool.ruff.lint]
 exclude = [

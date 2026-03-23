@@ -190,6 +190,13 @@ def run(
     collection: Annotated[
         str | None, typer.Option("--collection", help="Qdrant collection name override.")
     ] = None,
+    quantization_profile: Annotated[
+        str | None,
+        typer.Option(
+            "--quantization-profile",
+            help="Quantization profile (none, scalar, scalar-rescore, binary-rescore).",
+        ),
+    ] = None,
     limit: Annotated[int, typer.Option("--limit", help="Number of results per query.")] = 10,
     warmup: Annotated[int, typer.Option("--warmup", help="Number of warmup queries.")] = 5,
     output_path: Annotated[Path | None, typer.Option("--output", help="Output file path.")] = None,
@@ -222,7 +229,11 @@ def run(
         raise typer.Exit(code=1) from None
 
     try:
-        provider, pipeline = resolve_search_pipeline(provider_name, collection=collection)
+        provider, pipeline = resolve_search_pipeline(
+            provider_name,
+            collection=collection,
+            quantization_profile=quantization_profile,
+        )
     except (ValueError, Exception) as e:
         typer.echo(f"Error resolving provider '{provider_name}': {e}", err=True)
         raise typer.Exit(code=1) from None
@@ -244,13 +255,118 @@ def run(
             warmup_queries=warmup,
         )
 
-        results = {provider_name: result}  # type: ignore[dict-item]
+        label = f"{provider_name}:{quantization_profile}" if quantization_profile else provider_name  # type: ignore[arg-type]
+        results = {label: result}
         for reporter in reporters:
             await reporter.report(results)
 
     asyncio.run(_run_benchmark())
 
     typer.echo(f"Benchmark complete for provider: {provider_name}")
+
+
+@app.command()
+def quantization(
+    dataset_path: Annotated[Path | None, typer.Option("--dataset", help="Path to dataset JSON file.")] = None,
+    collections: Annotated[
+        list[str] | None,
+        typer.Option("--collection", help="Collection(s) in profile order: float32, scalar, binary."),
+    ] = None,
+    limit: Annotated[int, typer.Option("--limit", help="Number of results per query.")] = 50,
+    warmup: Annotated[int, typer.Option("--warmup", help="Number of warmup queries.")] = 5,
+    output_path: Annotated[Path | None, typer.Option("--output", help="Output file path.")] = None,
+    output_format: Annotated[
+        OutputFormat, typer.Option("--format", help="Output format.")
+    ] = OutputFormat.both,
+) -> None:
+    r"""Run a 4-profile quantization benchmark comparing float32, scalar, scalar+rescore, and binary+rescore.
+
+    Requires three Qdrant collections (float32 baseline, scalar-quantized,
+    binary-quantized) with identical point sets.
+
+    Example::
+
+        cd src/
+        uv run python -m core.benchmark.cli quantization \
+            --dataset ../benchmarks/inquire/inquire-val-bench20k.json \
+            --collection bench-siglip-float32 \
+            --collection bench-siglip-scalar \
+            --collection bench-siglip-binary \
+            --limit 50 --warmup 5 \
+            --output ../benchmarks/results/quantization-benchmark.json
+    """
+    if not dataset_path:
+        typer.echo("Error: --dataset is required.", err=True)
+        raise typer.Exit(code=1)
+
+    if not collections or len(collections) != 3:
+        typer.echo(
+            "Error: exactly 3 --collection values required (float32, scalar, binary).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    from core.benchmark.config import BenchmarkConfig
+    from core.benchmark.metrics.builder import build_metrics_from_config
+    from core.benchmark.provider_factory import resolve_search_pipeline
+    from core.benchmark.runner.base import BenchmarkResult  # noqa: TC001
+    from core.benchmark.runner.default import DefaultBenchmarkRunner
+
+    float32_col, scalar_col, binary_col = collections
+
+    profiles: list[tuple[str, str, str | None]] = [
+        ("float32-baseline", float32_col, None),
+        ("scalar-int8", scalar_col, None),
+        ("scalar-int8-rescore", scalar_col, "scalar-rescore"),
+        ("binary-oversample-rescore", binary_col, "binary-rescore"),
+    ]
+
+    try:
+        dataset = JSONDataset.from_file(dataset_path)
+    except Exception as e:
+        typer.echo(f"Error loading dataset: {e}", err=True)
+        raise typer.Exit(code=1) from None
+
+    config = BenchmarkConfig(k_values=[limit])
+    active_metrics = build_metrics_from_config(config)
+    reporters = _build_reporters(output_format, output_path)
+
+    async def _run_quantization() -> dict[str, BenchmarkResult]:
+        results: dict[str, BenchmarkResult] = {}
+
+        for profile_name, col, q_profile in profiles:
+            typer.echo(f"Running profile '{profile_name}' on collection '{col}'...")
+            try:
+                provider, pipeline = resolve_search_pipeline(
+                    "qdrant",
+                    collection=col,
+                    quantization_profile=q_profile,
+                )
+            except (ValueError, Exception) as e:
+                typer.echo(f"Error resolving profile '{profile_name}': {e}", err=True)
+                raise typer.Exit(code=1) from None
+
+            runner = DefaultBenchmarkRunner(
+                search_pipeline=pipeline,
+                collection=col,
+            )
+            result = await runner.run(
+                provider=provider,
+                dataset=dataset,
+                metrics=active_metrics,
+                limit=limit,
+                warmup_queries=warmup,
+            )
+            results[profile_name] = result
+
+        for reporter in reporters:
+            await reporter.report(results)
+
+        return results
+
+    asyncio.run(_run_quantization())
+
+    typer.echo("Quantization benchmark complete.")
 
 
 if __name__ == "__main__":

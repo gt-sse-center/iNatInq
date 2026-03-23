@@ -69,6 +69,20 @@ class VectorPoint:
 
 
 @attrs.define(frozen=True, slots=True)
+class CollectionInfo:
+    """Metadata about a vector database collection.
+
+    Attributes:
+        name: Collection name.
+        vector_size: Dimension of vectors stored in the collection.
+            Zero indicates the size is unknown (e.g. Weaviate without explicit dimensions).
+    """
+
+    name: str
+    vector_size: int
+
+
+@attrs.define(frozen=True, slots=True)
 class SearchResultItem:
     """A single search result item from a vector database.
 

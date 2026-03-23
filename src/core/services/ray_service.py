@@ -132,6 +132,8 @@ class RayService:
                         "pybreaker",
                         "aiobreaker",
                         "pillow",
+                        "filetype>=1.2.0",
+                        "redis",
                     ],
                 },
             )

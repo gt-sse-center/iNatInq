@@ -5,9 +5,11 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
+from qdrant_client.http import models as qmodels
 
+from clients.qdrant import QdrantClientWrapper
 from core.benchmark.id_mapping import S3KeyIDMapper
-from core.benchmark.search_pipeline import SearchPipeline, SearchPipelineResult
+from core.benchmark.search_pipeline import QdrantSearchPipeline, SearchPipeline, SearchPipelineResult
 from core.models import SearchResultItem, SearchResults
 
 
@@ -122,3 +124,84 @@ class TestSearchPipeline:
         result = await pipeline.search("query", collection="col", limit=10)
         assert result.doc_ids == []
         assert len(result.raw_results) == 0
+
+
+class TestQdrantSearchPipeline:
+    """Tests for QdrantSearchPipeline with Qdrant-specific search_params."""
+
+    @pytest.mark.asyncio
+    async def test_passes_search_params_to_qdrant_client(self):
+        """QdrantSearchPipeline forwards search_params to QdrantClientWrapper.search_async."""
+        embedding_provider = AsyncMock()
+        embedding_provider.embed_text.return_value = [0.1, 0.2, 0.3]
+
+        # spec=QdrantClientWrapper makes isinstance() checks pass
+        mock_qdrant = AsyncMock(spec=QdrantClientWrapper)
+        mock_qdrant.search_async.return_value = _make_search_results(
+            ("uuid-a", {"s3_key": "100"}),
+        )
+
+        search_params = qmodels.SearchParams(
+            quantization=qmodels.QuantizationSearchParams(rescore=True, oversampling=3.0)
+        )
+
+        pipeline = QdrantSearchPipeline(
+            embedding_provider=embedding_provider,
+            vector_provider=mock_qdrant,
+            id_mapper=S3KeyIDMapper(),
+            search_params=search_params,
+        )
+
+        result = await pipeline.search("red bird", collection="test-col", limit=10)
+
+        mock_qdrant.search_async.assert_called_once_with(
+            collection="test-col",
+            query_vector=[0.1, 0.2, 0.3],
+            limit=10,
+            search_params=search_params,
+        )
+        assert result.doc_ids == ["100"]
+
+    @pytest.mark.asyncio
+    async def test_default_search_params_is_none(self):
+        """QdrantSearchPipeline defaults search_params to None."""
+        embedding_provider = AsyncMock()
+        embedding_provider.embed_text.return_value = [0.5]
+
+        mock_qdrant = AsyncMock(spec=QdrantClientWrapper)
+        mock_qdrant.search_async.return_value = _make_search_results(
+            ("uuid-b", {"s3_key": "200"}),
+        )
+
+        pipeline = QdrantSearchPipeline(
+            embedding_provider=embedding_provider,
+            vector_provider=mock_qdrant,
+            id_mapper=S3KeyIDMapper(),
+        )
+
+        result = await pipeline.search("query", collection="col", limit=5)
+
+        mock_qdrant.search_async.assert_called_once_with(
+            collection="col",
+            query_vector=[0.5],
+            limit=5,
+            search_params=None,
+        )
+        assert result.doc_ids == ["200"]
+
+    @pytest.mark.asyncio
+    async def test_raises_type_error_for_non_qdrant_provider(self):
+        """QdrantSearchPipeline raises TypeError for non-Qdrant providers."""
+        embedding_provider = AsyncMock()
+        embedding_provider.embed_text.return_value = [0.1]
+
+        non_qdrant_provider = AsyncMock()
+
+        pipeline = QdrantSearchPipeline(
+            embedding_provider=embedding_provider,
+            vector_provider=non_qdrant_provider,
+            id_mapper=S3KeyIDMapper(),
+        )
+
+        with pytest.raises(TypeError, match="QdrantSearchPipeline requires QdrantClientWrapper"):
+            await pipeline.search("query", collection="col", limit=5)

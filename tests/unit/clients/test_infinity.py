@@ -513,11 +513,14 @@ class TestInfinityClientModality:
         """Test that image embedding sends modality='image' parameter.
 
         **Why this test is important:**
-          - Infinity uses modality to distinguish text vs image
-          - Incorrect modality returns wrong vector space
+          - Infinity requires explicit modality='image' to process base64 data
+            URIs through the vision encoder
+          - Without it, Infinity treats the base64 string as text input,
+            producing collapsed (identical) vectors for all images
 
         **What it tests:**
           - Request payload includes modality: "image"
+          - Request input is a base64 data URI
         """
         infinity_response = {"data": [{"embedding": [0.1] * 1152, "index": 0}]}
         mock_post_response = MagicMock()
@@ -801,5 +804,7 @@ class TestInfinityVectorSizes:
         """
         assert "google/siglip-so400m-patch14-384" in INFINITY_VECTOR_SIZES
         assert INFINITY_VECTOR_SIZES["google/siglip-so400m-patch14-384"] == 1152
+        assert "google/siglip-base-patch16-224" in INFINITY_VECTOR_SIZES
+        assert INFINITY_VECTOR_SIZES["google/siglip-base-patch16-224"] == 768
         assert "google/siglip2-base-patch16-224" in INFINITY_VECTOR_SIZES
         assert INFINITY_VECTOR_SIZES["google/siglip2-base-patch16-224"] == 768

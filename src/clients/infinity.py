@@ -110,6 +110,8 @@ _infinity_log_retry = create_retry_logger(
 # Known Infinity (SigLIP) model vector sizes
 INFINITY_VECTOR_SIZES: dict[str, int] = {
     "google/siglip-so400m-patch14-384": 1152,
+    "google/siglip-base-patch16-224": 768,
+    "google/siglip2-so400m-patch14-384": 1152,
     "google/siglip2-base-patch16-224": 768,
 }
 
@@ -300,11 +302,12 @@ class InfinityClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
             client = await self._get_async_client()
 
             url = f"{self.base_url}/embeddings"
-            payload = {
+            payload: dict[str, object] = {
                 "model": self.model,
                 "input": inputs,
-                "modality": modality,
             }
+            if modality:
+                payload["modality"] = modality
 
             response = await client.post(url, json=payload)
             response.raise_for_status()

@@ -59,7 +59,9 @@ class S3KeyIDMapper:
         """
         s3_key = payload.get("s3_key")
         if isinstance(s3_key, str):
-            return s3_key
+            # Extract basename — s3_key may include a prefix path
+            # (e.g., "benchmark-images/1009530" → "1009530")
+            return s3_key.rsplit("/", 1)[-1]
         return point_id
 
     def batch_doc_ids_to_point_ids(self, doc_ids: list[str]) -> list[str]:

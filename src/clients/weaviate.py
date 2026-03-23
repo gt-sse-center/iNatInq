@@ -33,7 +33,7 @@ The client wrapper:
 
 import asyncio
 import logging
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urlparse
 
 import aiobreaker
@@ -42,6 +42,9 @@ from typing_extensions import override
 from weaviate import WeaviateAsyncClient
 from weaviate.auth import AuthApiKey
 from weaviate.classes.config import Configure, DataType, Property, VectorDistances
+
+if TYPE_CHECKING:
+    from weaviate.collections.classes.config_base import _QuantizerConfigCreate  # pyright: ignore[reportPrivateUsage]
 from weaviate.classes.data import DataObject
 from weaviate.classes.init import Timeout
 from weaviate.config import AdditionalConfig
@@ -54,7 +57,7 @@ from weaviate.exceptions import (
 )
 
 from config import VectorDBConfig
-from core.models import SearchResultItem, SearchResults
+from core.models import CollectionInfo, SearchResultItem, SearchResults
 from foundation.circuit_breaker import (
     create_async_circuit_breaker,
     with_circuit_breaker_async,
@@ -309,7 +312,13 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
 
     @with_client_metrics_async("weaviate", "ensure_collection_async")
     @with_circuit_breaker_async("weaviate")
-    async def ensure_collection_async(self, *, collection: str, vector_size: int) -> None:
+    async def ensure_collection_async(
+        self,
+        *,
+        collection: str,
+        vector_size: int,
+        quantizer: "_QuantizerConfigCreate | None" = None,
+    ) -> None:
         """Create a Weaviate collection (class) if it does not already exist.
 
         This is a dev convenience function that checks for collection existence and
@@ -321,6 +330,9 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             vector_size: Dimension of vectors that will be stored in this collection.
                 Must match the embedding dimension from your model (e.g., 768 for
                 `nomic-embed-text`).
+            quantizer: Optional Weaviate quantizer configuration. Use
+                ``Configure.VectorIndex.Quantizer.sq()`` for scalar or
+                ``Configure.VectorIndex.Quantizer.bq()`` for binary.
 
         Note:
             The collection is created with:
@@ -350,6 +362,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
                         vector_config=Configure.Vectors.self_provided(
                             vector_index_config=Configure.VectorIndex.hnsw(
                                 distance_metric=VectorDistances.COSINE,
+                                quantizer=quantizer,
                             ),
                         ),
                     )
@@ -411,6 +424,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
         collection: str,
         vector_size: int = 512,
         distance_metric: DistanceMetric = "cosine",
+        quantizer: "_QuantizerConfigCreate | None" = None,
     ) -> None:
         """Create a Weaviate class for image embeddings if it does not already exist.
 
@@ -428,6 +442,9 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             vector_size: Dimension of vectors. Default 512 (CLIP models like ViT-B/32).
             distance_metric: Distance metric for vector similarity. One of "cosine",
                 "euclidean", or "dot". Default "cosine" (standard for embeddings).
+            quantizer: Optional Weaviate quantizer configuration. Use
+                ``Configure.VectorIndex.Quantizer.sq()`` for scalar or
+                ``Configure.VectorIndex.Quantizer.bq()`` for binary.
 
         Note:
             If the class already exists, this function does nothing (no-op).
@@ -459,6 +476,7 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
                         vector_config=Configure.Vectors.self_provided(
                             vector_index_config=Configure.VectorIndex.hnsw(
                                 distance_metric=_DISTANCE_METRIC_MAP[distance_metric],
+                                quantizer=quantizer,
                             ),
                         ),
                     )
@@ -476,6 +494,46 @@ class WeaviateClientWrapper(VectorDBClientBase, VectorDBProvider):
             before_sleep=_weaviate_log_retry,
             operation="Weaviate ensure_image_collection",
             client="weaviate",
+        )
+
+    @with_client_metrics_async("weaviate", "get_collection_info_async")
+    @with_circuit_breaker_async("weaviate")
+    async def get_collection_info_async(self, *, collection: str) -> CollectionInfo:
+        """Retrieve collection metadata from Weaviate.
+
+        Weaviate may not expose vector dimensions depending on vectorizer
+        configuration. When the dimension is unavailable, ``vector_size=0``
+        is returned so callers can skip validation.
+
+        Args:
+            collection: Collection name to query.
+
+        Returns:
+            CollectionInfo with the collection name and vector dimension.
+        """
+
+        async def _do_get_info() -> CollectionInfo:
+            class_name = self._to_class_name(collection)
+            async with self._client:
+                col = self._client.collections.get(class_name)
+                cfg = await col.config.get()
+                # Attempt to extract vector dimension from the config
+                vector_size = 0
+                if hasattr(cfg, "vectorizer_config") and cfg.vectorizer_config:
+                    vec_cfg = cfg.vectorizer_config
+                    if hasattr(vec_cfg, "vector_dimension"):
+                        vector_size = int(vec_cfg.vector_dimension or 0)  # type: ignore[attr-defined]
+                return CollectionInfo(name=collection, vector_size=vector_size)
+
+        return await async_retry_call(
+            _do_get_info,
+            max_retries=self.max_retries,
+            min_wait=self.retry_min_wait,
+            max_wait=self.retry_max_wait,
+            is_retriable=_weaviate_classifier.is_retriable,
+            before_sleep=_weaviate_log_retry,
+            client="weaviate",
+            operation="get_collection_info_async",
         )
 
     @with_client_metrics_async("weaviate", "search_async")

@@ -14,7 +14,7 @@ from api.app import create_app
 from clients.interfaces.embedding import EmbeddingProvider
 from clients.interfaces.vector_db import VectorDBProvider
 from config import ProviderType
-from core.models import SearchResultItem, SearchResults
+from core.models import CollectionInfo, SearchResultItem, SearchResults
 from fastapi.testclient import TestClient
 
 # =============================================================================
@@ -89,6 +89,9 @@ def mock_vector_db_provider() -> MagicMock:
     )
     provider.batch_upsert_async = AsyncMock()
     provider.ensure_collection_async = AsyncMock()
+    provider.get_collection_info_async = AsyncMock(
+        return_value=CollectionInfo(name="documents", vector_size=768)
+    )
     provider.close = MagicMock()
     return provider
 
@@ -282,6 +285,9 @@ def mock_image_vector_db_provider() -> MagicMock:
             ],
             total=2,
         )
+    )
+    provider.get_collection_info_async = AsyncMock(
+        return_value=CollectionInfo(name="documents", vector_size=768)
     )
     provider.close = MagicMock()
     return provider
