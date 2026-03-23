@@ -14,7 +14,7 @@ from botocore.exceptions import ClientError
 from clients.interfaces.embedding import EmbeddingProvider
 from clients.interfaces.vector_db import VectorDBProvider
 from clients.s3 import S3ClientWrapper
-from core.exceptions import UpstreamError
+from foundation.exceptions import UpstreamError
 from foundation.rate_limiter import RateLimiter
 
 from .types import (

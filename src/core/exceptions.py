@@ -27,7 +27,8 @@ PipelineError (base)     → HTTP 500 (Internal Server Error)
 ## Usage
 
 ```python
-from core.exceptions import BadRequestError, UpstreamError
+from core.exceptions import BadRequestError
+from foundation.exceptions import UpstreamError
 
 if invalid_input:
     raise BadRequestError("Invalid input provided")
@@ -38,9 +39,6 @@ except Exception as e:
     raise UpstreamError(f"Service call failed: {e}") from e
 ```
 """
-
-# Re-export UpstreamError from foundation for compatibility
-from foundation.exceptions import UpstreamError  # noqa: F401
 
 
 class PipelineError(Exception):

@@ -31,7 +31,8 @@ from unittest.mock import MagicMock
 import attrs.exceptions
 import pytest
 
-from core.exceptions import BadRequestError, UpstreamError
+from foundation.exceptions import UpstreamError
+from core.exceptions import BadRequestError
 from core.models import SearchResultItem as SearchItem
 from core.models import SearchResults
 from core.services.search_service import ImageSearchService

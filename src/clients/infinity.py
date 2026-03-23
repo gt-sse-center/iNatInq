@@ -52,7 +52,7 @@ from typing_extensions import override
 
 from clients.interfaces import EmbeddingProvider
 from config import EmbeddingConfig
-from core.exceptions import UpstreamError
+from foundation.exceptions import UpstreamError
 from foundation.metrics.decorators import with_client_metrics_async
 from foundation.circuit_breaker import (
     create_async_circuit_breaker,

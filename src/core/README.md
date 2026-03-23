@@ -36,7 +36,7 @@ Business logic orchestration layer that coordinates multiple clients to accompli
 **Purpose:**
 
 - Provides framework-agnostic business logic
-- Orchestrates multiple clients for complex operations  
+- Orchestrates multiple clients for complex operations
 - Implements validation and error handling
 - Can be used from APIs, CLIs, or tests
 
@@ -68,7 +68,8 @@ Core exception classes for the application.
 **Usage:**
 
 ```python
-from core.exceptions import UpstreamError, BadRequestError
+from core.exceptions import BadRequestError
+from foundation.exceptions import UpstreamError
 
 # Raise when an external service fails
 raise UpstreamError(f"Failed to connect to Qdrant: {error}")
@@ -205,20 +206,20 @@ client.batch_upsert(collection="documents", points=points, vector_size=768)
 
 ```python
 from core.models import SearchResults
-from core.exceptions import UpstreamError
+from foundation.exceptions import UpstreamError
 
 def search_service(query: str) -> SearchResults:
     try:
         # Generate embedding
         vector = embedding_client.embed(query)
-        
+
         # Search vector database
         results = vector_db_client.search(
             collection="documents",
             query_vector=vector,
             limit=10
         )
-        
+
         return results
     except Exception as e:
         raise UpstreamError(f"Search failed: {e}")

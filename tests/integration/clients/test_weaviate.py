@@ -34,7 +34,6 @@ import asyncio
 import logging
 import time
 import uuid as uuid_module
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pybreaker
@@ -44,7 +43,7 @@ from testcontainers.core.container import DockerContainer
 
 from clients.weaviate import WeaviateClientWrapper, WeaviateDataObject
 from config import VectorDBConfig
-from core.exceptions import UpstreamError
+from foundation.exceptions import UpstreamError
 
 logger = logging.getLogger(__name__)
 
