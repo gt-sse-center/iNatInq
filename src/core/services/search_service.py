@@ -20,6 +20,9 @@ import attrs
 
 from core.exceptions import BadRequestError
 from foundation.metrics.registry import (
+    CACHE_HITS_TOTAL,
+    CACHE_LOOKUP_DURATION,
+    CACHE_MISSES_TOTAL,
     SEARCH_EMBEDDING_DURATION,
     SEARCH_RESULT_COUNT,
     SEARCH_VECTOR_QUERY_DURATION,
@@ -114,11 +117,14 @@ class ImageSearchService:
 
         # Check semantic cache before hitting the vector database
         if self.cache is not None:
-            cached = await self.cache.lookup(collection, query_embedding, limit)
+            with CACHE_LOOKUP_DURATION.labels(collection=collection).time():
+                cached = await self.cache.lookup(collection, query_embedding, limit)
             if cached is not None:
+                CACHE_HITS_TOTAL.labels(collection=collection).inc()
                 logger.debug("Semantic cache hit for collection=%s", collection)
                 SEARCH_RESULT_COUNT.labels(collection=collection).observe(len(cached.items))
                 return cached
+            CACHE_MISSES_TOTAL.labels(collection=collection).inc()
 
         with SEARCH_VECTOR_QUERY_DURATION.labels(
             provider=self.vector_db_provider_name, collection=collection
