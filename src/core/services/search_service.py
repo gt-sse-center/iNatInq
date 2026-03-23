@@ -9,17 +9,23 @@ The services:
 3. Format and return results
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import attrs
 
-from clients.interfaces.embedding import EmbeddingProvider
-from clients.interfaces.vector_db import VectorDBProvider
 from core.exceptions import BadRequestError
-from core.models import SearchResults
 from foundation.metrics.registry import (
     SEARCH_EMBEDDING_DURATION,
     SEARCH_RESULT_COUNT,
     SEARCH_VECTOR_QUERY_DURATION,
 )
+
+if TYPE_CHECKING:
+    from clients.interfaces.embedding import EmbeddingProvider
+    from clients.interfaces.vector_db import VectorDBProvider
+    from core.models import SearchResults
 
 
 @attrs.define(frozen=True, slots=True)
@@ -29,7 +35,7 @@ class ImageSearchService:
     This service orchestrates text-to-image search by:
     1. Generating text embedding for the query via EmbeddingProvider
     2. Searching image collections in vector database
-    3. Returning formatted results with image metadata and similarity scores
+    3. Returning formatted results
 
     Attributes:
         embedding_provider: EmbeddingProvider instance for generating text embeddings.
@@ -94,11 +100,9 @@ class ImageSearchService:
         if limit < 1 or limit > 100:
             raise BadRequestError("Limit must be between 1 and 100")
 
-        # 1. Generate text embedding for query (async)
         with SEARCH_EMBEDDING_DURATION.labels(provider=self.embedding_provider_name).time():
             query_embedding = await self.embedding_provider.embed_text(query.strip())
 
-        # 2. Search image collection (async)
         with SEARCH_VECTOR_QUERY_DURATION.labels(
             provider=self.vector_db_provider_name, collection=collection
         ).time():
@@ -107,6 +111,7 @@ class ImageSearchService:
                 query_vector=query_embedding,
                 limit=limit,
             )
+
         # Intentionally not observed on error: SEARCH_RESULT_COUNT tracks result
         # distributions for successful queries only. Error-path searches have no
         # result count to record; error rates are tracked separately via

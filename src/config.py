@@ -1362,6 +1362,55 @@ class DatabricksRayJobConfig(BaseModel):
         )
 
 
+class SemanticCacheConfig(BaseModel):
+    """Semantic cache configuration.
+
+    Controls the in-memory Qdrant-backed semantic cache for search queries.
+    The cache is always present in ``Settings``; the ``enabled`` flag
+    controls whether caching is active.
+
+    Attributes:
+        enabled: Whether the semantic cache is active.
+        similarity_threshold: Minimum cosine similarity score
+            (0.0 <= threshold <= 1.0) to treat a cache lookup as a hit.
+        max_entries_per_collection: Maximum cached entries per collection.
+            A random entry is evicted when this limit is reached.
+        invalidation_interval_seconds: Seconds between automatic
+            invalidation sweeps.
+        timeout_s: Timeout in seconds for the in-memory Qdrant client.
+
+    Environment Variables:
+        SEMANTIC_CACHE_ENABLED: ``true`` or ``false``. Default: ``true``.
+        SEMANTIC_CACHE_SIMILARITY_THRESHOLD: Float in [0.0, 1.0]. Default: ``0.95``.
+        SEMANTIC_CACHE_MAX_ENTRIES: Positive integer. Default: ``1000``.
+        SEMANTIC_CACHE_INVALIDATION_INTERVAL: Positive integer (seconds). Default: ``3600``.
+        SEMANTIC_CACHE_TIMEOUT: Positive integer (seconds). Default: ``5``.
+    """
+
+    enabled: bool = True
+    similarity_threshold: float = Field(default=0.95, ge=0.0, le=1.0)
+    max_entries_per_collection: int = Field(default=1000, gt=0)
+    invalidation_interval_seconds: int = Field(default=3600, gt=0)
+    timeout_s: int = Field(default=5, gt=0)
+
+    model_config = SettingsConfigDict(frozen=True)
+
+    @classmethod
+    def from_env(cls) -> "SemanticCacheConfig":
+        """Create SemanticCacheConfig from environment variables.
+
+        Returns:
+            Configured SemanticCacheConfig instance.
+        """
+        return cls(
+            enabled=os.getenv("SEMANTIC_CACHE_ENABLED", "true").lower() == "true",
+            similarity_threshold=float(os.getenv("SEMANTIC_CACHE_SIMILARITY_THRESHOLD", "0.95")),
+            max_entries_per_collection=int(os.getenv("SEMANTIC_CACHE_MAX_ENTRIES", "1000")),
+            invalidation_interval_seconds=int(os.getenv("SEMANTIC_CACHE_INVALIDATION_INTERVAL", "3600")),
+            timeout_s=int(os.getenv("SEMANTIC_CACHE_TIMEOUT", "5")),
+        )
+
+
 class Settings(BaseModel):
     """Immutable runtime configuration for the pipeline service.
 
@@ -1379,12 +1428,15 @@ class Settings(BaseModel):
             settings.
         k8s_namespace: Kubernetes namespace where ML components are
             deployed. Used for service discovery and resource naming.
+        semantic_cache: Semantic cache configuration. The ``enabled``
+            field controls whether caching is active.
     """
 
     embedding: EmbeddingConfig
     vector_db: VectorDBConfig
     minio: MinIOConfig
     k8s_namespace: str
+    semantic_cache: SemanticCacheConfig
 
     model_config = SettingsConfigDict(frozen=True)
 
@@ -1406,6 +1458,7 @@ class Settings(BaseModel):
             vector_db=VectorDBConfig.from_env(namespace=ns),
             minio=MinIOConfig.from_env(namespace=ns),
             k8s_namespace=ns,
+            semantic_cache=SemanticCacheConfig.from_env(),
         )
 
 

@@ -22,11 +22,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from pydantic import ValidationError
+
 from config import (
     DatabricksRayJobConfig,
     INatConfig,
     MinIOConfig,
     RayJobConfig,
+    SemanticCacheConfig,
+    Settings,
     VectorDBConfig,
     resolve_vector_db_provider,
     resolve_vector_db_targets,
@@ -1093,3 +1097,79 @@ class TestINatConfig:
         """Test that INAT_MAX_ROWS whitespace is stripped."""
         config = INatConfig.from_env()
         assert config.max_rows == 25
+
+
+# =============================================================================
+# SemanticCacheConfig Tests
+# =============================================================================
+
+
+class TestSemanticCacheConfig:
+    """Test suite for SemanticCacheConfig defaults, from_env, and validation."""
+
+    def test_default_values(self) -> None:
+        """All defaults: enabled=True, threshold=0.95, max_entries=1000, interval=3600, timeout=5."""
+        config = SemanticCacheConfig()
+        assert config.enabled is True
+        assert config.similarity_threshold == 0.95
+        assert config.max_entries_per_collection == 1000
+        assert config.invalidation_interval_seconds == 3600
+        assert config.timeout_s == 5
+
+    @patch.dict(
+        os.environ,
+        {
+            "SEMANTIC_CACHE_ENABLED": "false",
+            "SEMANTIC_CACHE_SIMILARITY_THRESHOLD": "0.8",
+            "SEMANTIC_CACHE_MAX_ENTRIES": "500",
+            "SEMANTIC_CACHE_INVALIDATION_INTERVAL": "1800",
+            "SEMANTIC_CACHE_TIMEOUT": "10",
+        },
+        clear=True,
+    )
+    def test_from_env_overrides(self) -> None:
+        """Each SEMANTIC_CACHE_* env var correctly overrides its field."""
+        config = SemanticCacheConfig.from_env()
+        assert config.enabled is False
+        assert config.similarity_threshold == 0.8
+        assert config.max_entries_per_collection == 500
+        assert config.invalidation_interval_seconds == 1800
+        assert config.timeout_s == 10
+
+    def test_invalid_threshold_raises(self) -> None:
+        """Threshold outside [0.0, 1.0] raises ValidationError."""
+        with pytest.raises(ValidationError, match="similarity_threshold"):
+            SemanticCacheConfig(similarity_threshold=1.5)
+        with pytest.raises(ValidationError, match="similarity_threshold"):
+            SemanticCacheConfig(similarity_threshold=-0.1)
+
+    def test_invalid_max_entries_raises(self) -> None:
+        """max_entries_per_collection <= 0 raises ValidationError."""
+        with pytest.raises(ValidationError, match="max_entries_per_collection"):
+            SemanticCacheConfig(max_entries_per_collection=0)
+        with pytest.raises(ValidationError, match="max_entries_per_collection"):
+            SemanticCacheConfig(max_entries_per_collection=-1)
+
+    def test_settings_includes_semantic_cache(self) -> None:
+        """Settings has semantic_cache field of type SemanticCacheConfig."""
+        settings = Settings.model_construct(
+            embedding=None,
+            vector_db=None,
+            minio=None,
+            k8s_namespace="test",
+            semantic_cache=SemanticCacheConfig(),
+        )
+        assert isinstance(settings.semantic_cache, SemanticCacheConfig)
+        assert settings.semantic_cache.enabled is True
+
+    @patch.dict(os.environ, {"SEMANTIC_CACHE_ENABLED": "false"}, clear=True)
+    def test_disabled_via_env(self) -> None:
+        """SEMANTIC_CACHE_ENABLED=false produces enabled=False."""
+        config = SemanticCacheConfig.from_env()
+        assert config.enabled is False
+
+    def test_config_is_frozen(self) -> None:
+        """SemanticCacheConfig instances are immutable."""
+        config = SemanticCacheConfig()
+        with pytest.raises(ValidationError):
+            config.enabled = False  # type: ignore[misc]

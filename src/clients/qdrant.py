@@ -49,7 +49,6 @@ from foundation.circuit_breaker import (
 from foundation.exceptions import UpstreamError
 from foundation.metrics.decorators import with_client_metrics, with_client_metrics_async
 from foundation.retry import HTTPErrorClassifier, async_retry_call, create_retry_logger
-
 from .base import VectorDBClientBase
 from .interfaces.vector_db import VectorDBProvider
 
@@ -131,8 +130,8 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
     max_retries: int = attrs.field(default=3)
     retry_min_wait: float = attrs.field(default=1.0)
     retry_max_wait: float = attrs.field(default=10.0)
-    _client: AsyncQdrantClient = attrs.field(init=False, default=None)
-    _sync_client: QdrantClient = attrs.field(init=False, default=None)
+    _client: AsyncQdrantClient | None = attrs.field(init=False, default=None)
+    _sync_client: QdrantClient | None = attrs.field(init=False, default=None)
     _async_breaker: aiobreaker.CircuitBreaker = attrs.field(init=False)
 
     @override

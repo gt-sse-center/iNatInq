@@ -36,6 +36,7 @@ clients/
 ├── interfaces/          # Abstract Base Classes (ABCs)
 │   ├── embedding.py     # EmbeddingProvider ABC
 │   └── vector_db.py     # VectorDBProvider ABC
+├── cache.py             # CacheClient (in-memory semantic cache)
 ├── ollama.py            # OllamaClient (implements EmbeddingProvider)
 ├── qdrant.py            # QdrantClientWrapper (implements VectorDBProvider)
 ├── weaviate.py          # WeaviateClientWrapper (implements VectorDBProvider)
@@ -79,6 +80,83 @@ vector_size = provider.vector_size
 ```
 
 See `interfaces/README.md` for detailed documentation.
+
+### `cache.py`
+
+Optional in-memory semantic cache for search queries, backed by an in-memory
+Qdrant instance (`location=":memory:"`). Each user-facing collection gets its
+own `cache_{collection_name}` collection inside the in-memory Qdrant, providing
+per-collection isolation.
+
+**Class:** `CacheClient`
+
+**Purpose:** Reduce latency and vector DB load by caching search results keyed
+on query embedding similarity. When a new query arrives, the cache performs a
+cosine similarity lookup against previously stored query embeddings. If the
+best match scores at or above a configurable threshold, the cached results are
+returned without hitting the vector database.
+
+**Configuration:**
+
+The cache is controlled by the `SEMANTIC_CACHE_ENABLED` environment variable
+(default: `true`). Configuration can also be provided via YAML config files
+(see `config_loader.py`).
+
+| Environment Variable | Description | Default |
+|---|---|---|
+| `SEMANTIC_CACHE_ENABLED` | Enable/disable the cache | `true` |
+| `SEMANTIC_CACHE_SIMILARITY_THRESHOLD` | Min cosine similarity for a cache hit | `0.95` |
+| `SEMANTIC_CACHE_MAX_ENTRIES` | Max cached entries per collection | `1000` |
+| `SEMANTIC_CACHE_INVALIDATION_INTERVAL` | Seconds between invalidation sweeps | `3600` |
+| `SEMANTIC_CACHE_TIMEOUT` | Qdrant client timeout in seconds | `5` |
+
+Corresponding YAML paths: `semantic_cache.enabled`,
+`semantic_cache.similarity_threshold`, `semantic_cache.max_entries`,
+`semantic_cache.invalidation_interval`, `semantic_cache.timeout`.
+
+**Per-collection isolation:** Each collection (e.g. `"documents"`) gets a
+separate cache collection (`cache_documents`). Collections are lazily created
+on the first `store()` call.
+
+**Eviction:** Random entry evicted when `max_entries_per_collection` is reached.
+
+**Graceful Degradation:** All public methods are exception-safe — cache failures
+are logged and swallowed so the search pipeline continues unaffected.
+
+**Methods:**
+
+- `lookup(collection, query_vector, limit) -> SearchResults | None`: Look up
+  cached results; returns `None` on miss or non-existent collection
+- `store(collection, query_vector, query_text, results, limit)`: Store results;
+  lazily creates collection on first use; evicts when at capacity
+- `invalidate(collection=None)`: Delete specific collection cache or all caches
+- `size(collection) -> int`: Return entry count (0 if collection doesn't exist)
+- `close()`: Close the underlying Qdrant client
+
+**Singleton:**
+
+```python
+from clients.cache import get_semantic_cache
+
+cache = get_semantic_cache()  # Returns CacheClient or None (when disabled)
+if cache is not None:
+    cached = await cache.lookup(
+        collection="documents",
+        query_vector=[0.1, 0.2, ...],
+        limit=10,
+    )
+    if cached is not None:
+        return cached  # Cache hit
+
+    results = await vector_db.search_async(...)  # Cache miss
+    await cache.store(
+        collection="documents",
+        query_vector=[0.1, 0.2, ...],
+        query_text="sunset over ocean",
+        results=results,
+        limit=10,
+    )
+```
 
 ### `s3.py`
 
