@@ -179,7 +179,9 @@ def test_main_happy_path_loads_window_processes_batches_and_commits_cursor() -> 
         return stats
 
     with (
-        patch("core.ingestion.databricks.process_s3_images_from_bronze._apply_python_params") as mock_apply_params,
+        patch(
+            "core.ingestion.databricks.process_s3_images_from_bronze._apply_python_params"
+        ) as mock_apply_params,
         patch(
             "core.ingestion.databricks.process_s3_images_from_bronze.BronzeRayCDCConfig.from_env",
             return_value=cdc_cfg,
@@ -200,10 +202,19 @@ def test_main_happy_path_loads_window_processes_batches_and_commits_cursor() -> 
             "core.ingestion.databricks.process_s3_images_from_bronze.VectorDBConfig.from_env",
             return_value=vector_cfg,
         ) as mock_vector_from_env,
-        patch("core.ingestion.databricks.process_s3_images_from_bronze.DatabricksStrategy") as mock_strategy_cls,
-        patch("core.ingestion.databricks.process_s3_images_from_bronze._spark_session_class", return_value=spark_session_cls),
-        patch("core.ingestion.databricks.process_s3_images_from_bronze._assert_table_exists") as mock_assert_table_exists,
-        patch("core.ingestion.databricks.process_s3_images_from_bronze.ensure_progress_table") as mock_ensure_progress_table,
+        patch(
+            "core.ingestion.databricks.process_s3_images_from_bronze.DatabricksStrategy"
+        ) as mock_strategy_cls,
+        patch(
+            "core.ingestion.databricks.process_s3_images_from_bronze._spark_session_class",
+            return_value=spark_session_cls,
+        ),
+        patch(
+            "core.ingestion.databricks.process_s3_images_from_bronze._assert_table_exists"
+        ) as mock_assert_table_exists,
+        patch(
+            "core.ingestion.databricks.process_s3_images_from_bronze.ensure_progress_table"
+        ) as mock_ensure_progress_table,
         patch(
             "core.ingestion.databricks.process_s3_images_from_bronze.load_progress_cursor",
             return_value=existing_cursor,
@@ -212,15 +223,25 @@ def test_main_happy_path_loads_window_processes_batches_and_commits_cursor() -> 
             "core.ingestion.databricks.process_s3_images_from_bronze.load_next_window",
             return_value=window_records,
         ) as mock_load_window,
-        patch("core.ingestion.databricks.process_s3_images_from_bronze.assert_unique_window_keys") as mock_assert_unique_keys,
-        patch("core.ingestion.databricks.process_s3_images_from_bronze.process_image_batch_ray") as mock_process_task,
+        patch(
+            "core.ingestion.databricks.process_s3_images_from_bronze.assert_unique_window_keys"
+        ) as mock_assert_unique_keys,
+        patch(
+            "core.ingestion.databricks.process_s3_images_from_bronze.process_image_batch_ray"
+        ) as mock_process_task,
         patch(
             "core.ingestion.databricks.process_s3_images_from_bronze.run_ray_batch_processing",
             side_effect=_fake_run_ray_batch_processing,
         ) as mock_run_batches,
-        patch("core.ingestion.databricks.process_s3_images_from_bronze.merge_progress_cursor") as mock_merge_cursor,
-        patch("core.ingestion.databricks.process_s3_images_from_bronze.QdrantClientWrapper.from_config") as mock_qdrant_from_config,
-        patch("core.ingestion.databricks.process_s3_images_from_bronze.qdrant_indexing_disabled") as mock_qdrant_indexing,
+        patch(
+            "core.ingestion.databricks.process_s3_images_from_bronze.merge_progress_cursor"
+        ) as mock_merge_cursor,
+        patch(
+            "core.ingestion.databricks.process_s3_images_from_bronze.QdrantClientWrapper.from_config"
+        ) as mock_qdrant_from_config,
+        patch(
+            "core.ingestion.databricks.process_s3_images_from_bronze.qdrant_indexing_disabled"
+        ) as mock_qdrant_indexing,
         patch.dict("os.environ", {}, clear=False),
     ):
         mock_strategy_cls.from_env.return_value = strategy
@@ -246,7 +267,9 @@ def test_main_happy_path_loads_window_processes_batches_and_commits_cursor() -> 
 
     assert submitted_batches == [["img001.jpg", "img002.jpg"], ["img003.jpg"]]
     assert mock_process_task.options.call_count == 1
-    mock_process_task.options.assert_called_once_with(num_cpus=ray_cfg.task_num_cpus, max_retries=ray_cfg.task_max_retries)
+    mock_process_task.options.assert_called_once_with(
+        num_cpus=ray_cfg.task_num_cpus, max_retries=ray_cfg.task_max_retries
+    )
     assert mock_process_task.options.return_value.remote.call_count == 2
     mock_process_task.options.return_value.remote.assert_any_call(
         s3_keys=["img001.jpg", "img002.jpg"],
