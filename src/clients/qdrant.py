@@ -148,9 +148,12 @@ class QdrantClientWrapper(VectorDBClientBase, VectorDBProvider):
 
     def __attrs_post_init__(self) -> None:
         """Initialize the Qdrant async client and circuit breaker."""
-        self._client = AsyncQdrantClient(
-            url=self.url, api_key=self.api_key, timeout=self.timeout_s, pool_size=10
-        )
+        client_kwargs = {
+            "url": self.url,
+            "api_key": self.api_key,
+            "timeout": self.timeout_s,
+        }
+        self._client = AsyncQdrantClient(**client_kwargs, pool_size=10)
         self._sync_client = QdrantClient(url=self.url, api_key=self.api_key, timeout=self.timeout_s)
 
         # Initialize circuit breaker from base class

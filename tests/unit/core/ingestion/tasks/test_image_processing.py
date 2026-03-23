@@ -834,6 +834,7 @@ class TestProcessImageBatchRay:
                     pipeline_concurrency=20,
                     circuit_breaker_threshold=10,
                     embedding_timeout=180,
+                    s3_key_prefix="images",
                 )
 
         # Verify config was created with custom parameters
@@ -841,3 +842,4 @@ class TestProcessImageBatchRay:
         assert call_kwargs["max_concurrency"] == 20
         assert call_kwargs["circuit_breaker_threshold"] == 10
         assert call_kwargs["embedding_timeout"] == 180
+        assert call_kwargs["s3_key_prefix"] == "images"

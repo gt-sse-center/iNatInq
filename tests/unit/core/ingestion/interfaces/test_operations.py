@@ -479,6 +479,120 @@ class TestImageContentFetcher:
         assert result is not None
         assert result.format == "webp"
 
+    def test_fetch_one_does_not_use_env_prefix_without_key_prefix(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Fetcher should ignore S3_PREFIX env var unless key_prefix is passed."""
+        monkeypatch.setenv("S3_PREFIX", "images")
+        mock_s3 = MagicMock()
+        mock_s3.get_object.side_effect = ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline")
+        result = fetcher.fetch_one("photo.jpg")
+
+        assert result is None
+        mock_s3.get_object.assert_called_once_with(bucket="pipeline", key="photo.jpg")
+
+    def test_fetch_one_retries_with_key_prefix_when_key_missing(self) -> None:
+        """Fetcher should retry with key_prefix when Bronze key omits the prefix."""
+        mock_s3 = MagicMock()
+        jpeg_data = self.JPEG_HEADER + b"\x00" * 100
+
+        def side_effect(*, bucket: str, key: str) -> bytes:
+            if key == "photo.jpg":
+                raise ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+            if key == "images/photo.jpg":
+                return jpeg_data
+            raise AssertionError(f"Unexpected key lookup: {key}")
+
+        mock_s3.get_object.side_effect = side_effect
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline", key_prefix="images")
+        result = fetcher.fetch_one("photo.jpg")
+
+        assert result is not None
+        assert result.s3_key == "photo.jpg"
+        assert result.source_uri == "s3://pipeline/images/photo.jpg"
+        assert result.format == "jpeg"
+
+    def test_fetch_one_retries_with_key_prefix_for_upstream_nosuchkey(self) -> None:
+        """UpstreamError with NoSuchKey code should trigger prefixed fallback."""
+        mock_s3 = MagicMock()
+        jpeg_data = self.JPEG_HEADER + b"\x00" * 100
+
+        def side_effect(*, bucket: str, key: str) -> bytes:
+            if key == "photo.jpg":
+                raise UpstreamError("S3 get_object failed: NoSuchKey")
+            if key == "images/photo.jpg":
+                return jpeg_data
+            raise AssertionError(f"Unexpected key lookup: {key}")
+
+        mock_s3.get_object.side_effect = side_effect
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline", key_prefix="images")
+        result = fetcher.fetch_one("photo.jpg")
+
+        assert result is not None
+        assert result.source_uri == "s3://pipeline/images/photo.jpg"
+
+    def test_fetch_one_does_not_retry_with_prefix_on_non_missing_error(self) -> None:
+        """Non-404 errors should fail immediately without trying prefixed key."""
+        mock_s3 = MagicMock()
+        mock_s3.get_object.side_effect = UpstreamError("S3 get_object failed: AccessDenied")
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline", key_prefix="images")
+        result = fetcher.fetch_one("photo.jpg")
+
+        assert result is None
+        mock_s3.get_object.assert_called_once_with(bucket="pipeline", key="photo.jpg")
+
+    def test_fetch_one_does_not_retry_with_prefix_on_upstream_endpoint_notfound(self) -> None:
+        """Do not treat unrelated NotFound text as a missing-key signal."""
+        mock_s3 = MagicMock()
+        mock_s3.get_object.side_effect = UpstreamError("S3 get_object failed: Endpoint NotFound")
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline", key_prefix="images")
+        result = fetcher.fetch_one("photo.jpg")
+
+        assert result is None
+        mock_s3.get_object.assert_called_once_with(bucket="pipeline", key="photo.jpg")
+
+    @pytest.mark.asyncio
+    async def test_fetch_all_async_retries_with_key_prefix_when_key_missing(self) -> None:
+        """Async fetch path should also retry with key_prefix fallback."""
+        mock_s3 = MagicMock()
+        jpeg_data = self.JPEG_HEADER + b"\x00" * 100
+
+        async def side_effect(*, bucket: str, key: str) -> bytes:
+            if key == "photo.jpg":
+                raise ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+            if key == "images/photo.jpg":
+                return jpeg_data
+            raise AssertionError(f"Unexpected key lookup: {key}")
+
+        mock_s3.get_object_async = AsyncMock(side_effect=side_effect)
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline", key_prefix="images")
+        images, failures = await fetcher.fetch_all_async(["photo.jpg"])
+
+        assert len(images) == 1
+        assert len(failures) == 0
+        assert images[0].s3_key == "photo.jpg"
+        assert images[0].source_uri == "s3://pipeline/images/photo.jpg"
+
+    @pytest.mark.asyncio
+    async def test_fetch_all_async_does_not_retry_with_prefix_on_non_missing_error(self) -> None:
+        """Async path should not retry alternative key for non-missing errors."""
+        mock_s3 = MagicMock()
+        mock_s3.get_object_async = AsyncMock(side_effect=UpstreamError("S3 get_object failed: AccessDenied"))
+
+        fetcher = ImageContentFetcher(mock_s3, bucket="pipeline", key_prefix="images")
+        images, failures = await fetcher.fetch_all_async(["photo.jpg"])
+
+        assert len(images) == 0
+        assert len(failures) == 1
+        mock_s3.get_object_async.assert_called_once_with(bucket="pipeline", key="photo.jpg")
+
     def test_fetch_one_returns_none_on_client_error(self) -> None:
         """Test that fetch returns None on ClientError.
 
