@@ -78,7 +78,10 @@ class BronzeRayCDCConfig:
         watermark_col = (os.getenv("CDC_WATERMARK_COL") or "discovered_at").strip()
         window_size_raw = (os.getenv("CDC_WINDOW_SIZE") or "5000").strip()
 
-        window_size = int(window_size_raw)
+        try:
+            window_size = int(window_size_raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("CDC_WINDOW_SIZE must be a positive integer") from exc
         if window_size <= 0:
             raise ValueError("CDC_WINDOW_SIZE must be a positive integer")
 

@@ -125,6 +125,75 @@ def test_merge_progress_cursor_uses_monotonic_when_matched_condition(monkeypatch
     assert kwargs["condition"] == cdc._monotonic_progress_update_condition()
 
 
+def test_merge_progress_cursor_retries_transient_merge_failure(monkeypatch) -> None:
+    """Merge should retry transient failures before succeeding."""
+    spark = MagicMock()
+    update_df = MagicMock()
+    update_df.withColumn.return_value = update_df
+    spark.createDataFrame.return_value = update_df
+
+    sf = MagicMock()
+    sf.current_timestamp.return_value = "now-ts"
+    monkeypatch.setattr(cdc, "_spark_functions", lambda: sf)
+
+    merge_builder = MagicMock()
+    merge_builder.merge.return_value = merge_builder
+    merge_builder.whenMatchedUpdate.return_value = merge_builder
+    merge_builder.whenNotMatchedInsert.return_value = merge_builder
+    merge_builder.execute.side_effect = [RuntimeError("transient failure"), None]
+
+    delta_table = MagicMock()
+    delta_table.alias.return_value = merge_builder
+    monkeypatch.setattr(cdc, "_delta_table_for_name", lambda _spark, _table: delta_table)
+
+    config = CDCWindowConfig(
+        bronze_table="main.default.images_bronze",
+        progress_table="main.default.images_progress",
+        progress_id="test-progress",
+    )
+    cursor = CDCProgressCursor(last_discovered_at=_ts(10), last_s3_key="k10.jpg")
+
+    merge_progress_cursor(spark, config=config, collection="documents", cursor=cursor)
+
+    assert merge_builder.execute.call_count == 2
+    assert delta_table.alias.call_count == 2
+
+
+def test_merge_progress_cursor_raises_contextual_error_after_retry_exhaustion(monkeypatch) -> None:
+    """Final merge failure should surface context after retry exhaustion."""
+    spark = MagicMock()
+    update_df = MagicMock()
+    update_df.withColumn.return_value = update_df
+    spark.createDataFrame.return_value = update_df
+
+    sf = MagicMock()
+    sf.current_timestamp.return_value = "now-ts"
+    monkeypatch.setattr(cdc, "_spark_functions", lambda: sf)
+
+    merge_builder = MagicMock()
+    merge_builder.merge.return_value = merge_builder
+    merge_builder.whenMatchedUpdate.return_value = merge_builder
+    merge_builder.whenNotMatchedInsert.return_value = merge_builder
+    merge_builder.execute.side_effect = RuntimeError("persistent failure")
+
+    delta_table = MagicMock()
+    delta_table.alias.return_value = merge_builder
+    monkeypatch.setattr(cdc, "_delta_table_for_name", lambda _spark, _table: delta_table)
+
+    config = CDCWindowConfig(
+        bronze_table="main.default.images_bronze",
+        progress_table="main.default.images_progress",
+        progress_id="test-progress",
+    )
+    cursor = CDCProgressCursor(last_discovered_at=_ts(10), last_s3_key="k10.jpg")
+
+    with pytest.raises(RuntimeError, match="Failed to merge CDC progress cursor after retries"):
+        merge_progress_cursor(spark, config=config, collection="documents", cursor=cursor)
+
+    assert merge_builder.execute.call_count == 3
+    assert delta_table.alias.call_count == 3
+
+
 def test_cdc_window_config_rejects_unsafe_bronze_table_name() -> None:
     """Bronze table identifiers should be validated at config construction."""
     with pytest.raises(ValueError, match="Unsafe table identifier"):

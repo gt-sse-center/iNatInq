@@ -8,12 +8,15 @@ This module provides a focused API for:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from datetime import datetime
     from pyspark.sql import SparkSession
+
+logger = logging.getLogger("pipeline.ray.databricks.cdc")
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,36 +202,64 @@ def merge_progress_cursor(
     ).withColumn("updated_at", sf.current_timestamp())
 
     delta_table = _delta_table_for_name(spark, config.progress_table)
-    (
-        delta_table.alias("target")
-        .merge(
-            source=update_df.alias("source"),
-            condition=(
-                "target.progress_id = source.progress_id "
-                "AND target.source_table = source.source_table "
-                "AND target.collection = source.collection"
-            ),
-        )
-        .whenMatchedUpdate(
-            condition=_monotonic_progress_update_condition(),
-            set={
-                "last_discovered_at": "source.last_discovered_at",
-                "last_s3_key": "source.last_s3_key",
-                "updated_at": "source.updated_at",
-            },
-        )
-        .whenNotMatchedInsert(
-            values={
-                "progress_id": "source.progress_id",
-                "source_table": "source.source_table",
-                "collection": "source.collection",
-                "last_discovered_at": "source.last_discovered_at",
-                "last_s3_key": "source.last_s3_key",
-                "updated_at": "source.updated_at",
-            },
-        )
-        .execute()
-    )
+
+    # Delta MERGE can fail transiently in distributed runtimes (e.g. momentary
+    # write conflicts). Retry a few times before surfacing a contextual error.
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        try:
+            (
+                delta_table.alias("target")
+                .merge(
+                    source=update_df.alias("source"),
+                    condition=(
+                        "target.progress_id = source.progress_id "
+                        "AND target.source_table = source.source_table "
+                        "AND target.collection = source.collection"
+                    ),
+                )
+                .whenMatchedUpdate(
+                    condition=_monotonic_progress_update_condition(),
+                    set={
+                        "last_discovered_at": "source.last_discovered_at",
+                        "last_s3_key": "source.last_s3_key",
+                        "updated_at": "source.updated_at",
+                    },
+                )
+                .whenNotMatchedInsert(
+                    values={
+                        "progress_id": "source.progress_id",
+                        "source_table": "source.source_table",
+                        "collection": "source.collection",
+                        "last_discovered_at": "source.last_discovered_at",
+                        "last_s3_key": "source.last_s3_key",
+                        "updated_at": "source.updated_at",
+                    },
+                )
+                .execute()
+            )
+            return
+        except Exception as exc:
+            if attempt < max_attempts:
+                logger.warning(
+                    "CDC progress merge attempt failed; retrying",
+                    extra={
+                        "attempt": attempt,
+                        "max_attempts": max_attempts,
+                        "progress_table": config.progress_table,
+                        "progress_id": config.progress_id,
+                        "collection": collection,
+                        "source_table": config.bronze_table,
+                        "error": str(exc),
+                        "error_type": type(exc).__name__,
+                    },
+                )
+                continue
+            raise RuntimeError(
+                "Failed to merge CDC progress cursor after retries "
+                f"(progress_table={config.progress_table}, progress_id={config.progress_id}, "
+                f"collection={collection}, source_table={config.bronze_table})"
+            ) from exc
 
 
 def _monotonic_progress_update_condition() -> str:

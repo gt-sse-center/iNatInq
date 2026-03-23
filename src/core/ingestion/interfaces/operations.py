@@ -295,6 +295,7 @@ class ImageContentFetcher:
     # Default size limits (in bytes)
     DEFAULT_MIN_SIZE = 100  # 100 bytes - reject tiny/corrupt images
     DEFAULT_MAX_SIZE = 50 * 1024 * 1024  # 50 MB
+    _MISSING_KEY_ERROR_CODES = frozenset({"NoSuchKey", "NotFound", "404"})
 
     def __init__(
         self,
@@ -334,20 +335,30 @@ class ImageContentFetcher:
         return tuple(dict.fromkeys(candidates))
 
     @staticmethod
+    def _extract_s3_error_code(exc: BaseException) -> str | None:
+        """Extract normalized S3 error code from ClientError/UpstreamError."""
+        if isinstance(exc, ClientError):
+            code = str(exc.response.get("Error", {}).get("Code", "")).strip()
+            return code or None
+
+        # Contract with S3ClientWrapper._with_retry: UpstreamError message
+        # format is S3 <operation> failed: <ErrorCode> (for example, S3
+        # get_object failed: NoSuchKey). We extract the trailing token after
+        # the last ":" as the canonical error code to avoid brittle substring
+        # matching.
+        message = str(exc).strip()
+        if not message:
+            return None
+        if ":" in message:
+            code = message.rsplit(":", 1)[-1].strip()
+            return code or None
+        return message
+
+    @staticmethod
     def _is_missing_key_error(exc: BaseException) -> bool:
         """Return True when the error indicates object-not-found for the tried key."""
-        if isinstance(exc, ClientError):
-            error_code = str(exc.response.get("Error", {}).get("Code", ""))
-            return error_code in {"NoSuchKey", "NotFound", "404"}
-
-        # S3ClientWrapper._with_retry wraps ClientError into an UpstreamError
-        # message that ends with the error code after the last colon.
-        # Parse that trailing code exactly to avoid brittle substring matching.
-        message = str(exc)
-        if ":" in message:
-            error_code = message.rsplit(":", 1)[-1].strip()
-            return error_code in {"NoSuchKey", "NotFound", "404"}
-        return message.strip() == "NoSuchKey"
+        error_code = ImageContentFetcher._extract_s3_error_code(exc)
+        return error_code in ImageContentFetcher._MISSING_KEY_ERROR_CODES
 
     def _get_object_with_fallback(self, key: str) -> tuple[bytes, str]:
         """Fetch an object by trying candidate keys in order."""
