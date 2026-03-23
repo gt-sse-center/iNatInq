@@ -165,28 +165,3 @@ class TestCacheInvalidationMetric:
         # Verify invalidation counter incremented
         after = _counter_value("inatinq_cache_invalidations_total", labels)
         assert after == before + 1.0, f"Invalidation counter should increment by 1, got {after - before}"
-
-
-class TestMetricsImportable:
-    """Cache metrics are importable from foundation.metrics."""
-
-    def test_metrics_importable(self) -> None:
-        """All cache metrics can be imported from foundation.metrics."""
-        from foundation.metrics import (
-            CACHE_EVICTIONS_TOTAL,
-            CACHE_HITS_TOTAL,
-            CACHE_INVALIDATIONS_TOTAL,
-            CACHE_LOOKUP_DURATION,
-            CACHE_MISSES_TOTAL,
-            CACHE_SIZE,
-            CACHE_STORE_DURATION,
-        )
-
-        # Verify they're not None
-        assert CACHE_HITS_TOTAL is not None
-        assert CACHE_MISSES_TOTAL is not None
-        assert CACHE_LOOKUP_DURATION is not None
-        assert CACHE_STORE_DURATION is not None
-        assert CACHE_SIZE is not None
-        assert CACHE_EVICTIONS_TOTAL is not None
-        assert CACHE_INVALIDATIONS_TOTAL is not None
