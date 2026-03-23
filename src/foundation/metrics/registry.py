@@ -125,3 +125,50 @@ INGESTION_CHECKPOINT_SAVES = Counter(
     "Total number of checkpoint saves during ingestion",
     labelnames=["pipeline"],
 )
+
+# =============================================================================
+# Semantic Cache Metrics
+# =============================================================================
+
+CACHE_HITS_TOTAL = Counter(
+    "inatinq_cache_hits_total",
+    "Total number of semantic cache hits",
+    labelnames=["collection"],
+)
+
+CACHE_MISSES_TOTAL = Counter(
+    "inatinq_cache_misses_total",
+    "Total number of semantic cache misses",
+    labelnames=["collection"],
+)
+
+CACHE_LOOKUP_DURATION = Histogram(
+    "inatinq_cache_lookup_duration_seconds",
+    "Duration of cache lookup operations in seconds",
+    labelnames=["collection"],
+    buckets=FAST_BUCKETS,
+)
+
+CACHE_STORE_DURATION = Histogram(
+    "inatinq_cache_store_duration_seconds",
+    "Duration of cache store operations in seconds",
+    labelnames=["collection"],
+    buckets=FAST_BUCKETS,
+)
+
+CACHE_SIZE = Gauge(
+    "inatinq_cache_size",
+    "Current number of entries in the cache",
+    labelnames=["collection"],
+)
+
+CACHE_EVICTIONS_TOTAL = Counter(
+    "inatinq_cache_evictions_total",
+    "Total number of cache evictions",
+    labelnames=["collection"],
+)
+
+CACHE_INVALIDATIONS_TOTAL = Counter(
+    "inatinq_cache_invalidations_total",
+    "Total number of cache invalidations",
+)

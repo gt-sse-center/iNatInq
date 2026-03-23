@@ -28,6 +28,7 @@ uv run pytest tests/integration/clients/test_cache.py::TestHappyPath -v
 """
 
 import pytest
+from prometheus_client import REGISTRY
 
 from clients.cache import CacheClient
 from config import SemanticCacheConfig
@@ -542,5 +543,86 @@ class TestSerializationRoundTrip:
             assert hit.total == 50
             assert len(hit.items) == 50
             assert hit.items[49].point_id == "img-0049"
+        finally:
+            await client.close()
+
+
+# =============================================================================
+# Prometheus Metrics
+# =============================================================================
+
+
+def _counter_value(metric_name: str, labels: dict[str, str]) -> float:
+    """Return the value of a counter with the given labels, or 0.0 if absent."""
+    return REGISTRY.get_sample_value(metric_name, labels) or 0.0
+
+
+def _gauge_value(metric_name: str, labels: dict[str, str]) -> float:
+    """Return the value of a gauge with the given labels, or 0.0 if absent."""
+    return REGISTRY.get_sample_value(metric_name, labels) or 0.0
+
+
+def _histogram_count(metric_name: str, labels: dict[str, str]) -> float:
+    """Return the ``_count`` sample for a histogram label-set, or 0.0 if absent."""
+    return REGISTRY.get_sample_value(f"{metric_name}_count", labels) or 0.0
+
+
+@pytest.mark.integration
+class TestCacheMetrics:
+    """Prometheus metrics are recorded across multi-step cache workflows.
+
+    These tests exercise the full in-memory Qdrant backend and verify that
+    Prometheus counters, histograms, and gauges update correctly during
+    realistic store → lookup → eviction → invalidation workflows.
+    """
+
+    @pytest.mark.asyncio
+    async def test_full_workflow_metrics(self) -> None:
+        """Cache-internal metrics update correctly across a store → eviction → invalidation workflow.
+
+        **Why this test is important:**
+          - Verifies that cache-internal metrics (store duration, size gauge,
+            eviction counter, invalidation counter) are recorded during
+            realistic multi-step workflows.
+          - Hit/miss counters and lookup duration are recorded at the service
+            layer (``ImageSearchService``), not in ``CacheClient``.
+
+        **What it tests:**
+          - Store duration histogram increments on each store
+          - Cache size gauge reflects actual entry count
+          - Eviction counter increments when capacity is exceeded
+          - Invalidation counter increments on invalidate()
+          - Size gauge resets to 0 after invalidation
+        """
+        collection = "metrics_workflow"
+        labels = {"collection": collection}
+        client = CacheClient(config=_make_config(max_entries=2))
+        try:
+            results = _make_image_results(3)
+            vec1 = _make_vector(seed=1.0)
+            vec2 = _make_vector(seed=2.0)
+
+            # --- Baseline ---
+            store_before = _histogram_count("inatinq_cache_store_duration_seconds", labels)
+            evict_before = _counter_value("inatinq_cache_evictions_total", labels)
+            inval_before = _counter_value("inatinq_cache_invalidations_total", {})
+
+            # --- Store two entries (fills capacity) ---
+            await client.store(collection, vec1, "query1", results, limit=10)
+            await client.store(collection, vec2, "query2", results, limit=10)
+
+            assert _histogram_count("inatinq_cache_store_duration_seconds", labels) == store_before + 2.0
+            assert _gauge_value("inatinq_cache_size", labels) == 2.0
+
+            # --- Eviction (store 3rd entry, capacity=2) ---
+            vec3 = _make_vector(seed=3.0)
+            await client.store(collection, vec3, "query3", results, limit=10)
+            assert _counter_value("inatinq_cache_evictions_total", labels) == evict_before + 1.0
+            assert _gauge_value("inatinq_cache_size", labels) == 2.0  # Still at capacity after evict+add
+
+            # --- Invalidation ---
+            await client.invalidate(collection)
+            assert _counter_value("inatinq_cache_invalidations_total", {}) == inval_before + 1.0
+            assert _gauge_value("inatinq_cache_size", labels) == 0.0
         finally:
             await client.close()
