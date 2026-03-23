@@ -130,13 +130,14 @@ class QdrantSearchPipeline(SearchPipeline):
             SearchPipelineResult with mapped doc_ids and raw results.
 
         Raises:
-            AssertionError: If ``vector_provider`` is not a ``QdrantClientWrapper``.
+            TypeError: If ``vector_provider`` is not a ``QdrantClientWrapper``.
         """
         from clients.qdrant import QdrantClientWrapper
 
-        assert isinstance(self.vector_provider, QdrantClientWrapper), (
-            f"QdrantSearchPipeline requires QdrantClientWrapper, got {type(self.vector_provider).__name__}"
-        )
+        if not isinstance(self.vector_provider, QdrantClientWrapper):
+            raise TypeError(
+                f"QdrantSearchPipeline requires QdrantClientWrapper, got {type(self.vector_provider).__name__}"
+            )
 
         query_vector = await self.embedding_provider.embed_text(query_text)
 

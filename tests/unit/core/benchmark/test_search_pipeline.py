@@ -190,8 +190,8 @@ class TestQdrantSearchPipeline:
         assert result.doc_ids == ["200"]
 
     @pytest.mark.asyncio
-    async def test_raises_assertion_for_non_qdrant_provider(self):
-        """QdrantSearchPipeline raises AssertionError for non-Qdrant providers."""
+    async def test_raises_type_error_for_non_qdrant_provider(self):
+        """QdrantSearchPipeline raises TypeError for non-Qdrant providers."""
         embedding_provider = AsyncMock()
         embedding_provider.embed_text.return_value = [0.1]
 
@@ -203,5 +203,5 @@ class TestQdrantSearchPipeline:
             id_mapper=S3KeyIDMapper(),
         )
 
-        with pytest.raises(AssertionError, match="QdrantSearchPipeline requires QdrantClientWrapper"):
+        with pytest.raises(TypeError, match="QdrantSearchPipeline requires QdrantClientWrapper"):
             await pipeline.search("query", collection="col", limit=5)

@@ -228,6 +228,9 @@ services:
       - "7997:7997"
     volumes:
       - infinity-cache:/app/.cache
+      # Monkey-patch for infinity_emb v0.0.77 bug: torch_vision.py crashes on
+      # SigLIP2 models because config.architectures is None.  Patch adds a guard.
+      # Remove once https://github.com/michaelfeil/infinity/issues/XXX is fixed.
       - ./patches/infinity_torch_vision.py:/app/infinity_emb/transformer/vision/torch_vision.py:ro
     deploy:
       resources:
