@@ -44,6 +44,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from api import models
+from clients.cache import get_semantic_cache
 from clients.interfaces.embedding import create_embedding_provider
 from clients.interfaces.vector_db import create_vector_db_provider
 from config import EmbeddingConfig, MinIOConfig, VectorDBConfig, get_settings
@@ -188,6 +189,7 @@ async def search_images(
         vector_db_provider=vector_db_provider,
         embedding_provider_name=embed_config.provider_type,
         vector_db_provider_name=provider_type,
+        cache=get_semantic_cache(),
     )
 
     search_results = await image_search_service.search_images_async(
