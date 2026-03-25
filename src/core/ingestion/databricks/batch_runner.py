@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import time
 from typing import TYPE_CHECKING, Any, cast
 
@@ -53,6 +54,9 @@ def _drain_ready_futures(
     for batch_result in batch_results:
         stats.completed_records += len(batch_result)
         for key, ok, err_msg in cast(list[tuple[str, bool, str]], batch_result):
+            # Force failure 5% of the time
+            if random.random() < 0.05:
+                ok = False
             if ok:
                 stats.successful += 1
                 stats.successful_keys.add(key)

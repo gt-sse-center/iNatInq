@@ -6,6 +6,7 @@ import os
 
 from foundation.dead_letter_queue.dlq_backend import DLQBackend
 from foundation.dead_letter_queue.dlq_redis_backend import RedisDLQConfig, RedisDLQBackend
+from foundation.dead_letter_queue.e2e_backend import E2EDLQBackend
 
 logger = logging.getLogger("foundation.dead_letter_queue")
 
@@ -28,6 +29,7 @@ def get_dlq_backend() -> DLQBackend | None:
 
 _DLQ_BACKEND_CONSTRUCTORS = {
     "redis": lambda: RedisDLQBackend(RedisDLQConfig.from_env()),
+    "e2e-stub": lambda: E2EDLQBackend(),
 }
 
 
