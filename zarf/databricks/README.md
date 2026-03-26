@@ -204,7 +204,7 @@ Qdrant Cloud:
 - `DLQ_REDIS_PORT`
 - `DLQ_REDIS_DATABASE_NUMBER`
 
-## Make targets (recommended)
+## CLI commands (recommended)
 ### Ray tuning (Databricks runtime)
 
 - `RAY_NUM_WORKERS`

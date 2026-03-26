@@ -245,7 +245,7 @@ def shell(
     """Open interactive shell in a service container."""
     if service == Service.redis:
         typer.echo("Opening redis-cli in Redis container...")
-        run_interactive(docker_compose("exec", "-it", "redis", "redis-cli"))
+        run_interactive(docker_compose("exec", "redis", "redis-cli"))
     else:
         typer.echo(f"Opening shell in {service} container...")
         run_interactive(
