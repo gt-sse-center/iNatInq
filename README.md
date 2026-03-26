@@ -11,7 +11,7 @@ This service provides two core capabilities:
 | **Query Engine** | Semantic search over documents using vector similarity |
 | **Ingestion Engine** | Distributed processing of S3 documents into vector databases |
 
-**Stack**: FastAPI · Ray · Spark · Ollama · Qdrant · MinIO
+**Stack**: FastAPI · Ray · Spark · CLIP · Qdrant · MinIO
 
 ---
 
@@ -33,7 +33,7 @@ The query engine handles semantic search requests by generating embeddings and p
 - `GET /search?q=your query&limit=10&provider=qdrant` – Text-to-text semantic search
 - `GET /search/images?q=sunset over ocean&limit=10` – Text-to-image search using CLIP
 
-**Flow**: HTTP Request → Embedding (Ollama/CLIP) → Vector Search → Ranked Results
+**Flow**: HTTP Request → Embedding (CLIP/Infinity) → Vector Search → Ranked Results
 
 ---
 
@@ -134,10 +134,6 @@ export DATABRICKS_JOB_ID=123
 export DATABRICKS_TASK_TYPE=python
 
 # Embedding Providers
-# Ollama (embedding service)
-export EMBEDDING_PROVIDER="ollama"
-export OLLAMA_BASE_URL="http://your-ollama-host:11434"
-export OLLAMA_MODEL="llava"  # or your preferred model
 # Local ai4all/clip server:
 export EMBEDDING_PROVIDER="clip"
 export CLIP_URL=http://your-clip-host:8000
@@ -281,7 +277,7 @@ cat /tmp/ray/session_latest/logs/worker-*.out | grep -iE "(CIRCUIT_BREAKER|UPSTR
 iNatInq/
 ├── src/
 │   ├── api/              # FastAPI routes and models
-│   ├── clients/          # External service clients (S3, Qdrant, Ollama, etc.)
+│   ├── clients/          # External service clients (S3, Qdrant, CLIP, etc.)
 │   ├── core/             # Domain logic
 │   │   ├── ingestion/    # Ray & Spark processing pipelines
 │   │   └── services/     # Business logic (search, job orchestration)

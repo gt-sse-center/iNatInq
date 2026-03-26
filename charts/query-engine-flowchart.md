@@ -26,7 +26,7 @@ flowchart TB
     end
 
     subgraph External["External Services"]
-        N[(Ollama)]
+        N[(CLIP Service)]
         O[(Qdrant)]
     end
 
@@ -59,5 +59,5 @@ flowchart TB
 2. **API Layer**: Parses parameters, determines vector DB provider
 3. **Service Layer**: Validates query, orchestrates embedding + search
 4. **Provider Layer**: Abstracts embedding and vector DB implementations
-5. **External Services**: Ollama generates embeddings, Qdrant performs similarity search
+5. **External Services**: CLIP generates embeddings, Qdrant performs similarity search
 6. **Response**: Ranked results with similarity scores returned to client

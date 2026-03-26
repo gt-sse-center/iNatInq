@@ -19,7 +19,6 @@ Full ML stack for local development:
 
 - **MinIO**: S3-compatible object storage
 - **Qdrant**: Vector database
-- **Ollama**: Local embedding service
 - **Ray**: Distributed computing (head + workers)
 - **Pipeline**: FastAPI application
 
@@ -59,7 +58,6 @@ compose/
 | MinIO Console | 9001 | Web UI |
 | Qdrant HTTP | 6333 | REST API |
 | Qdrant gRPC | 6334 | gRPC API |
-| Ollama | 11434 | LLM API |
 | Ray Dashboard | 8265 | Web UI |
 | Ray Client | 10001 | Client connection |
 

@@ -141,7 +141,7 @@ def create_app() -> FastAPI:
             },
             {
                 "name": "embeddings",
-                "description": "Text embedding generation via Ollama using nomic-embed-text model",
+                "description": "Text and image embedding generation via CLIP or Infinity providers",
             },
             {
                 "name": "vector-store",

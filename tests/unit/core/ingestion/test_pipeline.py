@@ -122,9 +122,9 @@ class TestIngestionPipelineInit:
     def embed_config(self):
         """Create an EmbeddingConfig for testing."""
         return EmbeddingConfig(
-            provider_type="ollama",
-            ollama_url="http://ollama:11434",
-            ollama_model="nomic-embed-text",
+            provider_type="clip",
+            clip_url="http://clip:8000",
+            clip_model="ViT-B/32",
         )
 
     def test_creates_pipeline_with_configs(
@@ -226,9 +226,9 @@ class TestIngestionPipelineRun:
             collection="test-collection",
         )
         embed_config = EmbeddingConfig(
-            provider_type="ollama",
-            ollama_url="http://ollama:11434",
-            ollama_model="nomic-embed-text",
+            provider_type="clip",
+            clip_url="http://clip:8000",
+            clip_model="ViT-B/32",
         )
 
         return IngestionPipeline(
@@ -381,9 +381,9 @@ class TestIngestionPipelineExecute:
             collection="test",
         )
         embed_config = EmbeddingConfig(
-            provider_type="ollama",
-            ollama_url="http://ollama:11434",
-            ollama_model="nomic-embed-text",
+            provider_type="clip",
+            clip_url="http://clip:8000",
+            clip_model="ViT-B/32",
         )
 
         return IngestionPipeline(
@@ -490,9 +490,9 @@ class TestIngestionPipelineCheckpoint:
             collection="test",
         )
         embed_config = EmbeddingConfig(
-            provider_type="ollama",
-            ollama_url="http://ollama:11434",
-            ollama_model="nomic-embed-text",
+            provider_type="clip",
+            clip_url="http://clip:8000",
+            clip_model="ViT-B/32",
         )
 
         return IngestionPipeline(

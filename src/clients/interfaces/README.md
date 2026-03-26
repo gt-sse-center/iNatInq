@@ -4,7 +4,7 @@ Abstract Base Classes (ABCs) that define provider-agnostic interfaces for
 embedding generation and vector database operations.
 
 This sub-package contains the abstraction layer that allows the pipeline to work
-with different providers (Ollama, OpenAI, Qdrant, etc.) without code
+with different providers (CLIP, Infinity, Qdrant, etc.) without code
 changes.
 
 ## Design Principles
@@ -30,10 +30,10 @@ changes.
          │
     ┌────┴────┐
     ▼         ▼
-┌────────┐ ┌────────┐
-│Ollama  │ │OpenAI  │  Concrete implementations
-│Client  │ │Client  │  (in parent clients/ package)
-└────────┘ └────────┘
+┌────────┐ ┌──────────┐
+│ CLIP   │ │Infinity  │  Concrete implementations
+│Client  │ │Client    │  (in parent clients/ package)
+└────────┘ └──────────┘
 ```
 
 ## Modules
@@ -56,8 +56,8 @@ module docstrings and class definition for complete method signatures and usage 
 
 **Configuration:** `EmbeddingConfig`
 
-- Provider-specific fields (e.g., `ollama_url`, `ollama_model`,
-  `openai_api_key`)
+- Provider-specific fields (e.g., `clip_url`, `clip_model`,
+  `infinity_url`)
 
 **Factory Function:**
 `create_embedding_provider(config: EmbeddingConfig) -> EmbeddingProvider`
@@ -74,7 +74,7 @@ from clients.interfaces.embedding import (
 # Create config from environment
 config = EmbeddingConfig.from_env()
 
-# Create provider (returns OllamaClient, OpenAIClient, etc.)
+# Create provider (returns CLIPClient, InfinityClient, etc.)
 provider = create_embedding_provider(config)
 
 # Use provider (agnostic to implementation)
@@ -84,9 +84,8 @@ vector_size = provider.vector_size
 
 **Implementations:**
 
-- `OllamaClient` (in `clients/ollama.py`)
-- `OpenAIClient` (future)
-- `HuggingFaceClient` (future)
+- `CLIPClient` (in `clients/clip.py`)
+- `InfinityClient` (in `clients/infinity.py`)
 
 **Registering New Providers:**
 
@@ -191,7 +190,7 @@ classes:
 - **Discovery**: Factory functions look up providers in the registry
 - **Extensibility**: New providers can be registered at runtime
 
-Default providers (Ollama, Qdrant) are registered automatically on module
+Default providers (CLIP, Infinity, Qdrant) are registered automatically on module
 import.
 
 ## Configuration
@@ -207,9 +206,9 @@ Configuration classes (`EmbeddingConfig`, `VectorDBConfig`) support:
 
 ```python
 # Environment variables
-EMBEDDING_PROVIDER=ollama
-OLLAMA_BASE_URL=http://ollama:11434
-OLLAMA_MODEL=nomic-embed-text
+EMBEDDING_PROVIDER=clip
+CLIP_URL=http://clip:8000
+CLIP_MODEL=ViT-B/32
 
 # Load config
 config = EmbeddingConfig.from_env()

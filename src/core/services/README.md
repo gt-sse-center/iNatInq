@@ -31,7 +31,7 @@ Services follow a clean separation of concerns:
 └──────┬──────┘
        │
 ┌──────▼──────┐
-│  External   │ (Ollama, Qdrant, S3, K8s, etc.)
+│  External   │ (CLIP, Qdrant, S3, K8s, etc.)
 │  Services   │
 └─────────────┘
 ```
@@ -364,7 +364,7 @@ class SearchService:
 ```python
 class SearchService:
     def __init__(self):
-        self.embedding = OllamaClient(...)
+        self.embedding = CLIPClient(...)
         self.vector_db = QdrantClient(...)
 ```
 

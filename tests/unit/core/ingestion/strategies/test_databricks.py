@@ -220,11 +220,11 @@ class TestDatabricksStrategyRuntimeEnv:
         **What it tests:**
         - S3_ENDPOINT is in passthrough list
         - QDRANT_URL is in passthrough list
-        - OLLAMA_BASE_URL is in passthrough list
+        - CLIP_URL is in passthrough list
         """
         assert "S3_ENDPOINT" in _PASSTHROUGH_ENV_VARS
         assert "QDRANT_URL" in _PASSTHROUGH_ENV_VARS
-        assert "OLLAMA_BASE_URL" in _PASSTHROUGH_ENV_VARS
+        assert "CLIP_URL" in _PASSTHROUGH_ENV_VARS
         assert "INAT_MAX_ROWS" in _PASSTHROUGH_ENV_VARS
         assert "INAT_METADATA_URL" in _PASSTHROUGH_ENV_VARS
 

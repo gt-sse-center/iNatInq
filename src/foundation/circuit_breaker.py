@@ -50,7 +50,7 @@ class MyClient(CircuitBreakerMixin):
 
 ## Configuration Guidelines
 
-**Ollama (Embedding Service)**:
+**CLIP (Embedding Service)**:
 - failure_threshold: 5 (fail after 5 consecutive errors)
 - recovery_timeout: 30s (try recovery after 30 seconds)
 - Rationale: Embedding is on critical path, fail fast to avoid blocking users
@@ -264,7 +264,7 @@ def create_circuit_breaker(
     """Create a circuit breaker for an external service dependency.
 
     Args:
-        name: Unique name for the circuit breaker (e.g., "ollama", "qdrant").
+        name: Unique name for the circuit breaker (e.g., "clip", "qdrant").
         failure_threshold: Number of consecutive failures before opening
         circuit. Default: 5.
         recovery_timeout: Seconds to wait before attempting recovery (moving to
@@ -275,25 +275,25 @@ def create_circuit_breaker(
 
     Example:
         ```python
-        # Create breaker for Ollama service
-        ollama_breaker = create_circuit_breaker(
-            name="ollama",
+        # Create breaker for CLIP service
+        clip_breaker = create_circuit_breaker(
+            name="clip",
             failure_threshold=5,
             recovery_timeout=30,
         )
 
         # Use with decorator
-        @ollama_breaker
-        def get_embedding(text: str) -> list[float]:
-            response = requests.post("http://ollama:11434/api/embed", ...)
+        @clip_breaker
+        def get_embedding(image_bytes: bytes) -> list[float]:
+            response = requests.post("http://clip:8000/embed", ...)
             return response.json()["embedding"]
 
         # Handle circuit open
         try:
-            embedding = get_embedding("hello world")
+            embedding = get_embedding(image_bytes)
         except pybreaker.CircuitBreakerError:
             # Circuit is open, service is unavailable
-            raise UpstreamError("Ollama service unavailable")
+            raise UpstreamError("CLIP service unavailable")
         ```
 
     Note:
@@ -331,7 +331,7 @@ def handle_circuit_breaker_error(service_name: str) -> NoReturn:
         try:
             result = breaker.call(lambda: expensive_operation())
         except pybreaker.CircuitBreakerError:
-            handle_circuit_breaker_error("ollama")
+            handle_circuit_breaker_error("clip")
         ```
     """
     msg = (

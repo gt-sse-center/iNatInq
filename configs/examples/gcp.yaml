@@ -64,13 +64,13 @@ vector_databases:
   #   grpc_port: 50051
 
 embeddings:
-  provider: "ollama"            # Or use Vertex AI
+  provider: "clip"              # Or use Vertex AI / Infinity
   vector_size: null
 
-  ollama:
-    url: "http://ollama.ollama.svc.cluster.local:11434"
-    model: "nomic-embed-text"
-    max_batch_size: 16
+  clip:
+    url: "http://clip.clip.svc.cluster.local:8000"
+    model: "ViT-B/32"
+    max_batch_size: 32
     timeout_seconds: 60
 
     circuit_breaker:
@@ -85,9 +85,9 @@ embeddings:
 
 image_embeddings:
   provider: "clip"
-  backend: "ollama"
-  url: "http://ollama.ollama.svc.cluster.local:11434"
-  model: "clip"
+  backend: "clip"
+  url: "http://clip.clip.svc.cluster.local:8000"
+  model: "ViT-B/32"
   max_batch_size: 12
   timeout_seconds: 60
 
@@ -130,8 +130,8 @@ ray:
     progress_log_interval: 100
 
   rate_limits:
-    ollama_max_concurrency: 20
-    ollama_requests_per_second: 10
+    embedding_max_concurrency: 20
+    embedding_requests_per_second: 10
 
   timeouts:
     embedding_seconds: 60

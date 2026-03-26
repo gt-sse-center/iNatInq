@@ -50,7 +50,7 @@ class ImageSearchService:
         embedding_provider: EmbeddingProvider instance for generating text embeddings.
         vector_db_provider: Vector database provider instance.
         embedding_provider_name: String label for the embedding provider used in metrics
-            (e.g. ``"clip"``, ``"ollama"``). Defaults to ``"clip"``.
+            (e.g. ``"clip"``, ``"infinity"``). Defaults to ``"clip"``.
         vector_db_provider_name: String label for the vector DB provider used in metrics
             (e.g. ``"qdrant"``). Defaults to ``"qdrant"``.
         cache: Optional ``CacheClient`` for semantic query caching.

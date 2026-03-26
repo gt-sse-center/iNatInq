@@ -120,9 +120,9 @@ class TestImageSearchProviderLabel:
     ) -> None:
         """Embedding metric carries provider=clip when service is configured with clip."""
         clip_labels = {"provider": "clip"}
-        ollama_labels = {"provider": "ollama"}
+        other_labels = {"provider": "infinity"}
         before_clip = _histogram_count("inatinq_search_embedding_duration_seconds", clip_labels)
-        before_ollama = _histogram_count("inatinq_search_embedding_duration_seconds", ollama_labels)
+        before_other = _histogram_count("inatinq_search_embedding_duration_seconds", other_labels)
         svc = ImageSearchService(
             embedding_provider=embedding_provider,
             vector_db_provider=vector_db_provider,
@@ -131,9 +131,9 @@ class TestImageSearchProviderLabel:
         )
         await svc.search_images_async(collection="docs", query="bird", limit=5)
         after_clip = _histogram_count("inatinq_search_embedding_duration_seconds", clip_labels)
-        after_ollama = _histogram_count("inatinq_search_embedding_duration_seconds", ollama_labels)
+        after_other = _histogram_count("inatinq_search_embedding_duration_seconds", other_labels)
         assert after_clip == before_clip + 1.0
-        assert after_ollama == before_ollama
+        assert after_other == before_other
 
 
 class TestMetricsEmittedOnError:

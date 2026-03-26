@@ -45,7 +45,6 @@ help:
 	@echo "│ make azure-databricks-configure-minio-s3a Configure MinIO S3A secret/conf   │"
 	@echo "├── Docker Service Logs ──────────────────────────────────────────────────────┤"
 	@echo "│ make logs-pipeline     Tail pipeline logs                                   │"
-	@echo "│ make logs-ollama       Tail ollama logs                                     │"
 	@echo "│ make logs-qdrant       Tail qdrant logs                                     │"
 	@echo "│ make logs-ray          Tail ray-head logs                                   │"
 	@echo "│ make logs-minio        Tail minio logs                                      │"
@@ -53,11 +52,7 @@ help:
 	@echo "│ make logs-redis        Tail redis logs                                      │"
 	@echo "├── Docker Shell Access ──────────────────────────────────────────────────────┤"
 	@echo "│ make shell-pipeline    Shell into pipeline container                        │"
-	@echo "│ make shell-ollama      Shell into ollama container                          │"
 	@echo "│ make shell-redis       Shell into redis container cli                       │"
-	@echo "├── Ollama Models ────────────────────────────────────────────────────────────┤"
-	@echo "│ make ollama-pull       Pull nomic-embed-text model                          │"
-	@echo "│ make ollama-list       List installed Ollama models                         │"
 	@echo "├── Web UIs (opens in browser) ───────────────────────────────────────────────┤"
 	@echo "│ make ui-all            Open all web UIs                                     │"
 	@echo "│ make ui-pipeline       Open Pipeline API docs (Swagger)                     │"
@@ -198,7 +193,6 @@ docker-up:
 	@echo "   MinIO Console:    http://localhost:9001"
 	@echo "   Qdrant Dashboard: http://localhost:6333/dashboard"
 	@echo "   Ray Dashboard:    http://localhost:8265"
-	@echo "   Ollama:           http://localhost:11434"
 	@echo "   CLIP API:         http://localhost:8001"
 
 .PHONY: docker-down
@@ -263,7 +257,6 @@ docker-health:
 	@echo "┌── Local Compose Health Checks ───────────────────────────────────────────────┐"
 	@printf "│ Pipeline API:    "; curl -sf http://localhost:8000/healthz >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
 	@printf "│ Qdrant:          "; curl -sf http://localhost:6333/readyz >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
-	@printf "│ Ollama:          "; curl -sf http://localhost:11434/api/tags >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
 	@printf "│ MinIO:           "; curl -sf http://localhost:9000/minio/health/live >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
 	@printf "│ Ray:             "; curl -sf http://localhost:8265 >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
 	@printf "│ Redis:           "; docker exec redis redis-cli ping  >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
@@ -276,7 +269,6 @@ docker-health:
 	@echo "   MinIO Console:    http://localhost:9001 (minioadmin/minioadmin)"
 	@echo "   Qdrant Dashboard: http://localhost:6333/dashboard"
 	@echo "   Ray Dashboard:    http://localhost:8265"
-	@echo "   Ollama:           http://localhost:11434"
 	@echo "   CLIP API:         http://localhost:8001"
 
 .PHONY: smoke-providers
@@ -337,10 +329,6 @@ databricks-env-check:
 logs-pipeline:
 	$(DOCKER_COMPOSE) logs -f pipeline
 
-.PHONY: logs-ollama
-logs-ollama:
-	$(DOCKER_COMPOSE) logs -f ollama
-
 .PHONY: logs-qdrant
 logs-qdrant:
 	$(DOCKER_COMPOSE) logs -f qdrant
@@ -380,37 +368,10 @@ shell-pipeline:
 	@echo "Opening shell in pipeline container..."
 	$(DOCKER_COMPOSE) exec pipeline /bin/bash
 
-.PHONY: shell-ollama
-shell-ollama:
-	@echo "Opening shell in ollama container..."
-	$(DOCKER_COMPOSE) exec ollama /bin/bash
-
 .PHONY: shell-redis
 shell-redis:
 	@echo "Opening red-cli in Redis container..."
 	$(DOCKER_COMPOSE) exec -it redis redis-cli
-
-# =============================================================================
-# Ollama Model Management
-# =============================================================================
-
-.PHONY: ollama-pull
-ollama-pull:
-	@echo "Pulling nomic-embed-text model..."
-	$(DOCKER_COMPOSE) exec ollama ollama pull nomic-embed-text
-	@echo "✅ Model pulled successfully"
-
-.PHONY: ollama-list
-ollama-list:
-	@echo "Installed Ollama models:"
-	$(DOCKER_COMPOSE) exec ollama ollama list
-
-MODEL ?= nomic-embed-text
-.PHONY: ollama-pull-model
-ollama-pull-model:
-	@echo "Pulling model: $(MODEL)..."
-	$(DOCKER_COMPOSE) exec ollama ollama pull $(MODEL)
-	@echo "✅ Model $(MODEL) pulled successfully"
 
 # =============================================================================
 # Web UIs (opens in browser)

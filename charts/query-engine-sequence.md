@@ -8,7 +8,7 @@ sequenceDiagram
     participant SS as SearchService
     participant EP as EmbeddingProvider
     participant VDP as VectorDBProvider
-    participant Ollama as Ollama Service
+    participant CLIP as CLIP Service
     participant VDB as Vector Database<br/>(Qdrant)
 
     C->>+API: GET /search?q=machine learning&limit=10
@@ -24,9 +24,9 @@ sequenceDiagram
     Note over SS: Step 1: Generate Query Embedding
     
     SS->>+EP: embed(query="machine learning")
-    EP->>+Ollama: POST /api/embeddings<br/>{"model": "nomic-embed-text", "prompt": "machine learning"}
-    Ollama-->>-EP: {"embedding": [0.123, -0.456, ...]}
-    EP-->>-SS: vector[768]
+    EP->>+CLIP: POST /embed<br/>{"inputs": ["machine learning"]}
+    CLIP-->>-EP: {"embeddings": [[0.123, -0.456, ...]]}
+    EP-->>-SS: vector[512]
 
     Note over SS: Step 2: Vector Similarity Search
     
@@ -53,12 +53,12 @@ sequenceDiagram
 | 1-2 | Client → API | Send search request with query and parameters |
 | 3-5 | API | Create providers, instantiate SearchService |
 | 6 | SearchService | Validate input (query non-empty, limit in range) |
-| 7-9 | SearchService → Ollama | Generate embedding vector for query text |
+| 7-9 | SearchService → CLIP | Generate embedding vector for query text |
 | 10-13 | SearchService → VectorDB | Perform cosine similarity search |
 | 14-16 | API → Client | Format and return ranked results |
 
 ## Error Handling
 
 - **400 Bad Request**: Empty query, invalid limit, invalid provider
-- **502 Bad Gateway**: Ollama or Vector DB service failure
+- **502 Bad Gateway**: CLIP or Vector DB service failure
 - **404 Not Found**: Collection doesn't exist

@@ -136,18 +136,41 @@ vector_databases:
 # =============================================================================
 
 embeddings:
-  # Provider: "ollama", "openai", "huggingface", or "sagemaker"
-  provider: "ollama"
+  # Provider: "clip", "hosted_clip", "infinity", "openai", "huggingface", or "sagemaker"
+  provider: "clip"
 
   # Vector size (auto-detected for known models, set manually if needed)
   vector_size: null           # null = auto-detect
 
-  # ----- Ollama (local/self-hosted) -----
-  ollama:
-    url: "http://localhost:11434"
-    model: "nomic-embed-text"
+  # ----- CLIP (local) -----
+  clip:
+    url: "http://localhost:8000"
+    model: "ViT-B/32"
     timeout_seconds: 60
-    max_batch_size: 12
+    max_batch_size: 32
+
+    circuit_breaker:
+      failure_threshold: 5
+      recovery_timeout: 30
+
+  # ----- Hosted CLIP (remote) -----
+  hosted_clip:
+    url: ""                   # Your hosted CLIP endpoint
+    api_key: ""               # API key for hosted service
+    model: "ViT-B/32"
+    timeout_seconds: 60
+    max_batch_size: 32
+
+    circuit_breaker:
+      failure_threshold: 5
+      recovery_timeout: 30
+
+  # ----- Infinity (local/self-hosted) -----
+  infinity:
+    url: "http://localhost:7997"
+    model: "BAAI/bge-small-en-v1.5"
+    timeout_seconds: 60
+    max_batch_size: 32
 
     circuit_breaker:
       failure_threshold: 5
@@ -174,19 +197,19 @@ embeddings:
 # =============================================================================
 
 image_embeddings:
-  # Provider: "clip" or "llava"
+  # Provider: "clip" or "hosted_clip"
   provider: "clip"
 
-  # Backend: "ollama" (recommended), "clip" (standalone service), or "hosted_clip"
-  backend: "ollama"
+  # Backend: "clip" (standalone service) or "hosted_clip"
+  backend: "clip"
 
   # Model settings
-  model: "llava"              # For ollama backend
+  model: "ViT-B/32"           # CLIP model variant
   # api_key: ""               # Required for hosted_clip backend
   vector_size: null           # null = auto-detect (512 for ViT-B/32)
 
   # URL (auto-configured based on backend)
-  url: "http://localhost:11434"
+  url: "http://localhost:8000"
 
   # Timeouts and limits
   timeout_seconds: 120
@@ -250,8 +273,8 @@ ray:
 
   # Rate limiting for external services
   rate_limits:
-    ollama_max_concurrency: 10
-    ollama_requests_per_second: 5
+    embedding_max_concurrency: 10
+    embedding_requests_per_second: 5
 
   # Timeouts
   timeouts:

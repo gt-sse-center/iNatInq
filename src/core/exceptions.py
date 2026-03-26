@@ -70,12 +70,12 @@ class _UpstreamError(PipelineError):
     """Exception raised when an upstream dependency service fails.
 
     This exception indicates that a required external service (MinIO, Spark,
-    Ollama, Qdrant, or Kubernetes API) is unavailable, returned an error, or
+    CLIP, Qdrant, or Kubernetes API) is unavailable, returned an error, or
     failed to complete a request. It maps to HTTP 502 (Bad Gateway) in API
     routes.
 
     Examples:
-        - Ollama service is unreachable or returns an error
+        - CLIP embedding service is unreachable or returns an error
         - Qdrant upsert operation fails
         - Kubernetes API returns an error when creating a Job
         - S3/MinIO bucket operation fails
@@ -83,7 +83,7 @@ class _UpstreamError(PipelineError):
 
     Note:
         This is a catch-all for dependency failures. In production, you might
-        want to create more specific exceptions (e.g., `OllamaError`,
+        want to create more specific exceptions (e.g., `CLIPError`,
         `QdrantError`) for better error categorization and monitoring.
 
         This class is kept for documentation but UpstreamError is re-exported
@@ -100,7 +100,7 @@ class PipelineTimeoutError(PipelineError):
 
     Examples:
         - Spark job takes longer than `timeout_s` to complete
-        - Ollama embedding request exceeds timeout
+        - Embedding request exceeds timeout
         - Waiting for Kubernetes Job status times out
 
     Note:

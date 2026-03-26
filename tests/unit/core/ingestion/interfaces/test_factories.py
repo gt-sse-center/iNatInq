@@ -274,9 +274,9 @@ class TestProcessingClientsFactory:
         mock_vector_db_factory.return_value = mock_vector_db
 
         embed_config = EmbeddingConfig(
-            provider_type="ollama",
-            ollama_model="nomic-embed-text",
-            ollama_url="http://localhost:11434",
+            provider_type="clip",
+            clip_model="ViT-B/32",
+            clip_url="http://clip:8000",
         )
 
         config = ProcessingConfig(
@@ -323,9 +323,9 @@ class TestProcessingClientsFactory:
         mock_vector_db_factory.return_value = MagicMock()
 
         embed_config = EmbeddingConfig(
-            provider_type="ollama",
-            ollama_model="nomic-embed-text",
-            ollama_url="http://localhost:11434",
+            provider_type="clip",
+            clip_model="ViT-B/32",
+            clip_url="http://clip:8000",
         )
 
         config = ProcessingConfig(

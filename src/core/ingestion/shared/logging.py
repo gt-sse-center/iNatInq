@@ -21,7 +21,6 @@ _COMPONENT_LOGGERS: dict[str, tuple[str, ...]] = {
     "s3": ("clients.s3", "clients.s3.retry"),
     "clip": ("clients.clip", "clients.clip.retry"),
     "qdrant": ("clients.qdrant", "clients.qdrant.retry"),
-    "ollama": ("clients.ollama", "clients.ollama.retry"),
     "ray": ("pipeline.ray", "pipeline.ray.job", "pipeline.ray.task"),
 }
 

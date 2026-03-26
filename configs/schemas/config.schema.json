@@ -151,14 +151,35 @@
       "properties": {
         "provider": {
           "type": "string",
-          "enum": ["ollama", "openai", "huggingface", "sagemaker"]
+          "enum": ["clip", "hosted_clip", "infinity", "openai", "huggingface", "sagemaker"]
         },
         "vector_size": {
           "type": ["integer", "null"],
           "minimum": 1,
           "description": "Vector dimensions (null for auto-detect)"
         },
-        "ollama": {
+        "clip": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string", "format": "uri" },
+            "model": { "type": "string" },
+            "timeout_seconds": { "type": "integer", "minimum": 1 },
+            "max_batch_size": { "type": "integer", "minimum": 1 },
+            "circuit_breaker": { "$ref": "#/$defs/circuit_breaker" }
+          }
+        },
+        "hosted_clip": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string", "format": "uri" },
+            "api_key": { "type": "string" },
+            "model": { "type": "string" },
+            "timeout_seconds": { "type": "integer", "minimum": 1 },
+            "max_batch_size": { "type": "integer", "minimum": 1 },
+            "circuit_breaker": { "$ref": "#/$defs/circuit_breaker" }
+          }
+        },
+        "infinity": {
           "type": "object",
           "properties": {
             "url": { "type": "string", "format": "uri" },
@@ -200,7 +221,7 @@
         },
         "backend": {
           "type": "string",
-          "enum": ["ollama", "clip", "hosted_clip"]
+          "enum": ["clip", "hosted_clip"]
         },
         "model": { "type": "string" },
         "api_key": {
@@ -268,8 +289,8 @@
         "rate_limits": {
           "type": "object",
           "properties": {
-            "ollama_max_concurrency": { "type": "integer", "minimum": 1 },
-            "ollama_requests_per_second": { "type": "integer", "minimum": 1 }
+            "embedding_max_concurrency": { "type": "integer", "minimum": 1 },
+            "embedding_requests_per_second": { "type": "integer", "minimum": 1 }
           }
         },
         "timeouts": {

@@ -168,9 +168,9 @@ def mock_settings() -> MagicMock:
 
     settings = MagicMock()
     settings.embedding = EmbeddingConfig(
-        provider_type=ProviderType.OLLAMA,
-        ollama_url="http://localhost:11434",
-        ollama_model="nomic-embed-text",
+        provider_type=ProviderType.LOCAL_CLIP,
+        clip_url="http://clip:8000",
+        clip_model="ViT-B/32",
     )
     settings.vector_db = VectorDBConfig(
         provider_type="qdrant",

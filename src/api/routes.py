@@ -102,8 +102,6 @@ def _model_override_kwargs(model: str, resolved_provider: ProviderType) -> dict[
         base["infinity_model"] = model
     elif resolved_provider in (ProviderType.LOCAL_CLIP, ProviderType.HOSTED_CLIP):
         base["clip_model"] = model
-    elif resolved_provider == ProviderType.OLLAMA:
-        base["ollama_model"] = model
     return base
 
 
@@ -113,7 +111,7 @@ def healthz() -> dict[str, str]:
 
     This endpoint is used by Kubernetes liveness and readiness probes. It
     returns a simple success response without checking dependencies (MinIO,
-    Ray, Ollama, Qdrant).
+    Ray, CLIP, Qdrant).
 
     Returns:
         A simple status dict: `{"status": "ok"}`
@@ -149,7 +147,7 @@ async def search_images(
     image_provider: Annotated[
         str | None,
         Query(
-            pattern="^(clip|hosted_clip|infinity|ollama)$",
+            pattern="^(clip|hosted_clip|infinity)$",
             description="Override embedding provider type (auto-detected from model name if omitted)",
         ),
     ] = None,

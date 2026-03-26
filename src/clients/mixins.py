@@ -44,7 +44,7 @@ class CircuitBreakerMixin(ABC):
 
         Returns:
             Tuple of (name, failure_threshold, recovery_timeout).
-            - name: Service name (e.g., "ollama", "qdrant")
+            - name: Service name (e.g., "clip", "qdrant")
             - failure_threshold: Number of consecutive failures before opening
             - recovery_timeout: Seconds to wait before attempting recovery
         """
@@ -85,9 +85,9 @@ class ConfigValidationMixin:
         Example:
             ```python
             @classmethod
-            def from_config(cls, config: EmbeddingConfig) -> "OllamaClient":
-                cls._validate_config(config, "ollama", ["ollama_url", "ollama_model"])
-                return cls(base_url=config.ollama_url, model=config.ollama_model)
+            def from_config(cls, config: EmbeddingConfig) -> "CLIPClient":
+                cls._validate_config(config, "clip", ["clip_url", "clip_model"])
+                return cls(base_url=config.clip_url, model=config.clip_model)
             ```
         """
         if config.provider_type != expected_provider:

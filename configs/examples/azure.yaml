@@ -73,18 +73,18 @@ embeddings:
     # Set OPENAI_API_BASE to your Azure OpenAI endpoint
     model: "text-embedding-ada-002"
 
-  # Alternative: Ollama on AKS
-  # provider: "ollama"
-  # ollama:
-  #   url: "http://ollama.ollama.svc.cluster.local:11434"
-  #   model: "nomic-embed-text"
-  #   max_batch_size: 16
+  # Alternative: CLIP on AKS
+  # provider: "clip"
+  # clip:
+  #   url: "http://clip.clip.svc.cluster.local:8000"
+  #   model: "ViT-B/32"
+  #   max_batch_size: 32
 
 image_embeddings:
   provider: "clip"
-  backend: "ollama"
-  url: "http://ollama.ollama.svc.cluster.local:11434"
-  model: "clip"
+  backend: "clip"
+  url: "http://clip.clip.svc.cluster.local:8000"
+  model: "ViT-B/32"
   max_batch_size: 12
   timeout_seconds: 60
 
@@ -127,8 +127,8 @@ ray:
     progress_log_interval: 100
 
   rate_limits:
-    ollama_max_concurrency: 20
-    ollama_requests_per_second: 10
+    embedding_max_concurrency: 20
+    embedding_requests_per_second: 10
 
   timeouts:
     embedding_seconds: 60

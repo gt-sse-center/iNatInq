@@ -579,9 +579,9 @@ class TestProcessingConfig:
           - Default values set correctly
         """
         embed_config = EmbeddingConfig(
-            provider_type="ollama",
-            ollama_model="nomic-embed-text",
-            ollama_url="http://localhost:11434",
+            provider_type="clip",
+            clip_model="ViT-B/32",
+            clip_url="http://clip:8000",
         )
 
         config = ProcessingConfig(
@@ -610,9 +610,9 @@ class TestProcessingConfig:
           - Custom values are stored
         """
         embed_config = EmbeddingConfig(
-            provider_type="ollama",
-            ollama_model="nomic-embed-text",
-            ollama_url="http://localhost:11434",
+            provider_type="clip",
+            clip_model="ViT-B/32",
+            clip_url="http://clip:8000",
         )
 
         config = ProcessingConfig(
@@ -639,9 +639,9 @@ class TestProcessingConfig:
           - Modification raises FrozenInstanceError
         """
         embed_config = EmbeddingConfig(
-            provider_type="ollama",
-            ollama_model="nomic-embed-text",
-            ollama_url="http://localhost:11434",
+            provider_type="clip",
+            clip_model="ViT-B/32",
+            clip_url="http://clip:8000",
         )
 
         config = ProcessingConfig(

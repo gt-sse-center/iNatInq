@@ -55,8 +55,6 @@ check_http() {
 
 echo "Provider health (from ${ENV_FILE}):"
 
-check_http "Ollama" "${OLLAMA_BASE_URL-}" "/api/tags"
-
 if [[ -n "${QDRANT_API_KEY-}" ]]; then
   check_http "Qdrant" "${QDRANT_URL-}" "/collections" -H "api-key: ${QDRANT_API_KEY}"
 else

@@ -21,7 +21,7 @@ client.put_object(bucket="pipeline", key="data.txt", body=b"hello")
 
 The client implements multi-layer resilience. We intentionally disable boto3's
 built-in retry mechanism and implement our own via `tenacity` to provide consistent
-behavior across all clients (S3, Qdrant, Ollama) and integrate with our
+behavior across all clients (S3, Qdrant, CLIP) and integrate with our
 circuit breaker pattern.
 
 1. **Retry with Exponential Backoff**: Transient errors (5xx, timeouts, connection
@@ -294,7 +294,7 @@ class S3ClientWrapper(CircuitBreakerMixin, ConfigValidationMixin, LoggerMixin):
         # Configure boto3 with timeouts and connection settings.
         # NOTE: We intentionally disable boto3's built-in retry mechanism (max_attempts=0)
         # and implement our own via tenacity. This provides:
-        # 1. Consistent retry behavior across all clients (S3, Qdrant, Ollama)
+        # 1. Consistent retry behavior across all clients (S3, Qdrant, CLIP)
         # 2. Integration with our circuit breaker pattern
         # 3. Custom logging on each retry attempt
         # 4. Fine-grained control over which errors trigger retries

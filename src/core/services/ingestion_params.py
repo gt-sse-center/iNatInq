@@ -22,7 +22,6 @@ from core.ingestion.shared.env_keys import (
     DLQ_ENV_KEYS as _DLQ_ENV_KEYS,
     IMAGE_OPTIONAL_ENV_KEYS as _IMAGE_OPTIONAL_ENV_KEYS,
     INAT_IMAGE_ENV_KEYS as _INAT_IMAGE_ENV_KEYS,
-    OLLAMA_TUNING_ENV_KEYS as _OLLAMA_TIMEOUT_ENV_KEYS,
     S3_CONNECTION_ENV_KEYS as _S3_CONNECTION_ENV_KEYS,
     S3_TUNING_ENV_KEYS as _S3_TUNING_ENV_KEYS,
     VECTOR_ENV_KEYS as _VECTOR_ENV_KEYS,
@@ -135,7 +134,6 @@ def build_image_ingestion_env(
         _VECTOR_ENV_KEYS,
         _VECTOR_TIMEOUT_ENV_KEYS,
         _S3_TUNING_ENV_KEYS,
-        _OLLAMA_TIMEOUT_ENV_KEYS,
         _INAT_IMAGE_ENV_KEYS,
         _DLQ_ENV_KEYS,
     )
@@ -190,7 +188,6 @@ def build_inat_image_ingestion_env(
         env_vars,
         _VECTOR_ENV_KEYS,
         _VECTOR_TIMEOUT_ENV_KEYS,
-        _OLLAMA_TIMEOUT_ENV_KEYS,
         _INAT_IMAGE_ENV_KEYS,
     )
     _passthrough_env_vars(env_vars, _IMAGE_OPTIONAL_ENV_KEYS, overwrite=False)

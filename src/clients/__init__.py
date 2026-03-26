@@ -55,7 +55,7 @@ def create_embedding_client(
         get_settings().
 
     Returns:
-        EmbeddingProvider instance (OllamaClient, OpenAIClient, etc.).
+        EmbeddingProvider instance (CLIPClient, InfinityClient, etc.).
 
     Example:
         ```python

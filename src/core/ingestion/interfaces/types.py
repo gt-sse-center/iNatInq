@@ -271,7 +271,7 @@ class ProcessingClients:
         session: HTTP session for connection pooling.
 
     Example:
-        >>> clients = ProcessingClients(s3=s3, embedder=ollama, ...)
+        >>> clients = ProcessingClients(s3=s3, embedder=clip_client, ...)
         >>> try:
         ...     # Use clients
         ... finally:

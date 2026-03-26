@@ -2,7 +2,7 @@
 
 This module defines the `EmbeddingProvider` ABC and factory functions for embedding
 providers. Configuration classes are in `pipeline.config`.
-Concrete implementations live in the parent `clients` package (e.g., `OllamaClient`).
+Concrete implementations live in the parent `clients` package (e.g., `CLIPClient`, `InfinityClient`).
 """
 
 from abc import ABC, abstractmethod
@@ -13,7 +13,7 @@ class EmbeddingProvider(ABC):
     """Abstract base class for embedding generation providers.
 
     This class defines the interface that all embedding providers must implement.
-    Each provider (OllamaClient, CLIPClient, etc.) inherits from this class and
+    Each provider (CLIPClient, InfinityClient, etc.) inherits from this class and
     implements the required methods.
 
     Note:
@@ -153,7 +153,7 @@ def register_provider(provider_type: ProviderType, provider_class: type[Embeddin
     This makes the factory extensible without needing to modify it for each new provider.
 
     Args:
-        provider_type: Provider type identifier (e.g., "ollama", "openai").
+        provider_type: Provider type identifier (e.g., "clip", "infinity").
         provider_class: Provider class that inherits from EmbeddingProvider.
 
     Example:
@@ -182,7 +182,7 @@ def create_embedding_provider(
         config: Embedding configuration.
 
     Returns:
-        EmbeddingProvider instance (OllamaClient, OpenAIClient, etc.).
+        EmbeddingProvider instance (CLIPClient, InfinityClient, etc.).
 
     Raises:
         ValueError: If provider type is not registered or required config is missing.

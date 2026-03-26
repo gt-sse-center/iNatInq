@@ -39,16 +39,16 @@ vector_databases:
       replication_factor: 2
 
 embeddings:
-  provider: "ollama"
+  provider: "clip"
 
-  ollama:
-    url: "${OLLAMA_URL}"
+  clip:
+    url: "${CLIP_URL}"
     max_batch_size: 16
 
 image_embeddings:
-  # Backend: "ollama", "clip", or "hosted_clip"
-  backend: "ollama"
-  model: "llava"
+  # Backend: "clip" or "hosted_clip"
+  backend: "clip"
+  model: "ViT-B/32"
   url: "${CLIP_URL}"
   max_batch_size: 12
   # api_key: "${CLIP_API_KEY}"  # Required for hosted_clip backend
@@ -77,8 +77,8 @@ ray:
     pipeline_concurrency: 20
 
   rate_limits:
-    ollama_max_concurrency: 20
-    ollama_requests_per_second: 10
+    embedding_max_concurrency: 20
+    embedding_requests_per_second: 10
 
 benchmark:
   output_format: "json"

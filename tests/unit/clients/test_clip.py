@@ -3,7 +3,7 @@
 """Unit tests for CLIPClient image embedding client.
 
 Tests for the CLIPClient class that generates image embeddings via CLIP-compatible
-APIs (Ollama LLaVA, etc.).
+APIs.
 """
 
 from __future__ import annotations
