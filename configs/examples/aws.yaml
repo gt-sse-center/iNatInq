@@ -56,7 +56,7 @@ vector_databases:
       recovery_timeout: 30
 
 embeddings:
-  provider: "sagemaker"         # Or "ollama" on EKS
+  provider: "sagemaker"         # Or "clip" on EKS
   vector_size: null
 
   # SageMaker endpoint for embeddings
@@ -64,18 +64,18 @@ embeddings:
     endpoint: "${SAGEMAKER_ENDPOINT}"
     region: "${AWS_REGION}"
 
-  # Alternative: Ollama on EKS
-  # provider: "ollama"
-  # ollama:
-  #   url: "http://ollama.ollama.svc.cluster.local:11434"
-  #   model: "nomic-embed-text"
-  #   max_batch_size: 16
+  # Alternative: CLIP on EKS
+  # provider: "clip"
+  # clip:
+  #   url: "http://clip.clip.svc.cluster.local:8000"
+  #   model: "ViT-B/32"
+  #   max_batch_size: 32
 
 image_embeddings:
   provider: "clip"
-  backend: "ollama"
-  url: "http://ollama.ollama.svc.cluster.local:11434"
-  model: "clip"
+  backend: "clip"
+  url: "http://clip.clip.svc.cluster.local:8000"
+  model: "ViT-B/32"
   max_batch_size: 12
   timeout_seconds: 60
 
@@ -118,8 +118,8 @@ ray:
     progress_log_interval: 100
 
   rate_limits:
-    ollama_max_concurrency: 20
-    ollama_requests_per_second: 10
+    embedding_max_concurrency: 20
+    embedding_requests_per_second: 10
 
   timeouts:
     embedding_seconds: 60

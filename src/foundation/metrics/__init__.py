@@ -10,7 +10,7 @@ Usage::
     from foundation.metrics import CLIENT_REQUEST_DURATION, classify_error
 
     CLIENT_REQUEST_DURATION.labels(
-        client="ollama", operation="embed", status="success"
+        client="clip", operation="embed", status="success"
     ).observe(0.5)
 
 All label values are drawn from fixed allow-lists defined in ADR-0001 to

@@ -18,7 +18,6 @@ from testcontainers.core.container import DockerContainer
 from testcontainers.minio import MinioContainer
 from testcontainers.qdrant import QdrantContainer
 
-from clients.ollama import OllamaClient
 from clients.qdrant import QdrantClientWrapper
 from clients.s3 import S3ClientWrapper
 
@@ -167,77 +166,6 @@ def test_collection(qdrant_client: QdrantClientWrapper) -> str:
         asyncio.run(qdrant_client._client.delete_collection(collection_name=collection_name))
     except Exception as e:
         logger.warning("Collection cleanup failed", extra={"collection": collection_name, "error": str(e)})
-
-
-# =============================================================================
-# Ollama Container Fixtures
-# =============================================================================
-
-
-def _get_ollama_url(container: DockerContainer) -> str:
-    host = container.get_container_host_ip()
-    port = container.get_exposed_port(11434)
-    return f"http://{host}:{port}"
-
-
-def _wait_for_ollama_health(container: DockerContainer, timeout: int = 60) -> None:
-    url = _get_ollama_url(container)
-    health_url = f"{url}/api/tags"
-    start = time.time()
-    while time.time() - start < timeout:
-        try:
-            response = httpx.get(health_url, timeout=2.0)
-            if response.status_code == 200:
-                return
-        except httpx.RequestError:
-            pass
-        time.sleep(0.5)
-    raise TimeoutError(f"Ollama container not healthy after {timeout}s")
-
-
-def _pull_ollama_model(container: DockerContainer, model: str, timeout: int = 120) -> None:
-    url = _get_ollama_url(container)
-    logger.info("Pulling Ollama model: %s", model)
-    try:
-        response = httpx.post(f"{url}/api/pull", json={"name": model}, timeout=timeout)
-        if response.status_code != 200:
-            raise RuntimeError(f"Failed to pull model {model}: {response.text}")
-    except httpx.RequestError as e:
-        raise RuntimeError(f"Failed to pull model {model}: {e}") from e
-    logger.info("Ollama model pulled: %s", model)
-
-
-@pytest.fixture(scope="session")
-def ollama_container():
-    """Start an Ollama container for the test session."""
-    logger.info("Starting Ollama container...")
-    container = (
-        DockerContainer("ollama/ollama:latest").with_exposed_ports(11434).with_env("OLLAMA_HOST", "0.0.0.0")
-    )
-    container.start()
-    _wait_for_ollama_health(container)
-    _pull_ollama_model(container, "all-minilm")
-    logger.info("Ollama container started", extra={"url": _get_ollama_url(container)})
-    yield container
-    logger.info("Stopping Ollama container...")
-    container.stop()
-
-
-@pytest.fixture(scope="session")
-def ollama_url(ollama_container: DockerContainer) -> str:
-    """Get Ollama connection URL."""
-    return _get_ollama_url(ollama_container)
-
-
-@pytest.fixture(scope="session")
-def ollama_client(ollama_url: str) -> OllamaClient:
-    """Create an OllamaClient connected to the test Ollama instance."""
-    client = OllamaClient(base_url=ollama_url, model="all-minilm", timeout_s=30)
-    logger.info(
-        "Created Ollama client for integration tests", extra={"url": ollama_url, "model": "all-minilm"}
-    )
-    yield client
-    asyncio.run(client.close())
 
 
 # =============================================================================

@@ -80,7 +80,7 @@ make validate-config
 ```
 src/
 ├── api/              # FastAPI routes and request/response models
-├── clients/          # External service clients (S3, Qdrant, Ollama, CLIP)
+├── clients/          # External service clients (S3, Qdrant, CLIP, Infinity)
 ├── core/             # Domain logic
 │   ├── ingestion/    # Ray & Databricks processing pipelines
 │   └── services/     # Business logic (search, job orchestration)

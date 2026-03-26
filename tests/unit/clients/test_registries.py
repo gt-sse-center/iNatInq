@@ -20,13 +20,11 @@ that providers can be created using the registry functions.
 Run with: pytest tests/unit/clients/test_registries.py
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from clients.interfaces.embedding import create_embedding_provider
 from clients.interfaces.vector_db import create_vector_db_provider
-from clients.ollama import OllamaClient
 from clients.qdrant import QdrantClientWrapper
-from config import EmbeddingConfig, VectorDBConfig
+from config import VectorDBConfig
 
 # =============================================================================
 # Provider Registration Tests
@@ -35,31 +33,6 @@ from config import EmbeddingConfig, VectorDBConfig
 
 class TestProviderRegistration:
     """Test suite for provider registration."""
-
-    def test_ollama_provider_is_registered(self) -> None:
-        """Test that Ollama provider is registered.
-
-        **Why this test is important:**
-          - Provider registration enables factory-based creation
-          - Validates that Ollama is available as embedding provider
-          - Critical for configuration-driven initialization
-          - Validates registry functionality
-
-        **What it tests:**
-          - Ollama provider can be created via create_embedding_provider
-          - Created instance is OllamaClient
-        """
-        config = EmbeddingConfig(
-            provider_type="ollama",
-            ollama_url="http://ollama.example.com:11434",
-            ollama_model="test-model",
-        )
-
-        provider = create_embedding_provider(config)
-
-        assert isinstance(provider, OllamaClient)
-        assert provider.base_url == "http://ollama.example.com:11434"
-        assert provider.model == "test-model"
 
     def test_qdrant_provider_is_registered(self) -> None:
         """Test that Qdrant provider is registered.

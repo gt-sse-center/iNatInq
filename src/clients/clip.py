@@ -3,7 +3,7 @@
 """CLIP client class for generating image and text embeddings.
 
 This module provides a CLIP client class that generates embeddings for images
-and text using Ollama's multi-modal models (like LLaVA) or compatible CLIP services.
+and text using CLIP-compatible embedding services.
 
 CLIP's key capability is that both image and text embeddings live in the same
 vector space, enabling cross-modal search (e.g., text-to-image search).
@@ -14,8 +14,8 @@ vector space, enabling cross-modal search (e.g., text-to-image search).
 from clients.clip import CLIPClient
 
 client = CLIPClient(
-    base_url="http://ollama:11434",
-    model="llava",
+    base_url="http://clip:8000",
+    model="ViT-B-32",
     timeout_s=60
 )
 
@@ -76,7 +76,6 @@ class CLIPErrorClassifier(HTTPErrorClassifier):
     """CLIP-specific error classification for retry logic.
 
     Classifies httpx exceptions into retriable and non-retriable categories.
-    Same pattern as OllamaErrorClassifier (both use httpx).
     """
 
     @override

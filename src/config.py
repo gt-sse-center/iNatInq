@@ -16,20 +16,6 @@ safe and efficient).
 The following environment variables are supported (all optional with
 defaults):
 
-**Ollama (Embeddings Service)**
-- `OLLAMA_BASE_URL`: Base URL for Ollama API
-  (default: `http://ollama.ml-system:11434`)
-- `OLLAMA_MODEL`: Default embedding model name
-  (default: `nomic-embed-text`)
-- `OLLAMA_TIMEOUT`: Request timeout in seconds (default: `60`)
-- `OLLAMA_CIRCUIT_BREAKER_THRESHOLD`: Failures before circuit opens
-  (default: `5`)
-- `OLLAMA_CIRCUIT_BREAKER_TIMEOUT`: Circuit recovery timeout in seconds
-  (default: `30`)
-- `OLLAMA_BATCH_TIMEOUT_MULTIPLIER`: Multiplier for batch timeout
-  (default: `1.0`)
-- `OLLAMA_MAX_BATCH_SIZE`: Maximum texts per batch request (default: `12`)
-
 **Qdrant (Vector Database)**
 - `QDRANT_URL`: Qdrant service URL. Auto-detected based on environment:
   - In-cluster: `http://qdrant.{namespace}:6333` (default)
@@ -117,9 +103,9 @@ defaults):
   (default: `200000000` = 200MB)
 - `RAY_NAMESPACE`: Ray namespace for job isolation
   (default: `ml-pipeline`)
-- `RAY_OLLAMA_MAX_CONCURRENCY`: Maximum concurrent Ollama requests per
+- `RAY_EMBEDDING_MAX_CONCURRENCY`: Maximum concurrent embedding requests per
   worker (default: `10`)
-- `RAY_OLLAMA_RPS`: Rate limit for Ollama requests per second
+- `RAY_EMBEDDING_REQUESTS_PER_SECOND`: Rate limit for embedding requests per second
   (default: `5`)
 - `RAY_EMBED_BATCH_MIN`: Minimum batch size for embeddings
   (default: `1`)
@@ -164,13 +150,10 @@ defaults):
 - `DATABRICKS_WORKSPACE_PATH`: Optional workspace path (if used)
 
 **Embedding Provider Configuration**
-- `EMBEDDING_PROVIDER`: Provider type,
-  `huggingface`, or `sagemaker` (default: `ollama`)
+- `EMBEDDING_PROVIDER`: Provider type — `clip`, `hosted_clip`, `infinity`,
+  `huggingface`, or `sagemaker` (default: `clip`)
 - `EMBEDDING_VECTOR_SIZE`: Expected vector dimension (optional,
   auto-detected if not set)
-- `OLLAMA_BASE_URL`: Ollama service URL (default: auto-detected based
-  on environment)
-- `OLLAMA_MODEL`: Ollama model name (default: `nomic-embed-text`)
 - `OPENAI_API_KEY`: OpenAI API key (required if
   `EMBEDDING_PROVIDER=openai`)
 - `OPENAI_MODEL`: OpenAI model name
@@ -320,7 +303,6 @@ def resolve_vector_db_provider(provider: str | None = None, default: str = "qdra
 class ProviderType(StrEnum):
     """Specifies the underlying model provider."""
 
-    OLLAMA = "ollama"
     OPENAI = "openai"
     HUGGINGFACE = "huggingface"
     SAGEMAKER = "sagemaker"
@@ -340,20 +322,6 @@ class EmbeddingConfig(BaseModel):
         vector_size: Expected vector dimension. If None, will be
             auto-detected from the first embedding or provider default.
 
-        ollama_url: Ollama service URL. Required if
-            provider_type="ollama". Auto-detected based on environment if
-            not set.
-        ollama_model: Ollama model name. Required if
-            provider_type="ollama". Default: "nomic-embed-text".
-        ollama_timeout: Ollama request timeout in seconds. Default: 60.
-        ollama_circuit_breaker_threshold: Failures before circuit opens.
-            Default: 5.
-        ollama_circuit_breaker_timeout: Circuit recovery timeout in seconds.
-            Default: 30.
-        ollama_batch_timeout_multiplier: Multiplier for batch timeout.
-            Default: 1.0.
-        ollama_max_batch_size: Maximum texts per batch request. Default: 12.
-
         openai_api_key: OpenAI API key. Required if
             provider_type="openai".
         openai_model: OpenAI model name. Required if
@@ -369,10 +337,10 @@ class EmbeddingConfig(BaseModel):
         sagemaker_region: AWS region for SageMaker endpoint.
             Default: "us-east-1".
 
-        clip_url: CLIP/Ollama service URL. Required if provider_type="clip".
+        clip_url: CLIP service URL. Required if provider_type="clip".
             Auto-detected based on environment if not set.
-        clip_model: Model name for image embedding (e.g., "llava", "ViT-B/32").
-            Default: "llava".
+        clip_model: Model name for image embedding (e.g., "ViT-B/32").
+            Default: "ViT-B/32".
         clip_timeout: Request timeout in seconds. Default: 120 (higher for images).
         clip_circuit_breaker_threshold: Failures before circuit opens. Default: 5.
         clip_circuit_breaker_timeout: Circuit recovery timeout in seconds. Default: 30.
@@ -395,15 +363,6 @@ class EmbeddingConfig(BaseModel):
     image_batch_size: int = 10
     image_max_size_mb: float = 10.0
     image_target_size: int = 224
-
-    # Ollama settings
-    ollama_url: str | None = None
-    ollama_model: str | None = None
-    ollama_timeout: int = 60
-    ollama_circuit_breaker_threshold: int = 5
-    ollama_circuit_breaker_timeout: int = 30
-    ollama_batch_timeout_multiplier: float = 1.0
-    ollama_max_batch_size: int = 12
 
     # OpenAI settings
     openai_api_key: str | None = None
@@ -440,15 +399,14 @@ class EmbeddingConfig(BaseModel):
         """Create EmbeddingConfig from environment variables.
 
         Supports:
-        - EMBEDDING_PROVIDER: Provider type (ollama, clip, hosted_clip, openai, etc.)
+        - EMBEDDING_PROVIDER: Provider type (clip, hosted_clip, openai, infinity, etc.)
         - EMBEDDING_VECTOR_SIZE: Expected vector dimension (optional)
-        - OLLAMA_BASE_URL, OLLAMA_MODEL: Ollama config (backward compatible)
         - OPENAI_API_KEY, OPENAI_MODEL: OpenAI config
         - HUGGINGFACE_MODEL: HuggingFace model name
         - SAGEMAKER_ENDPOINT, SAGEMAKER_REGION: SageMaker config
-        - CLIP_URL or OLLAMA_BASE_URL: Service URL
+        - CLIP_URL: CLIP service URL
         - CLIP_MODEL: Model name (default depends on backend)
-        - CLIP_API_KEY: Optional API key for authenticated CLIP/Ollama endpoints
+        - CLIP_API_KEY: Optional API key for authenticated CLIP endpoints
         - CLIP_TIMEOUT: Request timeout in seconds
         - CLIP_CIRCUIT_BREAKER_THRESHOLD: Failures before circuit opens
         - CLIP_CIRCUIT_BREAKER_TIMEOUT: Circuit recovery timeout
@@ -493,15 +451,6 @@ class EmbeddingConfig(BaseModel):
         image_target_size = int(os.getenv("IMAGE_TARGET_SIZE", "224"))
 
         # Initialize all provider-specific fields with sensible defaults/None
-        # Ollama
-        ollama_url: str | None = None
-        ollama_model: str | None = None
-        ollama_timeout = int(os.getenv("OLLAMA_TIMEOUT", "60"))
-        ollama_circuit_breaker_threshold = int(os.getenv("OLLAMA_CIRCUIT_BREAKER_THRESHOLD", "5"))
-        ollama_circuit_breaker_timeout = int(os.getenv("OLLAMA_CIRCUIT_BREAKER_TIMEOUT", "30"))
-        ollama_batch_timeout_multiplier = float(os.getenv("OLLAMA_BATCH_TIMEOUT_MULTIPLIER", "1.0"))
-        ollama_max_batch_size = int(os.getenv("OLLAMA_MAX_BATCH_SIZE", "12"))
-
         # OpenAI
         openai_api_key: str | None = None
         openai_model: str | None = None
@@ -533,12 +482,7 @@ class EmbeddingConfig(BaseModel):
         infinity_vector_size: int | None = int(infinity_vector_size_str) if infinity_vector_size_str else None
 
         # Provider-specific validation
-        if provider_type is ProviderType.OLLAMA:
-            default_url = f"http://ollama.{namespace}:11434" if in_cluster else "http://localhost:11434"
-            ollama_url = os.getenv("OLLAMA_BASE_URL") or default_url
-            ollama_model = os.getenv("OLLAMA_MODEL") or "llava"
-
-        elif provider_type is ProviderType.OPENAI:
+        if provider_type is ProviderType.OPENAI:
             openai_api_key = os.getenv("OPENAI_API_KEY")
             if not openai_api_key:
                 raise ValueError("OPENAI_API_KEY is required for OpenAI provider")
@@ -558,7 +502,7 @@ class EmbeddingConfig(BaseModel):
 
         elif provider_type in (ProviderType.LOCAL_CLIP, ProviderType.HOSTED_CLIP):
             default_url = f"http://clip.{namespace}:8000" if in_cluster else "http://localhost:8000"
-            clip_url = os.getenv("CLIP_URL") or os.getenv("OLLAMA_BASE_URL", default_url)
+            clip_url = os.getenv("CLIP_URL") or default_url
             default_model = "ViT-B/32"
             clip_model = os.getenv("CLIP_MODEL", default_model)
 
@@ -575,14 +519,6 @@ class EmbeddingConfig(BaseModel):
             image_batch_size=image_batch_size,
             image_max_size_mb=image_max_size_mb,
             image_target_size=image_target_size,
-            # Ollama
-            ollama_url=ollama_url,
-            ollama_model=ollama_model,
-            ollama_timeout=ollama_timeout,
-            ollama_circuit_breaker_threshold=ollama_circuit_breaker_threshold,
-            ollama_circuit_breaker_timeout=ollama_circuit_breaker_timeout,
-            ollama_batch_timeout_multiplier=ollama_batch_timeout_multiplier,
-            ollama_max_batch_size=ollama_max_batch_size,
             # OpenAI
             openai_api_key=openai_api_key,
             openai_model=openai_model,
@@ -813,11 +749,11 @@ class RayJobConfig(BaseModel):
 
     Throughput Tuning Notes:
         - RAY_TASK_NUM_CPUS=0.5: Embedding tasks are I/O-bound (waiting on
-          Ollama). Requesting 0.5 CPU allows Ray to schedule 2x more tasks
+          embedding services). Requesting 0.5 CPU allows Ray to schedule 2x more tasks
           per worker node.
         - RAY_WAIT_BATCH_SIZE=50: For large jobs (1000+ keys), reduces
           driver-side scheduling overhead.
-        - RAY_OLLAMA_REQUESTS_PER_SECOND: With batch embedding API, each
+        - RAY_EMBEDDING_REQUESTS_PER_SECOND: With batch embedding API, each
           request embeds embed_batch_max texts. Consider increasing from 5
           to match desired throughput (5 RPS * 8 texts/request = 40
           embeddings/sec).
@@ -844,9 +780,9 @@ class RayJobConfig(BaseModel):
             if not explicitly set.
         runtime_env: Runtime environment configuration (packages, env
             vars). Default: empty dict.
-        ollama_max_concurrency: Maximum concurrent Ollama requests per
+        embedding_max_concurrency: Maximum concurrent embedding requests per
             worker. Default: 10.
-        ollama_requests_per_second: Rate limit for Ollama requests per
+        embedding_requests_per_second: Rate limit for embedding requests per
             second. Default: 5.
         embed_batch_min: Minimum batch size for embedding generation.
             Default: 1.
@@ -913,8 +849,8 @@ class RayJobConfig(BaseModel):
     runtime_env: dict[str, Any] = Field(default_factory=dict)
 
     # Rate limiting and concurrency
-    ollama_max_concurrency: int = 10
-    ollama_requests_per_second: int = 5
+    embedding_max_concurrency: int = 10
+    embedding_requests_per_second: int = 5
 
     # Batch sizes
     embed_batch_min: int = 1
@@ -1014,8 +950,8 @@ class RayJobConfig(BaseModel):
             dashboard_address=dashboard_address,
             runtime_env={},  # Can be extended to load from env
             # Rate limiting and concurrency
-            ollama_max_concurrency=int(os.getenv("RAY_OLLAMA_MAX_CONCURRENCY", "10")),
-            ollama_requests_per_second=int(os.getenv("RAY_OLLAMA_RPS", "5")),
+            embedding_max_concurrency=int(os.getenv("RAY_EMBEDDING_MAX_CONCURRENCY", "10")),
+            embedding_requests_per_second=int(os.getenv("RAY_EMBEDDING_REQUESTS_PER_SECOND", "5")),
             # Batch sizes
             embed_batch_min=int(os.getenv("RAY_EMBED_BATCH_MIN", "1")),
             embed_batch_max=int(os.getenv("RAY_EMBED_BATCH_MAX", "8")),
@@ -1293,7 +1229,7 @@ class Settings(BaseModel):
 
     Attributes:
         embedding: Embedding provider configuration (provider-agnostic).
-            Supports multiple providers: ollama, openai, huggingface,
+            Supports multiple providers: clip, infinity, openai, huggingface,
             sagemaker.
         vector_db: Vector database provider configuration
             (provider-agnostic). Supports providers: qdrant.

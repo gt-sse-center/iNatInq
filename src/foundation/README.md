@@ -57,9 +57,9 @@ session = create_retry_session(
     allowed_methods=["POST", "GET"]
 )
 
-# Use with Ollama client for connection pooling
-from clients.ollama import OllamaClient
-client = OllamaClient(base_url="http://ollama:11434", model="nomic-embed-text")
+# Use with embedding client for connection pooling
+from clients.clip import CLIPClient
+client = CLIPClient(base_url="http://clip:8000", model="ViT-B/32")
 client.set_session(session)
 ```
 

@@ -61,7 +61,6 @@ Once running, services are available at:
 | MinIO Console | <http://localhost:9001> | Object storage UI |
 | MinIO API | <http://localhost:9000> | S3-compatible API |
 | Qdrant Dashboard | <http://localhost:6333/dashboard> | Vector DB UI |
-| Ollama | <http://localhost:11434> | Embedding service |
 | Ray Dashboard | <http://localhost:8265> | Ray cluster UI |
 
 ### Default Credentials
@@ -79,12 +78,12 @@ The Docker Compose stack emulates the Kubernetes `ml-system` namespace from `mod
 │                        Docker Compose Network                           │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│  ┌──────────┐    ┌──────────┐    ┌──────────┐                           │
-│  │  MinIO   │    │  Qdrant  │    │  Ollama  │                           │
-│  │  :9000   │    │  :6333   │    │  :11434  │                           │
-│  └────┬─────┘    └────┬─────┘    └────┬─────┘                           │
-│       │               │               │                                 │
-│       └───────────────┼───────────────┘                                 │
+│  ┌──────────┐    ┌──────────┐                                          │
+│  │  MinIO   │    │  Qdrant  │                                          │
+│  │  :9000   │    │  :6333   │                                          │
+│  └────┬─────┘    └────┬─────┘                                          │
+│       │               │                                                │
+│       └───────────────┘                                                │
 │                       │                                                 │
 │                       ▼                                                 │
 │                  ┌────────────────────────┐                             │
@@ -132,7 +131,6 @@ docker compose -f zarf/compose/dev/docker-compose.yaml logs -f
 
 # Specific service
 docker compose -f zarf/compose/dev/docker-compose.yaml logs -f pipeline
-docker compose -f zarf/compose/dev/docker-compose.yaml logs -f ollama
 ```
 
 ### Scaling Ray Workers
@@ -148,7 +146,7 @@ docker compose -f zarf/compose/dev/docker-compose.yaml up -d --scale ray-worker=
 Environment variables are defined in `compose/dev/pipeline.env`. Key configurations:
 
 - **VECTOR_DB_PROVIDER**: `qdrant`
-- **EMBEDDING_PROVIDER**: `ollama` (default for local dev)
+- **EMBEDDING_PROVIDER**: `clip` (default for local dev)
 - **S3_ENDPOINT**: MinIO endpoint URL
 
 ### Using Cloud Vector Database
@@ -219,15 +217,7 @@ The local containers will still run but won't be used when cloud credentials are
 docker compose -f zarf/compose/dev/docker-compose.yaml ps
 
 # Check logs for errors
-docker compose -f zarf/compose/dev/docker-compose.yaml logs ollama
-```
-
-### Ollama Model Not Loading
-
-The `ollama-init` service pulls the model after Ollama starts. Check its logs:
-
-```bash
-docker compose -f zarf/compose/dev/docker-compose.yaml logs ollama-init
+docker compose -f zarf/compose/dev/docker-compose.yaml logs pipeline
 ```
 
 ### Ray Connection Issues

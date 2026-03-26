@@ -78,7 +78,7 @@ class TestExceptionHandlerMiddleware:
 
         @app.get("/upstream")
         def upstream_endpoint():
-            raise UpstreamError("Ollama service unavailable")
+            raise UpstreamError("Embedding service unavailable")
 
         @app.get("/pipeline-error")
         def pipeline_error_endpoint():

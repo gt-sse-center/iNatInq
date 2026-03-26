@@ -17,11 +17,11 @@ The decorators follow the same pattern as the circuit breaker decorators in
 
 Usage::
 
-    @with_client_metrics("ollama", "embed")
-    @with_circuit_breaker("ollama")
-    def embed(self, text: str) -> list[float]:
+    @with_client_metrics("clip", "embed")
+    @with_circuit_breaker("clip")
+    def embed(self, image_bytes: bytes) -> list[float]:
         # metrics decorator is outermost, measures full duration including breaker check
-        return self._client.post("/api/embed", json={"text": text})
+        return self._client.post("/embed", files={"image": image_bytes})
 
     @with_client_metrics_async("qdrant", "search")
     @with_circuit_breaker_async("qdrant")
@@ -74,7 +74,7 @@ def with_client_metrics(
        and errors_total with classified error_type, then re-raises
 
     Args:
-        client: Client name for the `client` label (e.g., "ollama", "qdrant").
+        client: Client name for the `client` label (e.g., "clip", "qdrant").
         operation: Operation name for the `operation` label (e.g., "embed", "search").
 
     Returns:
@@ -135,7 +135,7 @@ def with_client_metrics_async(
     methods and provides identical metrics instrumentation.
 
     Args:
-        client: Client name for the `client` label (e.g., "ollama", "qdrant").
+        client: Client name for the `client` label (e.g., "clip", "qdrant").
         operation: Operation name for the `operation` label (e.g., "embed", "search").
 
     Returns:

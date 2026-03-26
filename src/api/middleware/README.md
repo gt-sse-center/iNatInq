@@ -127,7 +127,7 @@ app.add_middleware(ExceptionHandlerMiddleware)
 ```json
 {
   "error": "Bad Gateway",
-  "message": "Ollama error 404: model not found"
+  "message": "Embedding service error 404: model not found"
 }
 ```
 

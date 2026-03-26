@@ -1,7 +1,7 @@
 """Integration tests for the full ingestion pipeline.
 
 Tests end-to-end pipeline functionality with real services:
-Ray + MinIO + Qdrant + Ollama/CLIP.
+Ray + MinIO + Qdrant + CLIP.
 
 # Test Coverage
 
@@ -82,98 +82,6 @@ class TestImagePipelineIntegration:
         # Retrieve
         retrieved = minio_client.get_object(bucket=test_bucket, key=key)
         assert retrieved == image_bytes
-
-    # TODO: replace text embedding with image embedding
-    # this will be updated once Ollama client is refactored to implement image embedding
-    def test_qdrant_upsert_and_search(
-        self,
-        qdrant_client,
-        ollama_client,
-        test_collection: str,
-    ) -> None:
-        """Test upserting embeddings to Qdrant and searching.
-
-        **Why this test is important:**
-          - End-to-end embedding storage
-          - Validates vector search
-          - Ensures semantic relevance
-
-        **What it tests:**
-          - Embeddings can be stored in Qdrant
-          - Similar queries return relevant results
-          - Payload is preserved
-        """
-
-        from qdrant_client.models import PointStruct
-
-        # Create test documents
-        docs = [
-            "The quick brown fox jumps over the lazy dog.",
-            "A fast red fox leaps above a sleepy canine.",
-            "Python is a programming language.",
-        ]
-
-        # Generate embeddings
-        embeddings = asyncio.run(ollama_client.embed_text_batch(docs))
-        vector_size = len(embeddings[0])
-
-        # Create points
-        points = [
-            PointStruct(
-                id=str(uuid.uuid4()),
-                vector=emb,
-                payload={"text": doc},
-            )
-            for emb, doc in zip(embeddings, docs)
-        ]
-
-        # Upsert to Qdrant
-        asyncio.run(
-            qdrant_client.batch_upsert_async(
-                collection=test_collection,
-                points=points,
-                vector_size=vector_size,
-            )
-        )
-
-        # Search for similar documents
-        query_embedding = asyncio.run(ollama_client.embed_text("fox jumping"))
-        results = asyncio.run(
-            qdrant_client.search_async(
-                collection=test_collection,
-                query_vector=query_embedding,
-                limit=2,
-            )
-        )
-
-        # Should return fox-related documents first
-        assert len(results.items) == 2
-        # First result should be about foxes
-        first_text = results.items[0].payload.get("text", "")
-        assert "fox" in first_text.lower()
-
-    def test_ollama_embedding_generation(self, ollama_client) -> None:
-        """Test generating embeddings with Ollama.
-
-        **Why this test is important:**
-          - Embeddings are core to semantic search
-          - Validates Ollama integration
-          - Ensures correct dimensions
-
-        **What it tests:**
-          - Ollama generates embeddings
-          - Embedding has expected dimensions
-          - Values are normalized floats
-        """
-        text = "The quick brown fox jumps over the lazy dog."
-
-        embedding = asyncio.run(ollama_client.embed_text(text))
-
-        # all-minilm produces 384-dimensional embeddings
-        assert len(embedding) == 384
-        assert all(isinstance(v, float) for v in embedding)
-        # Check embedding is non-zero
-        assert any(v != 0.0 for v in embedding)
 
     def test_image_validation(self) -> None:
         """Test image validation utility.
@@ -337,91 +245,5 @@ class TestFullPipelineIntegration:
     They test the complete flow from S3 through embedding to vector DB.
     """
 
-    # TODO: update test to process images rather than text files.
-    # When the OllamaClient is refactored to provide image embedding methods, this can be refactored.
-    def test_full_ingestion_pipeline(
-        self,
-        minio_client,
-        ollama_client,
-        qdrant_client,
-        test_bucket: str,
-        test_collection: str,
-    ) -> None:
-        """Test complete ingestion pipeline.
-
-        **Why this test is important:**
-          - Validates end-to-end flow
-          - Ensures all components integrate
-          - Critical for production confidence
-
-        **What it tests:**
-          - Upload document to S3
-          - Generate embedding with Ollama
-          - Store in Qdrant
-          - Search returns relevant results
-        """
-        import asyncio
-
-        from qdrant_client.models import PointStruct
-
-        # Step 1: Upload documents to S3
-        documents = [
-            ("doc1.txt", "Machine learning is a subset of artificial intelligence."),
-            ("doc2.txt", "Neural networks are inspired by biological neurons."),
-            ("doc3.txt", "Python is popular for data science and ML."),
-        ]
-
-        for filename, content in documents:
-            key = f"inputs/{filename}"
-            minio_client.put_object(
-                bucket=test_bucket,
-                key=key,
-                body=create_test_text_file(content),
-            )
-
-        # Step 2: List and process documents
-        keys = minio_client.list_objects(bucket=test_bucket, prefix="inputs/")
-        assert len(keys) >= len(documents)
-
-        # Step 3: Generate embeddings and store
-        points = []
-        for key in keys:
-            if not key.endswith(".txt"):
-                continue
-
-            content = minio_client.get_object(bucket=test_bucket, key=key)
-            text = content.decode("utf-8")
-            embedding = asyncio.run(ollama_client.embed_text(text))
-
-            points.append(
-                PointStruct(
-                    id=str(uuid.uuid4()),
-                    vector=embedding,
-                    payload={"s3_key": key, "text": text},
-                )
-            )
-
-        # Upsert to Qdrant
-        vector_size = len(points[0].vector)
-        asyncio.run(
-            qdrant_client.batch_upsert_async(
-                collection=test_collection,
-                points=points,
-                vector_size=vector_size,
-            )
-        )
-
-        # Step 4: Search and validate
-        query_embedding = asyncio.run(ollama_client.embed_text("artificial intelligence"))
-        results = asyncio.run(
-            qdrant_client.search_async(
-                collection=test_collection,
-                query_vector=query_embedding,
-                limit=3,
-            )
-        )
-
-        assert len(results.items) > 0
-        # First result should be AI-related
-        first_text = results.items[0].payload.get("text", "")
-        assert "artificial" in first_text.lower() or "neural" in first_text.lower()
+    # TODO: Add full pipeline integration test that uses CLIP for image embedding
+    pass

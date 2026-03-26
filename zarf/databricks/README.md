@@ -181,11 +181,6 @@ Qdrant Cloud:
 - `QDRANT_URL`
 - `QDRANT_API_KEY`
 
-### Ollama (optional external)
-
-- `OLLAMA_BASE_URL`
-- `OLLAMA_MODEL`
-
 ### S3/MinIO (object storage)
 
 - `S3_ENDPOINT`

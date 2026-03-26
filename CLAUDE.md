@@ -9,7 +9,7 @@ iNatInq is a semantic search and document ingestion service built with FastAPI, 
 1. **Query Engine**: Semantic search over documents using vector similarity (text-to-text and text-to-image)
 2. **Ingestion Engine**: Distributed processing of S3 documents into vector databases using Ray or Databricks
 
-**Tech Stack**: FastAPI · Ray · Spark · Ollama · Qdrant · MinIO · CLIP
+**Tech Stack**: FastAPI · Ray · Spark · CLIP · Qdrant · MinIO
 
 ## Common Development Commands
 
@@ -29,10 +29,10 @@ uv run pytest tests/ -v
 uv run pytest tests/unit/ -v --cov=src --cov-report=html --cov-report=term
 
 # Run a single test file
-uv run pytest tests/unit/clients/test_ollama.py -v
+uv run pytest tests/unit/clients/test_clip.py -v
 
 # Run a specific test
-uv run pytest tests/unit/clients/test_ollama.py::test_embed_success -v
+uv run pytest tests/unit/clients/test_clip.py::test_embed_success -v
 
 # Integration tests in parallel (faster, each worker gets own containers)
 uv run pytest tests/integration/ -v -n auto
@@ -67,7 +67,7 @@ make status
 # View logs for specific service
 make logs-pipeline
 make logs-ray
-make logs-ollama
+make logs-clip
 ```
 
 ### End-to-End Testing
@@ -115,7 +115,7 @@ The codebase follows a strict layered architecture to maintain separation of con
    - Framework-agnostic, reusable components
 
 2. **Client Layer** (`src/clients/`)
-   - Thin wrappers around external services (S3, Qdrant, Ollama, CLIP)
+   - Thin wrappers around external services (S3, Qdrant, CLIP, Infinity)
    - Uses Abstract Base Classes (ABCs) for provider abstraction
    - Translates external errors to `UpstreamError`
    - NO business logic - only connection, authentication, and basic operations
@@ -138,7 +138,7 @@ The codebase follows a strict layered architecture to maintain separation of con
 
 Clients use Abstract Base Classes to allow swapping providers without changing service code:
 
-- **`EmbeddingProvider`** ABC: Implemented by `OllamaClient`, future OpenAI/HuggingFace clients
+- **`EmbeddingProvider`** ABC: Implemented by `CLIPClient`, `InfinityClient`
 - **`VectorDBProvider`** ABC: Implemented by `QdrantClientWrapper`
 
 Services depend on ABCs, not concrete implementations:
@@ -205,7 +205,7 @@ The codebase implements defense-in-depth resilience:
    - Used in all client wrappers
 
 3. **Rate Limiting** (`core/ingestion/ray/rate_limiter.py`)
-   - Ray Actor-based rate limiter for Ollama API
+   - Ray Actor-based rate limiter for embedding API
    - Prevents overwhelming upstream services
 
 4. **Checkpointing** (`core/ingestion/checkpoint.py`)
@@ -213,7 +213,6 @@ The codebase implements defense-in-depth resilience:
    - Saves progress periodically during ingestion jobs
 
 5. **Connection Pooling**
-   - `OllamaClient.set_session()` for reusing requests sessions
    - boto3 and vector DB clients handle pooling internally
 
 ## Testing Strategy
@@ -297,9 +296,8 @@ When modifying Ray jobs, ensure:
 
 Key variables to know (see `src/config.py` for full list):
 
-- **`EMBEDDING_PROVIDER`**: `ollama`, `openai`, `huggingface`, `sagemaker`, `clip`, `hosted_clip`, (default: `clip`)
+- **`EMBEDDING_PROVIDER`**: `clip`, `hosted_clip`, `infinity` (default: `clip`)
 - **`VECTOR_DB_PROVIDER`**: `qdrant` (default: `qdrant`)
-- **`OLLAMA_BASE_URL`**: Auto-detected based on environment
 - **`QDRANT_URL`**: Auto-detected based on environment
 - **`S3_ENDPOINT`**: Auto-detected based on environment
 - **`RAY_S3_BATCH_SIZE`**: Keys per Ray task (default: `50`)

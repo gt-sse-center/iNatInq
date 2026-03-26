@@ -166,12 +166,12 @@ class TestLoadYamlConfig:
           - All top-level sections from config.yaml are present
           - Nested values are accessible
         """
-        base = {"storage": {"bucket": "test-bucket"}, "embeddings": {"provider": "ollama"}}
+        base = {"storage": {"bucket": "test-bucket"}, "embeddings": {"provider": "clip"}}
         (tmp_path / "config.yaml").write_text(yaml.dump(base))
 
         result = load_yaml_config(env=None, config_dir=tmp_path)
         assert result["storage"]["bucket"] == "test-bucket"
-        assert result["embeddings"]["provider"] == "ollama"
+        assert result["embeddings"]["provider"] == "clip"
 
     def test_with_env_overlay(self, tmp_path):
         """Test that environment overlay is merged on top of base.

@@ -9,7 +9,7 @@ sequenceDiagram
     participant Cluster as Ray Cluster /<br/>K8s Spark Operator
     participant Worker as Worker Task<br/>(Ray Remote / Spark Partition)
     participant S3 as MinIO/S3
-    participant Ollama as Ollama Service
+    participant CLIP as CLIP Service
     participant Qdrant as Qdrant
 
     C->>+API: POST /ray/jobs or /spark/jobs<br/>{"s3_prefix": "inputs/", "collection": "docs"}
@@ -52,8 +52,8 @@ sequenceDiagram
             
             Worker->>Worker: Rate limit (wait if needed)
             
-            Worker->>+Ollama: POST /api/embeddings<br/>{"prompt": "content..."}
-            Ollama-->>-Worker: {"embedding": [...]}
+            Worker->>+CLIP: POST /embed<br/>{"inputs": ["content..."]}
+            CLIP-->>-Worker: {"embeddings": [[...]]}
             
             Worker->>Worker: Create PointStruct with payload
         end
@@ -89,7 +89,7 @@ sequenceDiagram
 
 ### Rate Limiting
 
-- Configurable RPS limit to prevent Ollama overload
+- Configurable RPS limit to prevent embedding service overload
 - Async semaphore for concurrency control
 - Dynamic batch sizing (shrink on failure, grow on success)
 

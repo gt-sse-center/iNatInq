@@ -12,7 +12,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pybreaker
 import pytest
 
-from clients.ollama import OllamaClient
 from clients.qdrant import QdrantClientWrapper
 from clients.s3 import S3ClientWrapper
 
@@ -32,39 +31,6 @@ def mock_circuit_breaker() -> MagicMock:
     breaker.call = MagicMock(side_effect=lambda func: func())
     breaker.current_state = pybreaker.STATE_CLOSED
     return breaker
-
-
-# =============================================================================
-# Ollama Fixtures
-# =============================================================================
-
-
-@pytest.fixture
-def mock_httpx_async_client() -> AsyncMock:
-    """Create a mock httpx.AsyncClient for testing Ollama client.
-
-    Returns:
-        AsyncMock: A mock httpx.AsyncClient with post and aclose methods.
-    """
-    client = AsyncMock()
-    client.post = AsyncMock()
-    client.aclose = AsyncMock()
-    client.is_closed = False
-    return client
-
-
-@pytest.fixture
-def ollama_client() -> OllamaClient:
-    """Create an OllamaClient instance for testing.
-
-    Returns:
-        OllamaClient: Configured client instance.
-    """
-    return OllamaClient(
-        base_url="http://ollama.example.com:11434",
-        model="nomic-embed-text",
-        timeout_s=60,
-    )
 
 
 # =============================================================================

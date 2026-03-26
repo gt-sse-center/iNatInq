@@ -24,9 +24,9 @@ vector_databases:
       indexing_threshold: 20000
 
 image_embeddings:
-  # Backend: "ollama", "clip", or "hosted_clip"
-  backend: "ollama"
-  model: "llava"
+  # Backend: "clip" or "hosted_clip"
+  backend: "clip"
+  model: "ViT-B/32"
   url: "${CLIP_URL}"
   max_batch_size: 8
   # api_key: "${CLIP_API_KEY}"  # Required for hosted_clip backend

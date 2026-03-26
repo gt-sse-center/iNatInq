@@ -34,7 +34,7 @@ flowchart TB
 
     subgraph External["External Services"]
         P[(MinIO/S3)]
-        Q[(Ollama)]
+        Q[(CLIP Service)]
         R[(Qdrant)]
     end
 
@@ -82,7 +82,7 @@ flowchart TB
 4. **Object Discovery**: Lists S3 objects matching the prefix
 5. **Parallel Processing**: Partitions work across Ray tasks or Spark executors
 6. **Content Fetch**: Each worker fetches assigned S3 objects
-7. **Embedding Generation**: Rate-limited calls to Ollama for vector embeddings
+7. **Embedding Generation**: Rate-limited calls to CLIP service for vector embeddings
 8. **Vector Point Creation**: Constructs points with embeddings + metadata
 9. **Database Upsert**: Batch upserts to Qdrant
 10. **Async Response**: Returns job ID immediately (202 Accepted)

@@ -79,7 +79,7 @@ storage:
 | `S3_SECRET_ACCESS_KEY` | Storage secret key | - |
 | `QDRANT_URL` | Qdrant endpoint | `http://qdrant:6333` |
 | `QDRANT_API_KEY` | Qdrant API key | - |
-| `OLLAMA_URL` | Ollama endpoint | `http://ollama:11434` |
+| `CLIP_URL` | CLIP service endpoint | `http://clip:8000` |
 | `OPENAI_API_KEY` | OpenAI API key | - |
 
 ## Key Configuration Sections
@@ -126,12 +126,12 @@ Multiple providers supported:
 
 ```yaml
 embeddings:
-  provider: "ollama"          # ollama, openai, huggingface, sagemaker
+  provider: "clip"            # clip, hosted_clip, infinity, openai, huggingface, sagemaker
   vector_size: null           # Auto-detect from model
 
-  ollama:
-    url: "http://localhost:11434"
-    model: "nomic-embed-text"
+  clip:
+    url: "http://localhost:8000"
+    model: "ViT-B/32"
     max_batch_size: 32
 ```
 

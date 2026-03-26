@@ -111,8 +111,6 @@ def _mask_secret(value: str | None) -> str:
 def _print_provider_env() -> None:
     """Print provider-related env vars, masking secrets."""
     logger.info("External provider config from environment:")
-    logger.info("  OLLAMA_BASE_URL=%s", os.getenv("OLLAMA_BASE_URL", ""))
-    logger.info("  OLLAMA_MODEL=%s", os.getenv("OLLAMA_MODEL", ""))
     logger.info("  VECTOR_DB_PROVIDER=%s", os.getenv("VECTOR_DB_PROVIDER", ""))
     logger.info("  QDRANT_URL=%s", os.getenv("QDRANT_URL", ""))
     logger.info("  QDRANT_API_KEY=%s", _mask_secret(os.getenv("QDRANT_API_KEY")))

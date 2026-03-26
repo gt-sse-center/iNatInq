@@ -7,7 +7,7 @@ services used by the pipeline:
 
 - **S3/MinIO**: Object storage for pipeline inputs/outputs
 - **Vector Databases**: Qdrant
-- **Embedding Providers**: Ollama, OpenAI (future), etc.
+- **Embedding Providers**: CLIP, Infinity
 - **Kubernetes**: Spark job submission and management
 
 ## Design Principles
@@ -37,7 +37,8 @@ clients/
 │   ├── embedding.py     # EmbeddingProvider ABC
 │   └── vector_db.py     # VectorDBProvider ABC
 ├── cache.py             # CacheClient (in-memory semantic cache)
-├── ollama.py            # OllamaClient (implements EmbeddingProvider)
+├── clip.py              # CLIPClient (implements EmbeddingProvider)
+├── infinity.py          # InfinityClient (implements EmbeddingProvider)
 ├── qdrant.py            # QdrantClientWrapper (implements VectorDBProvider)
 ├── s3.py                # S3ClientWrapper
 └── k8s_spark.py         # SparkJobClient (Kubernetes Spark Operator)
@@ -69,7 +70,7 @@ from clients.interfaces.embedding import (
     create_embedding_provider,
 )
 
-# Create provider from config (returns OllamaClient, OpenAIClient, etc.)
+# Create provider from config (returns CLIPClient, InfinityClient, etc.)
 config = EmbeddingConfig.from_env()
 provider = create_embedding_provider(config)
 
@@ -253,58 +254,6 @@ provider = create_vector_db_provider(config)  # Returns QdrantClientWrapper
 results = asyncio.run(provider.search_async(collection="documents", query_vector=[...], limit=10))
 ```
 
-### `ollama.py`
-
-Ollama embeddings API client.
-
-**Class:** `OllamaClient`
-
-**Implements:** `EmbeddingProvider` ABC
-
-**Methods:**
-
-- `embed(text: str) -> List[float]`: Generates embeddings for a single text via
-  Ollama's API
-- `embed_async(text: str) -> List[float]`: Async version of `embed()`
-- `vector_size`: Property that returns the embedding dimension
-- `from_config(config: EmbeddingConfig, session: requests.Session | None = None) -> EmbeddingProvider`:
-  Class method to create instance from config
-- `set_session(session: requests.Session)`: Sets a custom requests session for
-  connection pooling
-- `session`: Property that returns the requests session (creates one if needed)
-
-**Usage:**
-
-```python
-from clients.ollama import OllamaClient
-from foundation.http import create_retry_session
-
-# Basic usage
-client = OllamaClient(
-    base_url="http://ollama.ml-system:11434",
-    model="nomic-embed-text",
-    timeout_s=60
-)
-embedding = client.embed("hello world")
-# Returns: List[float] (768-dimensional vector)
-
-# With connection pooling (for Spark jobs)
-session = create_retry_session()
-client = OllamaClient(base_url="http://ollama.ml-system:11434", model="nomic-embed-text")
-client.set_session(session)  # Reuse session across multiple calls
-embedding = client.embed("hello world")
-```
-
-**Or via factory:**
-
-```python
-from clients.interfaces.embedding import create_embedding_provider, EmbeddingConfig
-
-config = EmbeddingConfig.from_env()
-provider = create_embedding_provider(config)  # Returns OllamaClient
-vector = provider.embed("hello world")
-```
-
 ### `k8s_spark.py`
 
 Kubernetes client for managing Spark jobs via the Spark Operator.
@@ -372,9 +321,8 @@ Defines the interface for embedding generation:
 
 **Implementations:**
 
-- `OllamaClient`: Ollama API client
-- `OpenAIClient`: OpenAI API client (future)
-- `HuggingFaceClient`: HuggingFace models (future)
+- `CLIPClient`: Local CLIP embedding client
+- `InfinityClient`: Infinity embedding server client
 
 ### `VectorDBProvider` ABC
 
@@ -401,7 +349,7 @@ Factory functions in `interfaces/` create provider instances from configuration:
 from clients.interfaces.embedding import create_embedding_provider, EmbeddingConfig
 from clients.interfaces.vector_db import create_vector_db_provider, VectorDBConfig
 
-# Create embedding provider (returns OllamaClient, OpenAIClient, etc.)
+# Create embedding provider (returns CLIPClient, InfinityClient, etc.)
 embedding_config = EmbeddingConfig.from_env()
 embedding_provider = create_embedding_provider(embedding_config)
 
@@ -449,30 +397,11 @@ The method automatically:
 Clients support connection pooling for better performance, especially in Ray
 jobs:
 
-- **OllamaClient**: Supports custom `requests.Session` via `set_session()`
-  method
 - **S3ClientWrapper**: Reuses boto3 client internally (connection pooling
   handled by boto3)
 - **QdrantClientWrapper**: Reuses AsyncQdrantClient internally (connection pooling
   handled by qdrant-client)
 - **KubernetesClient**: Lazy initialization of Batch API client
-
-**Example with shared session:**
-
-```python
-from clients.ollama import OllamaClient
-from foundation.http import create_retry_session
-
-# Create shared session for connection pooling
-session = create_retry_session()
-
-# Reuse session across multiple clients
-client1 = OllamaClient(base_url="http://ollama:11434", model="nomic-embed-text")
-client1.set_session(session)
-
-client2 = OllamaClient(base_url="http://ollama:11434", model="nomic-embed-text")
-client2.set_session(session)  # Same session, better performance
-```
 
 ## Testing
 
@@ -492,6 +421,6 @@ mock_provider.vector_size = 768
 
 - `boto3`: S3/MinIO client
 - `qdrant-client`: Qdrant client
-- `requests`: HTTP client for Ollama
+- `requests`: HTTP client for embedding providers
 - `kubernetes`: Kubernetes Python client
 - `attrs`: Class definition and validation

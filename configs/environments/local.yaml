@@ -3,7 +3,7 @@
 # =============================================================================
 # Use with: ENV=local make run
 #
-# Assumes: docker compose up (MinIO, Qdrant, Weaviate, Ollama running locally)
+# Assumes: docker compose up (MinIO, Qdrant, Weaviate, CLIP running locally)
 # =============================================================================
 
 logging:

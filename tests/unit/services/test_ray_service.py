@@ -48,12 +48,14 @@ class TestRayServiceSubmitJob:
 class TestRayServiceSubmitImageJob:
     """Test suite for RayService.submit_image_job method."""
 
+    @patch("core.services.ray_service.EmbeddingConfig.from_env")
     @patch("core.services.ray_service.RayJobConfig.from_env")
     @patch("core.services.ray_service.JobSubmissionClient")
     def test_submit_image_job_success(
         self,
         mock_client_cls: MagicMock,
         mock_config: MagicMock,
+        mock_embed_config: MagicMock,
         ray_service: RayService,
     ) -> None:
         """Test that submit_image_job submits job with correct entrypoint and env vars.
@@ -66,6 +68,10 @@ class TestRayServiceSubmitImageJob:
         mock_ray_config = MagicMock()
         mock_ray_config.dashboard_address = "http://ray-head.test-namespace:8265"
         mock_config.return_value = mock_ray_config
+
+        mock_embed_config.return_value = EmbeddingConfig(
+            provider_type=ProviderType.LOCAL_CLIP,
+        )
 
         mock_client = MagicMock()
         mock_client.submit_job.return_value = "raysubmit_image123"
@@ -549,7 +555,7 @@ class TestRayServiceDashboardAddress:
             s3_secret_access_key="test-secret",
             s3_bucket="test-bucket",
             s3_prefix="inputs/",
-            embedding_config=EmbeddingConfig(provider_type=ProviderType.OLLAMA),
+            embedding_config=EmbeddingConfig(provider_type=ProviderType.LOCAL_CLIP),
             collection="test-collection",
         )
 
@@ -592,7 +598,7 @@ class TestRayServiceDashboardAddress:
             s3_secret_access_key="minioadmin",
             s3_bucket="pipeline",
             s3_prefix="inputs/",
-            embedding_config=EmbeddingConfig(provider_type=ProviderType.OLLAMA),
+            embedding_config=EmbeddingConfig(provider_type=ProviderType.LOCAL_CLIP),
             collection="documents",
         )
 

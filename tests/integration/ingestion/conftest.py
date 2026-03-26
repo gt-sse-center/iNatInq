@@ -220,7 +220,7 @@ def integration_services(
     ray_container,
     minio_container,
     qdrant_container,
-    ollama_container,
+    clip_container,
 ):
     """Combined fixture providing all services needed for full pipeline tests.
 
@@ -234,5 +234,5 @@ def integration_services(
         "ray": ray_container,
         "minio": minio_container,
         "qdrant": qdrant_container,
-        "ollama": ollama_container,
+        "clip": clip_container,
     }
