@@ -79,13 +79,13 @@ class TestJSONReporter:
 
         results = {
             "qdrant": _make_result(provider="qdrant"),
-            "milvus": _make_result(provider="milvus"),
+            "pgvector": _make_result(provider="pgvector"),
         }
         await reporter.report(results)
 
         data = json.loads(output.read_text(encoding="utf-8"))
         assert "qdrant" in data
-        assert "milvus" in data
+        assert "pgvector" in data
 
     @pytest.mark.asyncio
     async def test_empty_results(self, tmp_path):

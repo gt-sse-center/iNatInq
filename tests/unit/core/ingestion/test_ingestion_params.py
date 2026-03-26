@@ -39,9 +39,6 @@ def test_build_image_ingestion_env_includes_required_and_optional(
     monkeypatch.setenv("EMBEDDING_PROVIDER", "hosted_clip")
     monkeypatch.setenv("QDRANT_URL", "http://qdrant.test:6333")
     monkeypatch.setenv("QDRANT_API_KEY", "qdrant-key")
-    monkeypatch.setenv("WEAVIATE_URL", "http://weaviate.test:8080")
-    monkeypatch.setenv("WEAVIATE_API_KEY", "weaviate-key")
-    monkeypatch.setenv("WEAVIATE_GRPC_HOST", "grpc.weaviate.test")
     monkeypatch.setenv("CLIP_API_KEY", "clip-key")
     monkeypatch.setenv("INAT_MAX_ROWS", "500")
     monkeypatch.setenv("INAT_METADATA_URL", "s3://inaturalist-open-data/photos.csv.gz")
@@ -99,9 +96,6 @@ def test_build_image_ingestion_env_includes_required_and_optional(
     assert env_vars["IMAGE_TARGET_SIZE"] == "336"
     assert env_vars["QDRANT_URL"] == "http://qdrant.test:6333"
     assert env_vars["QDRANT_API_KEY"] == "qdrant-key"
-    assert env_vars["WEAVIATE_URL"] == "http://weaviate.test:8080"
-    assert env_vars["WEAVIATE_API_KEY"] == "weaviate-key"
-    assert env_vars["WEAVIATE_GRPC_HOST"] == "grpc.weaviate.test"
     assert env_vars["CLIP_API_KEY"] == "clip-key"
     assert env_vars["INAT_MAX_ROWS"] == "500"
     assert env_vars["INAT_METADATA_URL"] == "s3://inaturalist-open-data/photos.csv.gz"
