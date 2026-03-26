@@ -77,13 +77,13 @@ config.yaml (base) → environments/{ENV}.yaml → secrets.yaml → environment 
 
 ```bash
 # Local development: defaults work out of the box
-make up
+uv run inq up
 
 # Select an environment overlay
-ENV=dev make up
+ENV=dev uv run inq up
 
 # Override any setting via env var (always wins)
-S3_BUCKET=my-bucket ENV=dev make up
+S3_BUCKET=my-bucket ENV=dev uv run inq up
 ```
 
 See [`configs/README.md`](configs/README.md) for full configuration reference and [`src/README.md`](src/README.md) for application-level details.
@@ -94,19 +94,19 @@ See [`configs/README.md`](configs/README.md) for full configuration reference an
 
 ```bash
 # Start all services
-make up
+uv run inq up
 
 # View status
-make status
+uv run inq status
 
 # Open all dashboards
-make ui-all
+uv run inq ui all
 
 # Stop services
-make down
+uv run inq down
 ```
 
-**Service Endpoints** (after `make up`):
+**Service Endpoints** (after `uv run inq up`):
 
 | Service | URL |
 |---------|-----|
@@ -125,7 +125,7 @@ in `configs/`. Environment variables always take priority over YAML values.
 # Qdrant Cloud (https://cloud.qdrant.io/)
 export QDRANT_URL=https://your-cluster.region.cloud.qdrant.io
 export QDRANT_API_KEY=your-api-key
-make docker-up
+uv run inq docker up
 
 # Azure Databricks (optional - for Databricks job execution/integration tests)
 export DATABRICKS_HOST=https://adb-<workspace-id>.<region>.azuredatabricks.net
@@ -155,9 +155,9 @@ cp zarf/databricks/dev/env.local.example zarf/databricks/dev/.env.local
 # Edit .env.local with your Databricks credentials
 
 # Manage the Databricks cluster (requires Databricks CLI)
-make azure-databricks-build
-make azure-databricks-up
-make azure-databricks-down
+uv run inq databricks build
+uv run inq databricks up
+uv run inq databricks down
 ```
 
 Or equivalently, set these values in YAML (see `configs/README.md`):
@@ -165,7 +165,7 @@ Or equivalently, set these values in YAML (see `configs/README.md`):
 ```bash
 cp configs/secrets.example.yaml configs/secrets.yaml
 # Edit secrets.yaml with your credentials, then:
-ENV=dev make docker-up
+ENV=dev uv run inq docker up
 ```
 
 For full Databricks setup details, see `zarf/databricks/README.md`.
@@ -187,21 +187,21 @@ For full Databricks setup details, see `zarf/databricks/README.md`.
 uv sync
 
 # Run tests
-make test
+uv run inq test unit
 
 # Run with coverage
-make test-cov
+uv run inq test cov
 
 # Lint & format
-make lint
-make format
+uv run inq dev lint
+uv run inq dev format
 ```
 
 ### Running Locally (without Docker)
 
 ```bash
 # Start dev server
-make dev
+uv run inq dev serve
 
 # Or directly
 uv run uvicorn api.app:app --reload --port 8000
@@ -213,10 +213,10 @@ Seed MinIO with synthetic images and run a complete ingestion + search test:
 
 ```bash
 # 1. Start all services
-make docker-up
+uv run inq docker up
 
 # 2. Generate & upload test images (100 by default)
-make synthetic-images-setup IMAGE_COUNT=100
+uv run inq synthetic setup --count 100
 
 # 3. Submit a Ray image ingestion job
 curl -X POST http://localhost:8000/ray/jobs/images \
@@ -233,7 +233,7 @@ curl "http://localhost:8000/search/images?q=red+circle&limit=5"
 **One-liner** (generate + upload + ingest + search):
 
 ```bash
-make synthetic-images-setup IMAGE_COUNT=100 && \
+uv run inq synthetic setup --count 100 && \
   curl -s -X POST http://localhost:8000/ray/jobs/images \
     -H "Content-Type: application/json" \
     -d '{"s3_bucket": "pipeline", "s3_prefix": "images/", "collection": "documents"}' | jq .

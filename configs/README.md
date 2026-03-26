@@ -13,17 +13,17 @@ Quick start guide for configuring iNatInq vector search system.
 2. **Run with an environment:**
    ```bash
    # Local development (default)
-   make run
+   uv run inq up
 
    # Other environments
-   ENV=dev make run
-   ENV=staging make run
-   ENV=prod make run
+   ENV=dev uv run inq up
+   ENV=staging uv run inq up
+   ENV=prod uv run inq up
    ```
 
 3. **Validate your configuration:**
    ```bash
-   make validate-config
+   uv run inq dev validate-config
    ```
 
 ## Directory Structure
@@ -176,7 +176,7 @@ Validate configuration against JSON Schema:
 
 ```bash
 # Validate all configs
-make validate-config
+uv run inq dev validate-config
 
 # Manual validation with Python
 python -c "

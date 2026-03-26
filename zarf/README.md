@@ -190,9 +190,9 @@ cp zarf/databricks/dev/inatinq-ml-pipeline-job.yml.example \
 Manage the Databricks cluster (requires Databricks CLI):
 
 ```bash
-make azure-databricks-build
-make azure-databricks-up
-make azure-databricks-down
+uv run inq databricks build
+uv run inq databricks up
+uv run inq databricks down
 ```
 
 The local containers will still run but won't be used when cloud credentials are set.

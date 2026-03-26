@@ -55,35 +55,35 @@ uv run ruff format src/ tests/
 
 ```bash
 # Start all services (Docker Compose)
-make docker-up
+uv run inq up
 
 # Start dev server (without Docker)
-make dev
+uv run inq dev serve
 # or: uv run uvicorn api.app:app --reload --host 0.0.0.0 --port 8000
 
 # Check service health
-make status
+uv run inq status
 
 # View logs for specific service
-make logs-pipeline
-make logs-ray
-make logs-clip
+uv run inq docker log pipeline
+uv run inq docker log ray-head
+uv run inq docker log clip
 ```
 
 ### End-to-End Testing
 
 ```bash
 # Generate synthetic images and upload to MinIO
-make synthetic-images-setup IMAGE_COUNT=100
+uv run inq synthetic setup --count 100
 
 # Submit Ray image ingestion job
-make ray-image-job-submit IMAGE_PREFIX=images/ IMAGE_COLLECTION=documents
+uv run inq ray submit --prefix images/ --collection documents
 
 # Check document counts
-make count-all COLLECTION=documents
+uv run inq vectordb count --collection documents
 
 # Search documents
-make search-qdrant QUERY="your search query"
+uv run inq search images --query "your search query"
 ```
 
 ## Architecture

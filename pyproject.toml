@@ -46,6 +46,9 @@ classifiers = [
 [project.license]
 text = "MIT"
 
+[project.scripts]
+inq = "cli.app:app"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -146,6 +149,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["ANN001", "D100", "D103", "INP001", "PLR2004", "N803"]
 "syntheticdata/*" = ["T201", "EXE001", "INP001"]  # CLI scripts use print(), shebang optional
+"src/cli/*" = ["FBT001", "FBT002", "S603", "S607"]  # Typer option defaults are intentional; subprocess with partial paths intentional
 
 [tool.ruff.lint.mccabe]
 max-complexity = 15
@@ -159,7 +163,7 @@ max-returns = 20
 convention = "google"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/foundation"]
+packages = ["src/foundation", "src/cli"]
 
 [tool.mypy]
 ignore_missing_imports = true

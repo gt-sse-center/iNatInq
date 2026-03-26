@@ -175,8 +175,8 @@ def create_pipeline(
 ### Local Ray
 
 ```bash
-# Via Makefile
-make ray-image-job-submit IMAGE_PREFIX=images/ IMAGE_COLLECTION=documents
+# Via CLI
+uv run inq ray submit --prefix images/ --collection documents
 
 # Direct
 python -m core.ingestion.ray.process_s3_to_vector_dbs inputs/
@@ -187,8 +187,8 @@ python -m core.ingestion.ray.process_s3_images images/
 
 ```bash
 # Cluster management
-make azure-databricks-build
-make azure-databricks-up
+uv run inq databricks build
+uv run inq databricks up
 
 # Job is triggered via Databricks Jobs API
 # See zarf/databricks/README.md for details

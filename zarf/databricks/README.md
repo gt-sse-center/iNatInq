@@ -47,7 +47,7 @@ Set these in `zarf/databricks/dev/.env.local`:
 - `DATABRICKS_TOKEN`
 - `DATABRICKS_JOB_ID` (used to submit the S3 image Databricks job)
 - `INATINQ_SRC_DIR` (required by Databricks runtime; workspace path to repo `src/`, for example `/Workspace/Users/<user>/iNatInq/src`)
-- `DATABRICKS_CLUSTER_ID` (needed for helper commands like `make azure-databricks-up/down` and CDC notebook bootstrap)
+- `DATABRICKS_CLUSTER_ID` (needed for helper commands like `uv run inq databricks up/down` and CDC notebook bootstrap)
 
 Set these runtime `python_params` when submitting `run_ingest_image.py`:
 
@@ -60,9 +60,9 @@ Set these runtime `python_params` when submitting `run_ingest_image.py`:
 ### 3) Build and manage the cluster
 
 ```bash
-make azure-databricks-build
-make azure-databricks-up
-make azure-databricks-down
+uv run inq databricks build
+uv run inq databricks up
+uv run inq databricks down
 ```
 
 ### 4) Submit the S3 image job (core smoke test)
@@ -245,7 +245,7 @@ Notebook defaults:
 Optional automated CDC validation helper:
 
 ```bash
-make azure-databricks-cdc-notebooks
+uv run inq databricks cdc-notebooks
 ```
 
 This command starts/waits for the cluster, uploads notebook sources, and runs producer+consumer validation notebooks.
@@ -321,7 +321,7 @@ uv run zarf/databricks/azure-databricks-cdc-notebooks.py \
   --env-file zarf/databricks/dev/.env.local \
   --run-notebooks
 
-# Full reliable validation path (equivalent to make target behavior).
+# Full reliable validation path (equivalent to `inq databricks cdc-notebooks`).
 uv run zarf/databricks/azure-databricks-cdc-notebooks.py \
   --env-file zarf/databricks/dev/.env.local \
   --upload-notebooks \
