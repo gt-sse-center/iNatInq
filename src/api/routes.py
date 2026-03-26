@@ -9,7 +9,7 @@ This module defines all HTTP endpoints for the pipeline service. It handles:
 
 - `GET /healthz`: Liveness/readiness probe (no dependency checks)
 - `GET /search/images`: Perform semantic search over images in vector database
-(Qdrant or Weaviate)
+(Qdrant)
 - `POST /ray/jobs/images`: Submit Ray job to process S3 images and store
 image embeddings in vector DB image collections
 - `POST /databricks/jobs/images`: Submit Databricks job to process S3 images
@@ -138,7 +138,7 @@ async def search_images(
     provider: Annotated[
         str | None,
         Query(
-            pattern="^(qdrant|weaviate)$",
+            pattern="^qdrant$",
             description="Vector database provider (defaults to VECTOR_DB_PROVIDER env var)",
         ),
     ] = None,
@@ -169,7 +169,7 @@ async def search_images(
         q: Natural language text query (e.g., "a fluffy cat sitting on a couch").
         limit: Maximum number of results to return (default: 10, max: 100).
         collection: Optional base collection name (defaults to service default).
-        provider: Optional vector database provider (qdrant or weaviate).
+        provider: Optional vector database provider (qdrant).
             If not specified, uses VECTOR_DB_PROVIDER environment variable.
 
     Returns:
@@ -183,7 +183,7 @@ async def search_images(
     Example Request:
         ```
         GET /search/images?q=sunset%20over%20ocean&limit=5&provider=qdrant
-        GET /search/images?q=fluffy%20cat&collection=photos&provider=weaviate
+        GET /search/images?q=fluffy%20cat&collection=photos&provider=qdrant
         ```
 
     Example Response:
@@ -321,7 +321,7 @@ async def submit_ray_image_job(req: models.RayImageJobRequest) -> models.RayImag
     1. List objects under the given S3 bucket and prefix
     2. Filter by image extensions (.jpg, .jpeg, .png, .webp, .gif)
     3. Preprocess and embed images via CLIP
-    4. Store vectors in Qdrant and Weaviate image collections
+    4. Store vectors in Qdrant image collections
 
     Args:
         req: Request containing s3_bucket, s3_prefix, and collection.

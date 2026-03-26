@@ -75,7 +75,7 @@ class CollectionInfo:
     Attributes:
         name: Collection name.
         vector_size: Dimension of vectors stored in the collection.
-            Zero indicates the size is unknown (e.g. Weaviate without explicit dimensions).
+            Zero indicates the size is unknown.
     """
 
     name: str
@@ -87,7 +87,7 @@ class SearchResultItem:
     """A single search result item from a vector database.
 
     Attributes:
-        point_id: Point/object ID (UUID string from Qdrant or Weaviate).
+        point_id: Point/object ID (UUID string from Qdrant).
         score: Similarity score (0.0 to 1.0, higher is more similar).
         payload: Full payload/metadata dictionary from the vector database.
     """

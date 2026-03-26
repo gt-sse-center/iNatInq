@@ -36,8 +36,6 @@ resources:
                 package: filetype==1.2.0
             - pypi:
                 package: qdrant-client==1.16.1
-            - pypi:
-                package: weaviate-client==4.9.3
       queue:
         enabled: true
     inatinq_ml_pipeline_image_job:
@@ -76,8 +74,6 @@ resources:
                 package: filetype==1.2.0
             - pypi:
                 package: qdrant-client==1.16.1
-            - pypi:
-                package: weaviate-client==4.9.3
       queue:
         enabled: true
     inatinq_ml_pipeline_autoloader_job:
@@ -132,8 +128,6 @@ resources:
                 package: filetype==1.2.0
             - pypi:
                 package: qdrant-client==1.16.1
-            - pypi:
-                package: weaviate-client==4.9.3
       queue:
         enabled: true
     inatinq_ml_pipeline_cdc_workflow_job:
@@ -192,7 +186,5 @@ resources:
                 package: filetype==1.2.0
             - pypi:
                 package: qdrant-client==1.16.1
-            - pypi:
-                package: weaviate-client==4.9.3
       queue:
         enabled: true

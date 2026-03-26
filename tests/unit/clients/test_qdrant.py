@@ -301,11 +301,12 @@ class TestQdrantClientWrapperInit:
           - ValueError is raised for wrong provider_type
           - Error message is descriptive
         """
-        config = VectorDBConfig(
-            provider_type="weaviate",
-            collection="test-collection",
-            weaviate_url="http://weaviate.example.com",
-        )
+        # Use a MagicMock since VectorDBConfig now only allows "qdrant"
+        config = MagicMock(spec=VectorDBConfig)
+        config.provider_type = "other"
+        config.collection = "test-collection"
+        config.qdrant_url = None
+        config.qdrant_api_key = None
 
         with pytest.raises(ValueError, match="provider_type must be 'qdrant'"):
             QdrantClientWrapper.from_config(config)

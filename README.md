@@ -11,7 +11,7 @@ This service provides two core capabilities:
 | **Query Engine** | Semantic search over documents using vector similarity |
 | **Ingestion Engine** | Distributed processing of S3 documents into vector databases |
 
-**Stack**: FastAPI · Ray · Spark · Ollama · Qdrant · Weaviate · MinIO
+**Stack**: FastAPI · Ray · Spark · Ollama · Qdrant · MinIO
 
 ---
 
@@ -59,7 +59,7 @@ The ingestion engine processes documents from S3 into vector databases using dis
 - `GET /databricks/jobs/{run_id}/logs` – Get Databricks run output
 - `DELETE /databricks/jobs/{run_id}` – Stop Databricks run
 
-**Flow**: Job Submit → S3 List → Parallel Workers → Embed → Upsert to Qdrant + Weaviate
+**Flow**: Job Submit → S3 List → Parallel Workers → Embed → Upsert to Qdrant
 
 ---
 
@@ -84,9 +84,6 @@ ENV=dev make up
 
 # Override any setting via env var (always wins)
 S3_BUCKET=my-bucket ENV=dev make up
-
-# Choose which vector DBs to index (default: both)
-VECTOR_DB_TARGETS=qdrant make up
 ```
 
 See [`configs/README.md`](configs/README.md) for full configuration reference and [`src/README.md`](src/README.md) for application-level details.
@@ -129,17 +126,6 @@ in `configs/`. Environment variables always take priority over YAML values.
 export QDRANT_URL=https://your-cluster.region.cloud.qdrant.io
 export QDRANT_API_KEY=your-api-key
 make docker-up
-
-# Weaviate Cloud (https://console.weaviate.cloud/)
-export VECTOR_DB_PROVIDER=weaviate
-export WEAVIATE_URL=https://your-cluster.region.weaviate.cloud
-export WEAVIATE_API_KEY=your-api-key
-make docker-up
-
-# Ingestion targets: choose which vector DBs to index (default: both)
-export VECTOR_DB_TARGETS=qdrant          # qdrant-only
-export VECTOR_DB_TARGETS=weaviate        # weaviate-only
-export VECTOR_DB_TARGETS=qdrant,weaviate # both (default)
 
 # Azure Databricks (optional - for Databricks job execution/integration tests)
 export DATABRICKS_HOST=https://adb-<workspace-id>.<region>.azuredatabricks.net

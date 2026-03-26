@@ -11,7 +11,6 @@ sequenceDiagram
     participant S3 as MinIO/S3
     participant Ollama as Ollama Service
     participant Qdrant as Qdrant
-    participant Weaviate as Weaviate
 
     C->>+API: POST /ray/jobs or /spark/jobs<br/>{"s3_prefix": "inputs/", "collection": "docs"}
 
@@ -32,7 +31,7 @@ sequenceDiagram
     Note over Cluster: Async Job Execution Begins
 
     rect rgb(240, 248, 255)
-        Note over Cluster,Weaviate: Distributed Processing (runs asynchronously)
+        Note over Cluster,Qdrant: Distributed Processing (runs asynchronously)
         
         Cluster->>+S3: List objects with prefix "inputs/"
         S3-->>-Cluster: [key1, key2, key3, ...]
@@ -64,9 +63,6 @@ sequenceDiagram
         Worker->>+Qdrant: PUT /collections/{name}/points<br/>{points: [...]}
         Qdrant-->>-Worker: {"status": "ok"}
         
-        Worker->>+Weaviate: POST /v1/batch/objects
-        Weaviate-->>-Worker: {"status": "ok"}
-        
         Worker-->>-Cluster: ProcessingResult[]
     end
 
@@ -86,7 +82,7 @@ sequenceDiagram
 | **Discovery** | 7-8 | Job lists S3 objects matching prefix |
 | **Distribution** | 9 | Keys partitioned across workers (Ray tasks or Spark executors) |
 | **Processing** | 10-17 | Each worker: fetch content → rate-limit → embed → create points |
-| **Upsert** | 18-21 | Batch upsert vectors to both Qdrant and Weaviate |
+| **Upsert** | 18-19 | Batch upsert vectors to Qdrant |
 | **Status Check** | 22-27 | Client polls for job completion |
 
 ## Key Implementation Details

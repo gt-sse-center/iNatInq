@@ -15,7 +15,6 @@ import pytest
 from clients.ollama import OllamaClient
 from clients.qdrant import QdrantClientWrapper
 from clients.s3 import S3ClientWrapper
-from clients.weaviate import WeaviateClientWrapper
 
 # =============================================================================
 # Common Fixtures
@@ -161,39 +160,4 @@ def s3_client(mock_boto3_client: MagicMock) -> S3ClientWrapper:
             secret_access_key="test-secret",
             region_name="us-east-1",
         )
-    return client
-
-
-# =============================================================================
-# Weaviate Fixtures
-# =============================================================================
-
-
-@pytest.fixture
-def mock_weaviate_client() -> AsyncMock:
-    """Create a mock WeaviateAsyncClient for testing.
-
-    Returns:
-        AsyncMock: A mock async Weaviate client with collections API.
-    """
-    client = AsyncMock()
-    client.collections = MagicMock()
-    client.collections.exists = AsyncMock()
-    client.collections.create = AsyncMock()
-    client.collections.get = MagicMock()
-    return client
-
-
-@pytest.fixture
-def weaviate_client(mock_weaviate_client: AsyncMock) -> WeaviateClientWrapper:
-    """Create a WeaviateClientWrapper instance with mocked client.
-
-    Args:
-        mock_weaviate_client: Mock WeaviateAsyncClient fixture.
-
-    Returns:
-        WeaviateClientWrapper: Configured client with mocked Weaviate client.
-    """
-    with patch("clients.weaviate.WeaviateAsyncClient", return_value=mock_weaviate_client):
-        client = WeaviateClientWrapper(url="http://weaviate.example.com:8080")
     return client

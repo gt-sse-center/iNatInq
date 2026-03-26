@@ -43,8 +43,12 @@
 						"header": [],
 						"url": {
 							"raw": "{{base_url}}/healthz",
-							"host": ["{{base_url}}"],
-							"path": ["healthz"]
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"healthz"
+							]
 						},
 						"description": "Liveness and readiness probe endpoint.\n\nReturns `{\"status\": \"ok\"}` if the service is running.\n\nNote: Does not check dependencies (MinIO, Ollama, Qdrant, etc.)"
 					},
@@ -55,8 +59,12 @@
 								"method": "GET",
 								"url": {
 									"raw": "{{base_url}}/healthz",
-									"host": ["{{base_url}}"],
-									"path": ["healthz"]
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"healthz"
+									]
 								}
 							},
 							"status": "OK",
@@ -77,8 +85,12 @@
 						"header": [],
 						"url": {
 							"raw": "{{base_url}}/search?q=machine learning pipeline&limit=10&provider=qdrant",
-							"host": ["{{base_url}}"],
-							"path": ["search"],
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"search"
+							],
 							"query": [
 								{
 									"key": "q",
@@ -93,7 +105,7 @@
 								{
 									"key": "provider",
 									"value": "qdrant",
-									"description": "Vector DB provider: qdrant or weaviate"
+									"description": "Vector DB provider (e.g. qdrant)"
 								},
 								{
 									"key": "collection",
@@ -118,12 +130,25 @@
 								"method": "GET",
 								"url": {
 									"raw": "{{base_url}}/search?q=machine learning&limit=5&provider=qdrant",
-									"host": ["{{base_url}}"],
-									"path": ["search"],
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"search"
+									],
 									"query": [
-										{"key": "q", "value": "machine learning"},
-										{"key": "limit", "value": "5"},
-										{"key": "provider", "value": "qdrant"}
+										{
+											"key": "q",
+											"value": "machine learning"
+										},
+										{
+											"key": "limit",
+											"value": "5"
+										},
+										{
+											"key": "provider",
+											"value": "qdrant"
+										}
 									]
 								}
 							},
@@ -132,37 +157,6 @@
 							"body": "{\n    \"query\": \"machine learning\",\n    \"model\": \"nomic-embed-text\",\n    \"collection\": \"documents\",\n    \"provider\": \"qdrant\",\n    \"results\": [\n        {\n            \"id\": \"d790dd2c-99eb-4901-b9c9-538b58318fe3\",\n            \"score\": 0.9234,\n            \"text\": \"Introduction to machine learning concepts...\",\n            \"metadata\": {\n                \"s3_key\": \"inputs/ml-intro.txt\"\n            }\n        }\n    ],\n    \"total\": 1\n}"
 						}
 					]
-				},
-				{
-					"name": "Semantic Search (Weaviate)",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/search?q=natural language processing&limit=10&provider=weaviate",
-							"host": ["{{base_url}}"],
-							"path": ["search"],
-							"query": [
-								{
-									"key": "q",
-									"value": "natural language processing",
-									"description": "Natural language query string (required)"
-								},
-								{
-									"key": "limit",
-									"value": "10",
-									"description": "Maximum results (1-100, default: 10)"
-								},
-								{
-									"key": "provider",
-									"value": "weaviate",
-									"description": "Vector DB provider: qdrant or weaviate"
-								}
-							]
-						},
-						"description": "Perform semantic search over documents in Weaviate.\n\nSame as Qdrant search but uses Weaviate as the vector database backend."
-					},
-					"response": []
 				}
 			]
 		},
@@ -200,25 +194,40 @@
 						},
 						"url": {
 							"raw": "{{base_url}}/spark/jobs",
-							"host": ["{{base_url}}"],
-							"path": ["spark", "jobs"]
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"spark",
+								"jobs"
+							]
 						},
-						"description": "Submit a Spark job to process S3 documents.\n\nThe job will:\n1. List documents from S3/MinIO at the specified prefix\n2. Generate embeddings via Ollama\n3. Store vectors in Qdrant and Weaviate\n\n**Note**: Saves `job_name` to collection variables for subsequent requests."
+						"description": "Submit a Spark job to process S3 documents.\n\nThe job will:\n1. List documents from S3/MinIO at the specified prefix\n2. Generate embeddings via Ollama\n3. Store vectors in Qdrant\n\n**Note**: Saves `job_name` to collection variables for subsequent requests."
 					},
 					"response": [
 						{
 							"name": "Job Submitted",
 							"originalRequest": {
 								"method": "POST",
-								"header": [{"key": "Content-Type", "value": "application/json"}],
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
 								"body": {
 									"mode": "raw",
 									"raw": "{\n    \"s3_prefix\": \"inputs/\",\n    \"collection\": \"documents\",\n    \"executor_instances\": 2,\n    \"executor_memory\": \"1g\"\n}"
 								},
 								"url": {
 									"raw": "{{base_url}}/spark/jobs",
-									"host": ["{{base_url}}"],
-									"path": ["spark", "jobs"]
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"spark",
+										"jobs"
+									]
 								}
 							},
 							"status": "Accepted",
@@ -234,8 +243,14 @@
 						"header": [],
 						"url": {
 							"raw": "{{base_url}}/spark/jobs/{{job_name}}",
-							"host": ["{{base_url}}"],
-							"path": ["spark", "jobs", "{{job_name}}"]
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"spark",
+								"jobs",
+								"{{job_name}}"
+							]
 						},
 						"description": "Get the status of a Spark job.\n\n**Requires**: `job_name` variable (set automatically by \"Submit Spark Job\")"
 					},
@@ -255,8 +270,13 @@
 						"header": [],
 						"url": {
 							"raw": "{{base_url}}/spark/jobs",
-							"host": ["{{base_url}}"],
-							"path": ["spark", "jobs"]
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"spark",
+								"jobs"
+							]
 						},
 						"description": "List all Spark jobs in the namespace."
 					},
@@ -276,8 +296,14 @@
 						"header": [],
 						"url": {
 							"raw": "{{base_url}}/spark/jobs/{{job_name}}",
-							"host": ["{{base_url}}"],
-							"path": ["spark", "jobs", "{{job_name}}"]
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"spark",
+								"jobs",
+								"{{job_name}}"
+							]
 						},
 						"description": "Delete a Spark job (cleanup after completion).\n\nRemoves the SparkApplication resource and terminates any running pods."
 					},
@@ -326,25 +352,40 @@
 						},
 						"url": {
 							"raw": "{{base_url}}/ray/jobs",
-							"host": ["{{base_url}}"],
-							"path": ["ray", "jobs"]
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"ray",
+								"jobs"
+							]
 						},
-						"description": "Submit a Ray job to process S3 documents.\n\nThe job will:\n1. List documents from S3/MinIO at the specified prefix\n2. Generate embeddings via Ollama\n3. Store vectors in Qdrant and Weaviate\n\n**Note**: Saves `job_id` to collection variables for subsequent requests."
+						"description": "Submit a Ray job to process S3 documents.\n\nThe job will:\n1. List documents from S3/MinIO at the specified prefix\n2. Generate embeddings via Ollama\n3. Store vectors in Qdrant\n\n**Note**: Saves `job_id` to collection variables for subsequent requests."
 					},
 					"response": [
 						{
 							"name": "Job Submitted",
 							"originalRequest": {
 								"method": "POST",
-								"header": [{"key": "Content-Type", "value": "application/json"}],
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
 								"body": {
 									"mode": "raw",
 									"raw": "{\n    \"s3_prefix\": \"inputs/\",\n    \"collection\": \"documents\"\n}"
 								},
 								"url": {
 									"raw": "{{base_url}}/ray/jobs",
-									"host": ["{{base_url}}"],
-									"path": ["ray", "jobs"]
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"ray",
+										"jobs"
+									]
 								}
 							},
 							"status": "Accepted",
@@ -360,8 +401,14 @@
 						"header": [],
 						"url": {
 							"raw": "{{base_url}}/ray/jobs/{{job_id}}",
-							"host": ["{{base_url}}"],
-							"path": ["ray", "jobs", "{{job_id}}"]
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"ray",
+								"jobs",
+								"{{job_id}}"
+							]
 						},
 						"description": "Get the status of a Ray job.\n\n**Requires**: `job_id` variable (set automatically by \"Submit Ray Job\")\n\n**Statuses**: PENDING, RUNNING, SUCCEEDED, FAILED, STOPPED"
 					},
@@ -393,8 +440,15 @@
 						"header": [],
 						"url": {
 							"raw": "{{base_url}}/ray/jobs/{{job_id}}/logs",
-							"host": ["{{base_url}}"],
-							"path": ["ray", "jobs", "{{job_id}}", "logs"]
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"ray",
+								"jobs",
+								"{{job_id}}",
+								"logs"
+							]
 						},
 						"description": "Get logs from a Ray job.\n\n**Requires**: `job_id` variable (set automatically by \"Submit Ray Job\")"
 					},
@@ -414,8 +468,14 @@
 						"header": [],
 						"url": {
 							"raw": "{{base_url}}/ray/jobs/{{job_id}}",
-							"host": ["{{base_url}}"],
-							"path": ["ray", "jobs", "{{job_id}}"]
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"ray",
+								"jobs",
+								"{{job_id}}"
+							]
 						},
 						"description": "Stop a running Ray job.\n\n**Requires**: `job_id` variable (set automatically by \"Submit Ray Job\")"
 					},
@@ -432,4 +492,3 @@
 		}
 	]
 }
-

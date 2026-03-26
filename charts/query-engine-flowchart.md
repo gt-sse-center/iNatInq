@@ -22,15 +22,12 @@ flowchart TB
 
     subgraph Providers["Provider Layer"]
         J[EmbeddingProvider]
-        K{Vector DB<br/>Type?}
         L[Qdrant Client]
-        M[Weaviate Client]
     end
 
     subgraph External["External Services"]
         N[(Ollama)]
         O[(Qdrant)]
-        P[(Weaviate)]
     end
 
     A --> B
@@ -44,13 +41,9 @@ flowchart TB
     G --> J
     J --> N
     N --> H
-    H --> K
-    K -->|qdrant| L
-    K -->|weaviate| M
+    H --> L
     L --> O
-    M --> P
     O --> I
-    P --> I
     I --> Y[JSON Response]
 
     style A fill:#e1f5fe
@@ -58,7 +51,6 @@ flowchart TB
     style Z fill:#ffcdd2
     style N fill:#fff3e0
     style O fill:#fce4ec
-    style P fill:#f3e5f5
 ```
 
 ## Flow Description
@@ -67,5 +59,5 @@ flowchart TB
 2. **API Layer**: Parses parameters, determines vector DB provider
 3. **Service Layer**: Validates query, orchestrates embedding + search
 4. **Provider Layer**: Abstracts embedding and vector DB implementations
-5. **External Services**: Ollama generates embeddings, Qdrant/Weaviate performs similarity search
+5. **External Services**: Ollama generates embeddings, Qdrant performs similarity search
 6. **Response**: Ranked results with similarity scores returned to client

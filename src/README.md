@@ -68,31 +68,6 @@ S3_BUCKET=my-bucket make up
 
 The full mapping from YAML paths to env var names is defined in `YAML_TO_ENV_MAP` inside `config_loader.py`.
 
-### Configuring Ingestion Targets
-
-By default, the ingestion pipeline writes to both Qdrant and Weaviate. Use `VECTOR_DB_TARGETS` to restrict which databases are indexed:
-
-```bash
-# Index to Qdrant only
-VECTOR_DB_TARGETS=qdrant make up
-
-# Index to Weaviate only
-VECTOR_DB_TARGETS=weaviate make up
-
-# Both (default)
-VECTOR_DB_TARGETS=qdrant,weaviate make up
-```
-
-Or set it in YAML:
-
-```yaml
-# configs/config.yaml (or an environment overlay)
-vector_databases:
-  ingestion_targets: "qdrant"
-```
-
-At least one valid target (`qdrant` or `weaviate`) is required. The setting flows through Ray and Databricks job submissions automatically.
-
 ### Validating Configuration
 
 ```bash
@@ -105,7 +80,7 @@ make validate-config
 ```
 src/
 ├── api/              # FastAPI routes and request/response models
-├── clients/          # External service clients (S3, Qdrant, Weaviate, Ollama, CLIP)
+├── clients/          # External service clients (S3, Qdrant, Ollama, CLIP)
 ├── core/             # Domain logic
 │   ├── ingestion/    # Ray & Databricks processing pipelines
 │   └── services/     # Business logic (search, job orchestration)

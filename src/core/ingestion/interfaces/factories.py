@@ -11,7 +11,6 @@ import uuid
 from clients.interfaces.embedding import create_embedding_provider
 from clients.interfaces.vector_db import create_vector_db_provider
 from clients.s3 import S3ClientWrapper
-from clients.weaviate import WeaviateDataObject
 from config import VectorDBConfig
 from core.models import VectorPoint
 from foundation.http import create_retry_session
@@ -27,12 +26,12 @@ from .types import (
 class VectorDBConfigFactory:
     """Factory for creating vector database configurations.
 
-    Creates properly configured VectorDBConfig instances for Qdrant and Weaviate
+    Creates properly configured VectorDBConfig instances for Qdrant
     based on environment variables and Kubernetes namespace.
 
     Example:
         >>> factory = VectorDBConfigFactory(namespace="ml-system")
-        >>> qdrant_cfg, weaviate_cfg = factory.create_both()
+        >>> qdrant_cfg = factory.create_qdrant_config()
     """
 
     def __init__(self, namespace: str = "ml-system") -> None:
@@ -79,55 +78,11 @@ class VectorDBConfigFactory:
             qdrant_api_key=self._env_str("QDRANT_API_KEY"),
         )
 
-    def create_weaviate_config(self) -> VectorDBConfig:
-        """Create Weaviate configuration.
-
-        Returns:
-            VectorDBConfig configured for Weaviate.
-        """
-        default_url = (
-            f"http://weaviate.{self.namespace}:8080" if self._in_cluster else "http://localhost:8080"
-        )
-        return VectorDBConfig(
-            provider_type="weaviate",
-            collection=self._get_collection(),
-            weaviate_url=self._env_str("WEAVIATE_URL", default_url),
-            weaviate_api_key=self._env_str("WEAVIATE_API_KEY"),
-            weaviate_grpc_host=self._env_str("WEAVIATE_GRPC_HOST"),
-        )
-
-    def create_both(self) -> tuple[VectorDBConfig, VectorDBConfig]:
-        """Create both Qdrant and Weaviate configurations.
-
-        Returns:
-            Tuple of (qdrant_config, weaviate_config).
-        """
-        return (self.create_qdrant_config(), self.create_weaviate_config())
-
-    def create_for_targets(
-        self,
-        targets: frozenset[str],
-    ) -> dict[str, VectorDBConfig]:
-        """Create configurations only for targeted vector databases.
-
-        Args:
-            targets: Set of target names (e.g. {"qdrant"}, {"weaviate"}, or both).
-
-        Returns:
-            Dictionary mapping target name to its VectorDBConfig.
-        """
-        configs: dict[str, VectorDBConfig] = {}
-        if "qdrant" in targets:
-            configs["qdrant"] = self.create_qdrant_config()
-        if "weaviate" in targets:
-            configs["weaviate"] = self.create_weaviate_config()
-        return configs
-
 
 class ProcessingClientsFactory:
     """Factory for creating processing client bundles.
 
-    Creates all required clients (S3, embedding, vector DBs) from a
+    Creates all required clients (S3, embedding, Qdrant) from a
     ProcessingConfig instance.
 
     Example:
@@ -151,9 +106,6 @@ class ProcessingClientsFactory:
     def create(self, config: ProcessingConfig) -> ProcessingClients:
         """Create all clients needed for processing.
 
-        Only creates vector DB clients for databases listed in
-        ``config.ingestion_targets``. Non-targeted DBs are set to None.
-
         Args:
             config: Processing configuration.
 
@@ -173,31 +125,22 @@ class ProcessingClientsFactory:
         # Create embedding provider
         embedder = create_embedding_provider(config.embedding_config)
 
-        # Create vector DB providers only for targeted databases
+        # Create Qdrant vector DB provider
         db_factory = self._vector_db_factory or VectorDBConfigFactory(config.namespace)
-        targets = config.ingestion_targets
-
-        qdrant_db = None
-        weaviate_db = None
-        if "qdrant" in targets:
-            qdrant_db = create_vector_db_provider(db_factory.create_qdrant_config())
-        if "weaviate" in targets:
-            weaviate_db = create_vector_db_provider(db_factory.create_weaviate_config())
+        qdrant_db = create_vector_db_provider(db_factory.create_qdrant_config())
 
         return ProcessingClients(
             s3=s3,
             embedder=embedder,
             qdrant_db=qdrant_db,
-            weaviate_db=weaviate_db,
             session=session,
         )
 
 
 class VectorPointFactory:
-    """Factory for creating vector points for Qdrant and Weaviate.
+    """Factory for creating vector points for Qdrant.
 
-    Converts content and embeddings into database-specific point formats.
-    When ``targets`` is specified, only builds points for targeted databases.
+    Converts content and embeddings into Qdrant point formats.
 
     Example:
         >>> factory = VectorPointFactory(s3_bucket="pipeline")
@@ -207,16 +150,13 @@ class VectorPointFactory:
     def __init__(
         self,
         s3_bucket: str,
-        targets: frozenset[str] | None = None,
     ) -> None:
         """Initialize the factory.
 
         Args:
             s3_bucket: S3 bucket name for metadata.
-            targets: Set of targeted databases. If None, targets both.
         """
         self.s3_bucket = s3_bucket
-        self.targets = targets or frozenset({"qdrant", "weaviate"})
 
     def _create_payload(self, content: ContentResult) -> dict:
         """Create metadata payload for a vector point.
@@ -256,48 +196,6 @@ class VectorPointFactory:
             payload=self._create_payload(content),
         )
 
-    def create_weaviate_object(
-        self,
-        content: ContentResult,
-        vector: list[float],
-        object_id: str | None = None,
-    ) -> WeaviateDataObject:
-        """Create a Weaviate data object.
-
-        Args:
-            content: The content result.
-            vector: The embedding vector.
-            object_id: Optional UUID. If not provided, one is generated.
-
-        Returns:
-            WeaviateDataObject for Weaviate.
-        """
-        return WeaviateDataObject(
-            uuid=object_id or str(uuid.uuid4()),
-            properties=self._create_payload(content),
-            vector=vector,
-        )
-
-    def create_pair(
-        self,
-        content: ContentResult,
-        vector: list[float],
-    ) -> tuple[VectorPoint, WeaviateDataObject]:
-        """Create both Qdrant and Weaviate points with the same UUID.
-
-        Args:
-            content: The content result.
-            vector: The embedding vector.
-
-        Returns:
-            Tuple of (VectorPoint, WeaviateDataObject) with matching UUIDs.
-        """
-        point_id = str(uuid.uuid4())
-        return (
-            self.create_qdrant_point(content, vector, point_id),
-            self.create_weaviate_object(content, vector, point_id),
-        )
-
     def create_batch(
         self,
         contents: list[ContentResult],
@@ -305,14 +203,12 @@ class VectorPointFactory:
     ) -> BatchEmbeddingResult:
         """Create vector points for a batch of content.
 
-        Only builds points for databases in ``self.targets``.
-
         Args:
             contents: List of content results.
             vectors: Corresponding embedding vectors.
 
         Returns:
-            BatchEmbeddingResult with points for targeted databases.
+            BatchEmbeddingResult with Qdrant points.
 
         Raises:
             ValueError: If contents and vectors have different lengths.
@@ -321,18 +217,11 @@ class VectorPointFactory:
             raise ValueError(f"Contents ({len(contents)}) and vectors ({len(vectors)}) must have same length")
 
         qdrant_points: list[VectorPoint] = []
-        weaviate_objects: list[WeaviateDataObject] = []
-        build_qdrant = "qdrant" in self.targets
-        build_weaviate = "weaviate" in self.targets
 
         for content, vector in zip(contents, vectors, strict=True):
             point_id = str(uuid.uuid4())
-            if build_qdrant:
-                qdrant_points.append(self.create_qdrant_point(content, vector, point_id))
-            if build_weaviate:
-                weaviate_objects.append(self.create_weaviate_object(content, vector, point_id))
+            qdrant_points.append(self.create_qdrant_point(content, vector, point_id))
 
         return BatchEmbeddingResult(
             qdrant_points=qdrant_points,
-            weaviate_objects=weaviate_objects,
         )

@@ -33,7 +33,7 @@ from core.benchmark.search_pipeline import QdrantSearchPipeline, SearchPipeline
 
 logger = logging.getLogger("benchmark.provider_factory")
 
-_SUPPORTED_PROVIDERS = {"qdrant", "weaviate"}
+_SUPPORTED_PROVIDERS = {"qdrant"}
 
 _QUANTIZATION_PROFILES: dict[str, Any] = {}
 

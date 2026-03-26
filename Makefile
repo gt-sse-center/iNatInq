@@ -49,7 +49,6 @@ help:
 	@echo "│ make logs-qdrant       Tail qdrant logs                                     │"
 	@echo "│ make logs-ray          Tail ray-head logs                                   │"
 	@echo "│ make logs-minio        Tail minio logs                                      │"
-	@echo "│ make logs-weaviate     Tail weaviate logs                                   │"
 	@echo "│ make logs-clip         Tail clip logs                                       │"
 	@echo "│ make logs-redis        Tail redis logs                                      │"
 	@echo "├── Docker Shell Access ──────────────────────────────────────────────────────┤"
@@ -65,7 +64,6 @@ help:
 	@echo "│ make ui-minio          Open MinIO Console                                   │"
 	@echo "│ make ui-qdrant         Open Qdrant Dashboard                                │"
 	@echo "│ make ui-ray            Open Ray Dashboard                                   │"
-	@echo "│ make ui-weaviate       Open Weaviate Console                                │"
 	@echo "├── Docker Scaling ───────────────────────────────────────────────────────────┤"
 	@echo "│ make ray-scale N=3     Scale Ray workers to N replicas                      │"
 	@echo "├── Synthetic Images ─────────────────────────────────────────────────────────┤"
@@ -76,10 +74,8 @@ help:
 	@echo "├── Image Pipeline ───────────────────────────────────────────────────────────┤"
 	@echo "│ make ray-image-job-submit     Submit image processing Ray job               │"
 	@echo "│ make count-images-qdrant      Count images in Qdrant                        │"
-	@echo "│ make count-images-weaviate    Count images in Weaviate                      │"
-	@echo "│ make count-images-all         Count images in both DBs                      │"
+	@echo "│ make count-images-all         Count images in Qdrant                         │"
 	@echo "│ make search-images-qdrant     Text-to-image search (Qdrant)                 │"
-	@echo "│ make search-images-weaviate   Text-to-image search (Weaviate)               │"
 	@echo "│ make search-images-compare    Compare search across providers               │"
 	@echo "│ make image-search-demo        Search with presigned URLs                    │"
 	@echo "│ make image-search-download    Search and download images                    │"
@@ -201,7 +197,6 @@ docker-up:
 	@echo "   Pipeline Docs:    http://localhost:8000/docs"
 	@echo "   MinIO Console:    http://localhost:9001"
 	@echo "   Qdrant Dashboard: http://localhost:6333/dashboard"
-	@echo "   Weaviate Console: http://localhost:8081"
 	@echo "   Ray Dashboard:    http://localhost:8265"
 	@echo "   Ollama:           http://localhost:11434"
 	@echo "   CLIP API:         http://localhost:8001"
@@ -268,7 +263,6 @@ docker-health:
 	@echo "┌── Local Compose Health Checks ───────────────────────────────────────────────┐"
 	@printf "│ Pipeline API:    "; curl -sf http://localhost:8000/healthz >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
 	@printf "│ Qdrant:          "; curl -sf http://localhost:6333/readyz >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
-	@printf "│ Weaviate:        "; curl -sf http://localhost:8080/v1/.well-known/ready >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
 	@printf "│ Ollama:          "; curl -sf http://localhost:11434/api/tags >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
 	@printf "│ MinIO:           "; curl -sf http://localhost:9000/minio/health/live >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
 	@printf "│ Ray:             "; curl -sf http://localhost:8265 >/dev/null && echo "✅ healthy" || echo "❌ unhealthy"
@@ -281,7 +275,6 @@ docker-health:
 	@echo "   Pipeline Docs:    http://localhost:8000/docs"
 	@echo "   MinIO Console:    http://localhost:9001 (minioadmin/minioadmin)"
 	@echo "   Qdrant Dashboard: http://localhost:6333/dashboard"
-	@echo "   Weaviate Console: http://localhost:8081"
 	@echo "   Ray Dashboard:    http://localhost:8265"
 	@echo "   Ollama:           http://localhost:11434"
 	@echo "   CLIP API:         http://localhost:8001"
@@ -360,10 +353,6 @@ logs-ray:
 logs-minio:
 	$(DOCKER_COMPOSE) logs -f minio
 
-.PHONY: logs-weaviate
-logs-weaviate:
-	$(DOCKER_COMPOSE) logs -f weaviate
-
 .PHONY: logs-clip
 logs-clip:
 	$(DOCKER_COMPOSE) logs -f clip
@@ -438,7 +427,7 @@ else
 endif
 
 .PHONY: ui-all
-ui-all: ui-pipeline ui-minio ui-qdrant ui-ray ui-weaviate
+ui-all: ui-pipeline ui-minio ui-qdrant ui-ray
 	@echo "✅ All UIs opened in browser"
 
 .PHONY: ui-pipeline
@@ -461,11 +450,6 @@ ui-qdrant:
 ui-ray:
 	@echo "Opening Ray Dashboard..."
 	@$(OPEN_CMD) http://localhost:8265
-
-.PHONY: ui-weaviate
-ui-weaviate:
-	@echo "Opening Weaviate Console..."
-	@$(OPEN_CMD) http://localhost:8081
 
 # =============================================================================
 # Synthetic Data Generation
@@ -556,19 +540,8 @@ count-qdrant:
 	@echo "Counting documents in Qdrant collection '$(COLLECTION)'..."
 	@curl -sf "http://localhost:6333/collections/$(COLLECTION)" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); print('Qdrant documents:', d.get('result', {}).get('points_count', 0))" 2>/dev/null || echo "Qdrant: Collection not found or service unavailable"
 
-.PHONY: count-weaviate
-count-weaviate:
-	@echo "Counting documents in Weaviate collection '$(COLLECTION)'..."
-	@COLLECTION_CAP=$$(python3 -c "print('$(COLLECTION)'.capitalize())"); \
-	curl -sf -X POST "http://localhost:8080/v1/graphql" \
-		-H "Content-Type: application/json" \
-		-d "{\"query\":\"{Aggregate{$$COLLECTION_CAP{meta{count}}}}\"}" 2>/dev/null | \
-		python3 -c "import sys, json; d=json.load(sys.stdin); \
-		count=d.get('data',{}).get('Aggregate',{}).get('$$COLLECTION_CAP',[{}])[0].get('meta',{}).get('count',0); \
-		print('Weaviate documents:', count)" 2>/dev/null || echo "Weaviate: Collection not found or service unavailable"
-
 .PHONY: count-all
-count-all: count-qdrant count-weaviate
+count-all: count-qdrant
 
 # =============================================================================
 # Image Counts
@@ -579,19 +552,8 @@ count-images-qdrant:
 	@echo "Counting images in Qdrant collection '$(IMAGE_COLLECTION)'..."
 	@curl -sf "http://localhost:6333/collections/$(IMAGE_COLLECTION)" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); print('Qdrant images:', d.get('result', {}).get('points_count', 0))" 2>/dev/null || echo "Qdrant: Collection not found or service unavailable"
 
-.PHONY: count-images-weaviate
-count-images-weaviate:
-	@echo "Counting images in Weaviate collection '$(IMAGE_COLLECTION)Images'..."
-	@COLLECTION_CAP=$$(python3 -c "print('$(IMAGE_COLLECTION)'.capitalize() + 'Images')"); \
-	curl -sf -X POST "http://localhost:8080/v1/graphql" \
-		-H "Content-Type: application/json" \
-		-d "{\"query\":\"{Aggregate{$$COLLECTION_CAP{meta{count}}}}\"}" 2>/dev/null | \
-		python3 -c "import sys, json; d=json.load(sys.stdin); \
-		count=d.get('data',{}).get('Aggregate',{}).get('$$COLLECTION_CAP',[{}])[0].get('meta',{}).get('count',0); \
-		print('Weaviate images:', count)" 2>/dev/null || echo "Weaviate: Collection not found or service unavailable"
-
 .PHONY: count-images-all
-count-images-all: count-images-qdrant count-images-weaviate
+count-images-all: count-images-qdrant
 
 # =============================================================================
 # Search Operations
@@ -607,22 +569,6 @@ search-qdrant:
 		print('Results:', len(d.get('results', []))); \
 		[print(f\"  - {r.get('payload', {}).get('text', '')[:100]}...\") for r in d.get('results', [])[:3]]" 2>/dev/null || echo "Search failed or service unavailable"
 
-.PHONY: search-weaviate
-search-weaviate:
-	@echo "Searching Weaviate for: '$(QUERY)'"
-	@ENCODED_QUERY=$$(python3 -c 'import urllib.parse; print(urllib.parse.quote_plus("$(QUERY)"))'); \
-	curl -sf "http://localhost:8000/search?q=$$ENCODED_QUERY&provider=weaviate&limit=3" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); \
-		print('Results:', len(d.get('results', []))); \
-		[print(f\"  - {r.get('payload', {}).get('text', '')[:100]}...\") for r in d.get('results', [])[:3]]" 2>/dev/null || echo "Search failed or service unavailable"
-
-.PHONY: search-compare
-search-compare:
-	@echo "Comparing search results across both providers..."
-	@echo ""
-	@$(MAKE) search-qdrant QUERY="$(QUERY)"
-	@echo ""
-	@$(MAKE) search-weaviate QUERY="$(QUERY)"
-
 # =============================================================================
 # Image Search Operations
 # =============================================================================
@@ -635,21 +581,11 @@ search-images-qdrant:
 		print('Results:', len(d.get('results', []))); \
 		[print(f\"  - {r.get('s3_key', 'N/A')} (score: {r.get('score', 0):.3f})\") for r in d.get('results', [])[:3]]" 2>/dev/null || echo "Search failed or service unavailable"
 
-.PHONY: search-images-weaviate
-search-images-weaviate:
-	@echo "Searching images in Weaviate for: '$(IMAGE_QUERY)'"
-	@ENCODED_QUERY=$$(python3 -c 'import urllib.parse; print(urllib.parse.quote_plus("$(IMAGE_QUERY)"))'); \
-	curl -sf "http://localhost:8000/search/images?q=$$ENCODED_QUERY&provider=weaviate&limit=3" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); \
-		print('Results:', len(d.get('results', []))); \
-		[print(f\"  - {r.get('s3_key', 'N/A')} (score: {r.get('score', 0):.3f})\") for r in d.get('results', [])[:3]]" 2>/dev/null || echo "Search failed or service unavailable"
-
 .PHONY: search-images-compare
 search-images-compare:
-	@echo "Comparing image search results across both providers..."
+	@echo "Searching images..."
 	@echo ""
 	@$(MAKE) search-images-qdrant IMAGE_QUERY="$(IMAGE_QUERY)"
-	@echo ""
-	@$(MAKE) search-images-weaviate IMAGE_QUERY="$(IMAGE_QUERY)"
 
 # Image search demo with presigned URLs and download
 .PHONY: image-search-demo
@@ -687,14 +623,9 @@ qdrant-clear:
 	@echo "Deleting Qdrant collection '$(COLLECTION)'..."
 	@curl -sf -X DELETE "http://localhost:6333/collections/$(COLLECTION)" 2>/dev/null && echo "✅ Qdrant collection deleted" || echo "Qdrant delete failed or collection doesn't exist"
 
-.PHONY: weaviate-clear
-weaviate-clear:
-	@echo "Deleting Weaviate collection '$(COLLECTION)'..."
-	@curl -sf -X DELETE "http://localhost:8080/v1/schema/$(COLLECTION)" 2>/dev/null && echo "✅ Weaviate collection deleted" || echo "Weaviate delete failed or collection doesn't exist"
-
 .PHONY: vectordb-clear
-vectordb-clear: qdrant-clear weaviate-clear
-	@echo "✅ Both vector DBs cleared"
+vectordb-clear: qdrant-clear
+	@echo "✅ Vector DB cleared"
 
 # Image collection clear targets
 .PHONY: qdrant-clear-images
@@ -702,15 +633,9 @@ qdrant-clear-images:
 	@echo "Deleting Qdrant image collection '$(IMAGE_COLLECTION)'..."
 	@curl -sf -X DELETE "http://localhost:6333/collections/$(IMAGE_COLLECTION)" 2>/dev/null && echo "✅ Qdrant image collection deleted" || echo "Qdrant delete failed or collection doesn't exist"
 
-.PHONY: weaviate-clear-images
-weaviate-clear-images:
-	@echo "Deleting Weaviate image collection '$(IMAGE_COLLECTION)Images'..."
-	@COLLECTION_CAP=$$(python3 -c "print('$(IMAGE_COLLECTION)'.capitalize() + 'Images')"); \
-	curl -sf -X DELETE "http://localhost:8080/v1/schema/$$COLLECTION_CAP" 2>/dev/null && echo "✅ Weaviate image collection deleted" || echo "Weaviate delete failed or collection doesn't exist"
-
 .PHONY: vectordb-clear-images
-vectordb-clear-images: qdrant-clear-images weaviate-clear-images
-	@echo "✅ Both image collections cleared"
+vectordb-clear-images: qdrant-clear-images
+	@echo "✅ Image collection cleared"
 
 # =============================================================================
 # End-to-End Image Pipeline

@@ -11,7 +11,6 @@ database providers are wired correctly in this environment.
 
 Usage:
   python zarf/scripts/smoke_providers.py
-  python zarf/scripts/smoke_providers.py --provider weaviate
 """
 
 from __future__ import annotations
@@ -25,8 +24,6 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
-
-import requests
 
 logger = logging.getLogger(__name__)
 _IMPORTS = None
@@ -49,7 +46,6 @@ def _init_repo_imports() -> None:
 
     from clients.interfaces.embedding import create_embedding_provider
     from clients.interfaces.vector_db import create_vector_db_provider
-    from clients.weaviate import WeaviateClientWrapper, WeaviateDataObject
     from config import VectorDBConfig, get_settings
     from core.models import VectorPoint
 
@@ -58,8 +54,6 @@ def _init_repo_imports() -> None:
         create_vector_db_provider=create_vector_db_provider,
         VectorDBConfig=VectorDBConfig,
         get_settings=get_settings,
-        WeaviateClientWrapper=WeaviateClientWrapper,
-        WeaviateDataObject=WeaviateDataObject,
         VectorPoint=VectorPoint,
     )
 
@@ -70,7 +64,7 @@ def _parse_args() -> argparse.Namespace:
     # Provider override for testing a specific backend even if env default differs.
     parser.add_argument(
         "--provider",
-        choices=("qdrant", "weaviate"),
+        choices=("qdrant",),
         help="Override VECTOR_DB_PROVIDER for this run.",
     )
     # Optional collection name to avoid collisions or to re-use a known target.
@@ -88,27 +82,8 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _build_points(provider_type: str, text: str, vector: list[float]):
-    """Create provider-specific point objects for upsert.
-
-    Qdrant uses VectorPoint (our wrapper), while Weaviate uses WeaviateDataObject.
-    """
-    # Weaviate expects objects with explicit UUIDs and property dictionaries.
-    if provider_type == "weaviate":
-        _init_repo_imports()
-        assert _IMPORTS is not None
-
-        return [
-            _IMPORTS.WeaviateDataObject(
-                # UUID is required by Weaviate; we generate a fresh one for test data.
-                uuid=str(uuid4()),
-                # Store the raw text in properties for easy inspection later.
-                properties={"text": text},
-                # Vector payload uses the embedding directly.
-                vector=vector,
-            )
-        ]
-
+def _build_points(text: str, vector: list[float]):
+    """Create VectorPoint objects for upsert."""
     _init_repo_imports()
     assert _IMPORTS is not None
 
@@ -141,50 +116,11 @@ def _print_provider_env() -> None:
     logger.info("  VECTOR_DB_PROVIDER=%s", os.getenv("VECTOR_DB_PROVIDER", ""))
     logger.info("  QDRANT_URL=%s", os.getenv("QDRANT_URL", ""))
     logger.info("  QDRANT_API_KEY=%s", _mask_secret(os.getenv("QDRANT_API_KEY")))
-    logger.info("  WEAVIATE_URL=%s", os.getenv("WEAVIATE_URL", ""))
-    logger.info("  WEAVIATE_GRPC_HOST=%s", os.getenv("WEAVIATE_GRPC_HOST", ""))
-    logger.info("  WEAVIATE_API_KEY=%s", _mask_secret(os.getenv("WEAVIATE_API_KEY")))
 
 
 def _configure_logging() -> None:
     """Configure logging for the smoke test script."""
     logging.basicConfig(level=logging.INFO, format="[smoke-providers] %(message)s")
-
-
-def _weaviate_collection_candidates(collection: str) -> tuple[str, ...]:
-    """Return candidate class names to delete in Weaviate."""
-    if not collection:
-        return (collection,)
-    normalized = collection[0].upper() + collection[1:]
-    if normalized == collection:
-        return (collection,)
-    return (collection, normalized)
-
-
-def _delete_weaviate_collection_rest(url: str | None, api_key: str | None, collection: str) -> None:
-    """Delete a Weaviate collection via REST, avoiding gRPC init checks."""
-    if not url:
-        raise RuntimeError("Weaviate URL unavailable for REST cleanup")
-
-    headers: dict[str, str] = {}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-
-    base_url = url.rstrip("/")
-    last_status = None
-    for attempt in range(1, 4):
-        for name in _weaviate_collection_candidates(collection):
-            resp = requests.delete(
-                f"{base_url}/v1/schema/{name}",
-                headers=headers,
-                timeout=10,
-            )
-            last_status = resp.status_code
-            if resp.status_code in (200, 204, 404):
-                return
-        if attempt < 3:
-            time.sleep(0.5)
-    raise RuntimeError(f"Weaviate REST delete failed with status={last_status}")
 
 
 async def _cleanup_collection(provider_type: str, vector_db: object, collection: str) -> None:
@@ -198,15 +134,6 @@ async def _cleanup_collection(provider_type: str, vector_db: object, collection:
             logger.info("Cleaning up collection=%s", collection)
             await qdrant_client.delete_collection(collection_name=collection)
             logger.info("Cleanup completed")
-            return
-        if provider_type == "weaviate":
-            logger.info("Cleaning up collection=%s via REST", collection)
-            _delete_weaviate_collection_rest(
-                vector_db.url or os.getenv("WEAVIATE_URL"),
-                vector_db.api_key or os.getenv("WEAVIATE_API_KEY"),
-                collection,
-            )
-            logger.info("Cleanup completed via REST")
             return
         logger.info("Cleanup skipped: unsupported provider_type=%s", provider_type)
     except Exception as exc:
@@ -231,13 +158,6 @@ async def _wait_for_collection(
             existing = {c.name for c in collections.collections}
             if collection in existing:
                 return
-        elif provider_type == "weaviate":
-            weaviate_client = vector_db.client
-            if weaviate_client is None:
-                break
-            async with weaviate_client:
-                if await weaviate_client.collections.exists(collection):
-                    return
         else:
             break
         await asyncio.sleep(interval_s)
@@ -275,7 +195,7 @@ async def _run_smoke_test(
     logger.info("Embedding returned with vector_size=%s", vector_size)
 
     # Restrict to providers supported by the compose/dev setup.
-    if provider_type not in ("qdrant", "weaviate"):
+    if provider_type != "qdrant":
         raise RuntimeError(f"Unsupported provider type: {provider_type}")
 
     # Use settings' vector DB config when it matches the requested provider.
@@ -289,26 +209,11 @@ async def _run_smoke_test(
         )
 
     logger.info("Using vector DB provider: %s", provider_type)
-    if provider_type == "qdrant":
-        logger.info("Qdrant URL: %s", vector_cfg.qdrant_url)
-    if provider_type == "weaviate":
-        logger.info("Weaviate URL: %s", vector_cfg.weaviate_url)
-        logger.info("Weaviate gRPC host: %s", vector_cfg.weaviate_grpc_host or "")
+    logger.info("Qdrant URL: %s", vector_cfg.qdrant_url)
     # Instantiate the vector DB provider.
-    if provider_type == "weaviate":
-        if vector_cfg.weaviate_url is None:
-            raise RuntimeError("Weaviate URL is not configured.")
-        logger.info("Weaviate skip_init_checks enabled")
-        vector_db = _IMPORTS.WeaviateClientWrapper(
-            url=vector_cfg.weaviate_url,
-            api_key=vector_cfg.weaviate_api_key,
-            grpc_host=vector_cfg.weaviate_grpc_host,
-            skip_init_checks=True,
-        )
-    else:
-        vector_db = _IMPORTS.create_vector_db_provider(vector_cfg)
-    # Build provider-specific points for upsert.
-    points = _build_points(provider_type, text, vector)
+    vector_db = _IMPORTS.create_vector_db_provider(vector_cfg)
+    # Build points for upsert.
+    points = _build_points(text, vector)
 
     try:
         # Upsert the test point (ensures the collection exists as needed).

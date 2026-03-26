@@ -22,7 +22,7 @@ API collection and environment for the iNatInq ML Pipeline service.
 - `GET /healthz` - Liveness probe
 
 ### Vector Store
-- `GET /search` - Semantic search (Qdrant or Weaviate)
+- `GET /search` - Semantic search (Qdrant)
 
 ### Spark Jobs
 - `POST /spark/jobs` - Submit job

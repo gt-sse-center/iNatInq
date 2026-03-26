@@ -61,7 +61,6 @@ Once running, services are available at:
 | MinIO Console | <http://localhost:9001> | Object storage UI |
 | MinIO API | <http://localhost:9000> | S3-compatible API |
 | Qdrant Dashboard | <http://localhost:6333/dashboard> | Vector DB UI |
-| Weaviate | <http://localhost:8080> | Vector DB API |
 | Ollama | <http://localhost:11434> | Embedding service |
 | Ray Dashboard | <http://localhost:8265> | Ray cluster UI |
 
@@ -80,14 +79,14 @@ The Docker Compose stack emulates the Kubernetes `ml-system` namespace from `mod
 │                        Docker Compose Network                           │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐           │
-│  │  MinIO   │    │  Qdrant  │    │ Weaviate │    │  Ollama  │           │
-│  │  :9000   │    │  :6333   │    │  :8080   │    │  :11434  │           │
-│  └────┬─────┘    └────┬─────┘    └────┬─────┘    └────┬─────┘           │
-│       │               │               │               │                 │
-│       └───────────────┼───────────────┼───────────────┘                 │
-│                       │               │                                 │
-│                       ▼               ▼                                 │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐                           │
+│  │  MinIO   │    │  Qdrant  │    │  Ollama  │                           │
+│  │  :9000   │    │  :6333   │    │  :11434  │                           │
+│  └────┬─────┘    └────┬─────┘    └────┬─────┘                           │
+│       │               │               │                                 │
+│       └───────────────┼───────────────┘                                 │
+│                       │                                                 │
+│                       ▼                                                 │
 │                  ┌────────────────────────┐                             │
 │                  │       Pipeline         │                             │
 │                  │        :8000           │                             │
@@ -148,40 +147,19 @@ docker compose -f zarf/compose/dev/docker-compose.yaml up -d --scale ray-worker=
 
 Environment variables are defined in `compose/dev/pipeline.env`. Key configurations:
 
-- **VECTOR_DB_PROVIDER**: `qdrant` or `weaviate`
+- **VECTOR_DB_PROVIDER**: `qdrant`
 - **EMBEDDING_PROVIDER**: `ollama` (default for local dev)
 - **S3_ENDPOINT**: MinIO endpoint URL
 
-### Switching Vector Database
+### Using Cloud Vector Database
 
-Edit `pipeline.env`:
-
-```bash
-# Use Qdrant (default)
-VECTOR_DB_PROVIDER=qdrant
-
-# Or use Weaviate
-VECTOR_DB_PROVIDER=weaviate
-```
-
-### Using Cloud Vector Databases
-
-To use cloud-hosted vector databases instead of local containers:
+To use a cloud-hosted Qdrant instance instead of the local container:
 
 **Qdrant Cloud** ([cloud.qdrant.io](https://cloud.qdrant.io/)):
 
 ```bash
 export QDRANT_URL=https://your-cluster.region.cloud.qdrant.io
 export QDRANT_API_KEY=your-api-key
-docker compose -f zarf/compose/dev/docker-compose.yaml up -d
-```
-
-**Weaviate Cloud** ([console.weaviate.cloud](https://console.weaviate.cloud/)):
-
-```bash
-export VECTOR_DB_PROVIDER=weaviate
-export WEAVIATE_URL=https://your-cluster.region.weaviate.cloud
-export WEAVIATE_API_KEY=your-api-key
 docker compose -f zarf/compose/dev/docker-compose.yaml up -d
 ```
 

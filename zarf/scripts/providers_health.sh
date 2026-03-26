@@ -63,10 +63,4 @@ else
   check_http "Qdrant" "${QDRANT_URL-}" "/collections"
 fi
 
-if [[ -n "${WEAVIATE_API_KEY-}" ]]; then
-  check_http "Weaviate" "${WEAVIATE_URL-}" "/v1/meta" -H "Authorization: Bearer ${WEAVIATE_API_KEY}"
-else
-  check_http "Weaviate" "${WEAVIATE_URL-}" "/v1/meta"
-fi
-
 exit "${fail}"

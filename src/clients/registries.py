@@ -13,7 +13,6 @@ from .interfaces.embedding import register_provider as register_embedding_provid
 from .interfaces.vector_db import register_provider as register_vector_db_provider
 from .ollama import OllamaClient
 from .qdrant import QdrantClientWrapper
-from .weaviate import WeaviateClientWrapper
 
 
 def _register_embedding_providers() -> None:
@@ -27,7 +26,6 @@ def _register_embedding_providers() -> None:
 def _register_vector_db_providers() -> None:
     """Register default vector database providers."""
     register_vector_db_provider("qdrant", QdrantClientWrapper)
-    register_vector_db_provider("weaviate", WeaviateClientWrapper)
 
 
 def register_all_providers() -> None:

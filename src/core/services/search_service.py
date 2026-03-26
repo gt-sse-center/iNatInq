@@ -52,7 +52,7 @@ class ImageSearchService:
         embedding_provider_name: String label for the embedding provider used in metrics
             (e.g. ``"clip"``, ``"ollama"``). Defaults to ``"clip"``.
         vector_db_provider_name: String label for the vector DB provider used in metrics
-            (e.g. ``"qdrant"``, ``"weaviate"``). Defaults to ``"qdrant"``.
+            (e.g. ``"qdrant"``). Defaults to ``"qdrant"``.
         cache: Optional ``CacheClient`` for semantic query caching.
             When ``None`` (default), caching is disabled.
 

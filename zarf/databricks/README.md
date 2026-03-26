@@ -55,7 +55,6 @@ Set these runtime `python_params` when submitting `run_ingest_image.py`:
 - `S3_PREFIX` (optional)
 - `VECTOR_DB_TARGETS` (recommended to set explicitly, for example `qdrant`)
 - If targeting Qdrant: `QDRANT_URL` (+ `QDRANT_API_KEY` when required)
-- If targeting Weaviate: `WEAVIATE_URL` (+ `WEAVIATE_API_KEY`/`WEAVIATE_GRPC_HOST` when required)
 - For MinIO/S3-compatible endpoints: `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`
 
 ### 3) Build and manage the cluster
@@ -174,19 +173,13 @@ Optional (with defaults):
 
 Provider selection:
 
-- `VECTOR_DB_PROVIDER` (`qdrant` or `weaviate`)
+- `VECTOR_DB_PROVIDER` (`qdrant`)
 - `VECTOR_DB_COLLECTION` (optional)
 
 Qdrant Cloud:
 
 - `QDRANT_URL`
 - `QDRANT_API_KEY`
-
-Weaviate Cloud:
-
-- `WEAVIATE_URL`
-- `WEAVIATE_API_KEY`
-- `WEAVIATE_GRPC_HOST`
 
 ### Ollama (optional external)
 

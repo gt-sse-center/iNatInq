@@ -14,7 +14,6 @@ import requests
 from clients.interfaces.embedding import EmbeddingProvider
 from clients.interfaces.vector_db import VectorDBProvider
 from clients.s3 import S3ClientWrapper
-from clients.weaviate import WeaviateDataObject
 from config import EmbeddingConfig
 from core.models import VectorPoint
 
@@ -140,100 +139,58 @@ class ImageContentResult:
 class BatchEmbeddingResult:
     """Result of batch embedding generation.
 
-    Contains vector points ready for upserting to both Qdrant and Weaviate.
+    Contains vector points ready for upserting to Qdrant.
 
     Attributes:
         qdrant_points: List of VectorPoint objects for Qdrant.
-        weaviate_objects: List of WeaviateDataObject objects for Weaviate.
     """
 
     qdrant_points: list[VectorPoint]
-    weaviate_objects: list[WeaviateDataObject]
 
     def __len__(self) -> int:
         """Return the number of points in the batch."""
-        return max(len(self.qdrant_points), len(self.weaviate_objects))
+        return len(self.qdrant_points)
 
     def is_empty(self) -> bool:
         """Check if the batch is empty."""
-        return len(self.qdrant_points) == 0 and len(self.weaviate_objects) == 0
+        return len(self.qdrant_points) == 0
 
 
 @attrs.define(frozen=True, slots=True)
 class UpsertResult:
-    """Result of upserting to vector databases.
+    """Result of upserting to the vector database.
 
-    Tracks success/failure for each database independently to ensure
-    accurate reporting and enable targeted retries.
+    Tracks success/failure for the upsert operation.
 
     Attributes:
-        qdrant_success: True if Qdrant upsert succeeded.
-        weaviate_success: True if Weaviate upsert succeeded.
-        qdrant_error: Error message if Qdrant failed, empty string otherwise.
-        weaviate_error: Error message if Weaviate failed, empty string otherwise.
+        success: True if the upsert succeeded.
+        error: Error message if failed, empty string otherwise.
         batch_size: Number of points in the batch.
-        qdrant_enabled: True if Qdrant was targeted for this upsert.
-        weaviate_enabled: True if Weaviate was targeted for this upsert.
 
     Example:
-        >>> result = UpsertResult(qdrant_success=True, weaviate_success=False,
-        ...                       weaviate_error="Timeout", batch_size=50)
+        >>> result = UpsertResult(success=True, batch_size=50)
         >>> result.any_success  # True
-        >>> result.all_success  # False
+        >>> result.all_success  # True
     """
 
-    qdrant_success: bool
-    weaviate_success: bool
-    qdrant_error: str = ""
-    weaviate_error: str = ""
+    success: bool
+    error: str = ""
     batch_size: int = 0
-    qdrant_enabled: bool = True
-    weaviate_enabled: bool = True
 
     @property
     def any_success(self) -> bool:
-        """Return True if at least one database succeeded."""
-        enabled = []
-        if self.qdrant_enabled:
-            enabled.append(self.qdrant_success)
-        if self.weaviate_enabled:
-            enabled.append(self.weaviate_success)
-        if not enabled:
-            return True
-        return any(enabled)
+        """Return True if the upsert succeeded."""
+        return self.success
 
     @property
     def all_success(self) -> bool:
-        """Return True if both databases succeeded."""
-        enabled = []
-        if self.qdrant_enabled:
-            enabled.append(self.qdrant_success)
-        if self.weaviate_enabled:
-            enabled.append(self.weaviate_success)
-        if not enabled:
-            return True
-        return all(enabled)
-
-    @classmethod
-    def both_success(cls, batch_size: int) -> "UpsertResult":
-        """Create result for successful upsert to both databases."""
-        return cls(qdrant_success=True, weaviate_success=True, batch_size=batch_size)
+        """Return True if the upsert succeeded."""
+        return self.success
 
     @classmethod
     def noop(cls) -> "UpsertResult":
-        """Create no-op result when no database was targeted.
-
-        This is treated as successful for control flow (`any_success` and
-        `all_success` remain True), but both database enablement flags are False
-        so downstream logs/metrics reflect that nothing was attempted.
-        """
-        return cls(
-            qdrant_success=True,
-            weaviate_success=True,
-            batch_size=0,
-            qdrant_enabled=False,
-            weaviate_enabled=False,
-        )
+        """Create no-op result when no upsert was attempted."""
+        return cls(success=True, batch_size=0)
 
 
 # =============================================================================
@@ -279,7 +236,6 @@ class ProcessingConfig:
     embed_batch_size: int = 8
     upsert_batch_size: int = 200
     namespace: str = attrs.field(factory=lambda: os.getenv("K8S_NAMESPACE", "ml-system"))
-    ingestion_targets: frozenset[str] = frozenset({"qdrant", "weaviate"})
     s3_fetch_concurrency: int = 20
 
 
@@ -312,7 +268,6 @@ class ProcessingClients:
         s3: S3 client wrapper for object storage.
         embedder: Embedding provider for vector generation.
         qdrant_db: Qdrant vector database provider.
-        weaviate_db: Weaviate vector database provider.
         session: HTTP session for connection pooling.
 
     Example:
@@ -326,7 +281,6 @@ class ProcessingClients:
     s3: S3ClientWrapper
     embedder: EmbeddingProvider
     qdrant_db: VectorDBProvider | None = None
-    weaviate_db: VectorDBProvider | None = None
     session: requests.Session = attrs.field(factory=requests.Session)
 
     def close_sync(self) -> None:
@@ -340,12 +294,6 @@ class ProcessingClients:
                 self.qdrant_db.close()
             except Exception as e:
                 logger.warning("Error closing Qdrant client", extra={"error": str(e)})
-
-        if self.weaviate_db is not None:
-            try:
-                self.weaviate_db.close()
-            except Exception as e:
-                logger.warning("Error closing Weaviate client", extra={"error": str(e)})
 
         # Close async HTTP client on embedder if it has one
         close_async_fn = getattr(self.embedder, "close_async", None)
@@ -378,13 +326,6 @@ class ProcessingClients:
                 await self.qdrant_db._client.close()
             except Exception as e:
                 logger.warning("Error closing Qdrant async client", extra={"error": str(e)})
-
-        # Close Weaviate async client
-        if self.weaviate_db is not None and self.weaviate_db._client is not None:
-            try:
-                await self.weaviate_db._client.close()
-            except Exception as e:
-                logger.warning("Error closing Weaviate async client", extra={"error": str(e)})
 
         # Close async HTTP client on embedder if it has one
         close_async_fn = getattr(self.embedder, "close_async", None)

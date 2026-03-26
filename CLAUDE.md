@@ -4,12 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-iNatInq is a semantic search and document ingestion service built with FastAPI, Ray, and vector databases (Qdrant/Weaviate). It provides two core capabilities:
+iNatInq is a semantic search and document ingestion service built with FastAPI, Ray, and Qdrant vector database. It provides two core capabilities:
 
 1. **Query Engine**: Semantic search over documents using vector similarity (text-to-text and text-to-image)
 2. **Ingestion Engine**: Distributed processing of S3 documents into vector databases using Ray or Databricks
 
-**Tech Stack**: FastAPI · Ray · Spark · Ollama · Qdrant · Weaviate · MinIO · CLIP
+**Tech Stack**: FastAPI · Ray · Spark · Ollama · Qdrant · MinIO · CLIP
 
 ## Common Development Commands
 
@@ -115,7 +115,7 @@ The codebase follows a strict layered architecture to maintain separation of con
    - Framework-agnostic, reusable components
 
 2. **Client Layer** (`src/clients/`)
-   - Thin wrappers around external services (S3, Qdrant, Weaviate, Ollama, CLIP)
+   - Thin wrappers around external services (S3, Qdrant, Ollama, CLIP)
    - Uses Abstract Base Classes (ABCs) for provider abstraction
    - Translates external errors to `UpstreamError`
    - NO business logic - only connection, authentication, and basic operations
@@ -139,7 +139,7 @@ The codebase follows a strict layered architecture to maintain separation of con
 Clients use Abstract Base Classes to allow swapping providers without changing service code:
 
 - **`EmbeddingProvider`** ABC: Implemented by `OllamaClient`, future OpenAI/HuggingFace clients
-- **`VectorDBProvider`** ABC: Implemented by `QdrantClientWrapper`, `WeaviateClientWrapper`
+- **`VectorDBProvider`** ABC: Implemented by `QdrantClientWrapper`
 
 Services depend on ABCs, not concrete implementations:
 
@@ -185,7 +185,7 @@ Auto-detects environment (Kubernetes vs local) and sets appropriate service URLs
 
 ### Async vs Sync
 
-- **Vector DB clients**: Async-only (uses `AsyncQdrantClient`, `WeaviateAsyncClient`)
+- **Vector DB clients**: Async-only (uses `AsyncQdrantClient`)
 - **Embedding clients**: Sync with optional async support (`embed_async`)
 - **Ray tasks**: Use `asyncio.run()` to call async clients from Ray workers
 - **FastAPI routes**: Use `async def` with `await` for async clients
@@ -227,7 +227,7 @@ The codebase implements defense-in-depth resilience:
 
 ### Integration Tests (`tests/integration/`)
 
-- Use testcontainers to spin up real services (MinIO, Qdrant, Weaviate)
+- Use testcontainers to spin up real services (MinIO, Qdrant)
 - Test actual network calls, error handling, resilience features
 - Session-scoped fixtures for efficiency
 - Cover 10 categories: happy path, retry success, retry exhaustion, non-retriable errors, circuit breaker open/recovery, rate limiting, timeout handling, resource cleanup, observability
@@ -298,7 +298,7 @@ When modifying Ray jobs, ensure:
 Key variables to know (see `src/config.py` for full list):
 
 - **`EMBEDDING_PROVIDER`**: `ollama`, `openai`, `huggingface`, `sagemaker`, `clip`, `hosted_clip`, (default: `clip`)
-- **`VECTOR_DB_PROVIDER`**: `qdrant`, `weaviate` (default: `qdrant`)
+- **`VECTOR_DB_PROVIDER`**: `qdrant` (default: `qdrant`)
 - **`OLLAMA_BASE_URL`**: Auto-detected based on environment
 - **`QDRANT_URL`**: Auto-detected based on environment
 - **`S3_ENDPOINT`**: Auto-detected based on environment

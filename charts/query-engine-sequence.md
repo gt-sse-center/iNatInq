@@ -9,7 +9,7 @@ sequenceDiagram
     participant EP as EmbeddingProvider
     participant VDP as VectorDBProvider
     participant Ollama as Ollama Service
-    participant VDB as Vector Database<br/>(Qdrant/Weaviate)
+    participant VDB as Vector Database<br/>(Qdrant)
 
     C->>+API: GET /search?q=machine learning&limit=10
     
@@ -32,13 +32,8 @@ sequenceDiagram
     
     SS->>+VDP: search_async(collection, query_vector, limit=10)
     
-    alt Qdrant Provider
-        VDP->>+VDB: POST /collections/{name}/points/search
-        VDB-->>-VDP: [{id, score, payload}, ...]
-    else Weaviate Provider
-        VDP->>+VDB: GraphQL query with nearVector
-        VDB-->>-VDP: [{id, score, payload}, ...]
-    end
+    VDP->>+VDB: POST /collections/{name}/points/search
+    VDB-->>-VDP: [{id, score, payload}, ...]
     
     VDP-->>-SS: SearchResults(items, total)
 

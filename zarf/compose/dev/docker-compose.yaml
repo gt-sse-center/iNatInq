@@ -7,8 +7,6 @@
 # Services:
 #   - minio:            S3-compatible object storage (MinIO)
 #   - qdrant:           Vector database (primary)
-#   - weaviate:         Vector database (alternative)
-#   - weaviate-console: Weaviate Web UI
 #   - ollama:           Text embedding service (local LLM)
 #   - clip:             Image embedding service (CLIP)
 #   - infinity:         Image embedding service (SigLIP via Infinity)
@@ -28,8 +26,6 @@
 #   - 9001: MinIO Console
 #   - 6333: Qdrant HTTP API
 #   - 6334: Qdrant gRPC API
-#   - 8080: Weaviate HTTP API
-#   - 8081: Weaviate Console
 #   - 11434: Ollama API
 #   - 7997: Infinity Embedding Service
 #   - 8265: Ray Dashboard
@@ -109,50 +105,6 @@ services:
       timeout: 10s
       retries: 5
     networks: [ml-network]
-
-  # ---------------------------------------------------------------------------
-  # Weaviate — Secondary Vector DB
-  # ---------------------------------------------------------------------------
-  weaviate:
-    image: semitechnologies/weaviate:1.27.0
-    container_name: weaviate
-    ports:
-      - "8080:8080"
-    environment:
-      QUERY_DEFAULTS_LIMIT: 25
-      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
-      DEFAULT_VECTORIZER_MODULE: none
-      PERSISTENCE_DATA_PATH: /var/lib/weaviate
-      CLUSTER_HOSTNAME: node1
-    volumes:
-      - weaviate-data:/var/lib/weaviate
-    deploy:
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: 1g
-        reservations:
-          cpus: "0.5"
-          memory: 512m
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/v1/.well-known/ready || exit 1"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-    networks: [ml-network]
-
-  # Weaviate Console - Web UI for Weaviate
-  weaviate-console:
-    image: semitechnologies/weaviate-console:latest
-    container_name: weaviate-console
-    ports:
-      - "8081:80"
-    environment:
-      WEAVIATE_API_URL: http://weaviate:8080
-    depends_on:
-      - weaviate
-    networks:
-      - ml-network
 
   # ---------------------------------------------------------------------------
   # Ollama — Embedding Model Service
@@ -363,14 +315,9 @@ services:
       # Qdrant (vector database)
       - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
-      # Weaviate (vector database)
-      - WEAVIATE_URL=${WEAVIATE_URL:-http://weaviate:8080}
-      - WEAVIATE_API_KEY=${WEAVIATE_API_KEY:-}
-      - WEAVIATE_GRPC_HOST=${WEAVIATE_GRPC_HOST:-}
     depends_on:
       minio: { condition: service_healthy }
       qdrant: { condition: service_healthy }
-      weaviate: { condition: service_healthy }
       ollama: { condition: service_healthy }
       ray-head: { condition: service_healthy }
     volumes:
@@ -393,7 +340,6 @@ services:
 volumes:
   minio-data:
   qdrant-data:
-  weaviate-data:
   ollama-models:
   infinity-cache:
   pipeline-data:

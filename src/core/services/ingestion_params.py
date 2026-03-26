@@ -6,7 +6,7 @@ paths and avoids drift between service implementations.
 
 Design goals:
     - **Single source of truth** for ingestion env parameters
-    - **Provider-agnostic**: supports Qdrant and Weaviate config passthrough
+    - **Provider-agnostic**: supports Qdrant config passthrough
     - **Minimal coupling**: callers can extend with extra env keys when needed
     - **Explicit typing**: returns a simple dict of string values
 """
