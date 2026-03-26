@@ -62,11 +62,22 @@ class TestRun:
         assert mock_subprocess.call_args[1]["capture_output"] is True
 
     @patch("subprocess.run")
-    def test_run_passes_env_vars(self, mock_subprocess):
-        """run() passes env dict to subprocess."""
+    def test_run_merges_env_with_os_environ(self, mock_subprocess):
+        """run() merges env dict with os.environ so PATH is preserved."""
         mock_subprocess.return_value = MagicMock(returncode=0)
         run(["echo", "test"], env={"KEY": "value"})
-        assert mock_subprocess.call_args[1]["env"] == {"KEY": "value"}
+        passed_env = mock_subprocess.call_args[1]["env"]
+        # Custom var is present
+        assert passed_env["KEY"] == "value"
+        # System PATH is preserved (merged from os.environ)
+        assert "PATH" in passed_env
+
+    @patch("subprocess.run")
+    def test_run_no_env_passes_none(self, mock_subprocess):
+        """run() without env= passes env=None (inherits parent environment)."""
+        mock_subprocess.return_value = MagicMock(returncode=0)
+        run(["echo", "test"])
+        assert mock_subprocess.call_args[1]["env"] is None
 
     @patch("subprocess.run")
     def test_run_check_false_ignores_errors(self, mock_subprocess):

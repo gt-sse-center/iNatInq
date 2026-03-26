@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import webbrowser
@@ -36,6 +37,7 @@ def run(
     Returns:
         CompletedProcess result.
     """
+    merged_env = {**os.environ, **env} if env else None
     try:
         if capture:
             result = subprocess.run(
@@ -44,7 +46,7 @@ def run(
                 check=check,
                 capture_output=True,
                 text=True,
-                env=env,
+                env=merged_env,
             )
         else:
             result = subprocess.run(
@@ -52,7 +54,7 @@ def run(
                 cwd=REPO_ROOT,
                 check=check,
                 text=True,
-                env=env,
+                env=merged_env,
             )
         return result
     except subprocess.CalledProcessError as e:
@@ -68,6 +70,7 @@ def run_interactive(cmd: list[str], *, env: dict[str, str] | None = None) -> Non
         cmd: Command and arguments as a list.
         env: Optional environment variables to pass to subprocess.
     """
+    merged_env = {**os.environ, **env} if env else None
     try:
         subprocess.run(
             cmd,
@@ -76,7 +79,7 @@ def run_interactive(cmd: list[str], *, env: dict[str, str] | None = None) -> Non
             stdout=sys.stdout,
             stderr=sys.stderr,
             check=True,
-            env=env,
+            env=merged_env,
         )
     except subprocess.CalledProcessError as e:
         typer.echo(f"Command failed with exit code {e.returncode}", err=True)

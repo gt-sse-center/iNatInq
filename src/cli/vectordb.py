@@ -5,7 +5,6 @@ from __future__ import annotations
 import time
 from typing import Annotated
 
-import requests
 import typer
 
 from cli._util import docker_compose, run, DEFAULT_S3_BUCKET
@@ -18,6 +17,8 @@ def count(
     collection: Annotated[str, typer.Option("--collection", "-c", help="Collection name.")] = "documents",
 ) -> None:
     """Count documents in Qdrant collection."""
+    import requests
+
     typer.echo(f"Counting documents in Qdrant collection '{collection}'...")
 
     try:
@@ -36,6 +37,8 @@ def clear(
     collection: Annotated[str, typer.Option("--collection", "-c", help="Collection name.")] = "documents",
 ) -> None:
     """Delete Qdrant collection."""
+    import requests
+
     typer.echo(f"Deleting Qdrant collection '{collection}'...")
 
     try:
@@ -55,17 +58,13 @@ def s3_count(
     """Count objects in MinIO bucket."""
     typer.echo("Counting objects in MinIO bucket...")
 
-    try:
-        result = run(
-            docker_compose("exec", "-T", "minio", "mc", "ls", "--recursive", f"minio/{bucket}/{prefix}"),
-            capture=True,
-        )
-        lines = result.stdout.strip().split("\n") if result.stdout.strip() else []
-        count = len([line for line in lines if line])
-        typer.echo(f"S3 objects: {count}")
-    except Exception as e:
-        typer.echo(f"S3 count failed or service unavailable ({e})", err=True)
-        raise typer.Exit(code=1) from e
+    result = run(
+        docker_compose("exec", "-T", "minio", "mc", "ls", "--recursive", f"minio/{bucket}/{prefix}"),
+        capture=True,
+    )
+    lines = result.stdout.strip().split("\n") if result.stdout.strip() else []
+    obj_count = len([line for line in lines if line])
+    typer.echo(f"S3 objects: {obj_count}")
 
 
 @app.command(name="s3-clear")
@@ -76,16 +75,12 @@ def s3_clear(
     """Clear objects from MinIO bucket."""
     typer.echo(f"Clearing S3 bucket at prefix {prefix}...")
 
-    try:
-        run(
-            docker_compose(
-                "exec", "-T", "minio", "mc", "rm", "--recursive", "--force", f"minio/{bucket}/{prefix}"
-            )
+    run(
+        docker_compose(
+            "exec", "-T", "minio", "mc", "rm", "--recursive", "--force", f"minio/{bucket}/{prefix}"
         )
-        typer.echo("✅ S3 cleared")
-    except Exception as e:
-        typer.echo(f"S3 clear failed ({e})", err=True)
-        raise typer.Exit(code=1) from e
+    )
+    typer.echo("✅ S3 cleared")
 
 
 @app.command(name="e2e")
@@ -125,12 +120,12 @@ def e2e_images(
     typer.echo("")
 
     # Step 4: Wait
-    typer.echo(f"Waiting {wait} seconds for image job to complete...")
+    typer.echo(f"Step 4: Waiting {wait} seconds for image job to complete...")
     time.sleep(wait)
     typer.echo("")
 
     # Step 5: Check counts
-    typer.echo("Step 4: Check image counts...")
+    typer.echo("Step 5: Check image counts...")
     try:
         count(collection=collection)
     except typer.Exit:
@@ -138,7 +133,7 @@ def e2e_images(
     typer.echo("")
 
     # Step 6: Test search
-    typer.echo("Step 5: Test image search...")
+    typer.echo("Step 6: Test image search...")
     from cli import search as search_module
 
     try:

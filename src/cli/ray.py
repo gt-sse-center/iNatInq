@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Annotated
 
-import requests
 import typer
 
 app = typer.Typer(help="Ray job management.")
@@ -18,6 +17,8 @@ def submit(
     ] = "documents",
 ) -> None:
     """Submit Ray image job to process S3 images."""
+    import requests
+
     typer.echo(f"Submitting Ray image job to process S3 prefix: {prefix}")
 
     try:
@@ -39,6 +40,8 @@ def submit(
 @app.command()
 def status() -> None:
     """Show status of Ray jobs."""
+    import requests
+
     typer.echo("Fetching Ray job status...")
 
     try:
@@ -62,6 +65,8 @@ def status() -> None:
 @app.command()
 def logs() -> None:
     """Show logs for the latest Ray job."""
+    import requests
+
     try:
         # Get latest job ID
         response = requests.get("http://localhost:8265/api/jobs/", timeout=5)

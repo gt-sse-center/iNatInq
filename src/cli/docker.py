@@ -89,12 +89,8 @@ def build_base() -> None:
     typer.echo("✅ Base image built: inatinq/pipeline-base:0.1.0")
 
 
-@app.command()
-def build() -> None:
-    """Build pipeline image."""
-    typer.echo("Building pipeline image...")
-
-    # Check if base image exists
+def _ensure_base_image() -> None:
+    """Ensure the pipeline base image exists, building it if needed."""
     try:
         subprocess.run(
             ["docker", "image", "inspect", "inatinq/pipeline-base:0.1.0"],
@@ -105,6 +101,12 @@ def build() -> None:
         typer.echo("⚠️  Base image not found. Building it first...")
         build_base()
 
+
+@app.command()
+def build() -> None:
+    """Build pipeline image."""
+    typer.echo("Building pipeline image...")
+    _ensure_base_image()
     run(docker_compose("build", "pipeline"))
 
 
@@ -112,18 +114,7 @@ def build() -> None:
 def rebuild() -> None:
     """Rebuild and restart pipeline."""
     typer.echo("Rebuilding and restarting pipeline...")
-
-    # Check if base image exists
-    try:
-        subprocess.run(
-            ["docker", "image", "inspect", "inatinq/pipeline-base:0.1.0"],
-            check=True,
-            capture_output=True,
-        )
-    except subprocess.CalledProcessError:
-        typer.echo("⚠️  Base image not found. Building it first...")
-        build_base()
-
+    _ensure_base_image()
     run(docker_compose("up", "-d", "--build", "pipeline"))
 
 

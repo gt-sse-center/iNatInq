@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Annotated
 from urllib.parse import quote_plus
 
-import requests
 import typer
 
 from cli._util import run
@@ -20,6 +19,8 @@ def images(
 ) -> None:
     """Search for images using semantic search."""
     typer.echo(f"Searching images in Qdrant for: '{query}'")
+
+    import requests
 
     try:
         encoded_query = quote_plus(query)
