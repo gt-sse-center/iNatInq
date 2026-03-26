@@ -7,11 +7,18 @@ Tests cover request/response handling, error cases, and service integration.
 
 The tests cover:
   - Health check endpoint (/healthz)
-  - Search endpoint (/search) with Qdrant provider
   - Image search endpoint (/search/images) with CLIP embeddings
-  - Ray job management endpoints (/ray/jobs/*)
-  - Error handling and validation
+  - Ray job management endpoints (/ray/jobs/images, /ray/jobs/process-dlq,
+    /ray/jobs/{job_id}, /ray/jobs/{job_id}/logs, DELETE /ray/jobs/{job_id})
+  - Databricks job management endpoints (/databricks/jobs/images,
+    /databricks/jobs/cdc-producer, /databricks/jobs/cdc-consumer,
+    /databricks/jobs/process-dlq, /databricks/jobs/{run_id},
+    /databricks/jobs/{run_id}/logs, DELETE /databricks/jobs/{run_id})
+  - Ingestion metrics endpoint (/ingestion/metrics)
+  - Cache invalidation endpoint (DELETE /cache)
+  - Error handling, validation, and exception propagation
   - Provider configuration and defaults
+  - Per-request model override on /search/images
 
 # Test Structure
 
@@ -462,6 +469,41 @@ class TestRayJobEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "stopped"
+
+    def test_submit_ray_image_job_upstream_error_returns_502(
+        self,
+        test_client: TestClient,
+    ) -> None:
+        """UpstreamError from RayService propagates through asyncio.to_thread as HTTP 502.
+
+        This verifies the exception re-raise fix: UpstreamError must not be
+        swallowed by the broad ``except Exception`` and re-wrapped as
+        PipelineError (which would yield 500).
+        """
+        mock_service = MagicMock()
+        mock_service.submit_image_job.side_effect = UpstreamError("Ray cluster unreachable")
+
+        with (
+            patch("api.routes.RayService", return_value=mock_service),
+            patch("api.routes.get_settings") as mock_settings,
+            patch("api.routes.MinIOConfig.from_env") as mock_minio,
+        ):
+            mock_settings.return_value.k8s_namespace = "ml-system"
+            mock_minio.return_value.endpoint_url = "http://minio:9000"
+            mock_minio.return_value.access_key_id = "minioadmin"
+            mock_minio.return_value.secret_access_key = "minioadmin"
+            response = test_client.post(
+                "/ray/jobs/images",
+                json={
+                    "s3_bucket": "pipeline",
+                    "s3_prefix": "images/",
+                    "collection": "documents",
+                },
+            )
+
+        assert response.status_code == 502
+        data = response.json()
+        assert data["error"] == "Bad Gateway"
 
     def test_process_dlq_entries_ray_success(
         self,

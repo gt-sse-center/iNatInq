@@ -183,9 +183,9 @@ class TestCreateApp:
 
         # Verify expected tags
         assert "health" in tag_names
-        assert "embeddings" in tag_names
         assert "vector-store" in tag_names
         assert "ray-jobs" in tag_names
+        assert "metrics" in tag_names
 
 
 # =============================================================================

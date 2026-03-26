@@ -7,17 +7,32 @@ This module defines all HTTP endpoints for the pipeline service. It handles:
 
 ## Endpoints
 
+**Health & Monitoring:**
 - `GET /healthz`: Liveness/readiness probe (no dependency checks)
-- `GET /search/images`: Perform semantic search over images in vector database
-(Qdrant)
-- `POST /ray/jobs/images`: Submit Ray job to process S3 images and store
-image embeddings in vector DB image collections
-- `POST /databricks/jobs/images`: Submit Databricks job to process S3 images
-- `POST /databricks/jobs/cdc-producer`: Submit Databricks CDC producer job
+- `GET /metrics`: Prometheus metrics endpoint (auto-exposed by instrumentator)
+- `POST /ingestion/metrics`: Ingestion job metrics reporting from ephemeral processes
+
+**Search:**
+- `GET /search/images`: Semantic search over images using text queries
+
+**Ray Jobs:**
+- `POST /ray/jobs/images`: Submit Ray job to process S3 images
 - `POST /ray/jobs/process-dlq`: Process dead letter queue entries with local Ray
-- `POST /databricks/jobs/process-dlq`: Process dead letter queue entries with Ray on Databricks
-- `POST /databricks/jobs/cdc-consumer`: Submit Databricks CDC consumer job
-- `GET /ray/jobs/{job_id}`: Check status of a submitted job
+- `GET /ray/jobs/{job_id}`: Check Ray job status
+- `GET /ray/jobs/{job_id}/logs`: Retrieve Ray job logs
+- `DELETE /ray/jobs/{job_id}`: Stop a running Ray job
+
+**Databricks Jobs:**
+- `POST /databricks/jobs/images`: Submit Databricks job to process S3 or iNaturalist images
+- `POST /databricks/jobs/cdc-producer`: Submit Databricks CDC Auto Loader producer job
+- `POST /databricks/jobs/process-dlq`: Process DLQ entries with Ray on Databricks
+- `POST /databricks/jobs/cdc-consumer`: Submit Databricks CDC Bronze consumer job
+- `GET /databricks/jobs/{run_id}`: Check Databricks run status
+- `GET /databricks/jobs/{run_id}/logs`: Retrieve Databricks run logs
+- `DELETE /databricks/jobs/{run_id}`: Stop a Databricks run
+
+**Cache:**
+- `DELETE /cache`: Invalidate the semantic cache
 
 ## Error Handling
 
@@ -38,6 +53,7 @@ FastAPI automatically generates OpenAPI/Swagger documentation at:
 - `/openapi.json`: OpenAPI schema JSON
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Annotated
@@ -50,6 +66,7 @@ from clients.interfaces.embedding import create_embedding_provider
 from clients.interfaces.vector_db import create_vector_db_provider
 from config import EmbeddingConfig, MinIOConfig, ProviderType, VectorDBConfig, get_settings
 from core.exceptions import BadRequestError, PipelineError
+from foundation.exceptions import UpstreamError
 from core.services.databricks_ray_service import DatabricksRayService
 from core.services.ray_service import RayService
 from core.services.search_service import ImageSearchService
@@ -106,7 +123,7 @@ def _model_override_kwargs(model: str, resolved_provider: ProviderType) -> dict[
 
 
 @router.get("/healthz", tags=["health"])
-def healthz() -> dict[str, str]:
+async def healthz() -> dict[str, str]:
     """Liveness and readiness probe endpoint.
 
     This endpoint is used by Kubernetes liveness and readiness probes. It
@@ -360,7 +377,8 @@ async def submit_ray_image_job(req: models.RayImageJobRequest) -> models.RayImag
         ray_service = RayService()
         minio_cfg = MinIOConfig.from_env(namespace)
 
-        job_id = ray_service.submit_image_job(
+        job_id = await asyncio.to_thread(
+            ray_service.submit_image_job,
             namespace=namespace,
             s3_endpoint=minio_cfg.endpoint_url,
             s3_access_key_id=minio_cfg.access_key_id,
@@ -382,6 +400,8 @@ async def submit_ray_image_job(req: models.RayImageJobRequest) -> models.RayImag
             image_max_items=req.image_max_items,
             submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
         )
+    except (PipelineError, UpstreamError):
+        raise
     except Exception as e:
         raise PipelineError(f"Failed to submit Ray image job: {e!s}") from e
 
@@ -398,18 +418,54 @@ async def submit_databricks_image_job(
     """Submit a new Databricks job to process images.
 
     This submits a run for a preconfigured Databricks Job and returns immediately.
+    The job processes images from either S3/MinIO or iNaturalist Open Data,
+    generates embeddings using CLIP or Infinity, and stores vectors in Qdrant.
 
     Args:
         req: Request containing source, optional s3_prefix, and collection.
             Supported sources:
-            - s3: direct S3 image job
-            - inat: iNaturalist image job
+            - s3: Process images from S3/MinIO bucket at s3_prefix
+            - inat: Process images from iNaturalist Open Data dataset
 
     Returns:
         Job metadata including Databricks run ID and submission timestamp.
 
     Raises:
+        HTTPException(400): If source is invalid or required parameters are missing.
+        HTTPException(502): If Databricks API is unreachable.
         HTTPException(500): If job submission fails.
+
+    Example Request (S3 source):
+        ```json
+        POST /databricks/jobs/images
+        {
+            "source": "s3",
+            "s3_prefix": "images/",
+            "collection": "documents"
+        }
+        ```
+
+    Example Request (iNaturalist source):
+        ```json
+        POST /databricks/jobs/images
+        {
+            "source": "inat",
+            "collection": "inat-images"
+        }
+        ```
+
+    Example Response:
+        ```json
+        {
+            "run_id": "123456789",
+            "status": "submitted",
+            "namespace": "ml-system",
+            "source": "s3",
+            "s3_prefix": "images/",
+            "collection": "documents",
+            "submitted_at": "2026-03-26T14:15:00.123456Z"
+        }
+        ```
     """
     try:
         settings = get_settings()
@@ -420,7 +476,8 @@ async def submit_databricks_image_job(
         effective_s3_prefix: str | None
         if req.source == "inat":
             effective_s3_prefix = None
-            run_id = databricks_service.submit_inat_image_job(
+            run_id = await asyncio.to_thread(
+                databricks_service.submit_inat_image_job,
                 namespace=namespace,
                 embedding_config=embed_config,
                 collection=req.collection,
@@ -428,7 +485,8 @@ async def submit_databricks_image_job(
         else:
             effective_s3_prefix = req.s3_prefix or ""
             minio_cfg = MinIOConfig.from_env(namespace)
-            run_id = databricks_service.submit_image_job(
+            run_id = await asyncio.to_thread(
+                databricks_service.submit_image_job,
                 namespace=namespace,
                 s3_endpoint=minio_cfg.endpoint_url,
                 s3_access_key_id=minio_cfg.access_key_id,
@@ -450,6 +508,8 @@ async def submit_databricks_image_job(
             collection=req.collection,
             submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
         )
+    except (PipelineError, UpstreamError):
+        raise
     except Exception as e:
         raise PipelineError(f"Failed to submit Databricks image job: {e!s}") from e
 
@@ -461,13 +521,35 @@ async def submit_databricks_image_job(
     tags=["databricks-jobs"],
 )
 async def submit_databricks_cdc_producer_job() -> models.DatabricksCdcProducerJobResponse:
-    """Submit a Databricks CDC producer (Auto Loader) job run."""
+    """Submit a Databricks CDC producer job to stream S3 changes to Bronze storage.
+
+    This endpoint submits a Databricks job that uses Auto Loader to detect new or
+    modified files in the configured S3 bucket and streams them to a Bronze Delta table.
+    The Auto Loader provides exactly-once ingestion guarantees using file metadata
+    checkpointing.
+
+    Returns:
+        DatabricksCdcProducerJobResponse: Job submission confirmation with run ID.
+
+    Raises:
+        HTTPException(500): If Databricks job submission fails.
+
+    Example Response:
+        ```json
+        {
+            "run_id": "123456789",
+            "status": "submitted",
+            "namespace": "ml-system",
+            "submitted_at": "2026-03-26T15:30:45.123456Z"
+        }
+        ```
+    """
     try:
         settings = get_settings()
         namespace = settings.k8s_namespace
 
         databricks_service = DatabricksRayService()
-        run_id = databricks_service.submit_s3_autoloader_job(namespace=namespace)
+        run_id = await asyncio.to_thread(databricks_service.submit_s3_autoloader_job, namespace=namespace)
 
         return models.DatabricksCdcProducerJobResponse(
             run_id=str(run_id),
@@ -475,6 +557,8 @@ async def submit_databricks_cdc_producer_job() -> models.DatabricksCdcProducerJo
             namespace=namespace,
             submitted_at=str(datetime.now(timezone.utc).isoformat()),  # noqa: UP017
         )
+    except (PipelineError, UpstreamError):
+        raise
     except Exception as e:
         raise PipelineError(f"Failed to submit Databricks CDC producer job: {e!s}") from e
 
@@ -486,7 +570,32 @@ async def submit_databricks_cdc_producer_job() -> models.DatabricksCdcProducerJo
     tags=["ray-jobs"],
 )
 async def process_dlq_entries_ray() -> models.RayProcessDLQResponse:
-    """Process previously failed image ingestions in the dead letter queue via Ray."""
+    """Process previously failed image ingestions from the dead letter queue using Ray.
+
+    This endpoint submits a Ray job to retry processing images that failed during
+    initial ingestion. Failed images are stored in the DLQ (dead letter queue) with
+    error metadata for debugging and retry. This allows recovery from transient
+    failures without re-processing successful images.
+
+    The job pulls from the DLQ storage location (typically `s3://bucket/dlq/`) and
+    attempts to re-embed and re-index each failed image.
+
+    Returns:
+        RayProcessDLQResponse: Job submission confirmation with Ray job ID.
+
+    Raises:
+        HTTPException(500): If Ray job submission fails.
+
+    Example Response:
+        ```json
+        {
+            "job_id": "raysubmit_1234567890",
+            "status": "submitted",
+            "namespace": "ml-system",
+            "submitted_at": "2026-03-26T15:30:45.123456Z"
+        }
+        ```
+    """
     try:
         settings = get_settings()
         namespace = settings.k8s_namespace
@@ -494,7 +603,8 @@ async def process_dlq_entries_ray() -> models.RayProcessDLQResponse:
         ray_service = RayService()
         minio_cfg = MinIOConfig.from_env(namespace)
 
-        job_id = ray_service.submit_image_job(
+        job_id = await asyncio.to_thread(
+            ray_service.submit_image_job,
             namespace=namespace,
             s3_endpoint=minio_cfg.endpoint_url,
             s3_access_key_id=minio_cfg.access_key_id,
@@ -510,6 +620,8 @@ async def process_dlq_entries_ray() -> models.RayProcessDLQResponse:
             namespace=namespace,
             submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
         )
+    except (PipelineError, UpstreamError):
+        raise
     except Exception as e:
         raise PipelineError(f"Failed to submit Ray process DLQ job: {e!s}") from e
 
@@ -521,7 +633,34 @@ async def process_dlq_entries_ray() -> models.RayProcessDLQResponse:
     tags=["databricks-jobs"],
 )
 async def process_dlq_entries_databricks() -> models.DatabricksProcessDLQResponse:
-    """Process previously failed image ingestions in the dead letter queue via Databricks."""
+    """Process previously failed image ingestions from the DLQ using Databricks.
+
+    This endpoint submits a Databricks job (Ray on Spark cluster) to retry processing
+    images that failed during initial ingestion. Failed images are stored in the DLQ
+    (dead letter queue) with error metadata for debugging and retry. This allows
+    recovery from transient failures without re-processing successful images.
+
+    The job uses Ray running on a Databricks Spark cluster to pull from the DLQ
+    storage location (typically `s3://bucket/dlq/`) and attempts to re-embed and
+    re-index each failed image. This provides the same retry semantics as the Ray
+    endpoint but with Databricks' cluster management and monitoring.
+
+    Returns:
+        DatabricksProcessDLQResponse: Job submission confirmation with Databricks run ID.
+
+    Raises:
+        HTTPException(500): If Databricks job submission fails.
+
+    Example Response:
+        ```json
+        {
+            "run_id": "123456789",
+            "status": "submitted",
+            "namespace": "ml-system",
+            "submitted_at": "2026-03-26T15:30:45.123456Z"
+        }
+        ```
+    """
     try:
         settings = get_settings()
         namespace = settings.k8s_namespace
@@ -529,7 +668,8 @@ async def process_dlq_entries_databricks() -> models.DatabricksProcessDLQRespons
         databricks_service = DatabricksRayService()
         embed_config = EmbeddingConfig.from_env(namespace)
         minio_cfg = MinIOConfig.from_env(namespace)
-        run_id = databricks_service.submit_image_job(
+        run_id = await asyncio.to_thread(
+            databricks_service.submit_image_job,
             namespace=namespace,
             s3_endpoint=minio_cfg.endpoint_url,
             s3_access_key_id=minio_cfg.access_key_id,
@@ -546,6 +686,8 @@ async def process_dlq_entries_databricks() -> models.DatabricksProcessDLQRespons
             namespace=namespace,
             submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
         )
+    except (PipelineError, UpstreamError):
+        raise
     except Exception as e:
         raise PipelineError(f"Failed to submit Databricks process DLQ job: {e!s}") from e
 
@@ -557,7 +699,32 @@ async def process_dlq_entries_databricks() -> models.DatabricksProcessDLQRespons
     tags=["databricks-jobs"],
 )
 async def submit_databricks_cdc_consumer_job() -> models.DatabricksCdcConsumerJobResponse:
-    """Submit a Databricks CDC consumer (Bronze -> Ray image) job run."""
+    """Submit a Databricks CDC consumer job to process Bronze images with Ray.
+
+    This endpoint submits a Databricks job that reads images from the Bronze Delta
+    table (populated by the CDC producer), generates embeddings using the configured
+    embedding provider, and indexes them in the vector database. This is the second
+    stage of the CDC pipeline: Bronze → Embedding → Vector DB.
+
+    The job uses Ray running on a Databricks Spark cluster to process images in
+    parallel, providing scalable ingestion for large datasets.
+
+    Returns:
+        DatabricksCdcConsumerJobResponse: Job submission confirmation with run ID.
+
+    Raises:
+        HTTPException(500): If Databricks job submission fails.
+
+    Example Response:
+        ```json
+        {
+            "run_id": "123456789",
+            "status": "submitted",
+            "namespace": "ml-system",
+            "submitted_at": "2026-03-26T15:30:45.123456Z"
+        }
+        ```
+    """
     try:
         settings = get_settings()
         namespace = settings.k8s_namespace
@@ -565,7 +732,8 @@ async def submit_databricks_cdc_consumer_job() -> models.DatabricksCdcConsumerJo
         databricks_service = DatabricksRayService()
         minio_cfg = MinIOConfig.from_env(namespace)
         embed_config = EmbeddingConfig.from_env(namespace)
-        run_id = databricks_service.submit_s3_bronze_image_job(
+        run_id = await asyncio.to_thread(
+            databricks_service.submit_s3_bronze_image_job,
             namespace=namespace,
             s3_endpoint=minio_cfg.endpoint_url,
             s3_access_key_id=minio_cfg.access_key_id,
@@ -581,6 +749,8 @@ async def submit_databricks_cdc_consumer_job() -> models.DatabricksCdcConsumerJo
             namespace=namespace,
             submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
         )
+    except (PipelineError, UpstreamError):
+        raise
     except Exception as e:
         raise PipelineError(f"Failed to submit Databricks CDC consumer job: {e!s}") from e
 
@@ -604,8 +774,10 @@ async def stop_databricks_job(run_id: str) -> models.DatabricksJobStopResponse:
     """
     try:
         databricks_service = DatabricksRayService()
-        databricks_service.stop_run(run_id)
+        await asyncio.to_thread(databricks_service.stop_run, run_id)
         return models.DatabricksJobStopResponse(run_id=str(run_id), status="stopped")
+    except (PipelineError, UpstreamError):
+        raise
     except Exception as e:
         raise PipelineError(f"Failed to stop Databricks job: {e!s}") from e
 
@@ -629,8 +801,10 @@ async def get_databricks_job_status(run_id: str) -> models.DatabricksJobStatusRe
     """
     try:
         databricks_service = DatabricksRayService()
-        status = databricks_service.get_run_status(run_id)
+        status = await asyncio.to_thread(databricks_service.get_run_status, run_id)
         return models.DatabricksJobStatusResponse(run_id=str(run_id), **status)
+    except (PipelineError, UpstreamError):
+        raise
     except Exception as e:
         raise PipelineError(f"Failed to get Databricks job status: {e!s}") from e
 
@@ -654,8 +828,10 @@ async def get_databricks_job_logs(run_id: str) -> models.DatabricksJobLogsRespon
     """
     try:
         databricks_service = DatabricksRayService()
-        logs = databricks_service.get_run_output(run_id)
+        logs = await asyncio.to_thread(databricks_service.get_run_output, run_id)
         return models.DatabricksJobLogsResponse(run_id=str(run_id), logs=logs)
+    except (PipelineError, UpstreamError):
+        raise
     except Exception as e:
         raise PipelineError(f"Failed to get Databricks job logs: {e!s}") from e
 
@@ -686,9 +862,11 @@ async def get_ray_job_status(job_id: str) -> models.RayJobStatusResponse:
     try:
         settings = get_settings()
         ray_service = RayService()
-        status = ray_service.get_job_status(job_id, settings.k8s_namespace)
+        status = await asyncio.to_thread(ray_service.get_job_status, job_id, settings.k8s_namespace)
 
         return models.RayJobStatusResponse(job_id=job_id, **status)
+    except (PipelineError, UpstreamError):
+        raise
     except Exception as e:
         raise PipelineError(f"Failed to get job status: {e!s}") from e
 
@@ -722,9 +900,11 @@ async def get_ray_job_logs(job_id: str) -> models.RayJobLogsResponse:
     try:
         settings = get_settings()
         ray_service = RayService()
-        logs = ray_service.get_job_logs(job_id, settings.k8s_namespace)
+        logs = await asyncio.to_thread(ray_service.get_job_logs, job_id, settings.k8s_namespace)
 
         return models.RayJobLogsResponse(job_id=job_id, logs=logs)
+    except (PipelineError, UpstreamError):
+        raise
     except Exception as e:
         raise PipelineError(f"Failed to get job logs: {e!s}") from e
 
@@ -772,9 +952,11 @@ async def stop_ray_job(job_id: str) -> models.RayJobStopResponse:
     try:
         settings = get_settings()
         ray_service = RayService()
-        ray_service.stop_job(job_id, settings.k8s_namespace)
+        await asyncio.to_thread(ray_service.stop_job, job_id, settings.k8s_namespace)
 
         return models.RayJobStopResponse(job_id=job_id, status="stopped")
+    except (PipelineError, UpstreamError):
+        raise
     except Exception as e:
         raise PipelineError(f"Failed to stop job: {e!s}") from e
 
