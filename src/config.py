@@ -505,6 +505,17 @@ class EmbeddingConfig(BaseModel):
             clip_url = os.getenv("CLIP_URL") or default_url
             default_model = "ViT-B/32"
             clip_model = os.getenv("CLIP_MODEL", default_model)
+            # Guardrail: Azure hosted endpoints use /score + API key and require hosted_clip mode.
+            if (
+                provider_type is ProviderType.LOCAL_CLIP
+                and clip_url.rstrip("/").endswith("/score")
+                and bool(clip_api_key)
+            ):
+                raise ValueError(
+                    "Likely CLIP provider mismatch: EMBEDDING_PROVIDER=clip uses local "
+                    "endpoints (/embedding/image) and ignores CLIP_API_KEY. For hosted "
+                    "Azure ML endpoints (URL ending in /score), set EMBEDDING_PROVIDER=hosted_clip."
+                )
 
         elif provider_type is ProviderType.INFINITY:
             default_url = f"http://infinity.{namespace}:7997" if in_cluster else "http://localhost:7997"
