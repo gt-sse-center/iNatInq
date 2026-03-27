@@ -577,7 +577,7 @@ async def process_dlq_entries_ray() -> models.RayProcessDLQResponse:
     error metadata for debugging and retry. This allows recovery from transient
     failures without re-processing successful images.
 
-    The job pulls from the DLQ storage location (typically `s3://bucket/dlq/`) and
+    The job pulls failed entries from the DLQ backend (currently Redis) and
     attempts to re-embed and re-index each failed image.
 
     Returns:
@@ -640,10 +640,10 @@ async def process_dlq_entries_databricks() -> models.DatabricksProcessDLQRespons
     (dead letter queue) with error metadata for debugging and retry. This allows
     recovery from transient failures without re-processing successful images.
 
-    The job uses Ray running on a Databricks Spark cluster to pull from the DLQ
-    storage location (typically `s3://bucket/dlq/`) and attempts to re-embed and
-    re-index each failed image. This provides the same retry semantics as the Ray
-    endpoint but with Databricks' cluster management and monitoring.
+    The job uses Ray running on a Databricks Spark cluster to pull failed entries
+    from the DLQ backend (currently Redis) and attempts to re-embed and re-index
+    each failed image. This provides the same retry semantics as the Ray endpoint
+    but with Databricks' cluster management and monitoring.
 
     Returns:
         DatabricksProcessDLQResponse: Job submission confirmation with Databricks run ID.
