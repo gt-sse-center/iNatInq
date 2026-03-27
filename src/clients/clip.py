@@ -118,8 +118,8 @@ CLIP_VECTOR_SIZES: dict[str, int] = {
 class HostedClipRespEntry(BaseModel):
     """Pydantic model to validate Hosted CLIP server response."""
 
-    image_features: list[float]
-    text_features: list[float]
+    image_features: list[float] | None = None
+    text_features: list[float] | None = None
 
 
 HostedClipResponse = TypeAdapter(list[HostedClipRespEntry])
@@ -399,9 +399,21 @@ class CLIPClient(ConfigValidationMixin, LoggerMixin, EmbeddingProvider):
         except ValidationError as e:
             raise UpstreamError(f"Unexpected response format from hosted CLIP server: {e}")  # noqa: B904
         if kind == "images":
-            vectors = [entry.image_features for entry in validated_data]
+            vectors: list[list[float]] = []
+            for idx, entry in enumerate(validated_data):
+                if entry.image_features is None:
+                    raise UpstreamError(
+                        f"Hosted CLIP response missing 'image_features' at index {idx} for image embedding"
+                    )
+                vectors.append(entry.image_features)
         elif kind == "text":
-            vectors = [entry.text_features for entry in validated_data]
+            vectors = []
+            for idx, entry in enumerate(validated_data):
+                if entry.text_features is None:
+                    raise UpstreamError(
+                        f"Hosted CLIP response missing 'text_features' at index {idx} for text embedding"
+                    )
+                vectors.append(entry.text_features)
         else:
             raise ValueError(f"Invalid kind value: {kind}")  # pyright: ignore[reportUnreachable]
         if len(vectors) != count:

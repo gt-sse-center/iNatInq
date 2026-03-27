@@ -272,6 +272,78 @@ class TestCLIPClientAsync:
         assert len(result) == 2
         assert all(len(v) == 512 for v in result)
 
+    @patch("clients.clip.httpx.AsyncClient")
+    @pytest.mark.asyncio
+    async def test_hosted_embed_image_batch_accepts_image_only_response(
+        self, mock_async_client_cls: MagicMock
+    ) -> None:
+        """Hosted image responses may include only image_features."""
+        mock_post_response = MagicMock()
+        mock_post_response.json.return_value = [{"image_features": [0.1] * 4}]
+        mock_post_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_post_response)
+        mock_async_client_cls.return_value = mock_client
+
+        client = CLIPClient(
+            base_url="https://example.inference.ml.azure.com/score",
+            model="clip-vit-base-patch32",
+            is_hosted=True,
+            clip_api_key="test-key",
+        )
+        result = await client.embed_image_batch([b"img-bytes"])
+
+        assert result == [[0.1] * 4]
+
+    @patch("clients.clip.httpx.AsyncClient")
+    @pytest.mark.asyncio
+    async def test_hosted_embed_text_batch_accepts_text_only_response(
+        self, mock_async_client_cls: MagicMock
+    ) -> None:
+        """Hosted text responses may include only text_features."""
+        mock_post_response = MagicMock()
+        mock_post_response.json.return_value = [{"text_features": [0.2] * 3}]
+        mock_post_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_post_response)
+        mock_async_client_cls.return_value = mock_client
+
+        client = CLIPClient(
+            base_url="https://example.inference.ml.azure.com/score",
+            model="clip-vit-base-patch32",
+            is_hosted=True,
+            clip_api_key="test-key",
+        )
+        result = await client.embed_text_batch(["cat"])
+
+        assert result == [[0.2] * 3]
+
+    @patch("clients.clip.httpx.AsyncClient")
+    @pytest.mark.asyncio
+    async def test_hosted_embed_image_batch_raises_when_image_features_missing(
+        self, mock_async_client_cls: MagicMock
+    ) -> None:
+        """Hosted image parsing should fail clearly when image_features are absent."""
+        mock_post_response = MagicMock()
+        mock_post_response.json.return_value = [{"text_features": [0.2] * 3}]
+        mock_post_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_post_response)
+        mock_async_client_cls.return_value = mock_client
+
+        client = CLIPClient(
+            base_url="https://example.inference.ml.azure.com/score",
+            model="clip-vit-base-patch32",
+            is_hosted=True,
+            clip_api_key="test-key",
+        )
+
+        with pytest.raises(UpstreamError, match="missing 'image_features'"):
+            await client.embed_image_batch([b"img-bytes"])
+
 
 class TestCLIPClientErrorHandling:
     """Tests for error handling behavior."""

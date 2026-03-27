@@ -26,8 +26,10 @@ from pydantic import ValidationError
 
 from config import (
     DatabricksRayJobConfig,
+    EmbeddingConfig,
     INatConfig,
     MinIOConfig,
+    ProviderType,
     RayJobConfig,
     SemanticCacheConfig,
     Settings,
@@ -484,6 +486,49 @@ class TestMinIOConfigResilience:
         assert config.retry_max_wait == 10.0
         assert config.circuit_breaker_threshold == 5
         assert config.circuit_breaker_timeout == 120
+
+
+# =============================================================================
+# EmbeddingConfig Tests
+# =============================================================================
+
+
+class TestEmbeddingConfigGuardrails:
+    """Test suite for hosted/local CLIP provider guardrails."""
+
+    @patch.dict(
+        os.environ,
+        {
+            "EMBEDDING_PROVIDER": "clip",
+            "CLIP_URL": "https://example.eastus.inference.ml.azure.com/score",
+            "CLIP_API_KEY": "test-key",
+            "CLIP_MODEL": "clip-vit-base-patch32",
+        },
+        clear=False,
+    )
+    @patch("config._is_in_cluster", return_value=False)
+    def test_local_clip_with_score_url_and_key_raises(self, mock_cluster: patch) -> None:
+        """Fail fast on likely hosted endpoint misconfiguration."""
+        with pytest.raises(ValueError, match="Likely CLIP provider mismatch"):
+            EmbeddingConfig.from_env()
+
+    @patch.dict(
+        os.environ,
+        {
+            "EMBEDDING_PROVIDER": "hosted_clip",
+            "CLIP_URL": "https://example.eastus.inference.ml.azure.com/score",
+            "CLIP_API_KEY": "test-key",
+            "CLIP_MODEL": "clip-vit-base-patch32",
+        },
+        clear=False,
+    )
+    @patch("config._is_in_cluster", return_value=False)
+    def test_hosted_clip_with_score_url_is_allowed(self, mock_cluster: patch) -> None:
+        """Hosted mode should accept /score endpoints."""
+        config = EmbeddingConfig.from_env()
+
+        assert config.provider_type is ProviderType.HOSTED_CLIP
+        assert config.clip_url == "https://example.eastus.inference.ml.azure.com/score"
 
 
 # =============================================================================
