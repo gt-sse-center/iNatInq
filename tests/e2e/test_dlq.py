@@ -159,13 +159,17 @@ def test_dlq_captures_non_image_failures(dlq_test_setup: DLQTestSetup):
     dlq_keys = list(redis_client.scan_iter(match=f"{s3_prefix}*"))
     assert len(dlq_keys) == 3  # All 3 non-image files should have failed
 
-    # Verify each DLQ entry has metadata with expected fields
+    # Verify each DLQ entry has metadata with expected fields.
+    # This also covers the metadata structure validation that was previously
+    # in a separate test (test_dlq_metadata_fields), avoiding an extra Ray
+    # job submission that risks OOM under memory pressure.
     for key in dlq_keys:
         entry = redis_client.get(key)
         assert entry is not None
 
         metadata = json.loads(entry)
         assert isinstance(metadata, dict)
+        assert len(metadata) > 0, f"DLQ metadata is empty for key: {key}"
         assert "error" in metadata, f"DLQ metadata missing 'error' field, got keys: {list(metadata.keys())}"
 
 
@@ -236,64 +240,6 @@ def test_dlq_process_endpoint(docker_compose_stack: None):
 
     # Should accept the request (200 or 202)
     assert response.status_code in {200, 202}
-
-
-@pytest.mark.e2e
-def test_dlq_metadata_fields(dlq_test_setup: DLQTestSetup):
-    """Test that DLQ entries contain expected metadata fields.
-
-    Verifies the structure and content of DLQ entries stored in Redis.
-    """
-    collection_name, s3_prefix, s3_client, redis_client = dlq_test_setup
-
-    # Upload a single file with image extension but non-image content.
-    # Uses .png extension so the pipeline's extension filter accepts it;
-    # the file then fails magic-byte validation and lands in the DLQ.
-    s3_client.put_object(
-        Bucket="pipeline",
-        Key=f"{s3_prefix}metadata_test.png",
-        Body=BytesIO(b"Not an image"),
-    )
-
-    # Submit Ray ingestion job
-    payload = {
-        "s3_bucket": "pipeline",
-        "s3_prefix": s3_prefix,
-        "collection": collection_name,
-    }
-
-    response = httpx.post(
-        api_url("/ray/jobs/images"),
-        json=payload,
-        timeout=10.0,
-    )
-    assert response.status_code == 202
-    job_data = response.json()
-    job_id = job_data["job_id"]
-
-    # Poll until job completes
-    _poll_job_until_done(job_id)
-
-    # Get DLQ entry — key might be the full S3 key or just the filename
-    # Try the full prefix path first
-    dlq_key = f"{s3_prefix}metadata_test.png"
-    entry = redis_client.get(dlq_key)
-
-    # If not found by prefix path, scan for any key containing the filename
-    if entry is None:
-        for key in redis_client.scan_iter(match="*metadata_test.png*"):
-            entry = redis_client.get(key)
-            if entry is not None:
-                break
-
-    assert entry is not None, "DLQ entry not found for metadata_test.png"
-
-    metadata = json.loads(entry)
-
-    # Verify metadata is a non-empty dict with expected fields
-    assert isinstance(metadata, dict)
-    assert len(metadata) > 0
-    assert "error" in metadata, f"DLQ metadata missing 'error' field, got keys: {list(metadata.keys())}"
 
 
 @pytest.mark.e2e

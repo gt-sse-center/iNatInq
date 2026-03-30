@@ -219,6 +219,74 @@ def _cleanup_test_data() -> None:
     logger.debug("Test data cleanup complete")
 
 
+def _reset_ray_containers() -> None:
+    """Restart Ray head and worker to flush accumulated client-server processes.
+
+    Each Ray job submission spawns a persistent ``ray.util.client.server``
+    process (~0.33 GB) on the head node.  Over multiple E2E runs these
+    accumulate and eventually OOM-kill later jobs.  Restarting the Ray
+    containers after each session keeps memory clean for the next run.
+    """
+    logger.info("Restarting Ray containers to flush accumulated processes...")
+    try:
+        subprocess.run(
+            [
+                "docker",
+                "compose",
+                "-f",
+                str(REPO_ROOT / COMPOSE_FILE),
+                "restart",
+                "ray-head",
+                "ray-worker",
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=True,
+        )
+        # Wait for Ray head to become healthy again
+        from tests.e2e.helpers import wait_for_service
+
+        wait_for_service("http://localhost:8265/", timeout=60)
+        logger.info("Ray containers restarted and healthy")
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, TimeoutError) as e:
+        logger.warning("Ray container restart failed: %s", e)
+
+
+def _flush_redis_dlq_keys() -> None:
+    """Delete all DLQ-related keys from Redis.
+
+    Prevents leftover DLQ entries from previous runs from polluting
+    subsequent test assertions.
+    """
+    try:
+        import redis as redis_lib
+
+        from tests.e2e.helpers import redis_url
+
+        client = redis_lib.Redis.from_url(redis_url(), decode_responses=True)
+        flushed = 0
+        for key in client.scan_iter(match="e2e_*"):
+            client.delete(key)
+            flushed += 1
+        if flushed:
+            logger.info("Flushed %d DLQ keys from Redis", flushed)
+    except Exception as e:
+        logger.warning("Failed to flush Redis DLQ keys: %s", e)
+
+
+def _post_session_cleanup() -> None:
+    """Run all post-session cleanup: test data, Redis DLQ keys, Ray restart.
+
+    Called in session teardown for both pre-existing and self-started stacks
+    so the environment is left clean for the next ``pytest`` invocation.
+    """
+    _cleanup_test_data()
+    _flush_redis_dlq_keys()
+    _reset_ray_containers()
+
+
 @pytest.fixture(scope="session")
 def docker_compose_stack() -> Generator[None, None, None]:
     """Session-scoped fixture that manages Docker Compose lifecycle.
@@ -249,8 +317,9 @@ def docker_compose_stack() -> Generator[None, None, None]:
         logger.info("Docker Compose stack already running — skipping up")
         _cleanup_test_data()
         yield
-        # Don't tear down if we didn't start it
-        logger.info("Leaving pre-existing stack running")
+        # Clean up test artifacts and restart Ray to flush accumulated processes
+        _post_session_cleanup()
+        logger.info("Leaving pre-existing stack running (cleaned up)")
         return
 
     # Stack not running — start it
@@ -302,7 +371,9 @@ def docker_compose_stack() -> Generator[None, None, None]:
     logger.info("Docker Compose stack ready for E2E tests")
     yield
 
-    # Teardown: stop the stack if we started it
+    # Teardown: clean up test data, then stop the stack we started
+    _cleanup_test_data()
+    _flush_redis_dlq_keys()
     logger.info("Tearing down Docker Compose stack...")
     try:
         subprocess.run(
