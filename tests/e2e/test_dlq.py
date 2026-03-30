@@ -25,7 +25,7 @@ from tests.e2e.helpers import api_url, redis_url
 
 if TYPE_CHECKING:
     # Type alias for the dlq_test_setup fixture return value
-    DLQTestSetup = tuple[str, str, Any, redis.Redis[str]]
+    DLQTestSetup = tuple[str, str, Any, redis.Redis]  # type: ignore[type-arg]
 
 
 @pytest.fixture

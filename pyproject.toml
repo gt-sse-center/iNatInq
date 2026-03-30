@@ -149,7 +149,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["ANN001", "ARG001", "D100", "D103", "INP001", "PLR2004", "N803", "S110", "S607"]
+"tests/*" = ["ANN001", "ARG001", "D100", "D103", "INP001", "PLR2004", "N803", "S105", "S110", "S603", "S607", "TRY400"]
 "syntheticdata/*" = ["T201", "EXE001", "INP001"]  # CLI scripts use print(), shebang optional
 "src/cli/*" = ["FBT001", "FBT002", "S603", "S607"]  # Typer option defaults are intentional; subprocess with partial paths intentional
 

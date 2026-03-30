@@ -82,12 +82,7 @@ def _ensure_ray_submodule_mocks() -> None:
 
 def pytest_runtest_setup(item) -> None:
     path = str(item.fspath)
-    if "/tests/integration/" in path:
-        real_ray = _get_real_ray()
-        sys.modules["ray"] = real_ray
-        _patch_ray_references(real_ray)
-    elif "/tests/e2e/" in path:
-        # E2E tests use real ray (same as integration tests)
+    if "/tests/integration/" in path or "/tests/e2e/" in path:
         real_ray = _get_real_ray()
         sys.modules["ray"] = real_ray
         _patch_ray_references(real_ray)

@@ -354,16 +354,10 @@ def ingested_collection(docker_compose_stack: None) -> Generator[str, None, None
     logger.info("Setting up ingested_collection fixture: %s", collection_name)
 
     # 1. Generate 5 synthetic images programmatically
+    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (128, 0, 128)]
     images = []
-    for i in range(5):
-        # Create simple gradient image
-        img = Image.new("RGB", (256, 256))
-        pixels = img.load()
-        assert pixels is not None
-        for x in range(256):
-            for y in range(256):
-                # Gradient pattern with per-image variation
-                pixels[x, y] = ((x + i * 10) % 256, (y + i * 20) % 256, (i * 50) % 256)
+    for i, color in enumerate(colors):
+        img = Image.new("RGB", (256, 256), color=color)
         images.append((f"image_{i}.png", img))
 
     # 2. Upload images to MinIO
