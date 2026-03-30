@@ -51,10 +51,10 @@ Set the `ENV` (or `PIPELINE_ENV`) env var to load an environment overlay:
 
 ```bash
 # Uses configs/environments/dev.yaml on top of config.yaml
-ENV=dev make up
+ENV=dev uv run inq up
 
 # Base config only (no overlay)
-make up
+uv run inq up
 ```
 
 ### Overriding Settings
@@ -63,7 +63,7 @@ Any YAML setting can be overridden by its corresponding env var:
 
 ```bash
 # YAML sets S3_BUCKET=pipeline, but env var wins
-S3_BUCKET=my-bucket make up
+S3_BUCKET=my-bucket uv run inq up
 ```
 
 The full mapping from YAML paths to env var names is defined in `YAML_TO_ENV_MAP` inside `config_loader.py`.
@@ -72,7 +72,7 @@ The full mapping from YAML paths to env var names is defined in `YAML_TO_ENV_MAP
 
 ```bash
 # Check that YAML files parse and merge correctly
-make validate-config
+uv run inq dev validate-config
 ```
 
 ## Directory Structure

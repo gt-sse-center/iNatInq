@@ -30,17 +30,17 @@ syntheticdata/
 
 ```bash
 # Generate and upload images in one step
-make synthetic-images-setup IMAGE_COUNT=100
+uv run inq synthetic setup --count 100
 
 # Or step by step
-make synthetic-images-generate IMAGE_COUNT=100
-make synthetic-images-upload
+uv run inq synthetic generate --count 100
+uv run inq synthetic upload
 ```
 
 ### Clean Up
 
 ```bash
-make synthetic-images-clean  # Remove generated images
+uv run inq synthetic clean  # Remove generated images
 ```
 
 ## CLI Usage
@@ -132,13 +132,13 @@ uploader.upload_directory(input_dir="data/imgs", prefix="images/", pattern="*.pn
 1. **Generate images**:
 
    ```bash
-   make synthetic-images-generate IMAGE_COUNT=100
+   uv run inq synthetic generate --count 100
    ```
 
 2. **Upload to MinIO**:
 
    ```bash
-   make synthetic-images-upload
+   uv run inq synthetic upload
    ```
 
 3. **Process with Ray job**:

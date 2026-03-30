@@ -55,7 +55,7 @@ API collection and environment for the iNatInq ML Pipeline service.
 
 ## Usage Tips
 
-1. **Start services first**: `make up` from the repository root
+1. **Start services first**: `uv run inq up` from the repository root
 2. **Run Health Check** to verify connectivity
 3. **Submit a job** - the response auto-saves `job_id` or `job_name`
 4. **Check status** - uses the saved job identifier
