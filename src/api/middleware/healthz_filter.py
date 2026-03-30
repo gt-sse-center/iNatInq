@@ -9,18 +9,15 @@ created.
 """
 
 import logging
-from collections.abc import Awaitable, Callable
 
-from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
-from typing_extensions import override
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 # Get the uvicorn access logger
 _access_logger = logging.getLogger("uvicorn.access")
 
 
-class HealthzFilterMiddleware(BaseHTTPMiddleware):
-    """Middleware to suppress access logs for /healthz endpoint.
+class HealthzFilterMiddleware:
+    """Pure ASGI middleware to suppress access logs for /healthz endpoint.
 
     This middleware filters out uvicorn access log entries for /healthz requests
     by temporarily disabling the access logger during healthz request processing.
@@ -39,32 +36,22 @@ class HealthzFilterMiddleware(BaseHTTPMiddleware):
         than filtering them after creation.
     """
 
-    @override
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        """Process request and suppress logging for /healthz endpoints.
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
 
-        Args:
-            request: The incoming HTTP request.
-            call_next: The next middleware or route handler in the chain.
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Process request and suppress logging for /healthz endpoints."""
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-        Returns:
-            The HTTP response.
-        """
-        # If this is a healthz request, temporarily disable the access logger
-        if request.url.path == "/healthz":
-            # Disable all handlers for the access logger
+        if scope["path"] == "/healthz":
             original_level = _access_logger.level
             _access_logger.setLevel(logging.CRITICAL + 1)  # Effectively disable
-
             try:
-                response = await call_next(request)
+                await self.app(scope, receive, send)
             finally:
-                # Restore the original log level
                 _access_logger.setLevel(original_level)
+            return
 
-            return response
-
-        # For non-healthz requests, process normally
-        return await call_next(request)
+        await self.app(scope, receive, send)

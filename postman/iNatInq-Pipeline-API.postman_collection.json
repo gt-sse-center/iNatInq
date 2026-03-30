@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "inatinq-pipeline-api-collection",
 		"name": "iNatInq Pipeline API",
-		"description": "API collection for the iNatInq ML Pipeline service.\n\n## Overview\n\nThis collection provides endpoints for:\n- **Semantic Search**: Query documents using vector similarity\n- **Spark Jobs**: Submit and manage Spark processing jobs\n- **Ray Jobs**: Submit and manage Ray processing jobs\n\n## Environment Variables\n\nSet these variables in your Postman environment:\n- `base_url`: API base URL (default: `http://localhost:8000`)\n- `collection`: Vector DB collection name (default: `documents`)\n- `s3_prefix`: S3 prefix for processing (default: `inputs/`)\n\n## Getting Started\n\n1. Start the services: `make up`\n2. Import this collection into Postman\n3. Run \"Health Check\" to verify connectivity\n4. Try \"Semantic Search\" or submit a job",
+		"description": "API collection for the iNatInq ML Pipeline service.\n\n## Overview\n\nThis collection provides endpoints for:\n- **Semantic Search**: Query images using vector similarity\n- **Ray Jobs**: Submit and manage Ray processing jobs\n- **Databricks Jobs**: Submit and manage Databricks processing jobs\n- **Cache**: Invalidate semantic cache\n- **Metrics**: Report ingestion job metrics\n\n## Environment Variables\n\nSet these variables in your Postman environment:\n- `base_url`: API base URL (default: `http://localhost:8000`)\n- `collection`: Vector DB collection name (default: `documents`)\n- `s3_prefix`: S3 prefix for processing (default: `inputs/`)\n- `run_id`: Databricks run ID (saved automatically)\n- `job_id`: Ray job ID (saved automatically)\n\n## Getting Started\n\n1. Start the services: `make up`\n2. Import this collection into Postman\n3. Run \"Health Check\" to verify connectivity\n4. Try \"Search Images\" or submit a job",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"variable": [
@@ -27,7 +27,7 @@
 			"type": "string"
 		},
 		{
-			"key": "job_name",
+			"key": "run_id",
 			"value": "",
 			"type": "string"
 		}
@@ -79,17 +79,18 @@
 			"name": "Vector Store",
 			"item": [
 				{
-					"name": "Semantic Search (Qdrant)",
+					"name": "Search Images (Text to Image)",
 					"request": {
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/search?q=machine learning pipeline&limit=10&provider=qdrant",
+							"raw": "{{base_url}}/search/images?q=machine learning pipeline&limit=10&provider=qdrant",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
-								"search"
+								"search",
+								"images"
 							],
 							"query": [
 								{
@@ -115,13 +116,13 @@
 								},
 								{
 									"key": "model",
-									"value": "nomic-embed-text",
-									"description": "Embedding model (optional)",
+									"value": "google/siglip-so400m-patch14-384",
+									"description": "Override embedding model name (optional, e.g. google/siglip-so400m-patch14-384)",
 									"disabled": true
 								}
 							]
 						},
-						"description": "Perform semantic search over documents in Qdrant.\n\n1. Generates embedding for query via CLIP/Infinity\n2. Searches Qdrant for similar vectors\n3. Returns ranked results with similarity scores"
+						"description": "Perform semantic search over images using text queries.\n\n1. Generates text embedding for query via CLIP/Infinity\n2. Searches Qdrant image collections for similar image vectors\n3. Returns ranked image results with similarity scores and S3 URIs"
 					},
 					"response": [
 						{
@@ -129,12 +130,13 @@
 							"originalRequest": {
 								"method": "GET",
 								"url": {
-									"raw": "{{base_url}}/search?q=machine learning&limit=5&provider=qdrant",
+									"raw": "{{base_url}}/search/images?q=machine learning&limit=5&provider=qdrant",
 									"host": [
 										"{{base_url}}"
 									],
 									"path": [
-										"search"
+										"search",
+										"images"
 									],
 									"query": [
 										{
@@ -154,165 +156,7 @@
 							},
 							"status": "OK",
 							"code": 200,
-							"body": "{\n    \"query\": \"machine learning\",\n    \"model\": \"nomic-embed-text\",\n    \"collection\": \"documents\",\n    \"provider\": \"qdrant\",\n    \"results\": [\n        {\n            \"id\": \"d790dd2c-99eb-4901-b9c9-538b58318fe3\",\n            \"score\": 0.9234,\n            \"text\": \"Introduction to machine learning concepts...\",\n            \"metadata\": {\n                \"s3_key\": \"inputs/ml-intro.txt\"\n            }\n        }\n    ],\n    \"total\": 1\n}"
-						}
-					]
-				}
-			]
-		},
-		{
-			"name": "Spark Jobs",
-			"item": [
-				{
-					"name": "Submit Spark Job",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 202) {",
-									"    var jsonData = pm.response.json();",
-									"    pm.collectionVariables.set('job_name', jsonData.job_name);",
-									"    console.log('Saved job_name:', jsonData.job_name);",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"s3_prefix\": \"{{s3_prefix}}\",\n    \"collection\": \"{{collection}}\",\n    \"executor_instances\": 2,\n    \"executor_memory\": \"1g\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/spark/jobs",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"spark",
-								"jobs"
-							]
-						},
-						"description": "Submit a Spark job to process S3 documents.\n\nThe job will:\n1. List documents from S3/MinIO at the specified prefix\n2. Generate embeddings via CLIP/Infinity\n3. Store vectors in Qdrant\n\n**Note**: Saves `job_name` to collection variables for subsequent requests."
-					},
-					"response": [
-						{
-							"name": "Job Submitted",
-							"originalRequest": {
-								"method": "POST",
-								"header": [
-									{
-										"key": "Content-Type",
-										"value": "application/json"
-									}
-								],
-								"body": {
-									"mode": "raw",
-									"raw": "{\n    \"s3_prefix\": \"inputs/\",\n    \"collection\": \"documents\",\n    \"executor_instances\": 2,\n    \"executor_memory\": \"1g\"\n}"
-								},
-								"url": {
-									"raw": "{{base_url}}/spark/jobs",
-									"host": [
-										"{{base_url}}"
-									],
-									"path": [
-										"spark",
-										"jobs"
-									]
-								}
-							},
-							"status": "Accepted",
-							"code": 202,
-							"body": "{\n    \"job_name\": \"s3-to-vector-db-20260114-120000-a1b2c3d4\",\n    \"status\": \"submitted\",\n    \"namespace\": \"ml-system\",\n    \"s3_prefix\": \"inputs/\",\n    \"collection\": \"documents\",\n    \"submitted_at\": \"2026-01-14T12:00:00.123456Z\"\n}"
-						}
-					]
-				},
-				{
-					"name": "Get Spark Job Status",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/spark/jobs/{{job_name}}",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"spark",
-								"jobs",
-								"{{job_name}}"
-							]
-						},
-						"description": "Get the status of a Spark job.\n\n**Requires**: `job_name` variable (set automatically by \"Submit Spark Job\")"
-					},
-					"response": [
-						{
-							"name": "Job Running",
-							"status": "OK",
-							"code": 200,
-							"body": "{\n    \"job_name\": \"s3-to-vector-db-20260114-120000-a1b2c3d4\",\n    \"state\": \"RUNNING\",\n    \"spark_state\": \"RUNNING\",\n    \"driver_info\": {\n        \"podName\": \"s3-to-vector-db-...-driver\",\n        \"webUIAddress\": \"http://10.244.0.123:4040\"\n    },\n    \"execution_attempts\": 1,\n    \"last_submission_attempt_time\": \"2026-01-14T12:00:00Z\",\n    \"termination_time\": null\n}"
-						}
-					]
-				},
-				{
-					"name": "List Spark Jobs",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/spark/jobs",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"spark",
-								"jobs"
-							]
-						},
-						"description": "List all Spark jobs in the namespace."
-					},
-					"response": [
-						{
-							"name": "Job List",
-							"status": "OK",
-							"code": 200,
-							"body": "{\n    \"jobs\": [\n        {\n            \"job_name\": \"s3-to-vector-db-20260114-120000-a1b2c3d4\",\n            \"state\": \"COMPLETED\",\n            \"created_at\": \"2026-01-14T12:00:00Z\"\n        }\n    ],\n    \"total\": 1\n}"
-						}
-					]
-				},
-				{
-					"name": "Delete Spark Job",
-					"request": {
-						"method": "DELETE",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/spark/jobs/{{job_name}}",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"spark",
-								"jobs",
-								"{{job_name}}"
-							]
-						},
-						"description": "Delete a Spark job (cleanup after completion).\n\nRemoves the SparkApplication resource and terminates any running pods."
-					},
-					"response": [
-						{
-							"name": "Job Deleted",
-							"status": "OK",
-							"code": 200,
-							"body": "{\n    \"job_name\": \"s3-to-vector-db-20260114-120000-a1b2c3d4\",\n    \"status\": \"deleted\"\n}"
+							"body": "{\n    \"query\": \"machine learning\",\n    \"model\": \"ViT-B/32\",\n    \"collection\": \"documents\",\n    \"provider\": \"qdrant\",\n    \"results\": [\n        {\n            \"id\": \"d790dd2c-99eb-4901-b9c9-538b58318fe3\",\n            \"score\": 0.9234,\n            \"s3_key\": \"images/ml-sample-001.jpg\",\n            \"s3_uri\": \"s3://pipeline/images/ml-sample-001.jpg\",\n            \"format\": \"jpeg\",\n            \"width\": 1920,\n            \"height\": 1080,\n            \"thumbnail_key\": \"thumbnails/ml-sample-001.jpg\"\n        }\n    ],\n    \"total\": 1\n}"
 						}
 					]
 				}
@@ -322,7 +166,7 @@
 			"name": "Ray Jobs",
 			"item": [
 				{
-					"name": "Submit Ray Job",
+					"name": "Submit Ray Image Job",
 					"event": [
 						{
 							"listen": "test",
@@ -348,19 +192,20 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"s3_prefix\": \"{{s3_prefix}}\",\n    \"collection\": \"{{collection}}\"\n}"
+							"raw": "{\n    \"s3_bucket\": \"pipeline\",\n    \"s3_prefix\": \"{{s3_prefix}}\",\n    \"collection\": \"{{collection}}\"\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/ray/jobs",
+							"raw": "{{base_url}}/ray/jobs/images",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
 								"ray",
-								"jobs"
+								"jobs",
+								"images"
 							]
 						},
-						"description": "Submit a Ray job to process S3 documents.\n\nThe job will:\n1. List documents from S3/MinIO at the specified prefix\n2. Generate embeddings via CLIP/Infinity\n3. Store vectors in Qdrant\n\n**Note**: Saves `job_id` to collection variables for subsequent requests."
+						"description": "Submit a Ray job to process S3 images into vector embeddings.\n\nThe job will:\n1. List image objects from S3/MinIO at the specified bucket and prefix\n2. Generate embeddings via CLIP/Infinity\n3. Store vectors in Qdrant image collections\n\n**Note**: Saves `job_id` to collection variables for subsequent requests."
 					},
 					"response": [
 						{
@@ -375,22 +220,55 @@
 								],
 								"body": {
 									"mode": "raw",
-									"raw": "{\n    \"s3_prefix\": \"inputs/\",\n    \"collection\": \"documents\"\n}"
+									"raw": "{\n    \"s3_bucket\": \"pipeline\",\n    \"s3_prefix\": \"inputs/\",\n    \"collection\": \"documents\"\n}"
 								},
 								"url": {
-									"raw": "{{base_url}}/ray/jobs",
+									"raw": "{{base_url}}/ray/jobs/images",
 									"host": [
 										"{{base_url}}"
 									],
 									"path": [
 										"ray",
-										"jobs"
+										"jobs",
+										"images"
 									]
 								}
 							},
 							"status": "Accepted",
 							"code": 202,
-							"body": "{\n    \"job_id\": \"raysubmit_abc123xyz\",\n    \"status\": \"submitted\",\n    \"namespace\": \"ml-system\",\n    \"s3_prefix\": \"inputs/\",\n    \"collection\": \"documents\",\n    \"submitted_at\": \"2026-01-14T12:00:00.123456Z\"\n}"
+							"body": "{\n    \"job_id\": \"raysubmit_abc123xyz\",\n    \"status\": \"submitted\",\n    \"namespace\": \"ml-system\",\n    \"s3_bucket\": \"pipeline\",\n    \"s3_prefix\": \"inputs/\",\n    \"collection\": \"documents\",\n    \"submitted_at\": \"2026-03-26T15:30:45.123456Z\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Process DLQ (Ray)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/ray/jobs/process-dlq",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"ray",
+								"jobs",
+								"process-dlq"
+							]
+						},
+						"description": "Process previously failed image ingestions from the dead letter queue using Ray.\n\nThis endpoint retries images that failed during initial ingestion. Failed images are stored in the DLQ with error metadata for debugging."
+					},
+					"response": [
+						{
+							"name": "Job Submitted",
+							"status": "Accepted",
+							"code": 202,
+							"body": "{\n    \"job_id\": \"raysubmit_xyz789\",\n    \"status\": \"submitted\",\n    \"namespace\": \"ml-system\",\n    \"submitted_at\": \"2026-03-26T15:30:45.123456Z\"\n}"
 						}
 					]
 				},
@@ -485,6 +363,295 @@
 							"status": "OK",
 							"code": 200,
 							"body": "{\n    \"job_id\": \"raysubmit_abc123xyz\",\n    \"status\": \"stopped\"\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Databricks Jobs",
+			"item": [
+				{
+					"name": "Submit Image Job",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 202) {",
+									"    var jsonData = pm.response.json();",
+									"    pm.collectionVariables.set(\"run_id\", jsonData.run_id);",
+									"    console.log(\"Saved run_id:\", jsonData.run_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"source\": \"s3\",\n    \"s3_prefix\": \"{{s3_prefix}}\",\n    \"collection\": \"{{collection}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/databricks/jobs/images",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"databricks",
+								"jobs",
+								"images"
+							]
+						},
+						"description": "Submit a Databricks job to process images from S3 or iNaturalist.\n\nSupported sources:\n- `s3`: Process images from S3/MinIO\n- `inat`: Process images from iNaturalist Open Data\n\n**Note**: Saves `run_id` to collection variables."
+					},
+					"response": [
+						{
+							"name": "Job Submitted",
+							"status": "Accepted",
+							"code": 202,
+							"body": "{\n    \"run_id\": \"123456789\",\n    \"status\": \"submitted\",\n    \"namespace\": \"ml-system\",\n    \"source\": \"s3\",\n    \"s3_prefix\": \"images/\",\n    \"collection\": \"documents\",\n    \"submitted_at\": \"2026-03-26T15:30:45.123456Z\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Submit CDC Producer Job",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/databricks/jobs/cdc-producer",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"databricks",
+								"jobs",
+								"cdc-producer"
+							]
+						},
+						"description": "Submit a Databricks CDC producer job (Auto Loader) to stream S3 changes to Bronze Delta table."
+					},
+					"response": [
+						{
+							"name": "Job Submitted",
+							"status": "Accepted",
+							"code": 202,
+							"body": "{\n    \"run_id\": \"123456789\",\n    \"status\": \"submitted\",\n    \"namespace\": \"ml-system\",\n    \"submitted_at\": \"2026-03-26T15:30:45.123456Z\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Process DLQ (Databricks)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/databricks/jobs/process-dlq",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"databricks",
+								"jobs",
+								"process-dlq"
+							]
+						},
+						"description": "Process previously failed image ingestions from the DLQ using Databricks (Ray on Spark cluster)."
+					},
+					"response": [
+						{
+							"name": "Job Submitted",
+							"status": "Accepted",
+							"code": 202,
+							"body": "{\n    \"run_id\": \"123456789\",\n    \"status\": \"submitted\",\n    \"namespace\": \"ml-system\",\n    \"submitted_at\": \"2026-03-26T15:30:45.123456Z\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Submit CDC Consumer Job",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/databricks/jobs/cdc-consumer",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"databricks",
+								"jobs",
+								"cdc-consumer"
+							]
+						},
+						"description": "Submit a Databricks CDC consumer job to process Bronze images with Ray (second stage of CDC pipeline)."
+					},
+					"response": [
+						{
+							"name": "Job Submitted",
+							"status": "Accepted",
+							"code": 202,
+							"body": "{\n    \"run_id\": \"123456789\",\n    \"status\": \"submitted\",\n    \"namespace\": \"ml-system\",\n    \"submitted_at\": \"2026-03-26T15:30:45.123456Z\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Job Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/databricks/jobs/{{run_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"databricks",
+								"jobs",
+								"{{run_id}}"
+							]
+						},
+						"description": "Get the status of a Databricks job run.\n\n**Requires**: `run_id` variable (set automatically by job submission)"
+					},
+					"response": [
+						{
+							"name": "Job Running",
+							"status": "OK",
+							"code": 200,
+							"body": "{\n    \"run_id\": \"123456789\",\n    \"life_cycle_state\": \"RUNNING\",\n    \"result_state\": null,\n    \"state_message\": \"Cluster is running\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Job Logs",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/databricks/jobs/{{run_id}}/logs",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"databricks",
+								"jobs",
+								"{{run_id}}",
+								"logs"
+							]
+						},
+						"description": "Get output/logs for a Databricks job run.\n\n**Requires**: `run_id` variable"
+					},
+					"response": [
+						{
+							"name": "Job Logs",
+							"status": "OK",
+							"code": 200,
+							"body": "{\n    \"run_id\": \"123456789\",\n    \"logs\": \"Processing images...\\nCompleted successfully.\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Stop Job",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/databricks/jobs/{{run_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"databricks",
+								"jobs",
+								"{{run_id}}"
+							]
+						},
+						"description": "Stop a running Databricks job run.\n\n**Requires**: `run_id` variable"
+					},
+					"response": [
+						{
+							"name": "Job Stopped",
+							"status": "OK",
+							"code": 200,
+							"body": "{\n    \"run_id\": \"123456789\",\n    \"status\": \"stopped\"\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Cache",
+			"item": [
+				{
+					"name": "Invalidate Cache",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/cache",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"cache"
+							]
+						},
+						"description": "Invalidate the entire semantic cache on demand."
+					},
+					"response": [
+						{
+							"name": "Cache Invalidated",
+							"status": "OK",
+							"code": 200,
+							"body": "{\n    \"status\": \"cache invalidated\"\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Metrics",
+			"item": [
+				{
+					"name": "Submit Ingestion Metrics",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"pipeline\": \"IMAGE_INGESTION\",\n    \"successful\": 100,\n    \"failed\": 5,\n    \"batch_duration_seconds\": 12.5,\n    \"checkpoint_save\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/ingestion/metrics",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"ingestion",
+								"metrics"
+							]
+						},
+						"description": "Record ingestion job metrics into the Prometheus registry.\n\nIngestion jobs (Ray, Databricks) run as ephemeral processes => metrics must be forwarded here."
+					},
+					"response": [
+						{
+							"name": "Metrics Recorded",
+							"status": "OK",
+							"code": 200,
+							"body": "{\n    \"status\": \"ok\"\n}"
 						}
 					]
 				}

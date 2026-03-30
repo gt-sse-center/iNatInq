@@ -93,9 +93,9 @@ class RayJobStatusResponse(BaseModel):
         ```
     """
 
-    job_id: str
-    status: str
-    message: str | None = None
+    job_id: str = Field(description="Ray job ID (e.g., raysubmit_1234567890)")
+    status: str = Field(description="Current job status (PENDING, RUNNING, SUCCEEDED, FAILED, STOPPED)")
+    message: str | None = Field(default=None, description="Optional error message if job failed")
 
 
 class RayImageJobRequest(BaseModel):
@@ -167,23 +167,25 @@ class RayImageJobResponse(BaseModel):
         ```
     """
 
-    job_id: str
-    status: str
-    namespace: str
-    s3_bucket: str
-    s3_prefix: str
-    collection: str
-    image_max_items: int | None = None
-    submitted_at: str
+    job_id: str = Field(description="Ray-generated job ID (e.g., raysubmit_1234567890)")
+    status: str = Field(description="Job status (always 'submitted' on success)")
+    namespace: str = Field(description="Kubernetes namespace where Ray cluster runs")
+    s3_bucket: str = Field(description="S3 bucket being processed")
+    s3_prefix: str = Field(description="S3 prefix being processed")
+    collection: str = Field(description="Target vector DB base collection name")
+    image_max_items: int | None = Field(
+        default=None, description="Optional limit on number of images to process"
+    )
+    submitted_at: str = Field(description="ISO 8601 timestamp when job was submitted")
 
 
 class RayProcessDLQResponse(BaseModel):
     """Response after submitting a Ray process dead letter queue job."""
 
-    job_id: str
-    status: str
-    namespace: str
-    submitted_at: str
+    job_id: str = Field(description="Ray-generated job ID (e.g., raysubmit_1234567890)")
+    status: str = Field(description="Job status (always 'submitted' on success)")
+    namespace: str = Field(description="Kubernetes namespace where Ray cluster runs")
+    submitted_at: str = Field(description="ISO 8601 timestamp when job was submitted")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -263,31 +265,31 @@ class DatabricksImageJobResponse(BaseModel):
         ```
     """
 
-    run_id: str
-    status: str
-    namespace: str
-    source: Literal["s3", "inat"]
-    s3_prefix: str | None
-    collection: str
-    submitted_at: str
+    run_id: str = Field(description="Databricks run ID")
+    status: str = Field(description="Job status (always 'submitted' on success)")
+    namespace: str = Field(description="Kubernetes namespace used for config resolution")
+    source: Literal["s3", "inat"] = Field(description="Image source selected for this run")
+    s3_prefix: str | None = Field(description="S3 prefix being processed (present when source is 's3')")
+    collection: str = Field(description="Target vector DB base collection name")
+    submitted_at: str = Field(description="ISO 8601 timestamp when job was submitted")
 
 
 class DatabricksCdcProducerJobResponse(BaseModel):
     """Response after submitting a Databricks CDC producer job."""
 
-    run_id: str
-    status: str
-    namespace: str
-    submitted_at: str
+    run_id: str = Field(description="Databricks run ID")
+    status: str = Field(description="Job status (always 'submitted' on success)")
+    namespace: str = Field(description="Kubernetes namespace used for config resolution")
+    submitted_at: str = Field(description="ISO 8601 timestamp when job was submitted")
 
 
 class DatabricksProcessDLQResponse(BaseModel):
     """Response after submitting a Databricks process dead letter queue job."""
 
-    run_id: str
-    status: str
-    namespace: str
-    submitted_at: str
+    run_id: str = Field(description="Databricks run ID")
+    status: str = Field(description="Job status (always 'submitted' on success)")
+    namespace: str = Field(description="Kubernetes namespace used for config resolution")
+    submitted_at: str = Field(description="ISO 8601 timestamp when job was submitted")
 
 
 # Intentionally kept as a separate model from DatabricksCdcProducerJobResponse:
@@ -296,10 +298,10 @@ class DatabricksProcessDLQResponse(BaseModel):
 class DatabricksCdcConsumerJobResponse(BaseModel):
     """Response after submitting a Databricks CDC consumer job."""
 
-    run_id: str
-    status: str
-    namespace: str
-    submitted_at: str
+    run_id: str = Field(description="Databricks run ID")
+    status: str = Field(description="Job status (always 'submitted' on success)")
+    namespace: str = Field(description="Kubernetes namespace used for config resolution")
+    submitted_at: str = Field(description="ISO 8601 timestamp when job was submitted")
 
 
 class DatabricksJobStopResponse(BaseModel):
@@ -310,8 +312,8 @@ class DatabricksJobStopResponse(BaseModel):
         status: Stop status (always "stopped" on success).
     """
 
-    run_id: str
-    status: str
+    run_id: str = Field(description="Databricks run ID that was stopped")
+    status: str = Field(description="Stop status (always 'stopped' on success)")
 
 
 class DatabricksJobStatusResponse(BaseModel):
@@ -324,10 +326,14 @@ class DatabricksJobStatusResponse(BaseModel):
         state_message: Optional state message from Databricks.
     """
 
-    run_id: str
-    life_cycle_state: str | None
-    result_state: str | None
-    state_message: str | None
+    run_id: str = Field(description="Databricks run ID")
+    life_cycle_state: str | None = Field(
+        default=None, description="Run lifecycle state (e.g., RUNNING, TERMINATED)"
+    )
+    result_state: str | None = Field(
+        default=None, description="Run result state (e.g., SUCCESS, FAILED) if available"
+    )
+    state_message: str | None = Field(default=None, description="Optional state message from Databricks")
 
 
 class DatabricksJobLogsResponse(BaseModel):
@@ -338,8 +344,8 @@ class DatabricksJobLogsResponse(BaseModel):
         logs: Run output/logs (best-effort).
     """
 
-    run_id: str
-    logs: str
+    run_id: str = Field(description="Databricks run ID")
+    logs: str = Field(description="Run output/logs (best-effort)")
 
 
 class RayJobLogsResponse(BaseModel):
@@ -358,8 +364,8 @@ class RayJobLogsResponse(BaseModel):
         ```
     """
 
-    job_id: str
-    logs: str
+    job_id: str = Field(description="Ray job ID (e.g., raysubmit_1234567890)")
+    logs: str = Field(description="Job logs as string")
 
 
 class RayJobStopResponse(BaseModel):
@@ -378,8 +384,8 @@ class RayJobStopResponse(BaseModel):
         ```
     """
 
-    job_id: str
-    status: str
+    job_id: str = Field(description="Ray job ID that was stopped")
+    status: str = Field(description="Stop status (always 'stopped' on success)")
 
 
 class IngestionMetricsPayload(BaseModel):
@@ -398,8 +404,16 @@ class IngestionMetricsPayload(BaseModel):
         checkpoint_save: When ``True``, increments the checkpoint saves counter.
     """
 
-    pipeline: PipelineType
-    successful: int = Field(default=0, ge=0)
-    failed: int = Field(default=0, ge=0)
-    batch_duration_seconds: float = Field(default=0.0, ge=0.0)
-    checkpoint_save: bool = False
+    pipeline: PipelineType = Field(
+        description="Pipeline identifier label (e.g. 'local ray ingestion pipeline')"
+    )
+    successful: int = Field(
+        default=0, ge=0, description="Number of documents successfully processed in this batch"
+    )
+    failed: int = Field(default=0, ge=0, description="Number of documents that failed in this batch")
+    batch_duration_seconds: float = Field(
+        default=0.0, ge=0.0, description="Wall-clock seconds for the batch (0 means no observation recorded)"
+    )
+    checkpoint_save: bool = Field(
+        default=False, description="When true, increments the checkpoint saves counter"
+    )

@@ -6,19 +6,16 @@ used in the smarts service (services-main) for consistent logging across service
 """
 
 import time
-from collections.abc import Awaitable, Callable
 from logging import Logger, getLogger
 
-from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
-from typing_extensions import override
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 # Use a separate logger for our middleware to avoid conflicts with uvicorn.access
 logger: Logger = getLogger("pipeline.access")
 
 
-class LoggerMiddleware(BaseHTTPMiddleware):
-    """Middleware to log HTTP requests with structured JSON output.
+class LoggerMiddleware:
+    """Pure ASGI middleware to log HTTP requests with structured JSON output.
 
     This middleware logs:
     - Request start: path, method, remote address
@@ -33,7 +30,7 @@ class LoggerMiddleware(BaseHTTPMiddleware):
         ```
 
     Note:
-        This middleware logs to the "uvicorn.access" logger, which is configured
+        This middleware logs to the "pipeline.access" logger, which is configured
         to output structured JSON. The logs include timing information calculated
         using `time.perf_counter()` for high precision.
 
@@ -41,27 +38,29 @@ class LoggerMiddleware(BaseHTTPMiddleware):
         for consistent logging behavior across services.
     """
 
-    @override
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        """Process request and log start/completion with timing.
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
 
-        Args:
-            request: The incoming HTTP request.
-            call_next: The next middleware or route handler in the chain.
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Process request and log start/completion with timing."""
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-        Returns:
-            The HTTP response.
-        """
-        path: str = request.url.path
+        path: str = scope["path"]
 
         # Skip logging for /healthz requests to reduce noise
         if path == "/healthz":
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
-        if request.query_params:
-            path += f"?{request.query_params}"
+        query_string: bytes = scope.get("query_string", b"")
+        if query_string:
+            path += f"?{query_string.decode('latin-1')}"
+
+        client = scope.get("client")
+        remote_addr: str = client[0] if client else "unknown"
+        method: str = scope["method"]
 
         # Log request start
         logger.info(
@@ -69,15 +68,24 @@ class LoggerMiddleware(BaseHTTPMiddleware):
             extra={
                 "request": {
                     "path": path,
-                    "method": request.method,
-                    "remoteAddr": request.client.host if request.client else "unknown",
+                    "method": method,
+                    "remoteAddr": remote_addr,
                 }
             },
         )
 
-        # Process request and measure duration
+        # Track timing and capture response status code
         start_time: float = time.perf_counter()
-        response: Response = await call_next(request)
+        status_code: int = 0
+
+        async def send_wrapper(message: Message) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
         finish_time: float = time.perf_counter()
 
         # Log request completion
@@ -86,12 +94,10 @@ class LoggerMiddleware(BaseHTTPMiddleware):
             extra={
                 "response": {
                     "path": path,
-                    "statuscode": response.status_code,
-                    "method": request.method,
+                    "statuscode": status_code,
+                    "method": method,
                     "since": finish_time - start_time,
-                    "remoteAddr": request.client.host if request.client else "unknown",
+                    "remoteAddr": remote_addr,
                 }
             },
         )
-
-        return response

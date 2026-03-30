@@ -121,8 +121,8 @@ def create_app() -> FastAPI:
         title="Pipeline API",
         description=(
             "ML pipeline orchestrator service for end-to-end data processing workflows. "
-            "Provides endpoints for generating embeddings, storing vectors, and running "
-            "distributed Ray jobs for parallel data processing."
+            "Provides endpoints for semantic search, distributed job orchestration, "
+            "and ingestion metrics reporting."
         ),
         version="0.1.0",
         contact={
@@ -138,10 +138,6 @@ def create_app() -> FastAPI:
             {
                 "name": "health",
                 "description": ("Health check endpoints for Kubernetes liveness and readiness probes"),
-            },
-            {
-                "name": "embeddings",
-                "description": "Text and image embedding generation via CLIP or Infinity providers",
             },
             {
                 "name": "vector-store",
@@ -165,6 +161,10 @@ def create_app() -> FastAPI:
             {
                 "name": "cache",
                 "description": "Semantic cache management (invalidation and busting)",
+            },
+            {
+                "name": "metrics",
+                "description": "Ingestion job metrics reporting for Prometheus monitoring",
             },
         ],
     )

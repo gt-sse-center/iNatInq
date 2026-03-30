@@ -524,11 +524,11 @@ QUERY ?= What is the story about?
 
 .PHONY: search-qdrant
 search-qdrant:
-	@echo "Searching Qdrant for: '$(QUERY)'"
+	@echo "Searching images in Qdrant for: '$(QUERY)'"
 	@ENCODED_QUERY=$$(python3 -c 'import urllib.parse; print(urllib.parse.quote_plus("$(QUERY)"))'); \
-	curl -sf "http://localhost:8000/search?q=$$ENCODED_QUERY&provider=qdrant&limit=3" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); \
+	curl -sf "http://localhost:8000/search/images?q=$$ENCODED_QUERY&provider=qdrant&limit=3" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); \
 		print('Results:', len(d.get('results', []))); \
-		[print(f\"  - {r.get('payload', {}).get('text', '')[:100]}...\") for r in d.get('results', [])[:3]]" 2>/dev/null || echo "Search failed or service unavailable"
+		[print(f\"  - {r.get('s3_key', 'N/A')} (score: {r.get('score', 0):.3f})\") for r in d.get('results', [])[:3]]" 2>/dev/null || echo "Search failed or service unavailable"
 
 # =============================================================================
 # Image Search Operations
@@ -568,12 +568,12 @@ image-search-open:
 .PHONY: s3-count
 s3-count:
 	@echo "Counting objects in MinIO bucket..."
-	@curl -sf "http://localhost:8000/api/v1/s3/objects?prefix=$(S3_PREFIX)&limit=10000" 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); print('S3 objects:', d.get('count', len(d.get('keys', []))))" 2>/dev/null || echo "S3 count failed or service unavailable"
+	@docker compose -f $(COMPOSE_DEV_FILE) exec -T minio mc ls --recursive minio/$(S3_BUCKET)/$(S3_PREFIX) 2>/dev/null | wc -l | xargs -I {} echo "S3 objects: {}" || echo "S3 count failed or service unavailable"
 
 .PHONY: s3-clear
 s3-clear:
-	@echo "Clearing S3 bucket..."
-	@curl -sf -X DELETE "http://localhost:8000/api/v1/s3/objects?prefix=$(S3_PREFIX)" 2>/dev/null && echo "✅ S3 cleared" || echo "S3 clear failed"
+	@echo "Clearing S3 bucket at prefix $(S3_PREFIX)..."
+	@docker compose -f $(COMPOSE_DEV_FILE) exec -T minio mc rm --recursive --force minio/$(S3_BUCKET)/$(S3_PREFIX) 2>/dev/null && echo "✅ S3 cleared" || echo "S3 clear failed"
 
 # =============================================================================
 # Vector DB Operations
