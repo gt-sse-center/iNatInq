@@ -54,13 +54,16 @@ class ExceptionHandlerMiddleware:
             await self.app(scope, receive, send)
 
         except BadRequestError as e:
+            # Extract the user-facing message directly from args to avoid
+            # exposing exception internals (CodeQL py/stack-trace-exposure).
+            user_message = e.args[0] if e.args else "Invalid request."
             logger.exception(
                 "bad request",
-                extra={"error": {"statuscode": 400, "message": str(e)}},
+                extra={"error": {"statuscode": 400, "message": user_message}},
             )
             response = JSONResponse(
                 status_code=400,
-                content={"error": "Bad Request", "message": str(e)},
+                content={"error": "Bad Request", "message": user_message},
             )
             await response(scope, receive, send)
 

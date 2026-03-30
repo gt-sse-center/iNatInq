@@ -113,7 +113,8 @@ def _print_provider_env() -> None:
     logger.info("External provider config from environment:")
     logger.info("  VECTOR_DB_PROVIDER=%s", os.getenv("VECTOR_DB_PROVIDER", ""))
     logger.info("  QDRANT_URL=%s", os.getenv("QDRANT_URL", ""))
-    logger.info("  QDRANT_API_KEY=%s", _mask_secret(os.getenv("QDRANT_API_KEY")))
+    masked_key = _mask_secret(os.getenv("QDRANT_API_KEY"))
+    logger.info("  QDRANT_API_KEY=%s", masked_key)
 
 
 def _configure_logging() -> None:
