@@ -99,22 +99,13 @@ def _build_points(text: str, vector: list[float]):
     ]
 
 
-def _mask_secret(value: str | None) -> str:
-    """Mask secrets so logs show presence without leaking values."""
-    if not value:
-        return "(unset)"
-    if len(value) <= 8:
-        return "********"
-    return f"{value[:4]}...{value[-4:]}"
-
-
 def _print_provider_env() -> None:
     """Print provider-related env vars, masking secrets."""
     logger.info("External provider config from environment:")
     logger.info("  VECTOR_DB_PROVIDER=%s", os.getenv("VECTOR_DB_PROVIDER", ""))
     logger.info("  QDRANT_URL=%s", os.getenv("QDRANT_URL", ""))
-    masked_key = _mask_secret(os.getenv("QDRANT_API_KEY"))
-    logger.info("  QDRANT_API_KEY=%s", masked_key)
+    has_key = os.getenv("QDRANT_API_KEY") is not None
+    logger.info("  QDRANT_API_KEY=%s", "(set)" if has_key else "(unset)")
 
 
 def _configure_logging() -> None:
