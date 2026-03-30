@@ -55,6 +55,7 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "httpx>=0.27.0",
     "ijson>=3.4.0.post0",
     "pytest>=8.4.2",
     "pytest-asyncio>=0.25.2",
@@ -68,9 +69,10 @@ dev = [
 [tool.pytest.ini_options]
 addopts = "--verbose -vv --capture=no --cov=src --cov-report html --cov-report term --cov-report xml:coverage.xml --cov-fail-under=70.0"
 testpaths = ["tests"]
-norecursedirs = []
+norecursedirs = ["tests/e2e"]
 asyncio_mode = "auto"
 markers = [
+    "e2e: marks tests as end-to-end (require Docker Compose stack)",
     "integration: marks tests as integration tests (require Docker)",
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
@@ -147,7 +149,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["ANN001", "D100", "D103", "INP001", "PLR2004", "N803"]
+"tests/*" = ["ANN001", "ARG001", "D100", "D103", "INP001", "PLR2004", "N803", "S110", "S607"]
 "syntheticdata/*" = ["T201", "EXE001", "INP001"]  # CLI scripts use print(), shebang optional
 "src/cli/*" = ["FBT001", "FBT002", "S603", "S607"]  # Typer option defaults are intentional; subprocess with partial paths intentional
 

@@ -74,3 +74,20 @@ def cov(
     if ctx.args:
         cmd.extend(ctx.args)
     run(cmd)
+
+
+@app.command(context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def e2e(ctx: typer.Context) -> None:
+    """Run E2E tests (requires Docker Compose stack running).
+
+    Extra arguments after -- are passed to pytest.
+    Example: inq test e2e -- -k test_ingestion
+
+    Note: E2E tests use --no-cov to disable coverage (tests exercise
+    running containers, not importable source code).
+    """
+    typer.echo("Running E2E tests...")
+    cmd = ["uv", "run", "pytest", "tests/e2e/", "-v", "-m", "e2e", "--no-header", "--no-cov"]
+    if ctx.args:
+        cmd.extend(ctx.args)
+    run(cmd)

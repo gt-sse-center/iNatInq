@@ -86,6 +86,11 @@ def pytest_runtest_setup(item) -> None:
         real_ray = _get_real_ray()
         sys.modules["ray"] = real_ray
         _patch_ray_references(real_ray)
+    elif "/tests/e2e/" in path:
+        # E2E tests use real ray (same as integration tests)
+        real_ray = _get_real_ray()
+        sys.modules["ray"] = real_ray
+        _patch_ray_references(real_ray)
     elif "/tests/unit/" in path:
         mock_ray = _get_mock_ray()
         sys.modules["ray"] = mock_ray
