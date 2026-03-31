@@ -101,7 +101,7 @@ iNatInq/
 ├── tests/
 │   ├── unit/             # Unit tests (mocked dependencies)
 │   └── integration/      # Integration tests (testcontainers)
-├── syntheticdata/        # Test data generation tools
+├── bench/                # Benchmarks, synthetic data, and tooling
 └── zarf/                 # Infrastructure (Docker, Databricks configs)
 ```
 

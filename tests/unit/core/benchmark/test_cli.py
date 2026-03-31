@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from core.benchmark.cli import app
+from cli.benchmark import app
 
 
 @pytest.fixture()

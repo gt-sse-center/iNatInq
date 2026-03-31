@@ -14,7 +14,7 @@ import pytest
 
 from core.benchmark.datasets.json_dataset import JSONDataset
 
-_INQUIRE_DIR = Path(__file__).resolve().parents[4] / "benchmarks" / "inquire"
+_INQUIRE_DIR = Path(__file__).resolve().parents[4] / "bench" / "datasets" / "inquire"
 VAL_PATH = _INQUIRE_DIR / "inquire-val.json"
 TEST_PATH = _INQUIRE_DIR / "inquire-test.json"
 

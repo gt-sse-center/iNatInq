@@ -21,11 +21,11 @@ htmlcov/
 # Data directory
 data/
 # INQUIRE benchmark fixtures (committed, not reproducible)
-!syntheticdata/data/
-!syntheticdata/data/inquire/
-!syntheticdata/data/inquire/**
+!bench/synthetic/data/
+!bench/synthetic/data/inquire/
+!bench/synthetic/data/inquire/**
 # Benchmark images downloaded from remote MinIO (20K images, ~2 GB)
-syntheticdata/data/benchmark-images/
+bench/synthetic/data/benchmark-images/
 
 **/.DS_Store
 

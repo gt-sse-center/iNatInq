@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
-INQUIRE_FIXTURES_DIR = _PROJECT_ROOT / "syntheticdata" / "data" / "inquire" / "query_127"
-INQUIRE_VAL_PATH = _PROJECT_ROOT / "benchmarks" / "inquire" / "inquire-val.json"
-SAMPLE_GOLD_PATH = _PROJECT_ROOT / "benchmarks" / "sample" / "sample-gold.json"
+INQUIRE_FIXTURES_DIR = _PROJECT_ROOT / "bench" / "synthetic" / "data" / "inquire" / "query_127"
+INQUIRE_VAL_PATH = _PROJECT_ROOT / "bench" / "datasets" / "inquire" / "inquire-val.json"
+SAMPLE_GOLD_PATH = _PROJECT_ROOT / "bench" / "datasets" / "sample" / "sample-gold.json"
 
 INQUIRE_BUCKET = "inquire-train-data"
 
@@ -49,7 +49,7 @@ def inquire_images_dir() -> Path:
 
 @pytest.fixture(scope="session")
 def inquire_val_dataset() -> JSONDataset:
-    """Load the INQUIRE validation dataset from benchmarks/."""
+    """Load the INQUIRE validation dataset from bench/datasets/."""
     if not INQUIRE_VAL_PATH.exists():
         pytest.skip(f"inquire-val.json not found: {INQUIRE_VAL_PATH}")
     return JSONDataset.from_file(INQUIRE_VAL_PATH)
@@ -57,7 +57,7 @@ def inquire_val_dataset() -> JSONDataset:
 
 @pytest.fixture(scope="session")
 def sample_gold_dataset() -> JSONDataset:
-    """Load the sample gold-standard dataset from benchmarks/."""
+    """Load the sample gold-standard dataset from bench/datasets/."""
     if not SAMPLE_GOLD_PATH.exists():
         pytest.skip(f"sample-gold.json not found: {SAMPLE_GOLD_PATH}")
     return JSONDataset.from_file(SAMPLE_GOLD_PATH)

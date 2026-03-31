@@ -5,7 +5,7 @@ Downloads the three CSV files from the INQUIRE GitHub repository and produces
 two JSON dataset files (val + test) matching our gold-standard.schema.json.
 
 Usage:
-    python scripts/convert_inquire.py --output-dir benchmarks/inquire/
+    python bench/tools/convert_inquire.py --output-dir bench/datasets/inquire/
 """
 
 from __future__ import annotations
@@ -97,8 +97,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("benchmarks/inquire"),
-        help="Directory for output JSON files (default: benchmarks/inquire/)",
+        default=Path("bench/datasets/inquire"),
+        help="Directory for output JSON files (default: bench/datasets/inquire/)",
     )
     args = parser.parse_args(argv)
 
