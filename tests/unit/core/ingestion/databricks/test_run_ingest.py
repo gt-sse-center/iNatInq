@@ -1,4 +1,10 @@
-"""Unit tests for Databricks ingestion entrypoint helpers."""
+"""Unit tests for Databricks ingestion entrypoint helpers.
+
+Tests parameter parsing, Spark context initialization, and job dispatch logic
+for the main Databricks entrypoint. This is important because the entrypoint
+orchestrates all Databricks ingestion workflows and must handle both S3 and
+iNat sources correctly.
+"""
 
 from __future__ import annotations
 

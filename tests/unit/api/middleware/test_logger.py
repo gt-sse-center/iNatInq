@@ -49,6 +49,7 @@ class TestLoggerMiddleware:
 
         @app.get("/test")
         def test_endpoint():
+            """Test endpoint for verifying request/response logging."""
             return {"message": "test"}
 
         @app.get("/healthz")

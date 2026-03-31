@@ -1,4 +1,9 @@
-"""Unit tests for ConsoleReporter."""
+"""Unit tests for ConsoleReporter.
+
+Tests console table formatting, metric value alignment, and ANSI color codes
+for benchmark result output. This is important because developers rely on clear
+console output to quickly assess search quality changes.
+"""
 
 from __future__ import annotations
 

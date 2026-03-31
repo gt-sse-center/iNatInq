@@ -1,4 +1,9 @@
-"""Unit tests for benchmark search pipeline."""
+"""Unit tests for benchmark search pipeline.
+
+Tests search pipeline adapter for benchmarks, result ID extraction, and error
+handling during query execution. This is important because the search pipeline
+adapter bridges the benchmark framework to the actual search implementation.
+"""
 
 from __future__ import annotations
 

@@ -1,3 +1,10 @@
+"""Shared fixtures for DLQ integration tests.
+
+Provides session-scoped Redis testcontainer for DLQ backend tests. This is
+important because DLQ integration tests must verify real message persistence
+and retry logic against an actual Redis instance.
+"""
+
 import pytest
 import time
 import logging

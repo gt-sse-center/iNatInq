@@ -1,4 +1,9 @@
-"""Unit tests for benchmark provider factory."""
+"""Unit tests for benchmark provider factory.
+
+Tests search system provider instantiation from config, including dataset,
+metric, and reporter factories. This is important because the factory pattern
+enables swapping benchmark components without changing orchestration code.
+"""
 
 from __future__ import annotations
 

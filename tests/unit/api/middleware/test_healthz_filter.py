@@ -51,6 +51,7 @@ class TestHealthzFilterMiddleware:
 
         @app.get("/test")
         def test_endpoint():
+            """Test endpoint for verifying normal (non-healthz) request logging."""
             return {"message": "test"}
 
         return app

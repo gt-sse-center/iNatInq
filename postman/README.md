@@ -21,26 +21,30 @@ API collection and environment for the iNatInq ML Pipeline service.
 ### Health
 - `GET /healthz` - Liveness probe
 
-### Vector Store
-- `GET /search` - Semantic search (Qdrant)
-
-### Spark Jobs
-- `POST /spark/jobs` - Submit job
-- `GET /spark/jobs` - List all jobs
-- `GET /spark/jobs/{job_name}` - Get job status
-- `DELETE /spark/jobs/{job_name}` - Delete job
+### Image Search
+- `GET /search/images` - Text-to-image semantic search (CLIP/Qdrant)
 
 ### Ray Jobs
-- `POST /ray/jobs` - Submit job
+- `POST /ray/jobs/images` - Submit image ingestion job
+- `POST /ray/jobs/process-dlq` - Submit DLQ processing job
 - `GET /ray/jobs/{job_id}` - Get job status
 - `GET /ray/jobs/{job_id}/logs` - Get job logs
 - `DELETE /ray/jobs/{job_id}` - Stop job
 
 ### Databricks Jobs
-- `POST /databricks/jobs` - Submit job
+- `POST /databricks/jobs/images` - Submit image ingestion job
+- `POST /databricks/jobs/cdc-producer` - Submit CDC producer job
+- `POST /databricks/jobs/cdc-consumer` - Submit CDC consumer job
+- `POST /databricks/jobs/process-dlq` - Submit DLQ processing job
 - `GET /databricks/jobs/{run_id}` - Get run status
 - `GET /databricks/jobs/{run_id}/logs` - Get run logs/output
 - `DELETE /databricks/jobs/{run_id}` - Stop run
+
+### Cache
+- `DELETE /cache` - Invalidate semantic cache
+
+### Metrics
+- `POST /ingestion/metrics` - Record ingestion metrics
 
 ## Environment Variables
 
@@ -50,7 +54,6 @@ API collection and environment for the iNatInq ML Pipeline service.
 | `collection` | `documents` | Vector DB collection |
 | `s3_prefix` | `inputs/` | S3 prefix for jobs |
 | `job_id` | (auto-set) | Ray job ID |
-| `job_name` | (auto-set) | Spark job name |
 | `run_id` | (auto-set) | Databricks run ID |
 
 ## Usage Tips

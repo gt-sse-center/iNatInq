@@ -1,4 +1,9 @@
-"""Unit tests for JSONDataset loader."""
+"""Unit tests for JSONDataset loader.
+
+Tests JSON file parsing, schema validation, and query/document pair loading for
+custom benchmark datasets. This is important because JSONDataset enables users
+to add custom gold standard datasets without changing code.
+"""
 
 import json
 from collections.abc import Iterator

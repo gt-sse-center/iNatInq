@@ -3,19 +3,19 @@
 ```mermaid
 flowchart TB
     subgraph Client
-        A[HTTP Request<br/>POST /ray/jobs or /spark/jobs]
+        A[HTTP Request<br/>POST /ray/jobs/images or /databricks/jobs/images]
     end
 
     subgraph API["FastAPI Routes"]
         B[Parse Job Request]
         C{Engine<br/>Type?}
         D[RayService]
-        E[SparkService]
+        E[DatabricksRayService]
     end
 
     subgraph JobSubmission["Job Submission"]
-        F[Submit to Ray Cluster]
-        G[Create SparkApplication<br/>in Kubernetes]
+        F[Submit to Local Ray Cluster]
+        G[Submit Databricks Job<br/>via Jobs API]
     end
 
     subgraph Processing["Distributed Processing"]
@@ -29,25 +29,23 @@ flowchart TB
 
     subgraph Workers["Worker Tasks"]
         N[Ray Remote Task]
-        O[Spark RDD Partition]
     end
 
     subgraph External["External Services"]
         P[(MinIO/S3)]
-        Q[(CLIP Service)]
+        Q[(CLIP / Infinity)]
         R[(Qdrant)]
     end
 
     A --> B
     B --> C
     C -->|Ray| D
-    C -->|Spark| E
+    C -->|Databricks| E
     D --> F
     E --> G
     F --> N
-    G --> O
+    G --> N
     N --> H
-    O --> H
     H --> P
     P --> I
     I --> J
@@ -71,18 +69,17 @@ flowchart TB
     style Q fill:#fff3e0
     style R fill:#fce4ec
     style N fill:#e8f5e9
-    style O fill:#e3f2fd
 ```
 
 ## Flow Description
 
-1. **Client Request**: User submits ingestion job via `POST /ray/jobs` or `POST /spark/jobs`
-2. **API Layer**: Routes to appropriate service (RayService or SparkService)
-3. **Job Submission**: Creates distributed job in Ray cluster or Kubernetes SparkApplication
+1. **Client Request**: User submits ingestion job via `POST /ray/jobs/images` or `POST /databricks/jobs/images`
+2. **API Layer**: Routes to appropriate service (RayService or DatabricksRayService)
+3. **Job Submission**: Creates distributed job in local Ray cluster or Databricks (Ray on Spark)
 4. **Object Discovery**: Lists S3 objects matching the prefix
-5. **Parallel Processing**: Partitions work across Ray tasks or Spark executors
+5. **Parallel Processing**: Partitions work across Ray remote tasks
 6. **Content Fetch**: Each worker fetches assigned S3 objects
-7. **Embedding Generation**: Rate-limited calls to CLIP service for vector embeddings
+7. **Embedding Generation**: Rate-limited calls to CLIP/Infinity service for vector embeddings
 8. **Vector Point Creation**: Constructs points with embeddings + metadata
 9. **Database Upsert**: Batch upserts to Qdrant
 10. **Async Response**: Returns job ID immediately (202 Accepted)

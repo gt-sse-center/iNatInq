@@ -18,6 +18,7 @@ def mock_dlq_backend() -> MagicMock:
 
 class TestDLQ:
     def test_enqueue_inserts_into_backend(self):
+        """DLQ.enqueue() calls backend.insert() with serialized message and metadata."""
         mock_backend = mock_dlq_backend()
         dlq = DLQ(mock_backend)
 
@@ -28,6 +29,7 @@ class TestDLQ:
         mock_backend.insert.assert_called_once_with(image_id, metadata=metadata)
 
     def test_enqueue_logs_errors(self, caplog: pytest.LogCaptureFixture):
+        """DLQ.enqueue() catches backend errors and logs them without raising."""
         mock_backend = mock_dlq_backend()
         mock_backend.insert.side_effect = Exception("uh oh")
         dlq = DLQ(mock_backend)

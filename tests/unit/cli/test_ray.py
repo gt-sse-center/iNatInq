@@ -1,4 +1,9 @@
-"""Unit tests for ray command group."""
+"""Unit tests for ray command group.
+
+Tests Ray cluster operation commands (dashboard, logs, status) to ensure
+correct Ray CLI invocation and log file access. This is important because
+debugging Ray jobs requires correct access to worker logs and dashboard URLs.
+"""
 
 from __future__ import annotations
 

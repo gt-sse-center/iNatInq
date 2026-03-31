@@ -1,4 +1,9 @@
-"""Unit tests for Bronze-backed Databricks Ray image ingestion helpers."""
+"""Unit tests for Bronze-backed Databricks Ray image ingestion helpers.
+
+Tests Bronze Delta table reading and Ray job submission for CDC-driven image
+processing. This is important because Bronze-backed ingestion enables
+incremental updates without S3 rescans, reducing cost and latency.
+"""
 
 from __future__ import annotations
 

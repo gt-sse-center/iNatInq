@@ -1,4 +1,9 @@
-"""Unit tests for DefaultBenchmarkRunner with search pipeline integration."""
+"""Unit tests for DefaultBenchmarkRunner with search pipeline integration.
+
+Tests end-to-end benchmark execution with real SearchPipeline integration,
+result caching, and metric aggregation. This is important because the default
+runner provides the primary workflow for evaluating search quality.
+"""
 
 from __future__ import annotations
 

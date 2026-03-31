@@ -13,6 +13,7 @@ from foundation.dead_letter_queue.with_dlq import with_dlq
 
 class TestWithDLQ:
     def test_decorator_injects_dlq_instance(self):
+        """@with_dlq decorator injects DLQ instance as first parameter to sync functions."""
         injected_dlq = None
 
         @with_dlq
@@ -27,6 +28,7 @@ class TestWithDLQ:
 
     @pytest.mark.asyncio
     async def test_async_decorator_injects_dlq_instance(self):
+        """@with_dlq decorator injects DLQ instance as first parameter to async functions."""
         injected_dlq = None
 
         @with_dlq
@@ -40,6 +42,7 @@ class TestWithDLQ:
         assert isinstance(injected_dlq, DLQ)
 
     def test_decorator_preserves_params(self):
+        """@with_dlq decorator passes through all positional and keyword arguments unchanged."""
         captured_args = None
         captured_kwargs = None
 
@@ -59,6 +62,7 @@ class TestWithDLQ:
 
     @pytest.mark.asyncio
     async def test_async_decorator_preserves_params(self):
+        """@with_dlq decorator passes through all arguments unchanged for async functions."""
         captured_args = None
         captured_kwargs = None
 
@@ -77,6 +81,8 @@ class TestWithDLQ:
         assert captured_kwargs == kwargs
 
     def test_decorator_preserves_return_value(self):
+        """@with_dlq decorator preserves function return values for sync functions."""
+
         @with_dlq
         def returns_int(_dlq: DLQ) -> int:
             return 0
@@ -86,6 +92,8 @@ class TestWithDLQ:
 
     @pytest.mark.asyncio
     async def test_async_decorator_preserves_return_value(self):
+        """@with_dlq decorator preserves function return values for async functions."""
+
         @with_dlq
         async def returns_int(_dlq: DLQ) -> int:
             return 0
@@ -103,6 +111,7 @@ class TestWithDLQ:
         assert hasattr(test_fn, "__wrapped_with_dlq")
 
     def test_decorator_uses_stub_if_no_backend_configured(self):
+        """@with_dlq decorator falls back to stubbed backend when no real backend is configured."""
         with patch(
             "foundation.dead_letter_queue.dlq_backend_registry.get_dlq_backend"
         ) as mock_get_dlq_backend:

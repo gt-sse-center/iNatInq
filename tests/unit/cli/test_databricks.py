@@ -1,4 +1,10 @@
-"""Unit tests for databricks command group."""
+"""Unit tests for databricks command group.
+
+Tests Databricks cluster lifecycle management commands (build, up, down) to
+ensure correct Databricks CLI invocation and JSON payload construction. This
+is important because cluster management errors can leave expensive resources
+running or cause job submission failures.
+"""
 
 from __future__ import annotations
 

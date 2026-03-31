@@ -1,4 +1,9 @@
-"""Unit tests for benchmark ID mapping module."""
+"""Unit tests for benchmark ID mapping module.
+
+Tests conversion between internal document IDs and external dataset IDs to
+ensure correct relevance judgments are matched to search results. This is
+important because incorrect ID mapping produces meaningless benchmark scores.
+"""
 
 from __future__ import annotations
 

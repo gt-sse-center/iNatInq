@@ -1,4 +1,9 @@
-"""Unit tests for benchmark dataset Pydantic schemas."""
+"""Unit tests for benchmark dataset Pydantic schemas.
+
+Tests validation rules for benchmark dataset JSON schemas (query/document IDs,
+relevance scores, required fields). This is important because schema validation
+catches malformed dataset files before they corrupt benchmark results.
+"""
 
 import pytest
 from pydantic import ValidationError

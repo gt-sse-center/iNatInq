@@ -1,4 +1,9 @@
-"""Unit tests for clients.inaturalist_open_data module."""
+"""Unit tests for clients.inaturalist_open_data module.
+
+Tests iNaturalist Open Data AWS S3 client for listing observation metadata,
+filtering by taxon, and parsing S3 URIs. This is important because the iNat
+client provides the primary data source for biodiversity search benchmarks.
+"""
 
 from __future__ import annotations
 
@@ -33,6 +38,7 @@ class TestINaturalistOpenDataClientInit:
     """Test suite for INaturalistOpenDataClient initialization."""
 
     def test_creates_client_with_defaults(self) -> None:
+        """Client initializes with correct default URLs, timeout, session, and circuit breaker."""
         client = INaturalistOpenDataClient()
 
         assert client.photo_base_url == "https://inaturalist-open-data.s3.amazonaws.com/photos"
@@ -46,6 +52,7 @@ class TestINaturalistOpenDataClientPhotoUrl:
     """Test suite for photo URL construction."""
 
     def test_build_photo_url(self) -> None:
+        """Photo URL builder constructs correct S3 URLs from photo ID, extension, and size."""
         client = INaturalistOpenDataClient()
 
         url = client.build_photo_url(photo_id="12345", extension="jpg", size="medium")
@@ -53,6 +60,7 @@ class TestINaturalistOpenDataClientPhotoUrl:
         assert url == "https://inaturalist-open-data.s3.amazonaws.com/photos/12345/medium.jpg"
 
     def test_build_photo_url_normalizes_extension_and_size(self) -> None:
+        """Photo URL builder normalizes case and strips leading dots from extensions."""
         client = INaturalistOpenDataClient()
 
         url = client.build_photo_url(photo_id="12345", extension=".JPG", size="LARGE")
@@ -60,6 +68,7 @@ class TestINaturalistOpenDataClientPhotoUrl:
         assert url == "https://inaturalist-open-data.s3.amazonaws.com/photos/12345/large.jpg"
 
     def test_build_photo_url_raises_for_unsupported_size(self) -> None:
+        """Photo URL builder rejects unsupported image sizes to prevent invalid S3 URLs."""
         client = INaturalistOpenDataClient()
 
         with pytest.raises(ValueError, match="Unsupported image size"):
@@ -68,6 +77,7 @@ class TestINaturalistOpenDataClientPhotoUrl:
         assert "medium" in SUPPORTED_IMAGE_SIZES
 
     def test_build_photo_url_raises_for_empty_photo_id(self) -> None:
+        """Photo URL builder rejects empty photo IDs to prevent malformed URLs."""
         client = INaturalistOpenDataClient()
 
         with pytest.raises(ValueError, match="photo_id cannot be empty"):
@@ -78,11 +88,13 @@ class TestINaturalistOpenDataClientMetadataUrl:
     """Test suite for metadata URL construction helpers."""
 
     def test_build_metadata_url_defaults_to_photos_csv_gz(self) -> None:
+        """Metadata URL builder defaults to compressed photos CSV on S3."""
         client = INaturalistOpenDataClient()
 
         assert client.build_metadata_url() == "https://inaturalist-open-data.s3.amazonaws.com/photos.csv.gz"
 
     def test_build_metadata_url_supports_uncompressed(self) -> None:
+        """Metadata URL builder supports uncompressed CSV files for alternative datasets."""
         client = INaturalistOpenDataClient()
 
         assert (
@@ -91,6 +103,7 @@ class TestINaturalistOpenDataClientMetadataUrl:
         )
 
     def test_build_metadata_url_raises_for_unknown_dataset(self) -> None:
+        """Metadata URL builder rejects unknown datasets to prevent invalid requests."""
         client = INaturalistOpenDataClient()
 
         with pytest.raises(ValueError, match="Unsupported dataset"):
@@ -99,11 +112,13 @@ class TestINaturalistOpenDataClientMetadataUrl:
         assert "photos" in SUPPORTED_METADATA_DATASETS
 
     def test_build_metadata_s3_uri_defaults_to_photos_csv_gz(self) -> None:
+        """S3 URI builder constructs s3:// URIs for metadata files."""
         client = INaturalistOpenDataClient()
 
         assert client.build_metadata_s3_uri() == "s3://inaturalist-open-data/photos.csv.gz"
 
     def test_latest_metadata_archive_url(self) -> None:
+        """Archive URL builder constructs correct URL for the latest metadata tarball."""
         client = INaturalistOpenDataClient()
 
         assert (
@@ -117,6 +132,7 @@ class TestINaturalistOpenDataClientMetadataParsing:
     """Test suite for metadata parsing behavior."""
 
     def test_iter_photo_records_parses_tsv_metadata(self) -> None:
+        """Record parser handles tab-delimited metadata and constructs photo URLs correctly."""
         client = INaturalistOpenDataClient()
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
@@ -144,6 +160,7 @@ class TestINaturalistOpenDataClientMetadataParsing:
         )
 
     def test_iter_photo_records_parses_comma_delimited_metadata(self) -> None:
+        """Record parser auto-detects CSV delimiter (comma vs tab)."""
         client = INaturalistOpenDataClient()
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
@@ -157,6 +174,7 @@ class TestINaturalistOpenDataClientMetadataParsing:
         assert records[0].photo_url.endswith("/333/medium.png")
 
     def test_iter_photo_records_parses_gzip_metadata(self) -> None:
+        """Record parser decompresses gzip-compressed metadata files automatically."""
         client = INaturalistOpenDataClient()
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
@@ -171,6 +189,7 @@ class TestINaturalistOpenDataClientMetadataParsing:
         assert records[0].photo_url.endswith("/444/medium.gif")
 
     def test_iter_photo_records_parses_gzip_metadata_from_s3_uri(self) -> None:
+        """Record parser converts s3:// URIs to HTTPS URLs before fetching."""
         client = INaturalistOpenDataClient()
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
@@ -189,6 +208,7 @@ class TestINaturalistOpenDataClientMetadataParsing:
         )
 
     def test_iter_photo_records_skips_rows_missing_required_fields(self) -> None:
+        """Record parser skips rows with missing photo_id or extension to prevent invalid URLs."""
         client = INaturalistOpenDataClient()
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
@@ -201,6 +221,7 @@ class TestINaturalistOpenDataClientMetadataParsing:
         assert [record.photo_id for record in records] == ["555", "777"]
 
     def test_iter_photo_records_respects_max_rows(self) -> None:
+        """Record parser limits output to max_rows for testing with large datasets."""
         client = INaturalistOpenDataClient()
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
@@ -215,6 +236,7 @@ class TestINaturalistOpenDataClientMetadataParsing:
         assert records[1].photo_id == "102"
 
     def test_iter_photo_records_yields_typed_records(self) -> None:
+        """Record parser returns typed INaturalistPhotoRecord objects for type safety."""
         client = INaturalistOpenDataClient()
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
@@ -228,6 +250,7 @@ class TestINaturalistOpenDataClientMetadataParsing:
         assert isinstance(records[0], INaturalistPhotoRecord)
 
     def test_iter_photo_records_raises_upstream_error_on_metadata_request_error(self) -> None:
+        """Record parser wraps network errors as UpstreamError for consistent error handling."""
         client = INaturalistOpenDataClient()
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
@@ -241,6 +264,7 @@ class TestINaturalistOpenDataClientDownloadImage:
     """Test suite for image download behavior."""
 
     def test_download_image_returns_bytes(self) -> None:
+        """Image downloader fetches image content as bytes from S3 URLs."""
         client = INaturalistOpenDataClient()
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
@@ -259,6 +283,7 @@ class TestINaturalistOpenDataClientDownloadImage:
         )
 
     def test_download_image_raises_upstream_error_on_request_failure(self) -> None:
+        """Image downloader wraps network errors as UpstreamError for consistent handling."""
         client = INaturalistOpenDataClient()
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)
@@ -268,6 +293,7 @@ class TestINaturalistOpenDataClientDownloadImage:
             client.download_image("https://example.com/photos/1/medium.jpg")
 
     def test_download_image_raises_upstream_error_on_empty_content(self) -> None:
+        """Image downloader rejects empty responses to prevent corrupt image data."""
         client = INaturalistOpenDataClient()
         mock_session = MagicMock(spec=requests.Session)
         client.set_session(mock_session)

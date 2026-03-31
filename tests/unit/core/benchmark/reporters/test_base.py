@@ -1,4 +1,10 @@
-"""Unit tests for Reporter ABC."""
+"""Unit tests for Reporter ABC.
+
+Tests the abstract Reporter interface and reporter lifecycle to ensure correct
+output formatting contracts and error handling. This is important because
+reporters present benchmark results to users in human-readable and machine-
+readable formats.
+"""
 
 from __future__ import annotations
 

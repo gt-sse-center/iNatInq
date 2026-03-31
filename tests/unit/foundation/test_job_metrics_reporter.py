@@ -1,3 +1,11 @@
+"""Unit tests for job metrics reporting.
+
+Tests the fire-and-forget metrics reporting mechanism that posts ingestion
+statistics to the central API. This is important because metrics reporting
+must never block or crash the ingestion pipeline — errors are logged and
+swallowed.
+"""
+
 from typing import Any
 from collections.abc import Generator
 from unittest.mock import MagicMock, patch
@@ -23,11 +31,13 @@ class TestReportIngestionMetrics:
         caplog: pytest.LogCaptureFixture,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Metrics reporter skips posting when APP_URL env var is not set."""
         monkeypatch.delenv("APP_URL", raising=False)
         report_ingestion_metrics(pipeline="local ray ingestion pipeline")
         assert "APP_URL environment variable is not set, skipping metrics reporting" in caplog.text
 
     def test_posts_to_correct_endpoint_with_full_payload(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Metrics reporter posts JSON payload to /ingestion/metrics endpoint."""
         mock_response = MagicMock()
         monkeypatch.setenv("APP_URL", "http://localhost:8000")
         with patch(
@@ -55,6 +65,7 @@ class TestReportIngestionMetrics:
         mock_response.raise_for_status.assert_called_once()
 
     def test_swallows_http_error_and_logs_warning(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Metrics reporter catches HTTP errors and logs them without raising."""
         mock_response = MagicMock()
         mock_response.raise_for_status.side_effect = Exception("500 Server Error")
         monkeypatch.setenv("APP_URL", "http://localhost:8000")
@@ -70,6 +81,7 @@ class TestReportIngestionMetrics:
         assert call_kwargs["pipeline"] == "local ray ingestion pipeline"
 
     def test_swallows_connection_error_and_logs_warning(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Metrics reporter catches connection errors and logs them without raising."""
         monkeypatch.setenv("APP_URL", "http://localhost:8000")
         with (
             patch(

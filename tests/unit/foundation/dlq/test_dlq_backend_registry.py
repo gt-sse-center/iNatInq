@@ -21,6 +21,7 @@ def clear_get_dlq_backend_cache():
 def test_registry_returns_none_if_type_env_not_set(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ):
+    """Backend registry returns None when DLQ_BACKEND env var is unset."""
     monkeypatch.delenv(BACKEND_TYPE_ENV_VARIABLE, raising=False)
     with caplog.at_level("WARNING"):
         backend = get_dlq_backend()
@@ -30,6 +31,7 @@ def test_registry_returns_none_if_type_env_not_set(
 
 
 def test_registry_returns_redis_if_env_specifies(monkeypatch: pytest.MonkeyPatch):
+    """Backend registry returns RedisBackend when DLQ_BACKEND=redis."""
     monkeypatch.setenv(BACKEND_TYPE_ENV_VARIABLE, "redis")
     mock_redis_cls = MagicMock()
     mock_redis_instance = MagicMock()
@@ -41,12 +43,14 @@ def test_registry_returns_redis_if_env_specifies(monkeypatch: pytest.MonkeyPatch
 
 
 def test_registry_raises_if_invalid_backend(monkeypatch: pytest.MonkeyPatch):
+    """Backend registry raises ValueError for unknown backend types."""
     monkeypatch.setenv(BACKEND_TYPE_ENV_VARIABLE, "some-invalid-backend")
     with pytest.raises(ValueError, match=r"(?i)unsupported DLQ backend"):
         _ = get_dlq_backend()
 
 
 def test_multiple_calls_return_same_instance():
+    """Backend registry caches instances to avoid redundant initialization."""
     backend_1 = get_dlq_backend()
     backend_2 = get_dlq_backend()
     assert backend_1 is backend_2

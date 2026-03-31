@@ -1,4 +1,10 @@
-"""Unit tests for synthetic command group."""
+"""Unit tests for synthetic command group.
+
+Tests synthetic data generation commands (setup, generate, upload) to ensure
+correct image generation parameters and S3 upload orchestration. This is
+important because synthetic data is used for development, testing, and
+benchmarking.
+"""
 
 from __future__ import annotations
 

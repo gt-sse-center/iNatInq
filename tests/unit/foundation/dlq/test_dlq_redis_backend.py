@@ -26,6 +26,7 @@ def create_redis_config() -> RedisDLQConfig:
 
 class TestRedisConfig:
     def test_config_is_created_from_env_variables(self, monkeypatch: pytest.MonkeyPatch):
+        """Redis config is created from DLQ_REDIS_* environment variables."""
         monkeypatch.setenv("DLQ_REDIS_HOST", "localhost")
         monkeypatch.setenv("DLQ_REDIS_PORT", "1234")
         monkeypatch.setenv("DLQ_REDIS_DATABASE_NUMBER", "1")
@@ -38,6 +39,7 @@ class TestRedisConfig:
 class TestRedisDLQBackend:
     class TestConstructor:
         def test_creates_redis_client_with_config_values(self):
+            """Redis backend constructor creates Redis client with config values."""
             with patch("redis.Redis") as mock_redis_cls:
                 config = create_redis_config()
                 _ = RedisDLQBackend(config)
@@ -51,16 +53,19 @@ class TestRedisDLQBackend:
 
     class TestNameProperty:
         def test_name_contains_redis(self):
+            """Redis backend name contains 'redis' for identification."""
             backend = RedisDLQBackend(create_redis_config())
             assert "redis" in backend.name
 
     class TestInsert:
         def test_adds_to_cache(self, mock_redis_client: MagicMock):
+            """Redis backend insert() calls Redis SET with the message ID."""
             backend = RedisDLQBackend(create_redis_config())
             backend.insert("id")
             mock_redis_client.set.assert_called_once_with("id", "")
 
         def test_converts_metadata_to_string(self, mock_redis_client: MagicMock):
+            """Redis backend serializes metadata dict to JSON string before storage."""
             backend = RedisDLQBackend(create_redis_config())
             metadata: dict[str, object] = {"foo": 12345, "bar": "baz"}
             backend.insert("id", metadata=metadata)
@@ -70,6 +75,7 @@ class TestRedisDLQBackend:
         def test_handles_failed_metadata_serialization(
             self, mock_redis_client: MagicMock, caplog: pytest.LogCaptureFixture
         ):
+            """Redis backend falls back to empty string when metadata serialization fails."""
             backend = RedisDLQBackend(create_redis_config())
             with patch("json.dumps") as mock_json_dumps, caplog.at_level("WARNING"):
                 mock_json_dumps.side_effect = Exception("oof")
@@ -79,6 +85,7 @@ class TestRedisDLQBackend:
 
     class TestGetQueueContents:
         def test_returns_cache_keys(self, mock_redis_client: MagicMock):
+            """Redis backend get_queue_contents() returns all keys from scan_iter()."""
             cache_keys = ["1", "2", "3", "4", "5"]
             mock_redis_client.scan_iter.return_value = iter(cache_keys)
             backend = RedisDLQBackend(create_redis_config())
@@ -90,6 +97,7 @@ class TestRedisDLQBackend:
             self,
             mock_redis_client: MagicMock,
         ):
+            """Redis backend raises UpstreamError when scan_iter returns non-string keys."""
             mock_redis_client.scan_iter.return_value = iter([1, 2, 3, 4, 5])  # not strings
             backend = RedisDLQBackend(create_redis_config())
 
@@ -98,6 +106,7 @@ class TestRedisDLQBackend:
                 list(backend.get_queue_contents())
 
         def test_raises_upstream_error_on_failure(self, mock_redis_client: MagicMock):
+            """Redis backend raises UpstreamError when scan_iter fails with an exception."""
             mock_redis_client.scan_iter.side_effect = Exception("uh oh")
             backend = RedisDLQBackend(create_redis_config())
 
@@ -107,6 +116,7 @@ class TestRedisDLQBackend:
 
     class TestDelete:
         def test_delete_removes_keys(self, mock_redis_client: MagicMock):
+            """Redis backend delete() calls Redis DELETE with all provided keys."""
             keys = {"1", "2", "3", "4", "5"}
             backend = RedisDLQBackend(create_redis_config())
             backend.delete(keys)
@@ -114,6 +124,7 @@ class TestRedisDLQBackend:
             mock_redis_client.delete.assert_called_once_with(*keys)
 
         def test_raises_upstream_error_on_failure(self, mock_redis_client: MagicMock):
+            """Redis backend raises UpstreamError when delete operation fails with an exception."""
             mock_redis_client.delete.side_effect = Exception("oopsie")
             backend = RedisDLQBackend(create_redis_config())
 

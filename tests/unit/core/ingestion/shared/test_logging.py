@@ -1,4 +1,9 @@
-"""Unit tests for core.ingestion.shared.logging helpers."""
+"""Unit tests for core.ingestion.shared.logging helpers.
+
+Tests structured logging utilities for ingestion pipelines, including progress
+reporting and error context enrichment. This is important because consistent
+logging enables debugging distributed ingestion jobs across Ray and Databricks.
+"""
 
 from __future__ import annotations
 

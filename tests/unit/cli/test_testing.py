@@ -1,4 +1,10 @@
-"""Unit tests for test command group (named test_testing to avoid collision)."""
+"""Unit tests for test command group (named test_testing to avoid collision).
+
+Tests pytest runner commands (unit, integration, cov, e2e) to ensure correct
+pytest invocation with proper markers and coverage settings. This is important
+because the test command provides the primary interface for running the test
+suite.
+"""
 
 from __future__ import annotations
 

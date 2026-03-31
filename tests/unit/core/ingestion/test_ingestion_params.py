@@ -1,4 +1,9 @@
-"""Unit tests for core.services.ingestion_params helpers."""
+"""Unit tests for core.services.ingestion_params helpers.
+
+Tests parameter validation and default value assignment for ingestion job
+requests. This is important because parameter validation catches malformed
+requests before expensive distributed jobs start.
+"""
 
 from __future__ import annotations
 

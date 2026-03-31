@@ -1,4 +1,9 @@
-"""Unit tests for BenchmarkConfig."""
+"""Unit tests for BenchmarkConfig.
+
+Tests Pydantic config schema validation, default values, and config merging
+from files and CLI args. This is important because config validation catches
+errors before expensive benchmark runs start.
+"""
 
 from __future__ import annotations
 

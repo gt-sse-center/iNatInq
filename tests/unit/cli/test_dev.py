@@ -1,4 +1,9 @@
-"""Unit tests for dev command group."""
+"""Unit tests for dev command group.
+
+Tests developer workflow commands (lint, format, type-check, serve) to ensure
+correct tool invocation with proper arguments. This is important because
+developers rely on these commands for fast feedback during development.
+"""
 
 from __future__ import annotations
 

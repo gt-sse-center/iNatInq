@@ -22,9 +22,10 @@ core/
 └── services/            # Business logic orchestration layer
     ├── __init__.py
     ├── README.md
-    ├── search_service.py    # Semantic search orchestration
-    ├── spark_service.py     # Spark job management
-    └── ray_service.py       # Ray job orchestration
+    ├── search_service.py          # Image search orchestration
+    ├── ray_service.py             # Ray job orchestration
+    ├── databricks_ray_service.py  # Databricks job management
+    └── ingestion_params.py        # Shared ingestion parameters
 ```
 
 ## Modules
@@ -42,9 +43,9 @@ Business logic orchestration layer that coordinates multiple clients to accompli
 
 **Services:**
 
-- `SearchService`: Semantic search orchestration
-- `SparkService`: Spark job management via Kubernetes
+- `ImageSearchService`: Image search orchestration (CLIP embeddings + Qdrant)
 - `RayService`: Ray job orchestration
+- `DatabricksRayService`: Databricks job management
 
 See `services/README.md` for detailed documentation.
 
