@@ -80,7 +80,7 @@ services:
   # Qdrant — Primary Vector DB
   # ---------------------------------------------------------------------------
   qdrant:
-    image: qdrant/qdrant:v1.12.4
+    image: qdrant/qdrant:v1.16.3
     container_name: qdrant
     ports:
       - "6333:6333"
@@ -186,16 +186,20 @@ services:
       RAY_DISABLE_DOCKER_CPU_WARNING: "1"
       RAY_memory_usage_threshold: "0.98"
       PYTHONPATH: /app/src
+      DLQ_BACKEND: "redis"
+      DLQ_REDIS_HOST: redis
+      DLQ_REDIS_PORT: "6379"
+      DLQ_REDIS_DATABASE_NUMBER: "0"
     volumes:
       - ../../../src:/app/src:ro
     deploy:
       resources:
         limits:
           cpus: "2.0"
-          memory: 5g
+          memory: 8g
         reservations:
           cpus: "1.0"
-          memory: 3g
+          memory: 4g
     healthcheck:
       test: ["CMD", "ray", "status"]
       interval: 30s
@@ -223,6 +227,10 @@ services:
       RAY_DISABLE_DOCKER_CPU_WARNING: "1"
       RAY_memory_usage_threshold: "0.98"
       PYTHONPATH: /app/src
+      DLQ_BACKEND: "redis"
+      DLQ_REDIS_HOST: redis
+      DLQ_REDIS_PORT: "6379"
+      DLQ_REDIS_DATABASE_NUMBER: "0"
     volumes:
       - ../../../src:/app/src:ro
     deploy:

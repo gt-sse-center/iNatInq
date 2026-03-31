@@ -101,8 +101,6 @@ def _download_image(s3_key: str, output_dir: Path | str, s3_client: S3Client, co
     Returns:
         Path to downloaded file.
     """
-    from pathlib import Path
-
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     filename = Path(s3_key).name
