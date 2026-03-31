@@ -49,12 +49,10 @@ def main() -> None:
 
     _apply_python_params(sys.argv[1:])
 
-    namespace = os.environ.get("K8S_NAMESPACE", "ml-system")
-
-    ray_cfg = RayJobConfig.from_env(namespace)
-    minio_cfg = MinIOConfig.from_env(namespace)
-    embed_cfg = EmbeddingConfig.from_env(namespace)
-    vector_cfg = VectorDBConfig.from_env(namespace)
+    ray_cfg = RayJobConfig.from_env()
+    minio_cfg = MinIOConfig.from_env()
+    embed_cfg = EmbeddingConfig.from_env()
+    vector_cfg = VectorDBConfig.from_env()
 
     s3_prefix = ray_cfg.s3_prefix
     collection = vector_cfg.collection
@@ -65,7 +63,6 @@ def main() -> None:
     job_logger.info(
         "Configuration loaded",
         extra={
-            "namespace": namespace,
             "s3_bucket": bucket,
             "s3_prefix": s3_prefix,
             "collection": collection,
@@ -77,7 +74,7 @@ def main() -> None:
     )
 
     # Use DatabricksStrategy for cluster initialization
-    strategy = DatabricksStrategy.from_env(namespace)
+    strategy = DatabricksStrategy.from_env()
     strategy.init()
 
     try:

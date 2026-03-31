@@ -195,7 +195,6 @@ async def _run_smoke_test(
     else:
         vector_cfg = _IMPORTS.VectorDBConfig.from_env_for_provider(
             provider_type=provider_type,
-            namespace=settings.k8s_namespace,
         )
 
     logger.info("Using vector DB provider: %s", provider_type)

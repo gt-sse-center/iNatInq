@@ -1,7 +1,7 @@
 """Unit tests for HealthzFilterMiddleware.
 
 This file tests the middleware that suppresses logging for /healthz endpoint
-requests, reducing noise from Kubernetes liveness/readiness probes.
+requests, reducing noise from liveness/readiness probes.
 
 # Test Coverage
 
@@ -61,7 +61,7 @@ class TestHealthzFilterMiddleware:
 
         **Why this test is important:**
           - Validates log suppression for health checks
-          - Reduces noise from K8s probes
+          - Reduces noise from health probes
           - Tests middleware filtering logic
         """
         client = TestClient(app_with_healthz_filter)
@@ -134,7 +134,7 @@ class TestHealthzFilterMiddleware:
         **Why this test is important:**
           - Validates repeated request handling
           - Tests stateless middleware behavior
-          - Simulates K8s probe pattern
+          - Simulates health probe pattern
         """
         client = TestClient(app_with_healthz_filter)
 

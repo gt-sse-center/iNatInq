@@ -49,16 +49,13 @@ class DatabricksStrategy:
     _cluster: Any = attrs.field(default=None, init=False)
 
     @classmethod
-    def from_env(cls, namespace: str = "ml-system") -> DatabricksStrategy:
+    def from_env(cls) -> DatabricksStrategy:
         """Create strategy from environment variables.
-
-        Args:
-            namespace: Kubernetes namespace for config resolution.
 
         Returns:
             Configured DatabricksStrategy instance.
         """
-        return cls(config=RayJobConfig.from_env(namespace))
+        return cls(config=RayJobConfig.from_env())
 
     @property
     def config(self) -> RayJobConfig:

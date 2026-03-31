@@ -240,7 +240,7 @@ class TestMiddlewareIntegration:
         **Why this test is important:**
           - Validates log filtering for health checks
           - Tests middleware log suppression
-          - Reduces noise from K8s probes
+          - Reduces noise from health probes
         """
         app = create_app()
         client = TestClient(app)

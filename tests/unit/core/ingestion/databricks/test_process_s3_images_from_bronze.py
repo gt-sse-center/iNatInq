@@ -86,7 +86,6 @@ def test_main_happy_path_loads_window_processes_batches_and_commits_cursor() -> 
     """main() should run the full CDC happy path and commit progress."""
     from core.ingestion.databricks.process_s3_images_from_bronze import main
 
-    namespace = "ml-system"
     cdc_cfg = BronzeRayCDCConfig(
         bronze_table="main.default.images_bronze",
         progress_table="main.default.images_progress",
@@ -256,10 +255,10 @@ def test_main_happy_path_loads_window_processes_batches_and_commits_cursor() -> 
 
     mock_apply_params.assert_called_once()
     mock_cdc_from_env.assert_called_once_with()
-    mock_ray_from_env.assert_called_once_with(namespace)
-    mock_minio_from_env.assert_called_once_with(namespace)
-    mock_embed_from_env.assert_called_once_with(namespace)
-    mock_vector_from_env.assert_called_once_with(namespace)
+    mock_ray_from_env.assert_called_once_with()
+    mock_minio_from_env.assert_called_once_with()
+    mock_embed_from_env.assert_called_once_with()
+    mock_vector_from_env.assert_called_once_with()
 
     strategy.init.assert_called_once()
     strategy.shutdown.assert_called_once()

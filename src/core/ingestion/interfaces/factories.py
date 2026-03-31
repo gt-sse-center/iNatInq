@@ -27,30 +27,12 @@ class VectorDBConfigFactory:
     """Factory for creating vector database configurations.
 
     Creates properly configured VectorDBConfig instances for Qdrant
-    based on environment variables and Kubernetes namespace.
+    based on environment variables.
 
     Example:
-        >>> factory = VectorDBConfigFactory(namespace="ml-system")
+        >>> factory = VectorDBConfigFactory()
         >>> qdrant_cfg = factory.create_qdrant_config()
     """
-
-    def __init__(self, namespace: str = "ml-system") -> None:
-        """Initialize the factory.
-
-        Args:
-            namespace: Kubernetes namespace for service discovery.
-        """
-        self.namespace = namespace
-        self._in_cluster = self._detect_in_cluster()
-
-    @staticmethod
-    def _detect_in_cluster() -> bool:
-        """Detect if running inside a Kubernetes cluster."""
-        if os.path.exists("/var/run/secrets/kubernetes.io/serviceaccount/token"):
-            return True
-        if os.getenv("KUBERNETES_SERVICE_HOST"):
-            return True
-        return os.getenv("PIPELINE_ENV", "").lower() == "cluster"
 
     @staticmethod
     def _env_str(key: str, default: str | None = None) -> str | None:
@@ -70,11 +52,10 @@ class VectorDBConfigFactory:
         Returns:
             VectorDBConfig configured for Qdrant.
         """
-        default_url = f"http://qdrant.{self.namespace}:6333" if self._in_cluster else "http://localhost:6333"
         return VectorDBConfig(
             provider_type="qdrant",
             collection=self._get_collection(),
-            qdrant_url=self._env_str("QDRANT_URL", default_url),
+            qdrant_url=self._env_str("QDRANT_URL", "http://localhost:6333"),
             qdrant_api_key=self._env_str("QDRANT_API_KEY"),
         )
 
@@ -126,7 +107,7 @@ class ProcessingClientsFactory:
         embedder = create_embedding_provider(config.embedding_config)
 
         # Create Qdrant vector DB provider
-        db_factory = self._vector_db_factory or VectorDBConfigFactory(config.namespace)
+        db_factory = self._vector_db_factory or VectorDBConfigFactory()
         qdrant_db = create_vector_db_provider(db_factory.create_qdrant_config())
 
         return ProcessingClients(

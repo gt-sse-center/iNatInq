@@ -58,16 +58,15 @@ class TestDatabricksStrategyInit:
 
         **What it tests:**
         - from_env() delegates to RayJobConfig.from_env()
-        - Namespace is passed correctly to config factory
         - Returned strategy has the created config
         """
         with patch("core.ingestion.strategies.databricks.RayJobConfig.from_env") as mock_from_env:
             mock_config = MagicMock(spec=RayJobConfig)
             mock_from_env.return_value = mock_config
 
-            strategy = DatabricksStrategy.from_env("test-namespace")
+            strategy = DatabricksStrategy.from_env()
 
-            mock_from_env.assert_called_once_with("test-namespace")
+            mock_from_env.assert_called_once_with()
             assert strategy.config == mock_config
 
     def test_config_property_returns_config(self, ray_job_config: RayJobConfig):

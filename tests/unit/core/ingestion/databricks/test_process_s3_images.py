@@ -42,9 +42,9 @@ class TestApplyPythonParams:
         from core.ingestion.databricks.process_s3_images import _apply_python_params
 
         with patch.dict("os.environ", {}, clear=True):
-            _apply_python_params(["S3_PREFIX=images/", "K8S_NAMESPACE=test"])
+            _apply_python_params(["S3_PREFIX=images/", "VECTOR_DB_COLLECTION=test"])
             assert os.environ["S3_PREFIX"] == "images/"
-            assert os.environ["K8S_NAMESPACE"] == "test"
+            assert os.environ["VECTOR_DB_COLLECTION"] == "test"
 
     def test_ignores_non_key_value_args(self):
         """Ignores arguments without = separator.

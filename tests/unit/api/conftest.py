@@ -183,7 +183,6 @@ def mock_settings() -> MagicMock:
         secret_access_key="minioadmin",
         bucket="pipeline",
     )
-    settings.k8s_namespace = "ml-system"
     return settings
 
 

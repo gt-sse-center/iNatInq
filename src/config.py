@@ -17,9 +17,7 @@ The following environment variables are supported (all optional with
 defaults):
 
 **Qdrant (Vector Database)**
-- `QDRANT_URL`: Qdrant service URL. Auto-detected based on environment:
-  - In-cluster: `http://qdrant.{namespace}:6333` (default)
-  - Local: `http://localhost:6333` (default)
+- `QDRANT_URL`: Qdrant service URL (default: `http://localhost:6333`)
 - `QDRANT_COLLECTION`: Default collection name for storing vectors
   (default: `documents`)
 - `QDRANT_API_KEY`: Optional API key for Qdrant Cloud authentication
@@ -32,10 +30,8 @@ defaults):
   (default: `false`)
 
 **S3/MinIO (Object Storage)**
-- `S3_ENDPOINT`: S3-compatible service endpoint. Auto-detected based
-  on environment:
-  - In-cluster: `http://minio.{namespace}:9000` (default)
-  - Local: `http://localhost:9000` (default)
+- `S3_ENDPOINT`: S3-compatible service endpoint
+  (default: `http://localhost:9000`)
 - `S3_ACCESS_KEY_ID`: S3 access key (default: `minioadmin`)
 - `S3_SECRET_ACCESS_KEY`: S3 secret key (default: `minioadmin`)
 - `S3_BUCKET`: Default bucket name for pipeline data
@@ -54,11 +50,9 @@ defaults):
   (default: `120`)
 
 **Environment Detection**
-- `PIPELINE_ENV`: Explicit environment override (`cluster` or `local`).
-  If not set, automatically detected via Kubernetes service account
-  token or `KUBERNETES_SERVICE_HOST`.
+- `PIPELINE_ENV`: Environment mode (`local` for Docker Compose).
 
-**Spark/Kubernetes**
+**Spark**
 - `SPARK_MASTER_URL`: Spark master URL
   (default: `spark://spark-master:7077` or `local[*]` for local mode)
 - `SPARK_EXECUTOR_MEMORY`: Memory per executor (default: `2g`)
@@ -92,8 +86,7 @@ defaults):
   (default: `1.0`)
 
 **Ray Job Configuration**
-- `RAY_ADDRESS`: Ray cluster address (auto-detected in K8s if
-  `K8S_NAMESPACE` is set)
+- `RAY_ADDRESS`: Ray cluster address
 - `RAY_NUM_WORKERS`: Number of Ray worker processes (default: `0`)
 - `RAY_WORKER_CPUS`: CPUs per worker (default: `1.0`)
 - `RAY_WORKER_MEMORY`: Memory per worker in bytes
@@ -192,12 +185,7 @@ defaults):
 - `VECTOR_DB_PROVIDER`: Provider type - `qdrant`
   (default: `qdrant`)
 - `VECTOR_DB_COLLECTION`: Collection name (default: `documents`)
-- `QDRANT_URL`: Qdrant service URL (backward compatible,
-  auto-detected if not set)
-
-**Kubernetes**
-- `K8S_NAMESPACE`: Kubernetes namespace for ML components
-  (default: `ml-system`)
+- `QDRANT_URL`: Qdrant service URL (default: `http://localhost:6333`)
 
 ## Usage
 
@@ -258,30 +246,6 @@ def _parse_optional_positive_int(name: str) -> int | None:
         return val if val > 0 else None
     except ValueError:
         return None
-
-
-def _is_in_cluster() -> bool:
-    """Detect if running inside a Kubernetes cluster.
-
-    Checks for:
-    1. Kubernetes service account token (most reliable)
-    2. KUBERNETES_SERVICE_HOST environment variable
-    3. Explicit PIPELINE_ENV=cluster environment variable
-
-    Returns:
-        True if running in-cluster, False otherwise.
-    """
-    # Check for explicit override
-    env_override = os.getenv("PIPELINE_ENV")
-    if env_override:
-        return env_override.lower() == "cluster"
-
-    # Check for service account token (most reliable)
-    if os.path.exists("/var/run/secrets/kubernetes.io/serviceaccount/token"):
-        return True
-
-    # Check for Kubernetes service host
-    return bool(os.getenv("KUBERNETES_SERVICE_HOST"))
 
 
 def resolve_vector_db_provider(provider: str | None = None, default: str = "qdrant") -> str:
@@ -395,7 +359,7 @@ class EmbeddingConfig(BaseModel):
     model_config = SettingsConfigDict(frozen=True)
 
     @classmethod
-    def from_env(cls, namespace: str = "ml-system") -> "EmbeddingConfig":
+    def from_env(cls) -> "EmbeddingConfig":
         """Create EmbeddingConfig from environment variables.
 
         Supports:
@@ -415,9 +379,6 @@ class EmbeddingConfig(BaseModel):
         - IMAGE_BATCH_SIZE: Images per processing batch (Ray/pipeline)
         - IMAGE_MAX_SIZE_MB: Maximum allowed image size in MB
         - IMAGE_TARGET_SIZE: Target dimension for image resizing
-
-        Args:
-            namespace: Kubernetes namespace for service discovery.
 
         Returns:
             Configured EmbeddingConfig instance.
@@ -443,8 +404,6 @@ class EmbeddingConfig(BaseModel):
         # Provider-agnostic settings
         vector_size_str = os.getenv("EMBEDDING_VECTOR_SIZE")
         vector_size: int | None = int(vector_size_str) if vector_size_str else None
-
-        in_cluster = _is_in_cluster()
 
         image_batch_size = int(os.getenv("IMAGE_BATCH_SIZE", "10"))
         image_max_size_mb = float(os.getenv("IMAGE_MAX_SIZE_MB", "10.0"))
@@ -501,8 +460,7 @@ class EmbeddingConfig(BaseModel):
             sagemaker_region = os.getenv("SAGEMAKER_REGION") or "us-east-1"
 
         elif provider_type in (ProviderType.LOCAL_CLIP, ProviderType.HOSTED_CLIP):
-            default_url = f"http://clip.{namespace}:8000" if in_cluster else "http://localhost:8000"
-            clip_url = os.getenv("CLIP_URL") or default_url
+            clip_url = os.getenv("CLIP_URL") or "http://localhost:8000"
             default_model = "ViT-B/32"
             clip_model = os.getenv("CLIP_MODEL", default_model)
             # Guardrail: Azure hosted endpoints use /score + API key and require hosted_clip mode.
@@ -518,8 +476,7 @@ class EmbeddingConfig(BaseModel):
                 )
 
         elif provider_type is ProviderType.INFINITY:
-            default_url = f"http://infinity.{namespace}:7997" if in_cluster else "http://localhost:7997"
-            infinity_url = os.getenv("INFINITY_URL") or default_url
+            infinity_url = os.getenv("INFINITY_URL") or "http://localhost:7997"
             infinity_model = os.getenv("INFINITY_MODEL") or "google/siglip-so400m-patch14-384"
 
         # Single construction with all resolved values
@@ -604,25 +561,13 @@ class MinIOConfig(BaseModel):
     model_config = SettingsConfigDict(frozen=True)
 
     @classmethod
-    def from_env(cls, namespace: str = "ml-system") -> "MinIOConfig":
+    def from_env(cls) -> "MinIOConfig":
         """Create MinIOConfig from environment variables.
-
-        Automatically resolves endpoint URL:
-        - In-cluster: Uses Kubernetes service discovery
-        - Local: Uses localhost with port-forward assumption
-
-        Args:
-            namespace: Kubernetes namespace (default: ml-system).
 
         Returns:
             Configured MinIOConfig instance.
         """
-        # Detect environment
-        in_cluster = _is_in_cluster()
-
-        # Resolve endpoint
-        default_endpoint = f"http://minio.{namespace}:9000" if in_cluster else "http://localhost:9000"
-        endpoint = os.getenv("S3_ENDPOINT", default_endpoint)
+        endpoint = os.getenv("S3_ENDPOINT", "http://localhost:9000")
 
         return cls(
             # Connection settings
@@ -677,16 +622,13 @@ class VectorDBConfig(BaseModel):
     model_config = SettingsConfigDict(frozen=True)
 
     @classmethod
-    def from_env(cls, namespace: str = "ml-system") -> "VectorDBConfig":
+    def from_env(cls) -> "VectorDBConfig":
         """Create VectorDBConfig from environment variables.
 
         Supports:
         - VECTOR_DB_PROVIDER: Provider type (qdrant)
         - VECTOR_DB_COLLECTION: Collection name (default: "documents")
-        - QDRANT_URL: Qdrant service URL (backward compatible)
-
-        Args:
-            namespace: Kubernetes namespace for service discovery.
+        - QDRANT_URL: Qdrant service URL (default: "http://localhost:6333")
 
         Returns:
             Configured VectorDBConfig instance.
@@ -700,17 +642,12 @@ class VectorDBConfig(BaseModel):
             msg = f"Invalid VECTOR_DB_PROVIDER: {provider_type}. Must be one of: {valid_providers}"
             raise ValueError(msg)
 
-        in_cluster = _is_in_cluster()
-
-        # Build config based on provider type
         collection = os.getenv("VECTOR_DB_COLLECTION", "documents")
 
-        # Default URL based on environment
-        default_url = f"http://qdrant.{namespace}:6333" if in_cluster else "http://localhost:6333"
         return cls(
             provider_type="qdrant",
             collection=collection,
-            qdrant_url=os.getenv("QDRANT_URL", default_url),
+            qdrant_url=os.getenv("QDRANT_URL", "http://localhost:6333"),
             qdrant_api_key=os.getenv("QDRANT_API_KEY"),
             qdrant_timeout=int(os.getenv("QDRANT_TIMEOUT", "300")),
             qdrant_circuit_breaker_threshold=int(os.getenv("QDRANT_CIRCUIT_BREAKER_THRESHOLD", "3")),
@@ -718,7 +655,7 @@ class VectorDBConfig(BaseModel):
         )
 
     @classmethod
-    def from_env_for_provider(cls, provider_type: str, namespace: str = "ml-system") -> "VectorDBConfig":
+    def from_env_for_provider(cls, provider_type: str) -> "VectorDBConfig":
         """Create VectorDBConfig for a specific provider type.
 
         Unlike `from_env()` which reads VECTOR_DB_PROVIDER from the environment,
@@ -727,7 +664,6 @@ class VectorDBConfig(BaseModel):
 
         Args:
             provider_type: Provider type ("qdrant").
-            namespace: Kubernetes namespace for service discovery.
 
         Returns:
             Configured VectorDBConfig for the specified provider.
@@ -740,14 +676,12 @@ class VectorDBConfig(BaseModel):
             msg = f"Invalid provider type: {provider_type}. Must be one of: {valid_providers}"
             raise ValueError(msg)
 
-        in_cluster = _is_in_cluster()
         collection = os.getenv("VECTOR_DB_COLLECTION", "documents")
 
-        default_url = f"http://qdrant.{namespace}:6333" if in_cluster else "http://localhost:6333"
         return cls(
             provider_type="qdrant",
             collection=collection,
-            qdrant_url=os.getenv("QDRANT_URL", default_url),
+            qdrant_url=os.getenv("QDRANT_URL", "http://localhost:6333"),
             qdrant_api_key=os.getenv("QDRANT_API_KEY"),
         )
 
@@ -784,8 +718,7 @@ class RayJobConfig(BaseModel):
         ray_namespace: Ray namespace for job isolation.
             Default: "ml-pipeline".
         ray_address: Ray cluster address. If set, connects to external
-            cluster. Auto-detected in K8s if K8S_NAMESPACE is set.
-            Default: None.
+            cluster. Default: None.
         dashboard_address: Ray dashboard HTTP address for job submission.
             Used by JobSubmissionClient. Auto-detected based on environment
             if not explicitly set.
@@ -909,11 +842,8 @@ class RayJobConfig(BaseModel):
     model_config = SettingsConfigDict(frozen=True)
 
     @classmethod
-    def from_env(cls, namespace: str | None = None) -> "RayJobConfig":
+    def from_env(cls) -> "RayJobConfig":
         """Create RayJobConfig from environment variables.
-
-        Args:
-            namespace: Kubernetes namespace for constructing default addresses.
 
         Returns:
             Configured RayJobConfig instance.
@@ -921,30 +851,16 @@ class RayJobConfig(BaseModel):
         Environment Variables:
             RAY_ADDRESS: Ray client address (e.g., ray://ray-head:20001).
             RAY_DASHBOARD_ADDRESS: Ray dashboard HTTP address for job submission
-                (e.g., http://ray-head:8265). If not set, auto-detected from
-                K8S_NAMESPACE or defaults to http://localhost:8265.
-            K8S_NAMESPACE: Used for auto-detecting addresses when in Kubernetes.
+                (e.g., http://ray-head:8265). If not set, defaults based on
+                PIPELINE_ENV or to http://localhost:8265.
         """
-        # Get Ray address from env, default to external cluster in K8s
         ray_address = os.environ.get("RAY_ADDRESS")
-        k8s_namespace = os.environ.get("K8S_NAMESPACE")
-
-        if ray_address is None and k8s_namespace:
-            # Auto-detect: if in K8s and RAY_ADDRESS not set, use external cluster
-            ray_address = f"ray://ray-head.{k8s_namespace}.svc.cluster.local:10001"
 
         # Get dashboard address - this is what JobSubmissionClient needs
         dashboard_address = os.environ.get("RAY_DASHBOARD_ADDRESS")
         if dashboard_address is None:
-            if k8s_namespace:
-                # In Kubernetes, use service DNS
-                dashboard_address = f"http://ray-head.{k8s_namespace}:8265"
-            elif _is_in_cluster():
-                # Fallback for in-cluster without K8S_NAMESPACE
-                dashboard_address = "http://ray-head:8265"
-            # Local development (Docker Compose uses service name)
-            # Check if PIPELINE_ENV suggests we're in Docker Compose
-            elif os.environ.get("PIPELINE_ENV") == "local":
+            # Docker Compose uses service name
+            if os.environ.get("PIPELINE_ENV") == "local":
                 dashboard_address = "http://ray-head:8265"
             else:
                 dashboard_address = "http://localhost:8265"
@@ -1247,8 +1163,6 @@ class Settings(BaseModel):
         minio: MinIO/S3 configuration for object storage. Contains
             endpoint URL, credentials, bucket name, and connection
             settings.
-        k8s_namespace: Kubernetes namespace where ML components are
-            deployed. Used for service discovery and resource naming.
         semantic_cache: Semantic cache configuration. The ``enabled``
             field controls whether caching is active.
     """
@@ -1256,29 +1170,21 @@ class Settings(BaseModel):
     embedding: EmbeddingConfig
     vector_db: VectorDBConfig
     minio: MinIOConfig
-    k8s_namespace: str
     semantic_cache: SemanticCacheConfig
 
     model_config = SettingsConfigDict(frozen=True)
 
     @classmethod
-    def from_env(cls, namespace: str | None = None) -> "Settings":
+    def from_env(cls) -> "Settings":
         """Create Settings from environment variables.
-
-        Args:
-            namespace: Kubernetes namespace. If None, uses K8S_NAMESPACE
-                env var or defaults to "ml-system".
 
         Returns:
             Configured Settings instance.
         """
-        ns = os.getenv("K8S_NAMESPACE", "ml-system") if namespace is None else namespace
-
         return cls(
-            embedding=EmbeddingConfig.from_env(namespace=ns),
-            vector_db=VectorDBConfig.from_env(namespace=ns),
-            minio=MinIOConfig.from_env(namespace=ns),
-            k8s_namespace=ns,
+            embedding=EmbeddingConfig.from_env(),
+            vector_db=VectorDBConfig.from_env(),
+            minio=MinIOConfig.from_env(),
             semantic_cache=SemanticCacheConfig.from_env(),
         )
 

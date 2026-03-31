@@ -78,7 +78,6 @@ class TestRayServiceSubmitImageJob:
         mock_client_cls.return_value = mock_client
 
         job_id = ray_service.submit_image_job(
-            namespace="test-namespace",
             s3_endpoint="http://minio.test:9000",
             s3_access_key_id="test-key",
             s3_secret_access_key="test-secret",
@@ -92,7 +91,6 @@ class TestRayServiceSubmitImageJob:
         call_kwargs = mock_client.submit_job.call_args[1]
         assert call_kwargs["entrypoint"] == "python -m core.ingestion.ray.process_s3_images"
         env_vars = call_kwargs["runtime_env"]["env_vars"]
-        assert env_vars["K8S_NAMESPACE"] == "test-namespace"
         assert env_vars["S3_BUCKET"] == "pipeline"
         assert env_vars["S3_PREFIX"] == "images/"
         assert env_vars["VECTOR_DB_COLLECTION"] == "documents"
@@ -111,7 +109,6 @@ class TestRayServiceSubmitImageJob:
 
         with pytest.raises(UpstreamError, match="RAY_DASHBOARD_ADDRESS not configured"):
             ray_service.submit_image_job(
-                namespace="test-namespace",
                 s3_endpoint="http://minio.test:9000",
                 s3_access_key_id="test-key",
                 s3_secret_access_key="test-secret",
@@ -162,7 +159,7 @@ class TestRayServiceGetJobStatus:
         mock_client.get_job_info.return_value = mock_info
         mock_client_cls.return_value = mock_client
 
-        result = ray_service.get_job_status("raysubmit_test123", "test-namespace")
+        result = ray_service.get_job_status("raysubmit_test123")
 
         assert result["status"] == "RUNNING"
         assert result["message"] == "Job is running"
@@ -201,7 +198,7 @@ class TestRayServiceGetJobStatus:
         mock_client.get_job_info.return_value = None
         mock_client_cls.return_value = mock_client
 
-        result = ray_service.get_job_status("raysubmit_test123", "test-namespace")
+        result = ray_service.get_job_status("raysubmit_test123")
 
         assert result["status"] == "PENDING"
         assert result["message"] is None
@@ -234,7 +231,7 @@ class TestRayServiceGetJobStatus:
         mock_client.get_job_info.return_value = None
         mock_client_cls.return_value = mock_client
 
-        result = ray_service.get_job_status("raysubmit_test123", "test-namespace")
+        result = ray_service.get_job_status("raysubmit_test123")
 
         assert result["status"] == "SUCCEEDED"
 
@@ -266,7 +263,7 @@ class TestRayServiceGetJobStatus:
         mock_client_cls.return_value = mock_client
 
         with pytest.raises(UpstreamError, match="Failed to get job status"):
-            ray_service.get_job_status("nonexistent-job", "test-namespace")
+            ray_service.get_job_status("nonexistent-job")
 
     @patch("core.services.ray_service.RayJobConfig.from_env")
     def test_get_status_raises_on_missing_dashboard_address(
@@ -288,7 +285,7 @@ class TestRayServiceGetJobStatus:
         mock_config.return_value = mock_ray_config
 
         with pytest.raises(UpstreamError, match="RAY_DASHBOARD_ADDRESS not configured"):
-            ray_service.get_job_status("raysubmit_test123", "test-namespace")
+            ray_service.get_job_status("raysubmit_test123")
 
 
 # =============================================================================
@@ -326,7 +323,7 @@ class TestRayServiceGetJobLogs:
         mock_client.get_job_logs.return_value = "Log line 1\nLog line 2\n"
         mock_client_cls.return_value = mock_client
 
-        result = ray_service.get_job_logs("raysubmit_test123", "test-namespace")
+        result = ray_service.get_job_logs("raysubmit_test123")
 
         assert result == "Log line 1\nLog line 2\n"
 
@@ -360,7 +357,7 @@ class TestRayServiceGetJobLogs:
         mock_client.get_job_logs.return_value = 12345
         mock_client_cls.return_value = mock_client
 
-        result = ray_service.get_job_logs("raysubmit_test123", "test-namespace")
+        result = ray_service.get_job_logs("raysubmit_test123")
 
         assert result == "12345"
         assert isinstance(result, str)
@@ -393,7 +390,7 @@ class TestRayServiceGetJobLogs:
         mock_client_cls.return_value = mock_client
 
         with pytest.raises(UpstreamError, match="Failed to get job logs"):
-            ray_service.get_job_logs("nonexistent-job", "test-namespace")
+            ray_service.get_job_logs("nonexistent-job")
 
     @patch("core.services.ray_service.RayJobConfig.from_env")
     def test_get_logs_raises_on_missing_dashboard_address(
@@ -414,7 +411,7 @@ class TestRayServiceGetJobLogs:
         mock_config.return_value = mock_ray_config
 
         with pytest.raises(UpstreamError, match="RAY_DASHBOARD_ADDRESS not configured"):
-            ray_service.get_job_logs("raysubmit_test123", "test-namespace")
+            ray_service.get_job_logs("raysubmit_test123")
 
 
 # =============================================================================
@@ -453,7 +450,7 @@ class TestRayServiceStopJob:
         mock_client_cls.return_value = mock_client
 
         # Should not raise
-        ray_service.stop_job("raysubmit_test123", "test-namespace")
+        ray_service.stop_job("raysubmit_test123")
 
         mock_client_cls.assert_called_once_with("http://ray-head.test-namespace:8265")
         mock_client.stop_job.assert_called_once_with("raysubmit_test123")
@@ -486,7 +483,7 @@ class TestRayServiceStopJob:
         mock_client_cls.return_value = mock_client
 
         with pytest.raises(UpstreamError, match="Failed to stop job"):
-            ray_service.stop_job("nonexistent-job", "test-namespace")
+            ray_service.stop_job("nonexistent-job")
 
     @patch("core.services.ray_service.RayJobConfig.from_env")
     def test_stop_job_raises_on_missing_dashboard_address(
@@ -507,7 +504,7 @@ class TestRayServiceStopJob:
         mock_config.return_value = mock_ray_config
 
         with pytest.raises(UpstreamError, match="RAY_DASHBOARD_ADDRESS not configured"):
-            ray_service.stop_job("raysubmit_test123", "test-namespace")
+            ray_service.stop_job("raysubmit_test123")
 
 
 # =============================================================================
@@ -531,7 +528,6 @@ class TestRayServiceDashboardAddress:
         **Why this test is important:**
           - Dashboard address must be configurable for different environments
           - Docker Compose uses simple hostnames (ray-head:8265)
-          - Kubernetes uses namespace DNS (ray-head.{namespace}:8265)
           - Critical for environment-agnostic deployment
 
         **What it tests:**
@@ -549,7 +545,6 @@ class TestRayServiceDashboardAddress:
         mock_client_cls.return_value = mock_client
 
         ray_service.submit_image_job(
-            namespace="custom-namespace",
             s3_endpoint="http://minio.test:9000",
             s3_access_key_id="test-key",
             s3_secret_access_key="test-secret",
@@ -592,7 +587,6 @@ class TestRayServiceDashboardAddress:
         mock_client_cls.return_value = mock_client
 
         job_id = ray_service.submit_image_job(
-            namespace="ml-system",
             s3_endpoint="http://minio:9000",
             s3_access_key_id="minioadmin",
             s3_secret_access_key="minioadmin",

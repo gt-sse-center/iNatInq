@@ -41,19 +41,18 @@ from core.ingestion.interfaces.types import (
 class TestVectorDBConfigFactory:
     """Test suite for VectorDBConfigFactory."""
 
-    def test_creates_factory_with_namespace(self) -> None:
-        """Test factory initialization with namespace.
+    def test_creates_factory(self) -> None:
+        """Test factory initialization.
 
         **Why this test is important:**
-          - Namespace is required for service discovery
-          - Validates constructor
+          - Validates constructor works without arguments
 
         **What it tests:**
-          - Factory stores namespace
+          - Factory is created successfully
         """
-        factory = VectorDBConfigFactory(namespace="ml-system")
+        factory = VectorDBConfigFactory()
 
-        assert factory.namespace == "ml-system"
+        assert factory is not None
 
     def test_creates_qdrant_config(self) -> None:
         """Test creating Qdrant configuration.
@@ -65,7 +64,7 @@ class TestVectorDBConfigFactory:
         **What it tests:**
           - Config has correct provider_type
         """
-        factory = VectorDBConfigFactory(namespace="ml-system")
+        factory = VectorDBConfigFactory()
         config = factory.create_qdrant_config()
 
         assert config.provider_type == "qdrant"
@@ -81,7 +80,7 @@ class TestVectorDBConfigFactory:
         **What it tests:**
           - Custom URL from env var used
         """
-        factory = VectorDBConfigFactory(namespace="ml-system")
+        factory = VectorDBConfigFactory()
         config = factory.create_qdrant_config()
 
         assert config.qdrant_url == "http://custom-qdrant:6333"
@@ -97,7 +96,7 @@ class TestVectorDBConfigFactory:
         **What it tests:**
           - Collection name from env var
         """
-        factory = VectorDBConfigFactory(namespace="ml-system")
+        factory = VectorDBConfigFactory()
         config = factory.create_qdrant_config()
 
         assert config.collection == "my-docs"
@@ -112,7 +111,7 @@ class TestVectorDBConfigFactory:
         **What it tests:**
           - Default collection is 'documents'
         """
-        factory = VectorDBConfigFactory(namespace="ml-system")
+        factory = VectorDBConfigFactory()
         config = factory.create_qdrant_config()
 
         # Default when env var not set

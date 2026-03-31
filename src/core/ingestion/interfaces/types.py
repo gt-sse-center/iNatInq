@@ -6,7 +6,6 @@ Ray and Spark processing implementations. All types are immutable
 """
 
 import logging
-import os
 
 import attrs
 import requests
@@ -214,7 +213,6 @@ class ProcessingConfig:
         collection: Vector database collection name.
         embed_batch_size: Number of texts to embed per API call.
         upsert_batch_size: Number of vectors to upsert per batch.
-        namespace: Kubernetes namespace for service discovery.
 
     Example:
         >>> config = ProcessingConfig(
@@ -235,7 +233,6 @@ class ProcessingConfig:
     collection: str
     embed_batch_size: int = 8
     upsert_batch_size: int = 200
-    namespace: str = attrs.field(factory=lambda: os.getenv("K8S_NAMESPACE", "ml-system"))
     s3_fetch_concurrency: int = 20
 
 

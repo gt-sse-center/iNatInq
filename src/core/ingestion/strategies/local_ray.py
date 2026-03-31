@@ -1,7 +1,7 @@
 """Local Ray cluster strategy.
 
 This strategy connects to an external Ray cluster via RAY_ADDRESS.
-Used for local development with Docker Compose or Kubernetes deployments.
+Used for local development with Docker Compose.
 """
 
 from __future__ import annotations
@@ -49,16 +49,13 @@ class LocalRayStrategy:
             self.config = RayJobConfig.from_env()
 
     @classmethod
-    def from_env(cls, namespace: str = "ml-system") -> LocalRayStrategy:
+    def from_env(cls) -> LocalRayStrategy:
         """Create strategy from environment variables.
-
-        Args:
-            namespace: Kubernetes namespace for config resolution.
 
         Returns:
             Configured LocalRayStrategy instance.
         """
-        return cls(config=RayJobConfig.from_env(namespace))
+        return cls(config=RayJobConfig.from_env())
 
     @property
     def is_active(self) -> bool:

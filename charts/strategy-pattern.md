@@ -136,7 +136,7 @@ sequenceDiagram
 | **Runtime Env** | Config-provided `runtime_env` dict | Auto-builds with `PYTHONPATH`, passthrough env vars, `INATINQ_SRC_DIR` working dir |
 | **Shutdown** | `ray.shutdown()` only (doesn't own cluster) | `ray.shutdown()` + `cluster.shutdown()` (owns the Spark cluster) |
 | **Context Manager** | Yes (`__enter__`/`__exit__`) | No |
-| **Use Case** | Local dev (Docker Compose), K8s deployments | Azure Databricks production jobs |
+| **Use Case** | Local dev (Docker Compose) | Azure Databricks production jobs |
 
 ## Adding a New Strategy
 

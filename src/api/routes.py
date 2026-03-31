@@ -126,7 +126,7 @@ def _model_override_kwargs(model: str, resolved_provider: ProviderType) -> dict[
 async def healthz() -> dict[str, str]:
     """Liveness and readiness probe endpoint.
 
-    This endpoint is used by Kubernetes liveness and readiness probes. It
+    This endpoint is used by liveness and readiness probes. It
     returns a simple success response without checking dependencies (MinIO,
     Ray, CLIP, Qdrant).
 
@@ -236,7 +236,7 @@ async def search_images(
     s = get_settings()
 
     # Build embedding config — apply model override when requested
-    embed_config = EmbeddingConfig.from_env(s.k8s_namespace)
+    embed_config = EmbeddingConfig.from_env()
     if model:
         resolved_provider = (
             ProviderType(image_provider) if image_provider else auto_detect_image_provider(model)
@@ -252,7 +252,7 @@ async def search_images(
     if provider:
         try:
             vector_db_config = VectorDBConfig.from_env_for_provider(
-                provider_type=provider.lower(), namespace=s.k8s_namespace
+                provider_type=provider.lower(),
             )
         except ValueError as e:
             raise BadRequestError(str(e)) from e
@@ -362,7 +362,7 @@ async def submit_ray_image_job(req: models.RayImageJobRequest) -> models.RayImag
         {
             "job_id": "raysubmit_1234567890",
             "status": "submitted",
-            "namespace": "ml-system",
+
             "s3_bucket": "pipeline",
             "s3_prefix": "images/",
             "collection": "documents",
@@ -371,15 +371,11 @@ async def submit_ray_image_job(req: models.RayImageJobRequest) -> models.RayImag
         ```
     """
     try:
-        settings = get_settings()
-        namespace = settings.k8s_namespace
-
         ray_service = RayService()
-        minio_cfg = MinIOConfig.from_env(namespace)
+        minio_cfg = MinIOConfig.from_env()
 
         job_id = await asyncio.to_thread(
             ray_service.submit_image_job,
-            namespace=namespace,
             s3_endpoint=minio_cfg.endpoint_url,
             s3_access_key_id=minio_cfg.access_key_id,
             s3_secret_access_key=minio_cfg.secret_access_key,
@@ -393,7 +389,6 @@ async def submit_ray_image_job(req: models.RayImageJobRequest) -> models.RayImag
         return models.RayImageJobResponse(
             job_id=job_id,
             status="submitted",
-            namespace=namespace,
             s3_bucket=req.s3_bucket,
             s3_prefix=req.s3_prefix,
             collection=req.collection,
@@ -459,7 +454,7 @@ async def submit_databricks_image_job(
         {
             "run_id": "123456789",
             "status": "submitted",
-            "namespace": "ml-system",
+
             "source": "s3",
             "s3_prefix": "images/",
             "collection": "documents",
@@ -468,26 +463,21 @@ async def submit_databricks_image_job(
         ```
     """
     try:
-        settings = get_settings()
-        namespace = settings.k8s_namespace
-
         databricks_service = DatabricksRayService()
-        embed_config = EmbeddingConfig.from_env(namespace)
+        embed_config = EmbeddingConfig.from_env()
         effective_s3_prefix: str | None
         if req.source == "inat":
             effective_s3_prefix = None
             run_id = await asyncio.to_thread(
                 databricks_service.submit_inat_image_job,
-                namespace=namespace,
                 embedding_config=embed_config,
                 collection=req.collection,
             )
         else:
             effective_s3_prefix = req.s3_prefix or ""
-            minio_cfg = MinIOConfig.from_env(namespace)
+            minio_cfg = MinIOConfig.from_env()
             run_id = await asyncio.to_thread(
                 databricks_service.submit_image_job,
-                namespace=namespace,
                 s3_endpoint=minio_cfg.endpoint_url,
                 s3_access_key_id=minio_cfg.access_key_id,
                 s3_secret_access_key=minio_cfg.secret_access_key,
@@ -502,7 +492,6 @@ async def submit_databricks_image_job(
         return models.DatabricksImageJobResponse(
             run_id=str(run_id),
             status="submitted",
-            namespace=namespace,
             source=req.source,
             s3_prefix=effective_s3_prefix,
             collection=req.collection,
@@ -539,22 +528,18 @@ async def submit_databricks_cdc_producer_job() -> models.DatabricksCdcProducerJo
         {
             "run_id": "123456789",
             "status": "submitted",
-            "namespace": "ml-system",
+
             "submitted_at": "2026-03-26T15:30:45.123456Z"
         }
         ```
     """
     try:
-        settings = get_settings()
-        namespace = settings.k8s_namespace
-
         databricks_service = DatabricksRayService()
-        run_id = await asyncio.to_thread(databricks_service.submit_s3_autoloader_job, namespace=namespace)
+        run_id = await asyncio.to_thread(databricks_service.submit_s3_autoloader_job)
 
         return models.DatabricksCdcProducerJobResponse(
             run_id=str(run_id),
             status="submitted",
-            namespace=namespace,
             submitted_at=str(datetime.now(timezone.utc).isoformat()),  # noqa: UP017
         )
     except (PipelineError, UpstreamError):
@@ -591,21 +576,19 @@ async def process_dlq_entries_ray() -> models.RayProcessDLQResponse:
         {
             "job_id": "raysubmit_1234567890",
             "status": "submitted",
-            "namespace": "ml-system",
+
             "submitted_at": "2026-03-26T15:30:45.123456Z"
         }
         ```
     """
     try:
         settings = get_settings()
-        namespace = settings.k8s_namespace
 
         ray_service = RayService()
-        minio_cfg = MinIOConfig.from_env(namespace)
+        minio_cfg = MinIOConfig.from_env()
 
         job_id = await asyncio.to_thread(
             ray_service.submit_image_job,
-            namespace=namespace,
             s3_endpoint=minio_cfg.endpoint_url,
             s3_access_key_id=minio_cfg.access_key_id,
             s3_secret_access_key=minio_cfg.secret_access_key,
@@ -617,7 +600,6 @@ async def process_dlq_entries_ray() -> models.RayProcessDLQResponse:
         return models.RayProcessDLQResponse(
             job_id=job_id,
             status="submitted",
-            namespace=namespace,
             submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
         )
     except (PipelineError, UpstreamError):
@@ -656,21 +638,19 @@ async def process_dlq_entries_databricks() -> models.DatabricksProcessDLQRespons
         {
             "run_id": "123456789",
             "status": "submitted",
-            "namespace": "ml-system",
+
             "submitted_at": "2026-03-26T15:30:45.123456Z"
         }
         ```
     """
     try:
         settings = get_settings()
-        namespace = settings.k8s_namespace
 
         databricks_service = DatabricksRayService()
-        embed_config = EmbeddingConfig.from_env(namespace)
-        minio_cfg = MinIOConfig.from_env(namespace)
+        embed_config = EmbeddingConfig.from_env()
+        minio_cfg = MinIOConfig.from_env()
         run_id = await asyncio.to_thread(
             databricks_service.submit_image_job,
-            namespace=namespace,
             s3_endpoint=minio_cfg.endpoint_url,
             s3_access_key_id=minio_cfg.access_key_id,
             s3_secret_access_key=minio_cfg.secret_access_key,
@@ -683,7 +663,6 @@ async def process_dlq_entries_databricks() -> models.DatabricksProcessDLQRespons
         return models.DatabricksProcessDLQResponse(
             run_id=str(run_id),
             status="submitted",
-            namespace=namespace,
             submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
         )
     except (PipelineError, UpstreamError):
@@ -720,21 +699,19 @@ async def submit_databricks_cdc_consumer_job() -> models.DatabricksCdcConsumerJo
         {
             "run_id": "123456789",
             "status": "submitted",
-            "namespace": "ml-system",
+
             "submitted_at": "2026-03-26T15:30:45.123456Z"
         }
         ```
     """
     try:
         settings = get_settings()
-        namespace = settings.k8s_namespace
 
         databricks_service = DatabricksRayService()
-        minio_cfg = MinIOConfig.from_env(namespace)
-        embed_config = EmbeddingConfig.from_env(namespace)
+        minio_cfg = MinIOConfig.from_env()
+        embed_config = EmbeddingConfig.from_env()
         run_id = await asyncio.to_thread(
             databricks_service.submit_s3_bronze_image_job,
-            namespace=namespace,
             s3_endpoint=minio_cfg.endpoint_url,
             s3_access_key_id=minio_cfg.access_key_id,
             s3_secret_access_key=minio_cfg.secret_access_key,
@@ -746,7 +723,6 @@ async def submit_databricks_cdc_consumer_job() -> models.DatabricksCdcConsumerJo
         return models.DatabricksCdcConsumerJobResponse(
             run_id=str(run_id),
             status="submitted",
-            namespace=namespace,
             submitted_at=datetime.now(timezone.utc).isoformat(),  # noqa: UP017
         )
     except (PipelineError, UpstreamError):
@@ -860,9 +836,8 @@ async def get_ray_job_status(job_id: str) -> models.RayJobStatusResponse:
         ```
     """
     try:
-        settings = get_settings()
         ray_service = RayService()
-        status = await asyncio.to_thread(ray_service.get_job_status, job_id, settings.k8s_namespace)
+        status = await asyncio.to_thread(ray_service.get_job_status, job_id)
 
         return models.RayJobStatusResponse(job_id=job_id, **status)
     except (PipelineError, UpstreamError):
@@ -898,9 +873,8 @@ async def get_ray_job_logs(job_id: str) -> models.RayJobLogsResponse:
         ```
     """
     try:
-        settings = get_settings()
         ray_service = RayService()
-        logs = await asyncio.to_thread(ray_service.get_job_logs, job_id, settings.k8s_namespace)
+        logs = await asyncio.to_thread(ray_service.get_job_logs, job_id)
 
         return models.RayJobLogsResponse(job_id=job_id, logs=logs)
     except (PipelineError, UpstreamError):
@@ -950,9 +924,8 @@ async def stop_ray_job(job_id: str) -> models.RayJobStopResponse:
         ```
     """
     try:
-        settings = get_settings()
         ray_service = RayService()
-        await asyncio.to_thread(ray_service.stop_job, job_id, settings.k8s_namespace)
+        await asyncio.to_thread(ray_service.stop_job, job_id)
 
         return models.RayJobStopResponse(job_id=job_id, status="stopped")
     except (PipelineError, UpstreamError):

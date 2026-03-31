@@ -112,7 +112,6 @@ def _dedupe(keys: tuple[str, ...]) -> tuple[str, ...]:
 
 DATABRICKS_RUNTIME_PASSTHROUGH_ENV_VARS = _dedupe(
     (
-        "K8S_NAMESPACE",
         *S3_CONNECTION_ENV_KEYS,
         *S3_TUNING_ENV_KEYS,
         "VECTOR_DB_PROVIDER",

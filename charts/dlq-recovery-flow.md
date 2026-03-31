@@ -12,12 +12,12 @@ flowchart TB
     end
 
     subgraph DLQCapture["DLQ Capture (@with_dlq decorator)"]
-        E["dlq.enqueue_failed_ingestion(<br/>image_id, metadata={error, s3_key, ...})"]
-        F[DLQBackend.insert()]
+        E["dlq.enqueue_failed_ingestion#40;<br/>image_id, metadata=#123;error, s3_key, ...#125;#41;"]
+        F["DLQBackend.insert()"]
     end
 
     subgraph Redis["Redis DLQ Storage"]
-        G[("Redis SET<br/>dlq:{collection}:{image_id}<br/>+ metadata JSON")]
+        G[("Redis SET<br/>dlq:#123;collection#125;:#123;image_id#125;<br/>+ metadata JSON")]
     end
 
     subgraph Recovery["DLQ Recovery (API-triggered)"]
@@ -31,7 +31,7 @@ flowchart TB
     end
 
     subgraph Monitoring["Observability"]
-        O[GET /ray/jobs/{id}/logs<br/>Shows DLQ counts]
+        O[GET /ray/jobs/#123;id#125;/logs<br/>Shows DLQ counts]
         P[Prometheus metrics<br/>dlq_enqueued_total]
     end
 

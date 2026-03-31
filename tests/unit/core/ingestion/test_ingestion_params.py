@@ -69,7 +69,6 @@ def test_build_image_ingestion_env_includes_required_and_optional(
     )
 
     env_vars = build_image_ingestion_env(
-        namespace="ml-system",
         s3_endpoint="http://minio.test:9000",
         s3_access_key_id="access-key",
         s3_secret_access_key="secret-key",
@@ -81,7 +80,6 @@ def test_build_image_ingestion_env_includes_required_and_optional(
         pull_from_dlq=pull_from_dlq,
     )
 
-    assert env_vars["K8S_NAMESPACE"] == "ml-system"
     assert env_vars["S3_PREFIX"] == "images/"
     assert env_vars["S3_ENDPOINT"] == "http://minio.test:9000"
     assert env_vars["S3_ACCESS_KEY_ID"] == "access-key"
@@ -135,13 +133,11 @@ def test_build_inat_image_ingestion_env_excludes_s3_connection_keys(monkeypatch:
     )
 
     env_vars = build_inat_image_ingestion_env(
-        namespace="ml-system",
         embedding_config=embedding_config,
         collection="images",
         extra_env_keys=["EXTRA_ENV"],
     )
 
-    assert env_vars["K8S_NAMESPACE"] == "ml-system"
     assert env_vars["VECTOR_DB_COLLECTION"] == "images"
     assert env_vars["INAT_MAX_ROWS"] == "500"
     assert env_vars["INAT_METADATA_URL"] == "s3://inaturalist-open-data/photos.csv.gz"
@@ -161,7 +157,7 @@ def test_build_s3_autoloader_env_requires_mandatory_keys(monkeypatch: pytest.Mon
     monkeypatch.delenv("AUTOLOADER_CHECKPOINT_LOCATION", raising=False)
 
     with pytest.raises(ValueError, match="Missing required Auto Loader config"):
-        build_s3_autoloader_env(namespace="ml-system")
+        build_s3_autoloader_env()
 
 
 def test_build_s3_autoloader_env_rejects_whitespace_required_values(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -172,7 +168,7 @@ def test_build_s3_autoloader_env_rejects_whitespace_required_values(monkeypatch:
     monkeypatch.setenv("AUTOLOADER_CHECKPOINT_LOCATION", "dbfs:/pipelines/checkpoints")
 
     with pytest.raises(ValueError, match="S3_BUCKET"):
-        build_s3_autoloader_env(namespace="ml-system")
+        build_s3_autoloader_env()
 
 
 def test_build_s3_autoloader_env_requires_complete_minio_group(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -186,7 +182,7 @@ def test_build_s3_autoloader_env_requires_complete_minio_group(monkeypatch: pyte
     monkeypatch.setenv("S3_SECRET_ACCESS_KEY", "secret")
 
     with pytest.raises(ValueError, match="Missing required MinIO S3 config"):
-        build_s3_autoloader_env(namespace="ml-system")
+        build_s3_autoloader_env()
 
 
 def test_build_s3_autoloader_env_includes_required_and_optional(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -206,11 +202,9 @@ def test_build_s3_autoloader_env_includes_required_and_optional(monkeypatch: pyt
     monkeypatch.setenv("INATINQ_SRC_DIR", "/Workspace/Users/test/iNatInq/src")
 
     env_vars = build_s3_autoloader_env(
-        namespace="ml-system",
         extra_env_keys=["INATINQ_SRC_DIR"],
     )
 
-    assert env_vars["K8S_NAMESPACE"] == "ml-system"
     assert env_vars["S3_BUCKET"] == "pipeline"
     assert env_vars["S3_PREFIX"] == "images"
     assert env_vars["AUTOLOADER_BRONZE_TABLE"] == "main.default.images_bronze"
@@ -233,7 +227,6 @@ def test_build_s3_bronze_image_ingestion_env_requires_bronze_table(monkeypatch) 
 
     with pytest.raises(ValueError, match="AUTOLOADER_BRONZE_TABLE"):
         build_s3_bronze_image_ingestion_env(
-            namespace="ml-system",
             s3_endpoint="http://minio:9000",
             s3_access_key_id="access",
             s3_secret_access_key="secret",
@@ -257,7 +250,6 @@ def test_build_s3_bronze_image_ingestion_env_includes_cdc_keys(monkeypatch) -> N
     )
 
     env_vars = build_s3_bronze_image_ingestion_env(
-        namespace="ml-system",
         s3_endpoint="http://minio:9000",
         s3_access_key_id="access",
         s3_secret_access_key="secret",
@@ -267,7 +259,6 @@ def test_build_s3_bronze_image_ingestion_env_includes_cdc_keys(monkeypatch) -> N
         extra_env_keys=["INATINQ_SRC_DIR"],
     )
 
-    assert env_vars["K8S_NAMESPACE"] == "ml-system"
     assert env_vars["S3_ENDPOINT"] == "http://minio:9000"
     assert env_vars["S3_ACCESS_KEY_ID"] == "access"
     assert env_vars["S3_SECRET_ACCESS_KEY"] == "secret"
@@ -291,7 +282,6 @@ def test_build_inat_image_ingestion_env_passthroughs_vector_db_targets(monkeypat
     )
 
     env_vars = build_inat_image_ingestion_env(
-        namespace="ml-system",
         embedding_config=embedding_config,
         collection="images",
     )

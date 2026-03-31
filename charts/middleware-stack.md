@@ -117,5 +117,5 @@ flowchart LR
 
 - **Pure ASGI classes** (not `BaseHTTPMiddleware`) — avoids per-request thread overhead and memory stream buffering
 - **`send` wrapper** in `LoggerMiddleware` captures status code from the `http.response.start` ASGI message without buffering the full response
-- **Logger suppression** in `HealthzFilterMiddleware` uses `setLevel(CRITICAL+1)` to silence K8s probe noise at the source, restored in a `finally` block
+- **Logger suppression** in `HealthzFilterMiddleware` uses `setLevel(CRITICAL+1)` to silence health probe noise at the source, restored in a `finally` block
 - **Prometheus metrics** (`/metrics`) are added separately via `prometheus-fastapi-instrumentator`, not as middleware

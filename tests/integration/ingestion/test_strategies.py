@@ -39,7 +39,7 @@ class TestLocalRayStrategyWithContainer:
 
         **Why this test is important:**
           - Validates external cluster connection capability
-          - Critical for Docker/K8s deployments
+          - Critical for Docker deployments
           - Verifies address parsing and connection
 
         **What it tests:**
@@ -162,7 +162,7 @@ class TestLocalRayStrategyStandalone:
         **Why this test is important:**
           - Validates strategy init()/shutdown() with real cluster
           - Ensures config is passed correctly
-          - Critical for Docker/K8s deployments
+          - Critical for Docker deployments
 
         **What it tests:**
           - Strategy init() connects to cluster

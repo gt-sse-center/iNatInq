@@ -74,7 +74,7 @@ Once running, services are available at:
 
 ## Architecture
 
-The Docker Compose stack emulates the Kubernetes `ml-system` namespace from `modern-web-application/zarf/k8s/dev/`:
+The Docker Compose stack provides the local development environment:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -199,17 +199,6 @@ uv run inq databricks down
 ```
 
 The local containers will still run but won't be used when cloud credentials are set.
-
-## Comparison with Kubernetes
-
-| Feature | Kubernetes | Docker Compose |
-|---------|------------|----------------|
-| Service Discovery | DNS (`service.namespace`) | Container names |
-| Storage | PersistentVolumeClaims | Docker volumes |
-| Secrets | K8s Secrets/ConfigMaps | `.env` files |
-| Scaling | HPA/Replicas | `--scale` flag |
-| Ray | Ray Operator | Ray head + workers |
-| Health Checks | Probes | HEALTHCHECK |
 
 ## Troubleshooting
 

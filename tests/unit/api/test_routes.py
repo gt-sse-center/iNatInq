@@ -368,24 +368,21 @@ class TestRayJobEndpoints:
           - Tests RayService.submit_image_job integration
           - Ensures proper response format (job_id, s3_bucket, s3_prefix, collection)
         """
-        with patch(
-            "api.routes.RayService",
-            return_value=mock_ray_service,
+        with (
+            patch("api.routes.RayService", return_value=mock_ray_service),
+            patch("api.routes.MinIOConfig.from_env") as mock_minio,
         ):
-            with patch("api.routes.get_settings") as mock_settings:
-                mock_settings.return_value.k8s_namespace = "ml-system"
-                with patch("api.routes.MinIOConfig.from_env") as mock_minio:
-                    mock_minio.return_value.endpoint_url = "http://minio:9000"
-                    mock_minio.return_value.access_key_id = "minioadmin"
-                    mock_minio.return_value.secret_access_key = "minioadmin"
-                    response = test_client.post(
-                        "/ray/jobs/images",
-                        json={
-                            "s3_bucket": "pipeline",
-                            "s3_prefix": "images/",
-                            "collection": "documents",
-                        },
-                    )
+            mock_minio.return_value.endpoint_url = "http://minio:9000"
+            mock_minio.return_value.access_key_id = "minioadmin"
+            mock_minio.return_value.secret_access_key = "minioadmin"
+            response = test_client.post(
+                "/ray/jobs/images",
+                json={
+                    "s3_bucket": "pipeline",
+                    "s3_prefix": "images/",
+                    "collection": "documents",
+                },
+            )
 
         assert response.status_code == 202
         data = response.json()
@@ -415,9 +412,7 @@ class TestRayJobEndpoints:
             "api.routes.RayService",
             return_value=mock_ray_service,
         ):
-            with patch("api.routes.get_settings") as mock_settings:
-                mock_settings.return_value.k8s_namespace = "ml-system"
-                response = test_client.get("/ray/jobs/raysubmit_1234567890")
+            response = test_client.get("/ray/jobs/raysubmit_1234567890")
 
         assert response.status_code == 200
         data = response.json()
@@ -438,9 +433,7 @@ class TestRayJobEndpoints:
             "api.routes.RayService",
             return_value=mock_ray_service,
         ):
-            with patch("api.routes.get_settings") as mock_settings:
-                mock_settings.return_value.k8s_namespace = "ml-system"
-                response = test_client.get("/ray/jobs/raysubmit_1234567890/logs")
+            response = test_client.get("/ray/jobs/raysubmit_1234567890/logs")
 
         assert response.status_code == 200
         data = response.json()
@@ -462,9 +455,7 @@ class TestRayJobEndpoints:
             "api.routes.RayService",
             return_value=mock_ray_service,
         ):
-            with patch("api.routes.get_settings") as mock_settings:
-                mock_settings.return_value.k8s_namespace = "ml-system"
-                response = test_client.delete("/ray/jobs/raysubmit_1234567890")
+            response = test_client.delete("/ray/jobs/raysubmit_1234567890")
 
         assert response.status_code == 200
         data = response.json()
@@ -485,10 +476,8 @@ class TestRayJobEndpoints:
 
         with (
             patch("api.routes.RayService", return_value=mock_service),
-            patch("api.routes.get_settings") as mock_settings,
             patch("api.routes.MinIOConfig.from_env") as mock_minio,
         ):
-            mock_settings.return_value.k8s_namespace = "ml-system"
             mock_minio.return_value.endpoint_url = "http://minio:9000"
             mock_minio.return_value.access_key_id = "minioadmin"
             mock_minio.return_value.secret_access_key = "minioadmin"
@@ -516,7 +505,6 @@ class TestRayJobEndpoints:
             patch("api.routes.get_settings") as mock_settings,
             patch("api.routes.MinIOConfig.from_env") as mock_minio,
         ):
-            mock_settings.return_value.k8s_namespace = "ml-system"
             mock_settings.return_value.vector_db.collection = "documents"
             mock_minio.return_value.endpoint_url = "http://minio:9000"
             mock_minio.return_value.access_key_id = "minioadmin"
@@ -528,7 +516,6 @@ class TestRayJobEndpoints:
         assert response.status_code == 202
         data = response.json()
         assert data["status"] == "submitted"
-        assert data["namespace"] == "ml-system"
         assert data["job_id"] == "raysubmit_1234567890"
 
         mock_ray_service.submit_image_job.assert_called_once()
@@ -548,56 +535,54 @@ class TestDatabricksJobEndpoints:
 
     def test_submit_databricks_image_job_s3_success(self, test_client: TestClient) -> None:
         """Test S3 image job submission path uses submit_image_job."""
-        with patch("api.routes.DatabricksRayService") as mock_service_cls:
+        with (
+            patch("api.routes.DatabricksRayService") as mock_service_cls,
+            patch("api.routes.MinIOConfig.from_env") as mock_minio,
+            patch("api.routes.EmbeddingConfig.from_env") as mock_embed_cfg,
+        ):
             mock_service = MagicMock()
             mock_service.submit_image_job.return_value = 456
             mock_service_cls.return_value = mock_service
-
-            with patch("api.routes.get_settings") as mock_settings:
-                mock_settings.return_value.k8s_namespace = "ml-system"
-                with patch("api.routes.MinIOConfig.from_env") as mock_minio:
-                    mock_minio.return_value.endpoint_url = "http://minio:9000"
-                    mock_minio.return_value.access_key_id = "minioadmin"
-                    mock_minio.return_value.secret_access_key = "minioadmin"
-                    mock_minio.return_value.bucket = "pipeline"
-                    with patch("api.routes.EmbeddingConfig.from_env") as mock_embed_cfg:
-                        mock_embed_cfg.return_value = MagicMock()
-                        response = test_client.post(
-                            "/databricks/jobs/images",
-                            json={
-                                "source": "s3",
-                                "s3_prefix": "images/",
-                                "collection": "documents",
-                            },
-                        )
+            mock_minio.return_value.endpoint_url = "http://minio:9000"
+            mock_minio.return_value.access_key_id = "minioadmin"
+            mock_minio.return_value.secret_access_key = "minioadmin"
+            mock_minio.return_value.bucket = "pipeline"
+            mock_embed_cfg.return_value = MagicMock()
+            response = test_client.post(
+                "/databricks/jobs/images",
+                json={
+                    "source": "s3",
+                    "s3_prefix": "images/",
+                    "collection": "documents",
+                },
+            )
 
         assert response.status_code == 202
         data = response.json()
         assert data["run_id"] == "456"
         assert data["source"] == "s3"
-        mock_minio.assert_called_once_with("ml-system")
+        mock_minio.assert_called_once_with()
         mock_service.submit_image_job.assert_called_once()
         mock_service.submit_inat_image_job.assert_not_called()
 
     def test_submit_databricks_image_job_inat_success(self, test_client: TestClient) -> None:
         """Test iNat image job submission path bypasses MinIO and uses dedicated submit method."""
-        with patch("api.routes.DatabricksRayService") as mock_service_cls:
+        with (
+            patch("api.routes.DatabricksRayService") as mock_service_cls,
+            patch("api.routes.MinIOConfig.from_env") as mock_minio,
+            patch("api.routes.EmbeddingConfig.from_env") as mock_embed_cfg,
+        ):
             mock_service = MagicMock()
             mock_service.submit_inat_image_job.return_value = 789
             mock_service_cls.return_value = mock_service
-
-            with patch("api.routes.get_settings") as mock_settings:
-                mock_settings.return_value.k8s_namespace = "ml-system"
-                with patch("api.routes.MinIOConfig.from_env") as mock_minio:
-                    with patch("api.routes.EmbeddingConfig.from_env") as mock_embed_cfg:
-                        mock_embed_cfg.return_value = MagicMock()
-                        response = test_client.post(
-                            "/databricks/jobs/images",
-                            json={
-                                "source": "inat",
-                                "collection": "documents",
-                            },
-                        )
+            mock_embed_cfg.return_value = MagicMock()
+            response = test_client.post(
+                "/databricks/jobs/images",
+                json={
+                    "source": "inat",
+                    "collection": "documents",
+                },
+            )
 
         assert response.status_code == 202
         data = response.json()
@@ -606,7 +591,6 @@ class TestDatabricksJobEndpoints:
         assert data["s3_prefix"] is None
         mock_minio.assert_not_called()
         mock_service.submit_inat_image_job.assert_called_once_with(
-            namespace="ml-system",
             embedding_config=mock_embed_cfg.return_value,
             collection="documents",
         )
@@ -614,27 +598,26 @@ class TestDatabricksJobEndpoints:
 
     def test_submit_databricks_image_job_s3_defaults_empty_prefix(self, test_client: TestClient) -> None:
         """Test S3 image submission defaults missing s3_prefix to bucket root."""
-        with patch("api.routes.DatabricksRayService") as mock_service_cls:
+        with (
+            patch("api.routes.DatabricksRayService") as mock_service_cls,
+            patch("api.routes.MinIOConfig.from_env") as mock_minio,
+            patch("api.routes.EmbeddingConfig.from_env") as mock_embed_cfg,
+        ):
             mock_service = MagicMock()
             mock_service.submit_image_job.return_value = 987
             mock_service_cls.return_value = mock_service
-
-            with patch("api.routes.get_settings") as mock_settings:
-                mock_settings.return_value.k8s_namespace = "ml-system"
-                with patch("api.routes.MinIOConfig.from_env") as mock_minio:
-                    mock_minio.return_value.endpoint_url = "http://minio:9000"
-                    mock_minio.return_value.access_key_id = "minioadmin"
-                    mock_minio.return_value.secret_access_key = "minioadmin"
-                    mock_minio.return_value.bucket = "pipeline"
-                    with patch("api.routes.EmbeddingConfig.from_env") as mock_embed_cfg:
-                        mock_embed_cfg.return_value = MagicMock()
-                        response = test_client.post(
-                            "/databricks/jobs/images",
-                            json={
-                                "source": "s3",
-                                "collection": "documents",
-                            },
-                        )
+            mock_minio.return_value.endpoint_url = "http://minio:9000"
+            mock_minio.return_value.access_key_id = "minioadmin"
+            mock_minio.return_value.secret_access_key = "minioadmin"
+            mock_minio.return_value.bucket = "pipeline"
+            mock_embed_cfg.return_value = MagicMock()
+            response = test_client.post(
+                "/databricks/jobs/images",
+                json={
+                    "source": "s3",
+                    "collection": "documents",
+                },
+            )
 
         assert response.status_code == 202
         data = response.json()
@@ -657,7 +640,6 @@ class TestDatabricksJobEndpoints:
             mock_service = MagicMock()
             mock_service.submit_image_job.return_value = 456
             mock_service_cls.return_value = mock_service
-            mock_settings.return_value.k8s_namespace = "ml-system"
             mock_settings.return_value.vector_db.collection = "documents"
             mock_minio.return_value.endpoint_url = "http://minio:9000"
             mock_minio.return_value.access_key_id = "minioadmin"
@@ -669,7 +651,6 @@ class TestDatabricksJobEndpoints:
         assert response.status_code == 202
         data = response.json()
         assert data["status"] == "submitted"
-        assert data["namespace"] == "ml-system"
         assert data["run_id"] == "456"
 
         mock_service.submit_image_job.assert_called_once()
@@ -690,19 +671,16 @@ class TestDatabricksJobEndpoints:
 
         assert response.status_code == 422
 
-    @patch("api.routes.get_settings")
     @patch("api.routes.DatabricksRayService")
     def test_submit_databricks_cdc_producer_job_success(
         self,
         mock_service_cls: MagicMock,
-        mock_settings: MagicMock,
         test_client: TestClient,
     ) -> None:
         """CDC producer submission should use dedicated Databricks service method."""
         mock_service = MagicMock()
         mock_service.submit_s3_autoloader_job.return_value = 222
         mock_service_cls.return_value = mock_service
-        mock_settings.return_value.k8s_namespace = "ml-system"
 
         response = test_client.post("/databricks/jobs/cdc-producer")
 
@@ -710,8 +688,7 @@ class TestDatabricksJobEndpoints:
         data = response.json()
         assert data["run_id"] == "222"
         assert data["status"] == "submitted"
-        assert data["namespace"] == "ml-system"
-        mock_service.submit_s3_autoloader_job.assert_called_once_with(namespace="ml-system")
+        mock_service.submit_s3_autoloader_job.assert_called_once_with()
         mock_service.submit_image_job.assert_not_called()
         mock_service.submit_inat_image_job.assert_not_called()
 
@@ -742,7 +719,6 @@ class TestDatabricksJobEndpoints:
         mock_service = MagicMock()
         mock_service.submit_s3_bronze_image_job.return_value = 333
         mock_service_cls.return_value = mock_service
-        mock_settings.return_value.k8s_namespace = "ml-system"
         mock_settings.return_value.vector_db.collection = "documents"
         mock_minio.return_value.endpoint_url = "http://minio:9000"
         mock_minio.return_value.access_key_id = "minioadmin"
@@ -756,9 +732,7 @@ class TestDatabricksJobEndpoints:
         data = response.json()
         assert data["run_id"] == "333"
         assert data["status"] == "submitted"
-        assert data["namespace"] == "ml-system"
         mock_service.submit_s3_bronze_image_job.assert_called_once_with(
-            namespace="ml-system",
             s3_endpoint="http://minio:9000",
             s3_access_key_id="minioadmin",
             s3_secret_access_key="minioadmin",

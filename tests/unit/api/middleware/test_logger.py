@@ -125,7 +125,7 @@ class TestLoggerMiddleware:
 
         **Why this test is important:**
           - Validates log filtering
-          - Reduces noise from K8s probes
+          - Reduces noise from health probes
           - Tests special case handling
         """
         client = TestClient(app_with_logger_middleware)

@@ -82,7 +82,6 @@ class TestDatabricksRayServiceSubmitImageJob:
 
         service = DatabricksRayService()
         run_id = service.submit_image_job(
-            namespace="test-namespace",
             s3_endpoint="http://minio.test:9000",
             s3_access_key_id="test-key",
             s3_secret_access_key="test-secret",
@@ -98,7 +97,6 @@ class TestDatabricksRayServiceSubmitImageJob:
         call_kwargs = mock_client.jobs.run_now.call_args.kwargs
         assert call_kwargs["job_id"] == 123
         params = call_kwargs["python_params"]
-        assert "K8S_NAMESPACE=test-namespace" in params
         assert "S3_PREFIX=images/" in params
         assert "S3_ENDPOINT=http://minio.test:9000" in params
         assert "S3_ACCESS_KEY_ID=test-key" in params
@@ -149,7 +147,6 @@ class TestDatabricksRayServiceSubmitImageJob:
         service = DatabricksRayService()
         with pytest.raises(UpstreamError, match="Failed to submit Databricks image job"):
             service.submit_image_job(
-                namespace="test-namespace",
                 s3_endpoint="http://minio.test:9000",
                 s3_access_key_id="test-key",
                 s3_secret_access_key="test-secret",
@@ -180,7 +177,6 @@ class TestDatabricksRayServiceSubmitImageJob:
         service = DatabricksRayService()
         with pytest.raises(ValueError, match="DATABRICKS_JOB_ID"):
             service.submit_image_job(
-                namespace="test-namespace",
                 s3_endpoint="http://minio.test:9000",
                 s3_access_key_id="test-key",
                 s3_secret_access_key="test-secret",
@@ -232,7 +228,6 @@ class TestDatabricksRayServiceSubmitINatImageJob:
 
         service = DatabricksRayService()
         run_id = service.submit_inat_image_job(
-            namespace="test-namespace",
             s3_prefix="images/",
             embedding_config=embedding_config,
             collection="test-image-collection",
@@ -268,7 +263,6 @@ class TestDatabricksRayServiceSubmitINatImageJob:
         service = DatabricksRayService()
         with pytest.raises(ValueError, match="DATABRICKS_INAT_JOB_ID"):
             service.submit_inat_image_job(
-                namespace="test-namespace",
                 s3_prefix="images/",
                 embedding_config=embedding_config,
                 collection="test-image-collection",
@@ -316,14 +310,13 @@ class TestDatabricksRayServiceSubmitS3CDCJobs:
         mock_client_cls.return_value = mock_client
 
         service = DatabricksRayService()
-        run_id = service.submit_s3_autoloader_job(namespace="test-namespace")
+        run_id = service.submit_s3_autoloader_job()
 
         assert run_id == 654
         mock_config.assert_called_once_with(require_job_id=False)
         call_kwargs = mock_client.jobs.run_now.call_args.kwargs
         assert call_kwargs["job_id"] == 321
         params = call_kwargs["python_params"]
-        assert "K8S_NAMESPACE=test-namespace" in params
         assert "S3_BUCKET=pipeline" in params
         assert "S3_PREFIX=images" in params
         assert "AUTOLOADER_BRONZE_TABLE=main.default.images_bronze" in params
@@ -348,7 +341,7 @@ class TestDatabricksRayServiceSubmitS3CDCJobs:
 
         service = DatabricksRayService()
         with pytest.raises(ValueError, match="DATABRICKS_S3_AUTOLOADER_JOB_ID"):
-            service.submit_s3_autoloader_job(namespace="test-namespace")
+            service.submit_s3_autoloader_job()
         mock_config.assert_called_once_with(require_job_id=False)
 
     @patch.dict(
@@ -388,7 +381,6 @@ class TestDatabricksRayServiceSubmitS3CDCJobs:
         )
         service = DatabricksRayService()
         run_id = service.submit_s3_bronze_image_job(
-            namespace="test-namespace",
             s3_endpoint="http://minio.test:9000",
             s3_access_key_id="test-key",
             s3_secret_access_key="test-secret",
@@ -402,7 +394,6 @@ class TestDatabricksRayServiceSubmitS3CDCJobs:
         call_kwargs = mock_client.jobs.run_now.call_args.kwargs
         assert call_kwargs["job_id"] == 654
         params = call_kwargs["python_params"]
-        assert "K8S_NAMESPACE=test-namespace" in params
         assert "AUTOLOADER_BRONZE_TABLE=main.default.images_bronze" in params
         assert "CDC_PROGRESS_TABLE=main.default.images_progress" in params
         assert "S3_ENDPOINT=http://minio.test:9000" in params
@@ -431,7 +422,6 @@ class TestDatabricksRayServiceSubmitS3CDCJobs:
         service = DatabricksRayService()
         with pytest.raises(ValueError, match="DATABRICKS_FROM_BRONZE_JOB_ID"):
             service.submit_s3_bronze_image_job(
-                namespace="test-namespace",
                 s3_endpoint="http://minio.test:9000",
                 s3_access_key_id="test-key",
                 s3_secret_access_key="test-secret",
@@ -632,7 +622,6 @@ class TestDatabricksRayServiceStatusLogs:
         service = DatabricksRayService()
         with pytest.raises(UpstreamError, match="Failed to submit Databricks image job"):
             service.submit_image_job(
-                namespace="test-namespace",
                 s3_endpoint="http://minio.test:9000",
                 s3_access_key_id="test-key",
                 s3_secret_access_key="test-secret",

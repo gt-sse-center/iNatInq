@@ -81,22 +81,20 @@ ENV=dev uv run inq up     # Loads configs/environments/dev.yaml
 # No ENV set               # Loads configs/environments/local.yaml (default)
 ```
 
-## Auto-Detection
+## Service URL Defaults
 
-`_is_in_cluster()` in `config.py` auto-detects the runtime environment:
+All service URLs default to `localhost:PORT`. Docker Compose and Databricks
+deployments set explicit env vars to override these defaults.
 
-```mermaid
-flowchart TD
-    A{PIPELINE_ENV set?} -->|Yes| B[Use explicit value]
-    A -->|No| C{K8s service account<br/>token exists?}
-    C -->|Yes| D[cluster mode]
-    C -->|No| E{KUBERNETES_SERVICE_HOST<br/>set?}
-    E -->|Yes| D
-    E -->|No| F[local mode]
+| Service | Default URL | Override Env Var |
+|---------|-------------|------------------|
+| Qdrant | `http://localhost:6333` | `QDRANT_URL` |
+| MinIO | `http://localhost:9000` | `S3_ENDPOINT` |
+| CLIP | `http://localhost:8000` | `CLIP_URL` |
+| Infinity | `http://localhost:7997` | `INFINITY_URL` |
+| Ray Dashboard | `http://localhost:8265` | `RAY_DASHBOARD_ADDRESS` |
 
-    D --> G["Service URLs:<br/>http://qdrant.{ns}:6333<br/>http://minio.{ns}:9000<br/>http://clip.{ns}:8000"]
-    F --> H["Service URLs:<br/>http://localhost:6333<br/>http://localhost:9000<br/>http://localhost:8000"]
-```
+When `PIPELINE_ENV=local` (Docker Compose), Ray defaults to `http://ray-head:8265`.
 
 ## Key Behaviors
 
