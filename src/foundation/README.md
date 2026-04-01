@@ -19,9 +19,26 @@ circuit breakers, and shared utilities.
 
 ```
 foundation/
-├── http.py          # Shared HTTP utilities (retry logic, session management)
-├── retry.py         # Retry utilities with exponential backoff
-└── logger/          # Structured JSON logging configuration
+├── async_utils.py        # Async utility functions
+├── checkpoint.py         # Checkpoint persistence for ingestion jobs
+├── circuit_breaker.py    # Circuit breaker implementation (via aiobreaker)
+├── exceptions.py         # Exception hierarchy (UpstreamError, PipelineError, etc.)
+├── http.py               # Shared HTTP utilities (retry logic, session management)
+├── image.py              # Image preprocessing (validate, resize, encode)
+├── logger.py             # Structured JSON logging configuration
+├── rate_limiter.py       # Rate limiting for embedding API calls
+├── retry.py              # Retry utilities with exponential backoff
+├── dead_letter_queue/    # DLQ subsystem
+│   ├── dlq.py            # DLQ facade class
+│   ├── dlq_backend.py    # DLQ backend ABC
+│   ├── dlq_backend_registry.py  # Backend auto-discovery from env
+│   ├── dlq_redis_backend.py     # Redis DLQ backend implementation
+│   └── with_dlq.py       # @with_dlq decorator for DLQ injection
+└── metrics/              # Prometheus metrics subsystem
+    ├── classify.py        # Error classification for metrics labels
+    ├── decorators.py      # @track_latency and other metric decorators
+    ├── job_metrics_reporter.py  # Fire-and-forget metrics POST from jobs
+    └── registry.py        # Central Prometheus metric definitions
 ```
 
 ## Modules

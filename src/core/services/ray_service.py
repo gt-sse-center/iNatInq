@@ -33,14 +33,12 @@ class RayService:
     """Service for orchestrating Ray jobs via Ray Jobs API.
 
     This service uses the Ray Jobs API to submit and monitor jobs running
-    on a Ray cluster. Jobs are submitted directly to the Ray cluster without
-    using Kubernetes Jobs.
+    on a Ray cluster.
     """
 
     def submit_image_job(
         self,
         *,
-        namespace: str,
         s3_endpoint: str,
         s3_access_key_id: str,
         s3_secret_access_key: str,
@@ -59,7 +57,6 @@ class RayService:
         Returns immediately with a job ID; use get_job_status(job_id) for status.
 
         Args:
-            namespace: Kubernetes namespace.
             s3_endpoint: S3 service endpoint URL.
             s3_access_key_id: S3 access key.
             s3_secret_access_key: S3 secret key.
@@ -77,14 +74,14 @@ class RayService:
         Raises:
             UpstreamError: If job submission fails.
         """
-        ray_config = RayJobConfig.from_env(namespace)
+        ray_config = RayJobConfig.from_env()
         if not ray_config.dashboard_address:
             raise UpstreamError(
                 "RAY_DASHBOARD_ADDRESS not configured. Cannot submit image job to Ray cluster."
             )
 
         if embedding_config is None:
-            embedding_config = EmbeddingConfig.from_env(namespace)
+            embedding_config = EmbeddingConfig.from_env()
 
         dashboard_address = ray_config.dashboard_address
         logger.info(
@@ -93,7 +90,6 @@ class RayService:
         )
 
         env_vars = build_image_ingestion_env(
-            namespace=namespace,
             s3_endpoint=s3_endpoint,
             s3_access_key_id=s3_access_key_id,
             s3_secret_access_key=s3_secret_access_key,
@@ -142,12 +138,11 @@ class RayService:
             logger.exception("Failed to submit Ray image job", extra={"error": str(e)})
             raise UpstreamError(f"Failed to submit Ray image job: {e}") from e
 
-    def get_job_status(self, job_id: str, namespace: str) -> dict[str, Any]:
+    def get_job_status(self, job_id: str) -> dict[str, Any]:
         """Get the status of a Ray job.
 
         Args:
             job_id: Ray job ID returned from submit_s3_to_vector_dbs.
-            namespace: Kubernetes namespace (used for config resolution).
 
         Returns:
             Dictionary with job status information:
@@ -159,12 +154,12 @@ class RayService:
 
         Example:
             ```python
-            status = service.get_job_status(job_id, "ml-system")
+            status = service.get_job_status(job_id)
             if status["status"] == "SUCCEEDED":
                 print("Job completed!")
             ```
         """
-        ray_config = RayJobConfig.from_env(namespace)
+        ray_config = RayJobConfig.from_env()
         if not ray_config.dashboard_address:
             raise UpstreamError("RAY_DASHBOARD_ADDRESS not configured.")
         dashboard_address = ray_config.dashboard_address
@@ -183,12 +178,11 @@ class RayService:
             logger.exception("Failed to get Ray job status", extra={"job_id": job_id})
             raise UpstreamError(f"Failed to get job status: {e}") from e
 
-    def get_job_logs(self, job_id: str, namespace: str) -> str:
+    def get_job_logs(self, job_id: str) -> str:
         """Get the logs from a Ray job.
 
         Args:
             job_id: Ray job ID.
-            namespace: Kubernetes namespace (used for config resolution).
 
         Returns:
             Job logs as a string.
@@ -196,7 +190,7 @@ class RayService:
         Raises:
             UpstreamError: If log retrieval fails or dashboard not configured.
         """
-        ray_config = RayJobConfig.from_env(namespace)
+        ray_config = RayJobConfig.from_env()
         if not ray_config.dashboard_address:
             raise UpstreamError("RAY_DASHBOARD_ADDRESS not configured.")
         dashboard_address = ray_config.dashboard_address
@@ -210,17 +204,16 @@ class RayService:
             logger.exception("Failed to get Ray job logs", extra={"job_id": job_id})
             raise UpstreamError(f"Failed to get job logs: {e}") from e
 
-    def stop_job(self, job_id: str, namespace: str) -> None:
+    def stop_job(self, job_id: str) -> None:
         """Stop a running Ray job.
 
         Args:
             job_id: Ray job ID.
-            namespace: Kubernetes namespace (used for config resolution).
 
         Raises:
             UpstreamError: If stopping the job fails or dashboard not configured.
         """
-        ray_config = RayJobConfig.from_env(namespace)
+        ray_config = RayJobConfig.from_env()
         if not ray_config.dashboard_address:
             raise UpstreamError("RAY_DASHBOARD_ADDRESS not configured.")
         dashboard_address = ray_config.dashboard_address

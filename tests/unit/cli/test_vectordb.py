@@ -1,4 +1,10 @@
-"""Unit tests for vectordb command group."""
+"""Unit tests for vectordb command group.
+
+Tests vector database management commands (create collections, count documents,
+list collections) to ensure correct Qdrant API invocation and error handling.
+This is important because vector DB commands are used for debugging ingestion
+and verifying data integrity.
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,9 @@
-"""Unit tests for benchmark metrics base classes."""
+"""Unit tests for benchmark metrics base classes.
+
+Tests the abstract BenchmarkMetric interface and metric registry to ensure
+correct metric computation contracts and registration. This is important because
+metrics provide the quantitative basis for comparing search system performance.
+"""
 
 import pytest
 from collections.abc import Sequence

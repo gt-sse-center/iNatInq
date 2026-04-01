@@ -8,7 +8,7 @@ services used by the pipeline:
 - **S3/MinIO**: Object storage for pipeline inputs/outputs
 - **Vector Databases**: Qdrant
 - **Embedding Providers**: CLIP, Infinity
-- **Kubernetes**: Spark job submission and management
+- **iNaturalist Open Data**: AWS Open Data registry client
 
 ## Design Principles
 
@@ -33,15 +33,18 @@ provider-agnostic interfaces:
 
 ```
 clients/
-├── interfaces/          # Abstract Base Classes (ABCs)
-│   ├── embedding.py     # EmbeddingProvider ABC
-│   └── vector_db.py     # VectorDBProvider ABC
-├── cache.py             # CacheClient (in-memory semantic cache)
-├── clip.py              # CLIPClient (implements EmbeddingProvider)
-├── infinity.py          # InfinityClient (implements EmbeddingProvider)
-├── qdrant.py            # QdrantClientWrapper (implements VectorDBProvider)
-├── s3.py                # S3ClientWrapper
-└── k8s_spark.py         # SparkJobClient (Kubernetes Spark Operator)
+├── interfaces/               # Abstract Base Classes (ABCs)
+│   ├── embedding.py          # EmbeddingProvider ABC
+│   └── vector_db.py          # VectorDBProvider ABC
+├── base.py                   # Shared client base class
+├── cache.py                  # CacheClient (in-memory semantic cache)
+├── clip.py                   # CLIPClient (implements EmbeddingProvider)
+├── inaturalist_open_data.py  # iNaturalist AWS Open Data client
+├── infinity.py               # InfinityClient (implements EmbeddingProvider)
+├── mixins.py                 # Shared client mixins (retry, logging)
+├── qdrant.py                 # QdrantClientWrapper (implements VectorDBProvider)
+├── registries.py             # Client registry / discovery
+└── s3.py                     # S3ClientWrapper
 ```
 
 This design allows:
@@ -254,56 +257,6 @@ provider = create_vector_db_provider(config)  # Returns QdrantClientWrapper
 results = asyncio.run(provider.search_async(collection="documents", query_vector=[...], limit=10))
 ```
 
-### `k8s_spark.py`
-
-Kubernetes client for managing Spark jobs via the Spark Operator.
-
-**Class:** `SparkJobClient`
-
-**Methods:**
-
-- `submit_job(name, s3_prefix, collection, executor_instances, executor_memory, ...)`: Submit Spark job
-- `get_job_status(name)`: Get SparkApplication status
-- `list_jobs()`: List all SparkApplications in namespace
-- `delete_job(name)`: Delete SparkApplication and terminate pods
-
-**Usage:**
-
-```python
-from clients.k8s_spark import SparkJobClient
-
-# Create client
-client = SparkJobClient(namespace="ml-system")
-
-# Submit Spark job
-response = client.submit_job(
-    name="s3-to-vector-db-20260112",
-    s3_prefix="inputs/",
-    collection="documents",
-    executor_instances=2,
-    executor_memory="1g"
-)
-
-# Monitor job
-status = client.get_job_status("s3-to-vector-db-20260112")
-print(f"State: {status['status']['applicationState']['state']}")
-
-# List all jobs
-jobs = client.list_jobs()
-for job in jobs['items']:
-    print(f"{job['metadata']['name']}: {job['status']['applicationState']['state']}")
-
-# Cleanup
-client.delete_job("s3-to-vector-db-20260112")
-```
-
-**Implementation Details:**
-
-- Uses Kubernetes Python client to interact with custom resources
-- Supports in-cluster config (service account) and kubeconfig (local dev)
-- Builds SparkApplication manifests with proper env vars and resources
-- Handles Spark Operator API v1beta2
-
 ## Provider Abstraction
 
 The clients package uses **Abstract Base Classes (ABCs)** to provide
@@ -401,7 +354,6 @@ jobs:
   handled by boto3)
 - **QdrantClientWrapper**: Reuses AsyncQdrantClient internally (connection pooling
   handled by qdrant-client)
-- **KubernetesClient**: Lazy initialization of Batch API client
 
 ## Testing
 
@@ -422,5 +374,4 @@ mock_provider.vector_size = 768
 - `boto3`: S3/MinIO client
 - `qdrant-client`: Qdrant client
 - `requests`: HTTP client for embedding providers
-- `kubernetes`: Kubernetes Python client
 - `attrs`: Class definition and validation

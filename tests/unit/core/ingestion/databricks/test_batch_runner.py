@@ -1,4 +1,9 @@
-"""Unit tests for core.ingestion.databricks.batch_runner."""
+"""Unit tests for core.ingestion.databricks.batch_runner.
+
+Tests Ray job orchestration from Databricks Spark context, including batch
+distribution and checkpoint management. This is important because the batch
+runner enables distributed ingestion at scale using both Spark and Ray.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +14,7 @@ from core.ingestion.databricks.batch_runner import run_ray_batch_processing
 
 
 def test_final_drain_blocks_until_futures_complete(mock_ray: MagicMock) -> None:
+    """final_drain() blocks until all in-flight Ray futures complete."""
     future = MagicMock(name="future")
     mock_ray.wait.return_value = ([future], [])
     mock_ray.get.return_value = [[("file1.png", True, "")]]

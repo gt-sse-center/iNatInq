@@ -1,4 +1,10 @@
-"""Unit tests for docker command group."""
+"""Unit tests for docker command group.
+
+Tests Docker Compose management commands (up, down, restart, logs) to ensure
+correct docker-compose CLI invocation and service targeting. This is important
+because incorrect compose commands can leave orphaned containers or fail to
+start required services.
+"""
 
 from __future__ import annotations
 

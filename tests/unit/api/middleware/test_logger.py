@@ -49,6 +49,7 @@ class TestLoggerMiddleware:
 
         @app.get("/test")
         def test_endpoint():
+            """Test endpoint for verifying request/response logging."""
             return {"message": "test"}
 
         @app.get("/healthz")
@@ -124,7 +125,7 @@ class TestLoggerMiddleware:
 
         **Why this test is important:**
           - Validates log filtering
-          - Reduces noise from K8s probes
+          - Reduces noise from health probes
           - Tests special case handling
         """
         client = TestClient(app_with_logger_middleware)

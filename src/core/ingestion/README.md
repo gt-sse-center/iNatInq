@@ -2,22 +2,45 @@
 
 Distributed image ingestion from S3 to vector databases using Ray.
 
-## Current Architecture
+## Architecture
+
+The ingestion pipeline uses the **Strategy Pattern** to abstract Ray cluster lifecycle across environments. A unified `IngestionPipeline` orchestrator delegates cluster management to environment-specific strategies (`LocalRayStrategy`, `DatabricksStrategy`), eliminating code duplication between entrypoints.
 
 ```
 ingestion/
-├── ray/
-│   ├── process_s3_to_vector_dbs.py    # Local Ray entrypoint
-│   ├── process_s3_images.py           # Image pipeline entrypoint
-│   ├── ray_cluster.py                 # Local Ray init/shutdown
-│   └── rate_limiter.py                # CLIP rate limiting actor
-├── databricks/
-│   ├── process_s3_to_vector_dbs.py    # Databricks entrypoint
-│   └── run_ingest.py                  # Databricks job runner
-├── tasks/
-│   └── image_processing.py            # @ray.remote for images
-├── checkpoint.py                      # Shared checkpoint logic
-└── image_utils.py                     # Shared image preprocessing
+├── pipeline.py                        # Unified IngestionPipeline orchestrator
+├── interfaces/                        # Pipeline abstractions
+│   ├── factories.py                   # Environment detection and pipeline factory
+│   ├── operations.py                  # Operation ABCs (list, batch, process)
+│   ├── pipeline.py                    # Pipeline protocol definition
+│   └── types.py                       # Shared type definitions
+├── strategies/                        # ClusterStrategy implementations
+│   ├── base.py                        # Abstract ClusterStrategy
+│   ├── local_ray.py                   # LocalRayStrategy (local Ray cluster)
+│   └── databricks.py                  # DatabricksStrategy (Ray on Spark)
+├── ray/                               # Local Ray entrypoints
+│   └── process_s3_images.py           # Image pipeline entrypoint
+├── databricks/                        # Databricks entrypoints and runners
+│   ├── batch_runner.py                # Batch job runner
+│   ├── cdc.py                         # Change Data Capture pipeline
+│   ├── process_inat_images.py         # iNaturalist image pipeline
+│   ├── process_s3_autoloader.py       # S3 autoloader pipeline
+│   ├── process_s3_images.py           # S3 image pipeline
+│   ├── process_s3_images_from_bronze.py  # Bronze layer image pipeline
+│   ├── run_ingest.py                  # Generic Databricks job runner
+│   ├── run_ingest_image.py            # Image ingestion runner
+│   ├── run_ingest_image_from_bronze.py   # Bronze layer ingestion runner
+│   ├── run_ingest_inat_image.py       # iNaturalist ingestion runner
+│   ├── run_ingest_s3_autoloader.py    # S3 autoloader runner
+│   └── runtime.py                     # Databricks runtime utilities
+├── shared/                            # Cross-environment utilities
+│   ├── batching.py                    # Batch splitting logic
+│   ├── env_keys.py                    # Environment variable key constants
+│   ├── logging.py                     # Progress logging utilities
+│   ├── qdrant_indexing.py             # Qdrant collection/index management
+│   └── rate_limiter.py                # Embedding API rate limiting actor
+└── tasks/                             # Ray remote task functions
+    └── image_processing.py            # @ray.remote image processing tasks
 ```
 
 ## Pipeline Flow
@@ -33,41 +56,9 @@ Both Ray (local) and Databricks environments follow the same flow:
 7. **Checkpoint** → Persist successful keys
 8. **Shutdown** → Cleanup Ray resources
 
-## Environment Differences
+## Strategy Pattern
 
-| Aspect | Ray (local) | Databricks |
-|--------|-------------|------------|
-| Cluster init | `init_ray_cluster()` | `setup_ray_cluster()` via Spark |
-| Env vars | Direct from environment | `python_params` from argv |
-| Working dir | Local filesystem | Workspace path via `INATINQ_SRC_DIR` |
-| Shutdown | `shutdown_ray_cluster()` | Custom `_shutdown_ray_cluster()` |
-
----
-
-## Refactoring Proposal
-
-### Problem
-
-`databricks/process_s3_to_vector_dbs.py` duplicates ~90% of `ray/process_s3_to_vector_dbs.py`. The only differences are cluster initialization and environment variable handling.
-
-### Proposed Architecture: Strategy Pattern
-
-```
-ingestion/
-├── pipeline.py                    # Unified orchestrator
-├── strategies/
-│   ├── base.py                    # Abstract ClusterStrategy
-│   ├── local_ray.py               # LocalRayStrategy
-│   └── databricks.py              # DatabricksStrategy
-├── tasks/
-│   └── image_processing.py        # @ray.remote for images
-├── checkpoint.py
-└── image_utils.py
-```
-
-### Core Abstractions
-
-#### ClusterStrategy Protocol
+### ClusterStrategy Protocol
 
 ```python
 class ClusterStrategy(Protocol):
@@ -86,89 +77,21 @@ class ClusterStrategy(Protocol):
         ...
 ```
 
-#### Unified Pipeline
+### Implementations
 
-```python
-@attrs.define
-class IngestionPipeline:
-    """Unified ingestion orchestrator for all environments."""
+| Strategy | Environment | Cluster Init |
+|----------|-------------|-------------|
+| `LocalRayStrategy` | Local development | `ray.init()` on local machine |
+| `DatabricksStrategy` | Databricks workspace | Ray on Spark cluster |
 
-    cluster_strategy: ClusterStrategy
-    config: PipelineConfig
+## Environment Differences
 
-    def run(
-        self,
-        s3_prefix: str,
-    ) -> JobResult:
-        """Execute the image ingestion pipeline.
-
-        Args:
-            s3_prefix: S3 prefix to process (e.g., "images/")
-
-        Returns:
-            JobResult with success/failure counts and timing
-        """
-        self.cluster_strategy.init()
-        try:
-            keys = self._list_and_filter(s3_prefix)
-            results = self._process_batches(keys)
-            return self._finalize(results)
-        finally:
-            self.cluster_strategy.shutdown()
-```
-
-#### Environment Detection Factory
-
-```python
-def create_pipeline(
-    env: Literal["local", "databricks", "k8s"] | None = None,
-) -> IngestionPipeline:
-    """Create pipeline with appropriate cluster strategy.
-
-    Args:
-        env: Target environment. If None, auto-detect from environment.
-
-    Returns:
-        Configured IngestionPipeline instance
-    """
-    if env is None:
-        env = _detect_environment()
-
-    match env:
-        case "databricks":
-            return IngestionPipeline(
-                cluster_strategy=DatabricksStrategy(),
-                config=PipelineConfig.from_env(),
-            )
-        case "local":
-            return IngestionPipeline(
-                cluster_strategy=LocalRayStrategy(),
-                config=PipelineConfig.from_env(),
-            )
-        case "k8s":
-            return IngestionPipeline(
-                cluster_strategy=KubeRayStrategy(),
-                config=PipelineConfig.from_env(),
-            )
-```
-
-### Refactoring Steps
-
-1. **Extract shared orchestration** → `IngestionPipeline` class with batch/wait/checkpoint loop
-2. **Abstract cluster lifecycle** → `ClusterStrategy` protocol for init/shutdown
-3. **Merge entrypoints** → Single `main()` that detects environment or accepts flag
-4. **Unify env handling** → Common config loader for env vars and Databricks `python_params`
-5. **Keep task functions** → `image_processing.py` remains unchanged
-
-### Benefits
-
-- **~200 lines removed** from duplicated orchestration code
-- **Single source of truth** for pipeline logic
-- **Easy to add environments** (K8s, AWS EMR, GCP Dataproc)
-- **Testable** via mock strategies
-- **Type-safe** with Protocol-based contracts
-
----
+| Aspect | Ray (local) | Databricks |
+|--------|-------------|------------|
+| Cluster init | `LocalRayStrategy.init()` | `DatabricksStrategy.init()` via Spark |
+| Env vars | Direct from environment | `python_params` from argv |
+| Working dir | Local filesystem | Workspace path via `INATINQ_SRC_DIR` |
+| Shutdown | `LocalRayStrategy.shutdown()` | `DatabricksStrategy.shutdown()` |
 
 ## Usage
 
@@ -179,7 +102,6 @@ def create_pipeline(
 uv run inq ray submit --prefix images/ --collection documents
 
 # Direct
-python -m core.ingestion.ray.process_s3_to_vector_dbs inputs/
 python -m core.ingestion.ray.process_s3_images images/
 ```
 

@@ -9,7 +9,6 @@ and circuit breaker infrastructure.
 from __future__ import annotations
 
 import asyncio
-import os
 import uuid
 from typing import TYPE_CHECKING, Any
 
@@ -59,7 +58,6 @@ class RayImageProcessingConfig:
     collection: str
     image_batch_size: int = 20
     image_embed_batch_size: int = 4
-    namespace: str = attrs.field(factory=lambda: os.getenv("K8S_NAMESPACE", "ml-system"))
     # Resilience (reuse same as text pipeline)
     rate_limit_rps: int = 5
     max_concurrency: int = 10
@@ -148,7 +146,7 @@ class ImageProcessingPipeline:
 
         session = create_retry_session()
         embedding_provider = create_embedding_provider(self._config.embedding_config)
-        db_factory = VectorDBConfigFactory(self._config.namespace)
+        db_factory = VectorDBConfigFactory()
         qdrant_db = create_vector_db_provider(db_factory.create_qdrant_config())
 
         try:
@@ -376,8 +374,6 @@ def process_image_batch_ray(
     task_logger = get_ray_logger("ray.task")
     task_logger.info("Processing image batch of %d keys", len(s3_keys))
 
-    namespace = os.getenv("K8S_NAMESPACE", "ml-system")
-
     config = RayImageProcessingConfig(
         s3_endpoint=s3_endpoint,
         s3_access_key=s3_access_key,
@@ -387,7 +383,6 @@ def process_image_batch_ray(
         collection=collection,
         image_batch_size=image_batch_size,
         image_embed_batch_size=image_embed_batch_size,
-        namespace=namespace,
         max_concurrency=pipeline_concurrency,
         circuit_breaker_threshold=circuit_breaker_threshold,
         circuit_breaker_timeout=circuit_breaker_timeout,

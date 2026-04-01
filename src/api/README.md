@@ -31,6 +31,7 @@ FastAPI HTTP layer for the pipeline service: request/response serialization, val
 | Method   | Path                      | Description                                                                        |
 | -------- | ------------------------- | ---------------------------------------------------------------------------------- |
 | `POST`   | `/ray/jobs/images`        | Submit Ray job to process S3 images → CLIP → vector DB. Returns 202 with `job_id`. |
+| `POST`   | `/ray/jobs/process-dlq`   | Submit Ray job to process DLQ messages. Returns 202 with `job_id`.                 |
 | `GET`    | `/ray/jobs/{job_id}`      | Job status.                                                                        |
 | `GET`    | `/ray/jobs/{job_id}/logs` | Job logs.                                                                          |
 | `DELETE` | `/ray/jobs/{job_id}`      | Stop job.                                                                          |
@@ -44,10 +45,11 @@ FastAPI HTTP layer for the pipeline service: request/response serialization, val
 | -------- | -------------------------------- | ---------------------------------------------------------------------------------- |
 | `POST`   | `/databricks/jobs/images`        | Submit Databricks image job (S3 or iNaturalist source). Returns 202 with `run_id`. |
 | `POST`   | `/databricks/jobs/cdc-consumer` | Submit Databricks CDC consumer (Bronze → Ray image) job. Returns 202 with `run_id`. |
+| `POST`   | `/databricks/jobs/cdc-producer` | Submit Databricks CDC producer (Auto Loader) job. Returns 202 with `run_id`.      |
+| `POST`   | `/databricks/jobs/process-dlq`   | Submit Databricks DLQ processing job. Returns 202 with `run_id`.                   |
 | `GET`    | `/databricks/jobs/{run_id}`      | Run status (life_cycle_state, result_state, state_message).                        |
 | `GET`    | `/databricks/jobs/{run_id}/logs` | Run output/logs.                                                                   |
 | `DELETE` | `/databricks/jobs/{run_id}`      | Stop run.                                                                          |
-| `POST`   | `/databricks/jobs/cdc-producer` | Submit Databricks CDC producer (Auto Loader) job. Returns 202 with `run_id`.      |
 
 **POST body:** `source` (`s3` \| `inat`), `collection`; optional `s3_prefix`, `image_max_items`, `image_page_size`.  
 **Response (202):** `run_id`, `status`, `namespace`, `source`, `s3_prefix`, `collection`, `submitted_at`.
@@ -55,8 +57,25 @@ FastAPI HTTP layer for the pipeline service: request/response serialization, val
 **CDC consumer POST body:** none.  
 **CDC consumer response (202):** `run_id`, `status`, `namespace`, `submitted_at`.
   
-**CDC producer POST body:** none.  
+**CDC producer POST body:** none.
 **CDC producer response (202):** `run_id`, `status`, `namespace`, `submitted_at`.
+
+### Cache management
+
+| Method   | Path     | Description                                         |
+| -------- | -------- | --------------------------------------------------- |
+| `DELETE` | `/cache` | Invalidate the semantic cache. |
+
+**Response (200):** `{"status": "cache invalidated"}`.
+
+### Metrics
+
+| Method | Path                  | Description                                                   |
+| ------ | --------------------- | ------------------------------------------------------------- |
+| `POST` | `/ingestion/metrics` | Record ingestion metrics (pipeline, successful, failed, etc.). |
+
+**POST body:** `pipeline`, `successful`, `failed`, `batch_duration_seconds`, `checkpoint_save`.
+**Response (200):** `{"status": "ok"}`.
 
 ## Error handling
 

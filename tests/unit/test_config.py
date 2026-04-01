@@ -7,7 +7,7 @@ environments.
 # Test Coverage
 
 The tests cover:
-  - RayJobConfig: dashboard_address auto-detection for K8s, Docker Compose, and local
+  - RayJobConfig: dashboard_address auto-detection for Docker Compose and local
   - MinIOConfig: S3/MinIO configuration including resilience settings
   - Environment variable parsing
   - Default value handling
@@ -18,7 +18,7 @@ Run with: pytest tests/unit/test_config.py
 """
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -48,7 +48,7 @@ class TestRayJobConfigDashboardAddress:
 
     @patch.dict(
         os.environ,
-        {"RAY_DASHBOARD_ADDRESS": "http://custom-ray:8265", "K8S_NAMESPACE": "ml-system"},
+        {"RAY_DASHBOARD_ADDRESS": "http://custom-ray:8265"},
         clear=False,
     )
     def test_explicit_dashboard_address_takes_precedence(self) -> None:
@@ -61,45 +61,9 @@ class TestRayJobConfigDashboardAddress:
 
         **What it tests:**
           - RAY_DASHBOARD_ADDRESS env var is used
-          - K8S_NAMESPACE is ignored when explicit address is set
         """
         config = RayJobConfig.from_env()
         assert config.dashboard_address == "http://custom-ray:8265"
-
-    @patch.dict(
-        os.environ,
-        {"K8S_NAMESPACE": "prod-ml", "PIPELINE_ENV": "cluster"},
-        clear=False,
-    )
-    @patch("config.os.environ.get")
-    def test_kubernetes_namespace_based_address(self, mock_get: patch) -> None:
-        """Test that K8S_NAMESPACE is used for dashboard address in Kubernetes.
-
-        **Why this test is important:**
-          - Kubernetes uses namespace-based DNS
-          - Service discovery works via ray-head.{namespace}:8265
-          - Critical for in-cluster deployments
-
-        **What it tests:**
-          - Dashboard address is constructed from K8S_NAMESPACE
-          - Format is http://ray-head.{namespace}:8265
-        """
-
-        def environ_get(key: str, default: str | None = None) -> str | None:
-            env_map = {
-                "RAY_DASHBOARD_ADDRESS": None,
-                "K8S_NAMESPACE": "prod-ml",
-                "RAY_ADDRESS": None,
-                "PIPELINE_ENV": "cluster",
-            }
-            return env_map.get(key, default)
-
-        mock_get.side_effect = environ_get
-
-        # Need to also patch _is_in_cluster to return False (no service account)
-        with patch("config._is_in_cluster", return_value=False):
-            config = RayJobConfig.from_env()
-            assert config.dashboard_address == "http://ray-head.prod-ml:8265"
 
     @patch.dict(
         os.environ,
@@ -123,7 +87,6 @@ class TestRayJobConfigDashboardAddress:
         def environ_get(key: str, default: str | None = None) -> str | None:
             env_map = {
                 "RAY_DASHBOARD_ADDRESS": None,
-                "K8S_NAMESPACE": None,
                 "RAY_ADDRESS": None,
                 "PIPELINE_ENV": "local",
             }
@@ -131,9 +94,8 @@ class TestRayJobConfigDashboardAddress:
 
         mock_get.side_effect = environ_get
 
-        with patch("config._is_in_cluster", return_value=False):
-            config = RayJobConfig.from_env()
-            assert config.dashboard_address == "http://ray-head:8265"
+        config = RayJobConfig.from_env()
+        assert config.dashboard_address == "http://ray-head:8265"
 
     @patch.dict(
         os.environ,
@@ -157,7 +119,6 @@ class TestRayJobConfigDashboardAddress:
         def environ_get(key: str, default: str | None = None) -> str | None:
             env_map = {
                 "RAY_DASHBOARD_ADDRESS": None,
-                "K8S_NAMESPACE": None,
                 "RAY_ADDRESS": None,
                 "PIPELINE_ENV": None,
             }
@@ -165,9 +126,8 @@ class TestRayJobConfigDashboardAddress:
 
         mock_get.side_effect = environ_get
 
-        with patch("config._is_in_cluster", return_value=False):
-            config = RayJobConfig.from_env()
-            assert config.dashboard_address == "http://localhost:8265"
+        config = RayJobConfig.from_env()
+        assert config.dashboard_address == "http://localhost:8265"
 
     @patch.dict(
         os.environ,
@@ -430,8 +390,7 @@ class TestMinIOConfigResilience:
         },
         clear=False,
     )
-    @patch("config._is_in_cluster", return_value=False)
-    def test_resilience_settings_from_env(self, mock_cluster: patch) -> None:
+    def test_resilience_settings_from_env(self) -> None:
         """Test that resilience settings are parsed from environment.
 
         **Why this test is important:**
@@ -461,8 +420,7 @@ class TestMinIOConfigResilience:
         {"S3_ENDPOINT": "http://minio:9000"},
         clear=False,
     )
-    @patch("config._is_in_cluster", return_value=False)
-    def test_resilience_default_values(self, mock_cluster: patch) -> None:
+    def test_resilience_default_values(self) -> None:
         """Test that default resilience values are applied.
 
         **Why this test is important:**
@@ -506,8 +464,7 @@ class TestEmbeddingConfigGuardrails:
         },
         clear=False,
     )
-    @patch("config._is_in_cluster", return_value=False)
-    def test_local_clip_with_score_url_and_key_raises(self, mock_cluster: patch) -> None:
+    def test_local_clip_with_score_url_and_key_raises(self) -> None:
         """Fail fast on likely hosted endpoint misconfiguration."""
         with pytest.raises(ValueError, match="Likely CLIP provider mismatch"):
             EmbeddingConfig.from_env()
@@ -522,8 +479,7 @@ class TestEmbeddingConfigGuardrails:
         },
         clear=False,
     )
-    @patch("config._is_in_cluster", return_value=False)
-    def test_hosted_clip_with_score_url_is_allowed(self, mock_cluster: patch) -> None:
+    def test_hosted_clip_with_score_url_is_allowed(self) -> None:
         """Hosted mode should accept /score endpoints."""
         config = EmbeddingConfig.from_env()
 
@@ -568,8 +524,7 @@ class TestVectorDBConfigQdrantResilience:
         },
         clear=False,
     )
-    @patch("config._is_in_cluster", return_value=False)
-    def test_qdrant_resilience_settings_from_env(self, mock_cluster: patch) -> None:
+    def test_qdrant_resilience_settings_from_env(self) -> None:
         """Test that Qdrant resilience settings are parsed from environment.
 
         **Why this test is important:**
@@ -598,8 +553,7 @@ class TestVectorDBConfigQdrantResilience:
         },
         clear=False,
     )
-    @patch("config._is_in_cluster", return_value=False)
-    def test_qdrant_resilience_default_values(self, mock_cluster: patch) -> None:
+    def test_qdrant_resilience_default_values(self) -> None:
         """Test that default Qdrant resilience values are applied.
 
         **Why this test is important:**
@@ -627,8 +581,7 @@ class TestVectorDBConfigQdrantResilience:
         },
         clear=False,
     )
-    @patch("config._is_in_cluster", return_value=False)
-    def test_blank_provider_defaults_to_qdrant(self, mock_cluster: patch) -> None:
+    def test_blank_provider_defaults_to_qdrant(self) -> None:
         """Test that blank provider values fall back to qdrant default."""
         from config import VectorDBConfig
 
@@ -842,7 +795,6 @@ class TestSemanticCacheConfig:
             embedding=None,
             vector_db=None,
             minio=None,
-            k8s_namespace="test",
             semantic_cache=SemanticCacheConfig(),
         )
         assert isinstance(settings.semantic_cache, SemanticCacheConfig)

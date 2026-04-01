@@ -235,6 +235,7 @@ class TestIterDlqEntries:
     def test_yields_nothing_if_backend_not_configured(
         self, caplog: pytest.LogCaptureFixture, mock_get_dlq_backend: MagicMock
     ):
+        """DLQ iterator yields nothing when backend is not configured."""
         mock_get_dlq_backend.return_value = None
         with caplog.at_level("WARNING"):
             entries = list(iter_dlq_entries(batch_size=10, max_items=None))
@@ -242,6 +243,7 @@ class TestIterDlqEntries:
         assert "DLQ backend is not configured" in caplog.text
 
     def test_yields_batches(self, mock_get_dlq_backend: MagicMock):
+        """DLQ iterator yields entries in batches of specified size."""
         backend = MagicMock()
         backend.get_queue_contents.return_value = iter(["1", "2", "3", "4", "5"])
         mock_get_dlq_backend.return_value = backend
@@ -251,6 +253,7 @@ class TestIterDlqEntries:
         assert batches == [["1", "2"], ["3", "4"], ["5"]]
 
     def test_respects_max_items_mid_batch(self, mock_get_dlq_backend: MagicMock):
+        """DLQ iterator stops at max_items even if mid-batch."""
         backend = MagicMock()
         backend.get_queue_contents.return_value = iter(["1", "2", "3", "4", "5"])
         mock_get_dlq_backend.return_value = backend
@@ -270,6 +273,7 @@ class TestIterDlqEntries:
         assert batches == [["1", "2", "3"]]
 
     def test_propagates_backend_iterator_failure(self, mock_get_dlq_backend: MagicMock):
+        """DLQ iterator propagates UpstreamError from backend get_queue_contents()."""
         backend = MagicMock()
         backend.get_queue_contents.side_effect = UpstreamError("uh oh, stinky")
         mock_get_dlq_backend.return_value = backend
@@ -282,12 +286,14 @@ class TestClearSuccessfulDlqEntries:
     def test_noop_if_backend_not_configured(
         self, caplog: pytest.LogCaptureFixture, mock_get_dlq_backend: MagicMock
     ):
+        """DLQ clear operation skips when backend is not configured."""
         mock_get_dlq_backend.return_value = None
         with caplog.at_level("WARNING"):
             clear_successful_dlq_entries([])
         assert "DLQ backend is not configured" in caplog.text
 
     def test_calls_backend_delete(self, mock_get_dlq_backend: MagicMock):
+        """DLQ clear operation calls backend.delete() with provided keys."""
         backend = MagicMock()
         mock_get_dlq_backend.return_value = backend
 
@@ -299,6 +305,7 @@ class TestClearSuccessfulDlqEntries:
     def test_logs_upstream_error_from_delete(
         self, caplog: pytest.LogCaptureFixture, mock_get_dlq_backend: MagicMock
     ):
+        """DLQ clear operation logs UpstreamError from backend.delete() without raising."""
         backend = MagicMock()
         backend.delete.side_effect = UpstreamError("oopsie daisies")
         mock_get_dlq_backend.return_value = backend

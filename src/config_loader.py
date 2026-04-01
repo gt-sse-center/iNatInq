@@ -224,7 +224,6 @@ YAML_TO_ENV_MAP: dict[str, str] = {
     "semantic_cache.timeout": "SEMANTIC_CACHE_TIMEOUT",
     # Environment
     "environment.mode": "PIPELINE_ENV",
-    "environment.k8s_namespace": "K8S_NAMESPACE",
 }
 
 

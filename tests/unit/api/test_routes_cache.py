@@ -1,4 +1,9 @@
-"""Unit tests for the DELETE /cache endpoint."""
+"""Unit tests for the DELETE /cache endpoint.
+
+Tests cache invalidation endpoint to ensure correct Redis clear operations and
+response formatting. This is important because cache invalidation must work
+reliably when embeddings or vector DB data changes to prevent stale results.
+"""
 
 from __future__ import annotations
 

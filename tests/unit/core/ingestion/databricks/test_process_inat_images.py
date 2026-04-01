@@ -1,4 +1,10 @@
-"""Unit tests for core.ingestion.databricks.process_inat_images module."""
+"""Unit tests for core.ingestion.databricks.process_inat_images module.
+
+Tests iNaturalist observation metadata fetching and image URL extraction for
+Databricks ingestion jobs. This is important because iNat image processing
+requires correct taxon filtering and S3 URI parsing to avoid ingesting
+irrelevant observations.
+"""
 
 from unittest.mock import MagicMock, patch
 

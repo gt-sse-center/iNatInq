@@ -1,4 +1,10 @@
-"""Unit tests for CLI app (top-level commands)."""
+"""Unit tests for CLI app (top-level commands).
+
+Tests the main iNatInq CLI commands (up, down, status, version) to ensure
+correct subprocess invocation and Docker Compose orchestration. This is
+important because the CLI is the primary interface for starting services
+and debugging issues.
+"""
 
 from __future__ import annotations
 

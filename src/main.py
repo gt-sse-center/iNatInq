@@ -3,7 +3,7 @@
 This file is the **stable Uvicorn entrypoint** for the pipeline container:
 
 - Docker: `uvicorn src.main:app`
-- K8s probes: `GET /healthz`
+- Health probes: `GET /healthz`
 
 The implementation has been refactored into a package under `src/` so the codebase
 scales beyond a single file without losing clarity.
@@ -31,7 +31,7 @@ Configuration is loaded in `src/config.py` (see `Settings`), via env vars:
 - `CLIP_URL`, `CLIP_MODEL`
 - `QDRANT_URL`, `QDRANT_COLLECTION`
 - `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`
-- `RAY_ADDRESS`, `K8S_NAMESPACE`
+- `RAY_ADDRESS`
 
 ## Code organization
 

@@ -144,9 +144,9 @@ uploader.upload_directory(input_dir="data/imgs", prefix="images/", pattern="*.pn
 3. **Process with Ray job**:
 
    ```bash
-   curl -X POST http://localhost:8000/ray/jobs \
+   curl -X POST http://localhost:8000/ray/jobs/images \
      -H "Content-Type: application/json" \
-     -d '{"s3_prefix": "images/", "collection": "documents"}'
+     -d '{"s3_prefix": "images/", "s3_bucket": "pipeline", "collection": "documents"}'
    ```
 
 4. **Search the indexed images**:

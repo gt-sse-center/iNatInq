@@ -56,7 +56,6 @@ class DatabricksRayService:
     def submit_image_job(
         self,
         *,
-        namespace: str,
         s3_endpoint: str,
         s3_access_key_id: str,
         s3_secret_access_key: str,
@@ -74,7 +73,6 @@ class DatabricksRayService:
         entrypoint can reuse the same configuration logic as Ray workers.
 
         Args:
-            namespace: Kubernetes namespace (used for service discovery).
             s3_endpoint: S3 service endpoint URL.
             s3_access_key_id: S3 access key.
             s3_secret_access_key: S3 secret key.
@@ -96,7 +94,6 @@ class DatabricksRayService:
         if databricks_config.job_id is None:
             raise ValueError("Missing required Databricks config: DATABRICKS_JOB_ID")
         env_vars = build_image_ingestion_env(
-            namespace=namespace,
             s3_endpoint=s3_endpoint,
             s3_access_key_id=s3_access_key_id,
             s3_secret_access_key=s3_secret_access_key,
@@ -133,7 +130,6 @@ class DatabricksRayService:
     def submit_inat_image_job(
         self,
         *,
-        namespace: str,
         embedding_config: EmbeddingConfig,
         collection: str,
         s3_prefix: str = "images/",
@@ -147,7 +143,6 @@ class DatabricksRayService:
             raise ValueError("Missing required Databricks config: DATABRICKS_INAT_JOB_ID")
 
         env_vars = build_inat_image_ingestion_env(
-            namespace=namespace,
             embedding_config=embedding_config,
             collection=collection,
             extra_env_keys=("INATINQ_SRC_DIR",),
@@ -170,18 +165,13 @@ class DatabricksRayService:
             logger.exception("Failed to submit Databricks iNaturalist image job", extra={"error": str(e)})
             raise UpstreamError(f"Failed to submit Databricks iNaturalist image job: {e}") from e
 
-    def submit_s3_autoloader_job(
-        self,
-        *,
-        namespace: str,
-    ) -> int:
+    def submit_s3_autoloader_job(self) -> int:
         """Submit the dedicated Databricks Auto Loader producer job."""
         databricks_config = DatabricksRayJobConfig.from_env(require_job_id=False)
         if databricks_config.s3_autoloader_job_id is None:
             raise ValueError("Missing required Databricks config: DATABRICKS_S3_AUTOLOADER_JOB_ID")
 
         env_vars = build_s3_autoloader_env(
-            namespace=namespace,
             extra_env_keys=("INATINQ_SRC_DIR",),
         )
         python_params = [f"{key}={value}" for key, value in env_vars.items()]
@@ -204,7 +194,6 @@ class DatabricksRayService:
     def submit_s3_bronze_image_job(
         self,
         *,
-        namespace: str,
         s3_endpoint: str,
         s3_access_key_id: str,
         s3_secret_access_key: str,
@@ -218,7 +207,6 @@ class DatabricksRayService:
             raise ValueError("Missing required Databricks config: DATABRICKS_FROM_BRONZE_JOB_ID")
 
         env_vars = build_s3_bronze_image_ingestion_env(
-            namespace=namespace,
             s3_endpoint=s3_endpoint,
             s3_access_key_id=s3_access_key_id,
             s3_secret_access_key=s3_secret_access_key,

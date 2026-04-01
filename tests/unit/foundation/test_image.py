@@ -546,12 +546,14 @@ class TestResizeForEmbedding:
 
 class TestEncodeImageBase64:
     def test_encode_image_returns_base64(self) -> None:
+        """Image encoder converts image bytes to base64 string."""
         orig_img_bytes = b"foo"
         result = encode_image_base64(orig_img_bytes, include_mime_type=False)
         decoded = base64.b64decode(result)
         assert decoded == orig_img_bytes
 
     def test_encode_image_includes_mime_type_when_requested(self) -> None:
+        """Image encoder includes data URI prefix when include_mime_type=True."""
         orig_img_bytes = b"foo"
         with patch("filetype.guess_mime") as guess_mime:
             guess_mime.return_value = "image/jpeg"
@@ -565,5 +567,6 @@ class TestEncodeImageBase64:
         guess_mime.assert_called_once_with(orig_img_bytes)
 
     def test_encode_image_raises_with_enpty_image_bytes(self) -> None:
+        """Image encoder raises ValueError for empty image bytes."""
         with pytest.raises(ValueError, match="cannot be empty"):
             encode_image_base64(b"", include_mime_type=False)

@@ -57,21 +57,19 @@ class TestLocalRayStrategyInit:
         **Why this test is important:**
 
         - Validates the factory method for environment-based configuration
-        - Ensures namespace is passed correctly to the underlying config
 
         **What it tests:**
 
         - The from_env() class method calls RayJobConfig.from_env
-        - The namespace parameter is forwarded correctly
         - The returned strategy has the expected config
         """
         with patch("core.ingestion.strategies.local_ray.RayJobConfig.from_env") as mock_from_env:
             mock_config = MagicMock(spec=RayJobConfig)
             mock_from_env.return_value = mock_config
 
-            strategy = LocalRayStrategy.from_env("test-namespace")
+            strategy = LocalRayStrategy.from_env()
 
-            mock_from_env.assert_called_once_with("test-namespace")
+            mock_from_env.assert_called_once_with()
             assert strategy.config == mock_config
 
     def test_config_property_returns_config(self, ray_job_config: RayJobConfig):

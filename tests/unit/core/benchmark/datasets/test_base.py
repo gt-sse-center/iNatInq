@@ -1,4 +1,9 @@
-"""Unit tests for benchmark dataset base classes."""
+"""Unit tests for benchmark dataset base classes.
+
+Tests the abstract BenchmarkDataset interface and base implementations to ensure
+correct data loading contracts and schema validation. This is important because
+datasets provide the ground truth for all benchmark measurements.
+"""
 
 from collections.abc import Iterator
 from typing import Literal

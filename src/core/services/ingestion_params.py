@@ -66,7 +66,6 @@ def add_ray_tuning_env(env_vars: dict[str, str]) -> None:
 
 def build_image_ingestion_env(
     *,
-    namespace: str,
     s3_endpoint: str,
     s3_access_key_id: str,
     s3_secret_access_key: str,
@@ -80,7 +79,6 @@ def build_image_ingestion_env(
     """Build env-style params for image ingestion jobs (Ray/Databricks).
 
     Args:
-        namespace: Kubernetes namespace (used for service discovery).
         s3_endpoint: S3/MinIO endpoint URL.
         s3_access_key_id: S3 access key.
         s3_secret_access_key: S3 secret key.
@@ -97,7 +95,6 @@ def build_image_ingestion_env(
         Databricks python_params conversion.
     """
     env_vars = {
-        "K8S_NAMESPACE": namespace,
         "S3_PREFIX": s3_prefix,
         "S3_ENDPOINT": s3_endpoint,
         "S3_ACCESS_KEY_ID": s3_access_key_id,
@@ -147,7 +144,6 @@ def build_image_ingestion_env(
 
 def build_inat_image_ingestion_env(
     *,
-    namespace: str,
     embedding_config: EmbeddingConfig,
     collection: str,
     extra_env_keys: Iterable[str] | None = None,
@@ -158,7 +154,6 @@ def build_inat_image_ingestion_env(
     parameters. Metadata and image source behavior is driven by INAT_* vars.
     """
     env_vars = {
-        "K8S_NAMESPACE": namespace,
         "VECTOR_DB_COLLECTION": collection,
         "EMBEDDING_PROVIDER": embedding_config.provider_type,
         "CLIP_TIMEOUT": str(embedding_config.clip_timeout),
@@ -200,14 +195,13 @@ def build_inat_image_ingestion_env(
 
 def build_s3_autoloader_env(
     *,
-    namespace: str,
     extra_env_keys: Iterable[str] | None = None,
 ) -> dict[str, str]:
     """Build env-style params for S3 Auto Loader ingestion jobs.
 
     Required Auto Loader keys are copied from the current process environment.
     """
-    env_vars = {"K8S_NAMESPACE": namespace}
+    env_vars: dict[str, str] = {}
     _passthrough_env_vars(
         env_vars,
         _AUTOLOADER_REQUIRED_ENV_KEYS,
@@ -252,7 +246,6 @@ def build_s3_autoloader_env(
 
 def build_s3_bronze_image_ingestion_env(
     *,
-    namespace: str,
     s3_endpoint: str,
     s3_access_key_id: str,
     s3_secret_access_key: str,
@@ -263,7 +256,6 @@ def build_s3_bronze_image_ingestion_env(
 ) -> dict[str, str]:
     """Build env-style params for Bronze-backed incremental image ingestion."""
     env_vars = build_image_ingestion_env(
-        namespace=namespace,
         s3_endpoint=s3_endpoint,
         s3_access_key_id=s3_access_key_id,
         s3_secret_access_key=s3_secret_access_key,

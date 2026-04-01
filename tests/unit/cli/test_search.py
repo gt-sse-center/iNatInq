@@ -1,4 +1,10 @@
-"""Unit tests for search command group."""
+"""Unit tests for search command group.
+
+Tests semantic search testing commands (test-search, inspect collections) to
+ensure correct API endpoint invocation and result formatting. This is important
+because developers use these commands to verify search quality and debug
+embedding issues.
+"""
 # ruff: noqa: S106, S105
 
 from __future__ import annotations

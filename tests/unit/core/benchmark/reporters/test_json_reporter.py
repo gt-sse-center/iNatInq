@@ -1,4 +1,9 @@
-"""Unit tests for JSONReporter."""
+"""Unit tests for JSONReporter.
+
+Tests JSON schema compliance, metric serialization, and file output for
+benchmark results. This is important because JSON output enables CI/CD
+integration and historical metric tracking.
+"""
 
 from __future__ import annotations
 

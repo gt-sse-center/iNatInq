@@ -1,4 +1,9 @@
-"""Unit tests for Databricks Auto Loader config helpers."""
+"""Unit tests for Databricks Auto Loader config helpers.
+
+Tests Auto Loader stream configuration for incremental S3 file processing with
+Bronze table persistence. This is important because Auto Loader enables
+efficient CDC-based ingestion without full dataset rescans.
+"""
 
 from __future__ import annotations
 

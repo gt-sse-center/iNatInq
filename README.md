@@ -30,7 +30,6 @@ The query engine handles semantic search requests by generating embeddings and p
 
 **Endpoints**:
 
-- `GET /search?q=your query&limit=10&provider=qdrant` – Text-to-text semantic search
 - `GET /search/images?q=sunset over ocean&limit=10` – Text-to-image search using CLIP
 
 **Flow**: HTTP Request → Embedding (CLIP/Infinity) → Vector Search → Ranked Results
@@ -52,9 +51,15 @@ The ingestion engine processes documents from S3 into vector databases using dis
 
 **Endpoints**:
 
-- `POST /ray/jobs` – Submit Ray job
-- `POST /spark/jobs` – Submit Spark job
-- `POST /databricks/jobs` – Submit Databricks job run
+- `POST /ray/jobs/images` – Submit Ray image ingestion job
+- `POST /ray/jobs/process-dlq` – Submit Ray DLQ processing job
+- `GET /ray/jobs/{job_id}` – Get Ray job status
+- `GET /ray/jobs/{job_id}/logs` – Get Ray job logs
+- `DELETE /ray/jobs/{job_id}` – Stop Ray job
+- `POST /databricks/jobs/images` – Submit Databricks image ingestion job
+- `POST /databricks/jobs/cdc-producer` – Submit Databricks CDC producer job
+- `POST /databricks/jobs/cdc-consumer` – Submit Databricks CDC consumer job
+- `POST /databricks/jobs/process-dlq` – Submit Databricks DLQ processing job
 - `GET /databricks/jobs/{run_id}` – Get Databricks run status
 - `GET /databricks/jobs/{run_id}/logs` – Get Databricks run output
 - `DELETE /databricks/jobs/{run_id}` – Stop Databricks run
@@ -315,6 +320,6 @@ iNatInq/
 
 ## Test Coverage
 
-- **960+ tests** across foundation, clients, core, and API
+- **1500+ tests** across foundation, clients, core, and API
 - **>90% code coverage**
 - Uses pytest with async support and comprehensive mocking

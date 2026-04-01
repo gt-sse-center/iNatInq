@@ -80,7 +80,7 @@ storage:
 | `QDRANT_URL` | Qdrant endpoint | `http://qdrant:6333` |
 | `QDRANT_API_KEY` | Qdrant API key | - |
 | `CLIP_URL` | CLIP service endpoint | `http://clip:8000` |
-| `OPENAI_API_KEY` | OpenAI API key | - |
+| `INFINITY_URL` | Infinity service endpoint | `http://infinity:7997` |
 
 ## Key Configuration Sections
 
@@ -100,11 +100,11 @@ storage:
 
 ### Vector Database
 
-Supports Qdrant and Weaviate. Set `search_provider` to choose:
+Supports Qdrant. Set `search_provider` to configure:
 
 ```yaml
 vector_databases:
-  search_provider: "qdrant"   # or "weaviate"
+  search_provider: "qdrant"
   collection: "documents"
 
   qdrant:
@@ -126,7 +126,7 @@ Multiple providers supported:
 
 ```yaml
 embeddings:
-  provider: "clip"            # clip, hosted_clip, infinity, openai, huggingface, sagemaker
+  provider: "clip"            # clip, hosted_clip, infinity
   vector_size: null           # Auto-detect from model
 
   clip:

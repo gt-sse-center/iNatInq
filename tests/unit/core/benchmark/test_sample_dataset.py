@@ -1,4 +1,9 @@
-"""Unit tests for sample gold standard dataset."""
+"""Unit tests for sample gold standard dataset.
+
+Tests sample dataset loading, query/document pair parsing, and relevance score
+validation. This is important because the sample dataset provides a lightweight
+test case for development and CI without requiring large external datasets.
+"""
 
 from __future__ import annotations
 

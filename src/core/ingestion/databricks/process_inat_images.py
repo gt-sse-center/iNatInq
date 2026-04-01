@@ -108,7 +108,6 @@ def process_inat_photo_batch_ray(
     task_logger = logging.getLogger("ray.task")
     task_logger.info("Processing iNaturalist image batch of %d records", len(records))
 
-    namespace = os.getenv("K8S_NAMESPACE", "ml-system")
     config = RayImageProcessingConfig(
         s3_endpoint="",
         s3_access_key="",
@@ -118,7 +117,6 @@ def process_inat_photo_batch_ray(
         collection=collection,
         image_batch_size=image_batch_size,
         image_embed_batch_size=image_embed_batch_size,
-        namespace=namespace,
         max_concurrency=pipeline_concurrency,
         circuit_breaker_threshold=circuit_breaker_threshold,
         circuit_breaker_timeout=circuit_breaker_timeout,
@@ -181,12 +179,10 @@ def main() -> None:
 
     _apply_python_params(sys.argv[1:])
 
-    namespace = os.environ.get("K8S_NAMESPACE", "ml-system")
-
     inat_cfg = INatConfig.from_env()
-    ray_cfg = RayJobConfig.from_env(namespace)
-    embed_cfg = EmbeddingConfig.from_env(namespace)
-    vector_cfg = VectorDBConfig.from_env(namespace)
+    ray_cfg = RayJobConfig.from_env()
+    embed_cfg = EmbeddingConfig.from_env()
+    vector_cfg = VectorDBConfig.from_env()
 
     collection = vector_cfg.collection
     image_size = inat_cfg.image_size
@@ -200,7 +196,6 @@ def main() -> None:
     job_logger.info(
         "Configuration loaded",
         extra={
-            "namespace": namespace,
             "collection": collection,
             "num_workers": ray_cfg.num_workers,
             "image_batch_size": ray_cfg.image_batch_size,
@@ -224,7 +219,7 @@ def main() -> None:
             extra={"metadata_url": metadata_url},
         )
 
-    strategy = DatabricksStrategy.from_env(namespace)
+    strategy = DatabricksStrategy.from_env()
     strategy.init()
 
     try:

@@ -58,9 +58,12 @@ Once running, services are available at:
 |---------|-----|-------------|
 | Pipeline API | <http://localhost:8000> | FastAPI application |
 | Pipeline Docs | <http://localhost:8000/docs> | OpenAPI documentation |
+| CLIP Server | <http://localhost:8001> | CLIP embedding service |
+| Infinity Server | <http://localhost:7997> | SigLIP2 embedding service |
 | MinIO Console | <http://localhost:9001> | Object storage UI |
 | MinIO API | <http://localhost:9000> | S3-compatible API |
 | Qdrant Dashboard | <http://localhost:6333/dashboard> | Vector DB UI |
+| Redis | <http://localhost:8334> | DLQ and semantic cache |
 | Ray Dashboard | <http://localhost:8265> | Ray cluster UI |
 
 ### Default Credentials
@@ -71,35 +74,35 @@ Once running, services are available at:
 
 ## Architecture
 
-The Docker Compose stack emulates the Kubernetes `ml-system` namespace from `modern-web-application/zarf/k8s/dev/`:
+The Docker Compose stack provides the local development environment:
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        Docker Compose Network                           │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌──────────┐    ┌──────────┐                                          │
-│  │  MinIO   │    │  Qdrant  │                                          │
-│  │  :9000   │    │  :6333   │                                          │
-│  └────┬─────┘    └────┬─────┘                                          │
-│       │               │                                                │
-│       └───────────────┘                                                │
-│                       │                                                 │
-│                       ▼                                                 │
-│                  ┌────────────────────────┐                             │
-│                  │       Pipeline         │                             │
-│                  │        :8000           │                             │
-│                  └───────────┬────────────┘                             │
-│                              │                                          │
-│       ┌──────────────────────┼──────────────────────┐                   │
-│       │                      │                      │                   │
-│       ▼                      ▼                      ▼                   │
-│  ┌──────────┐          ┌──────────┐          ┌──────────┐               │
-│  │ Ray Head │◄────────►│Ray Worker│          │Ray Worker│               │
-│  │  :8265   │          │          │          │          │               │
-│  └──────────┘          └──────────┘          └──────────┘               │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                          Docker Compose Network                              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
+│  │  MinIO   │  │  Qdrant  │  │   CLIP   │  │ Infinity │  │  Redis   │      │
+│  │  :9000   │  │  :6333   │  │  :8001   │  │  :7997   │  │  :8334   │      │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘      │
+│       │              │             │             │             │             │
+│       └──────────────┴─────────────┴─────────────┴─────────────┘             │
+│                                    │                                         │
+│                                    ▼                                         │
+│                  ┌────────────────────────┐                                  │
+│                  │       Pipeline         │                                  │
+│                  │        :8000           │                                  │
+│                  └───────────┬────────────┘                                  │
+│                              │                                               │
+│       ┌──────────────────────┼──────────────────────┐                        │
+│       │                      │                      │                        │
+│       ▼                      ▼                      ▼                        │
+│  ┌──────────┐          ┌──────────┐          ┌──────────┐                    │
+│  │ Ray Head │◄────────►│Ray Worker│          │Ray Worker│                    │
+│  │  :8265   │          │          │          │          │                    │
+│  └──────────┘          └──────────┘          └──────────┘                    │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Development Workflow
@@ -196,17 +199,6 @@ uv run inq databricks down
 ```
 
 The local containers will still run but won't be used when cloud credentials are set.
-
-## Comparison with Kubernetes
-
-| Feature | Kubernetes | Docker Compose |
-|---------|------------|----------------|
-| Service Discovery | DNS (`service.namespace`) | Container names |
-| Storage | PersistentVolumeClaims | Docker volumes |
-| Secrets | K8s Secrets/ConfigMaps | `.env` files |
-| Scaling | HPA/Replicas | `--scale` flag |
-| Ray | Ray Operator | Ray head + workers |
-| Health Checks | Probes | HEALTHCHECK |
 
 ## Troubleshooting
 

@@ -1,4 +1,10 @@
-"""Unit tests for benchmark runner base classes."""
+"""Unit tests for benchmark runner base classes.
+
+Tests the abstract BenchmarkRunner interface and runner orchestration lifecycle
+to ensure correct dataset loading, metric computation, and result reporting.
+This is important because runners coordinate all benchmark components into a
+complete evaluation pipeline.
+"""
 
 from collections.abc import Sequence
 from datetime import datetime, timezone

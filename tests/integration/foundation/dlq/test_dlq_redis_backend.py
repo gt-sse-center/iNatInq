@@ -35,6 +35,7 @@ class TestRedisDLQBackend:
     """RedisDLQBackend Integration Tests"""
 
     def test_insert_adds_to_cache(self, redis_config: RedisDLQConfig, redis_client: Redis):
+        """Redis backend insert() stores keys in actual Redis cache."""
         keys = {"1", "foo", "bar", "test", "42"}
         backend = RedisDLQBackend(redis_config)
         for key in keys:
@@ -43,6 +44,7 @@ class TestRedisDLQBackend:
         assert keys == set(redis_client.keys())
 
     def test_metadata_is_correctly_stored(self, redis_config: RedisDLQConfig, redis_client: Redis):
+        """Redis backend stores metadata as JSON-serialized string in Redis."""
         key, metadata = "test", {"foo": 12345, "bar": "baz"}
         backend = RedisDLQBackend(redis_config)
         backend.insert(key, metadata=metadata)
@@ -50,6 +52,7 @@ class TestRedisDLQBackend:
         assert json.loads(retrieved_metadata) == metadata
 
     def test_get_queue_content_returns(self, redis_config: RedisDLQConfig, redis_client: Redis):
+        """Redis backend get_queue_contents() retrieves all keys from actual Redis cache."""
         expected_keys = {"1", "2", "buckle", "my", "shoe"}
         for key in expected_keys:
             redis_client.set(key, "")
@@ -59,6 +62,7 @@ class TestRedisDLQBackend:
         assert retrieved_keys == expected_keys
 
     def test_delete_removes_keys(self, redis_config: RedisDLQConfig, redis_client: Redis):
+        """Redis backend delete() removes all specified keys from actual Redis cache."""
         keys = {"3", "4", "gimme", "some", "more"}
         for key in keys:
             redis_client.set(key, "")
@@ -68,11 +72,13 @@ class TestRedisDLQBackend:
         assert len(redis_client.keys()) == 0
 
     def test_delete_empty_iterator_does_not_raise(self, redis_config: RedisDLQConfig):
+        """Redis backend delete() handles empty key list without raising exceptions."""
         backend = RedisDLQBackend(redis_config)
         # Since the test will fail if this raises, no assert statement is needed
         backend.delete([])
 
     def test_smoke_test_large_cache_size(self, redis_config: RedisDLQConfig, redis_client: Redis):
+        """Redis backend handles large key sets (2500+ keys) without performance degradation."""
         # This test isn't strictly necessary, but serves as a useful sanity check
 
         keys = [str(i) for i in range(2_500)]

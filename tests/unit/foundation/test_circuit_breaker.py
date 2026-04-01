@@ -271,6 +271,7 @@ class TestCreateCircuitBreaker:
 
         @breaker
         def test_func() -> str:
+            """Test function decorated with circuit breaker."""
             return "success"
 
         result = test_func()  # pyright: ignore[reportUnknownVariableType]
@@ -295,6 +296,7 @@ class TestCreateCircuitBreaker:
         )
 
         def test_func() -> str:
+            """Test function called via circuit breaker."""
             return "success"
 
         result = breaker.call(test_func)

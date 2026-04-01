@@ -1,4 +1,9 @@
-"""Unit tests for DefaultBenchmarkRunner."""
+"""Unit tests for DefaultBenchmarkRunner.
+
+Tests benchmark orchestration logic, query execution, metric computation, and
+result aggregation. This is important because the default runner implements the
+core benchmark evaluation workflow used by all benchmark commands.
+"""
 
 from __future__ import annotations
 

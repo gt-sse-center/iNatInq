@@ -298,16 +298,12 @@ Key variables to know (see `src/config.py` for full list):
 
 - **`EMBEDDING_PROVIDER`**: `clip`, `hosted_clip`, `infinity` (default: `clip`)
 - **`VECTOR_DB_PROVIDER`**: `qdrant` (default: `qdrant`)
-- **`QDRANT_URL`**: Auto-detected based on environment
-- **`S3_ENDPOINT`**: Auto-detected based on environment
+- **`QDRANT_URL`**: Qdrant service URL (default: `http://localhost:6333`)
+- **`S3_ENDPOINT`**: S3 endpoint URL (default: `http://localhost:9000`)
 - **`RAY_S3_BATCH_SIZE`**: Keys per Ray task (default: `50`)
 - **`RAY_CHECKPOINT_ENABLED`**: Enable checkpointing (default: `true`)
 
-Environment detection uses:
-
-1. `PIPELINE_ENV` explicit override (`cluster` or `local`)
-2. Kubernetes service account token presence
-3. `KUBERNETES_SERVICE_HOST` environment variable
+`PIPELINE_ENV=local` selects Docker Compose mode (service names like `ray-head`).
 
 ## Code Style
 

@@ -1,4 +1,10 @@
-"""Unit tests for smoke command group."""
+"""Unit tests for smoke command group.
+
+Tests end-to-end smoke testing commands that verify all services are healthy
+by hitting healthcheck endpoints. This is important because smoke tests catch
+deployment issues and service integration problems before running expensive
+workloads.
+"""
 
 from __future__ import annotations
 

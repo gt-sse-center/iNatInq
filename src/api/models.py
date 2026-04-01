@@ -147,7 +147,6 @@ class RayImageJobResponse(BaseModel):
     Attributes:
         job_id: Ray-generated job ID (e.g., "raysubmit_1234567890").
         status: Job status (always "submitted" on success).
-        namespace: Kubernetes namespace where Ray cluster runs.
         s3_bucket: S3 bucket being processed.
         s3_prefix: S3 prefix being processed.
         collection: Target base collection name.
@@ -158,7 +157,6 @@ class RayImageJobResponse(BaseModel):
         {
             "job_id": "raysubmit_1234567890",
             "status": "submitted",
-            "namespace": "ml-system",
             "s3_bucket": "pipeline",
             "s3_prefix": "images/",
             "collection": "documents",
@@ -169,7 +167,6 @@ class RayImageJobResponse(BaseModel):
 
     job_id: str = Field(description="Ray-generated job ID (e.g., raysubmit_1234567890)")
     status: str = Field(description="Job status (always 'submitted' on success)")
-    namespace: str = Field(description="Kubernetes namespace where Ray cluster runs")
     s3_bucket: str = Field(description="S3 bucket being processed")
     s3_prefix: str = Field(description="S3 prefix being processed")
     collection: str = Field(description="Target vector DB base collection name")
@@ -184,7 +181,6 @@ class RayProcessDLQResponse(BaseModel):
 
     job_id: str = Field(description="Ray-generated job ID (e.g., raysubmit_1234567890)")
     status: str = Field(description="Job status (always 'submitted' on success)")
-    namespace: str = Field(description="Kubernetes namespace where Ray cluster runs")
     submitted_at: str = Field(description="ISO 8601 timestamp when job was submitted")
 
 
@@ -245,7 +241,6 @@ class DatabricksImageJobResponse(BaseModel):
     Attributes:
         run_id: Databricks run ID.
         status: Job status (always "submitted" on success).
-        namespace: Kubernetes namespace used for config resolution.
         source: Image source selected for this run.
         s3_prefix: S3 prefix being processed (present when source is "s3").
         collection: Target vector DB base collection.
@@ -256,7 +251,6 @@ class DatabricksImageJobResponse(BaseModel):
         {
             "run_id": "123456789",
             "status": "submitted",
-            "namespace": "ml-system",
             "source": "s3",
             "s3_prefix": "images/",
             "collection": "documents",
@@ -267,7 +261,6 @@ class DatabricksImageJobResponse(BaseModel):
 
     run_id: str = Field(description="Databricks run ID")
     status: str = Field(description="Job status (always 'submitted' on success)")
-    namespace: str = Field(description="Kubernetes namespace used for config resolution")
     source: Literal["s3", "inat"] = Field(description="Image source selected for this run")
     s3_prefix: str | None = Field(description="S3 prefix being processed (present when source is 's3')")
     collection: str = Field(description="Target vector DB base collection name")
@@ -279,7 +272,6 @@ class DatabricksCdcProducerJobResponse(BaseModel):
 
     run_id: str = Field(description="Databricks run ID")
     status: str = Field(description="Job status (always 'submitted' on success)")
-    namespace: str = Field(description="Kubernetes namespace used for config resolution")
     submitted_at: str = Field(description="ISO 8601 timestamp when job was submitted")
 
 
@@ -288,7 +280,6 @@ class DatabricksProcessDLQResponse(BaseModel):
 
     run_id: str = Field(description="Databricks run ID")
     status: str = Field(description="Job status (always 'submitted' on success)")
-    namespace: str = Field(description="Kubernetes namespace used for config resolution")
     submitted_at: str = Field(description="ISO 8601 timestamp when job was submitted")
 
 
@@ -300,7 +291,6 @@ class DatabricksCdcConsumerJobResponse(BaseModel):
 
     run_id: str = Field(description="Databricks run ID")
     status: str = Field(description="Job status (always 'submitted' on success)")
-    namespace: str = Field(description="Kubernetes namespace used for config resolution")
     submitted_at: str = Field(description="ISO 8601 timestamp when job was submitted")
 
 

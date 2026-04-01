@@ -6,8 +6,10 @@ This directory contains Dockerfiles for building container images.
 
 ```
 docker/
-└── dev/                      # Development environment
-    └── Dockerfile.pipeline   # Pipeline service image
+├── base/                         # Shared base images
+│   └── Dockerfile.pipeline-base  # Base image for pipeline service
+└── dev/                          # Development environment
+    └── Dockerfile.pipeline       # Pipeline service image (extends base)
 ```
 
 ## Building Images

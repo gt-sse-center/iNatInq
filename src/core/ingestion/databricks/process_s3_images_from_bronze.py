@@ -118,13 +118,11 @@ def main() -> None:
 
     _apply_python_params(sys.argv[1:])
 
-    namespace = os.environ.get("K8S_NAMESPACE", "ml-system")
-
     cdc_cfg = BronzeRayCDCConfig.from_env()
-    ray_cfg = RayJobConfig.from_env(namespace)
-    minio_cfg = MinIOConfig.from_env(namespace)
-    embed_cfg = EmbeddingConfig.from_env(namespace)
-    vector_cfg = VectorDBConfig.from_env(namespace)
+    ray_cfg = RayJobConfig.from_env()
+    minio_cfg = MinIOConfig.from_env()
+    embed_cfg = EmbeddingConfig.from_env()
+    vector_cfg = VectorDBConfig.from_env()
 
     collection = vector_cfg.collection
     ingestion_targets = vector_cfg.ingestion_targets
@@ -136,7 +134,6 @@ def main() -> None:
     job_logger.info(
         "Configuration loaded",
         extra={
-            "namespace": namespace,
             "bronze_table": cdc_cfg.bronze_table,
             "progress_table": cdc_cfg.progress_table,
             "progress_id": cdc_cfg.progress_id,
@@ -152,7 +149,7 @@ def main() -> None:
 
     window_cfg = cdc_cfg.to_window_config()
 
-    strategy = DatabricksStrategy.from_env(namespace)
+    strategy = DatabricksStrategy.from_env()
     strategy.init()
 
     try:

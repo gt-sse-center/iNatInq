@@ -1,4 +1,9 @@
-"""Unit tests for metrics builder."""
+"""Unit tests for metrics builder.
+
+Tests metric instantiation from config, parameter validation, and metric suite
+construction. This is important because the builder translates user-friendly
+config into runnable metric objects with correct parameters.
+"""
 
 from __future__ import annotations
 

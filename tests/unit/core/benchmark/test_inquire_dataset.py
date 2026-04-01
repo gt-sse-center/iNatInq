@@ -1,4 +1,10 @@
-"""Unit tests for INQUIRE gold standard datasets (val + test splits)."""
+"""Unit tests for INQUIRE gold standard datasets (val + test splits).
+
+Tests INQUIRE biodiversity search benchmark dataset loading, query parsing, and
+relevance judgment validation for both validation and test splits. This is
+important because INQUIRE provides the authoritative benchmark for biodiversity
+search quality evaluation.
+"""
 
 from __future__ import annotations
 

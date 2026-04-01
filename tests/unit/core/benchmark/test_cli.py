@@ -1,4 +1,9 @@
-"""Unit tests for benchmark CLI."""
+"""Unit tests for benchmark CLI.
+
+Tests Typer CLI argument parsing, config file loading, and runner invocation
+for benchmark commands. This is important because the CLI provides the primary
+interface for running benchmarks from CI/CD and local development.
+"""
 
 from __future__ import annotations
 

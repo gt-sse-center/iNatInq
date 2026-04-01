@@ -1,4 +1,10 @@
-"""Unit tests for ui command group."""
+"""Unit tests for ui command group.
+
+Tests dashboard opening commands (Ray, Qdrant, MinIO, all) to ensure correct
+browser invocation with proper service URLs. This is important because
+developers rely on quick access to service dashboards for debugging and
+monitoring.
+"""
 
 from __future__ import annotations
 

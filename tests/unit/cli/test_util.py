@@ -1,4 +1,10 @@
-"""Unit tests for CLI utilities."""
+"""Unit tests for CLI utilities.
+
+Tests shared CLI utility functions (command building, validation, environment
+detection) to ensure correct argument construction and error handling. This is
+important because utilities are used across all command groups and bugs here
+cascade to multiple commands.
+"""
 
 from __future__ import annotations
 

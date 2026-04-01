@@ -1,4 +1,9 @@
-"""Unit tests for ComparisonRunner."""
+"""Unit tests for ComparisonRunner.
+
+Tests side-by-side comparison of multiple search system configurations, metric
+delta computation, and winner identification. This is important because
+comparison mode enables A/B testing of search improvements.
+"""
 
 from __future__ import annotations
 

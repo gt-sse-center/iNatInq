@@ -19,7 +19,7 @@ request filtering.
 
 ## Middleware Stack
 
-The middleware is added in this order (in `pipeline.api.app.create_app()`):
+The middleware is added in this order (in `api.app.create_app()`):
 
 1. **CORSMiddleware** (FastAPI built-in): Handles CORS preflight requests
 2. **LoggerMiddleware**: Logs request start/completion with structured JSON
@@ -48,7 +48,7 @@ Request logging middleware with structured JSON output.
 **Usage:**
 
 ```python
-from pipeline.api.middleware import LoggerMiddleware
+from api.middleware import LoggerMiddleware
 
 app.add_middleware(LoggerMiddleware)
 ```
@@ -59,10 +59,10 @@ app.add_middleware(LoggerMiddleware)
 {
   "time": "2025-12-17 20:06:33,976",
   "level": "INFO",
-  "logger_name": "pipeline.access",
+  "logger_name": "app.access",
   "message": "request started",
   "request": {
-    "path": "/search",
+    "path": "/search/images",
     "method": "GET",
     "remoteAddr": "127.0.0.1"
   }
@@ -87,7 +87,7 @@ Middleware to suppress access logs for `/healthz` endpoint.
 **Usage:**
 
 ```python
-from pipeline.api.middleware import HealthzFilterMiddleware
+from api.middleware import HealthzFilterMiddleware
 
 app.add_middleware(HealthzFilterMiddleware)
 ```
@@ -117,7 +117,7 @@ Exception handling middleware for structured error responses.
 **Usage:**
 
 ```python
-from pipeline.api.middleware import ExceptionHandlerMiddleware
+from api.middleware import ExceptionHandlerMiddleware
 
 app.add_middleware(ExceptionHandlerMiddleware)
 ```
@@ -167,7 +167,7 @@ Middleware can be tested by creating a test FastAPI app:
 ```python
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from pipeline.api.middleware import LoggerMiddleware, ExceptionHandlerMiddleware
+from api.middleware import LoggerMiddleware, ExceptionHandlerMiddleware
 
 app = FastAPI()
 app.add_middleware(LoggerMiddleware)
@@ -186,5 +186,5 @@ assert response.status_code == 200
 
 - `fastapi`: FastAPI framework
 - `starlette.middleware.base.BaseHTTPMiddleware`: Base middleware class
-- `pipeline.errors`: Error hierarchy for exception handling
-- `pipeline.foundation.logger`: Structured logging configuration
+- `core.exceptions`: Error hierarchy for exception handling
+- `foundation.logger`: Structured logging configuration

@@ -168,7 +168,6 @@ class TestRayImageJobResponse:
         resp = models.RayImageJobResponse(
             job_id="raysubmit_123",
             status="submitted",
-            namespace="ml-system",
             s3_bucket="pipeline",
             s3_prefix="images/",
             collection="documents",
@@ -182,7 +181,6 @@ class TestRayImageJobResponse:
         resp = models.RayImageJobResponse(
             job_id="raysubmit_123",
             status="submitted",
-            namespace="ml-system",
             s3_bucket="pipeline",
             s3_prefix="",
             collection="documents",
@@ -266,21 +264,17 @@ class TestDatabricksCdcJobResponses:
         resp = models.DatabricksCdcProducerJobResponse(
             run_id="123",
             status="submitted",
-            namespace="ml-system",
             submitted_at="2026-03-09T10:59:54Z",
         )
         assert resp.run_id == "123"
         assert resp.status == "submitted"
-        assert resp.namespace == "ml-system"
 
     def test_cdc_consumer_response_fields(self) -> None:
         """Consumer response should expose run metadata fields."""
         resp = models.DatabricksCdcConsumerJobResponse(
             run_id="456",
             status="submitted",
-            namespace="ml-system",
             submitted_at="2026-03-09T11:05:00Z",
         )
         assert resp.run_id == "456"
         assert resp.status == "submitted"
-        assert resp.namespace == "ml-system"

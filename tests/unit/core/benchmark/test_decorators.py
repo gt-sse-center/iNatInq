@@ -1,4 +1,9 @@
-"""Unit tests for timing decorators."""
+"""Unit tests for timing decorators.
+
+Tests @timed decorator for measuring function execution time and result
+passthrough. This is important because timing decorators enable latency
+measurement without polluting business logic with timing code.
+"""
 
 from __future__ import annotations
 

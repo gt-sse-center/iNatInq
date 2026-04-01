@@ -1,4 +1,9 @@
-"""Unit tests for Bronze CDC helper utilities."""
+"""Unit tests for Bronze CDC helper utilities.
+
+Tests Change Data Capture Bronze table producer and consumer helpers for
+incremental ingestion. This is important because CDC enables efficient
+incremental updates without reprocessing the entire dataset.
+"""
 
 from __future__ import annotations
 

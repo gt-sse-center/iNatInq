@@ -31,7 +31,7 @@ Services follow a clean separation of concerns:
 └──────┬──────┘
        │
 ┌──────▼──────┐
-│  External   │ (CLIP, Qdrant, S3, K8s, etc.)
+│  External   │ (CLIP, Qdrant, S3, Databricks, etc.)
 │  Services   │
 └─────────────┘
 ```
@@ -48,16 +48,17 @@ Services follow a clean separation of concerns:
 services/
 ├── __init__.py           # Package exports
 ├── README.md             # This file
-├── search_service.py     # Semantic search orchestration
-├── spark_service.py      # Spark job management
-└── ray_service.py        # Ray job orchestration
+├── search_service.py          # Image search orchestration
+├── ray_service.py             # Ray job orchestration
+├── databricks_ray_service.py  # Databricks job management
+└── ingestion_params.py        # Shared ingestion parameters
 ```
 
 ## Services
 
-### `SearchService`
+### `ImageSearchService`
 
-Orchestrates semantic search operations by coordinating embedding generation and vector database queries.
+Orchestrates image search operations by coordinating CLIP embedding generation and Qdrant vector database queries.
 
 **Responsibilities:**
 
@@ -74,7 +75,7 @@ Orchestrates semantic search operations by coordinating embedding generation and
 **Usage:**
 
 ```python
-from core.services import SearchService
+from core.services import ImageSearchService
 from clients.interfaces.embedding import create_embedding_provider
 from clients.interfaces.vector_db import create_vector_db_provider
 from config import EmbeddingConfig
@@ -83,7 +84,7 @@ from config import EmbeddingConfig
 embedding_provider = create_embedding_provider(EmbeddingConfig.from_env())
 vector_db_provider = create_vector_db_provider(VectorDBConfig.from_env())
 
-service = SearchService(
+service = ImageSearchService(
     embedding_provider=embedding_provider,
     vector_db_provider=vector_db_provider,
 )
@@ -107,14 +108,14 @@ results = await service.search_documents_async(
 
 ```python
 from fastapi import APIRouter
-from core.services import SearchService
+from core.services import ImageSearchService
 from core.exceptions import BadRequestError
 from foundation.exceptions import UpstreamError
 
 router = APIRouter()
 
-@router.post("/search")
-async def search(query: str, limit: int = 10):
+@router.get("/search/images")
+async def search_images(query: str, limit: int = 10):
     try:
         results = await search_service.search_documents_async(
             collection="documents",
@@ -128,58 +129,19 @@ async def search(query: str, limit: int = 10):
         raise HTTPException(status_code=502, detail=str(e))
 ```
 
-### `SparkService`
+### `DatabricksRayService`
 
-Manages Spark-based data processing jobs via the Kubernetes Spark Operator.
+Manages Databricks-based ingestion jobs that use Ray on Spark for distributed image processing.
 
 **Responsibilities:**
 
-- Submit Spark jobs to Kubernetes
-- Track job status and execution
-- List and manage running jobs
-- Clean up completed jobs
+- Submit Databricks jobs for image ingestion (S3, iNaturalist, CDC)
+- Track run status and logs
+- Stop running jobs
 
 **Dependencies:**
 
-- `SparkJobClient`: Kubernetes API client for Spark Operator
-
-**Usage:**
-
-```python
-from core.services import SparkService
-
-# Create service
-service = SparkService(namespace="ml-system")
-
-# Submit job
-result = service.submit_processing_job(
-    s3_prefix="inputs/",
-    collection="documents",
-    executor_instances=2,
-    executor_memory="1g"
-)
-print(f"Job submitted: {result['job_name']}")
-
-# Check status
-status = service.get_job_status(result['job_name'])
-print(f"Job state: {status['state']}")
-
-# List all jobs
-jobs = service.list_jobs()
-for job in jobs:
-    print(f"{job['job_name']}: {job['state']}")
-
-# Cleanup
-service.delete_job(result['job_name'])
-```
-
-**Job Lifecycle:**
-
-1. **Submit**: Creates SparkApplication CRD in Kubernetes
-2. **Running**: Spark Operator launches driver and executor pods
-3. **Processing**: S3 → Embeddings → Vector DB pipeline
-4. **Completion**: Job finishes, pods terminate
-5. **Cleanup**: Delete SparkApplication resource
+- `DatabricksClient`: Databricks Jobs API client
 
 ### `RayService`
 
@@ -230,13 +192,6 @@ print(logs)
 service.stop_job(job_id, namespace="ml-system")
 ```
 
-**Ray vs Spark:**
-
-- **Ray**: Better for dynamic task graphs, real-time processing
-- **Spark**: Better for batch processing, large-scale data transformations
-- **Use Ray when**: You need low latency, dynamic workloads, or Python-native distribution
-- **Use Spark when**: You have massive datasets, need SQL support, or require mature ecosystem
-
 ## Error Handling
 
 Services raise exceptions from the `core.exceptions` & `foundation.` hierarchy:
@@ -248,7 +203,7 @@ Services raise exceptions from the `core.exceptions` & `foundation.` hierarchy:
 **Example:**
 
 ```python
-from core.services import SearchService
+from core.services import ImageSearchService
 from core.exceptions import BadRequestError
 from foundation.exceptions import UpstreamError
 
@@ -272,7 +227,7 @@ Services are designed for easy testing with dependency injection:
 
 ```python
 from unittest.mock import MagicMock, AsyncMock
-from core.services import SearchService
+from core.services import ImageSearchService
 from core.models import SearchResults, SearchResultItem
 
 # Create mocks
@@ -317,12 +272,11 @@ See `tests/unit/services/` for comprehensive test examples.
 Services depend on:
 
 - **Core**: `core.exceptions`, `core.models`
-- **Clients**: `clients.interfaces.*`, `clients.k8s_spark`
+- **Clients**: `clients.interfaces.*`
 - **Config**: `config` module for configuration management
 - **External Libraries**:
   - `attrs>=25.4.0`: For immutable service classes
   - `ray[default]>=2.40.0`: For Ray job submission
-  - `kubernetes>=31.0.0`: For Spark job management
 
 Services do NOT depend on:
 
