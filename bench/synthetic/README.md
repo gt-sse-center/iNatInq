@@ -13,7 +13,7 @@ This module provides:
 ## Directory Structure
 
 ```text
-syntheticdata/
+bench/synthetic/
 ├── synthetic_data.py      # Main script (ImageGenerator + MinIOUploader)
 ├── .gitignore             # Ignores generated data directories
 ├── README.md              # This file
@@ -51,13 +51,13 @@ The `synthetic_data.py` script provides multiple commands:
 
 ```bash
 # Generate images
-uv run python syntheticdata/synthetic_data.py generate-images --count 100 --size 512
+uv run python bench/synthetic/synthetic_data.py generate-images --count 100 --size 512
 
 # Upload images
-uv run python syntheticdata/synthetic_data.py upload-images --endpoint http://localhost:9000
+uv run python bench/synthetic/synthetic_data.py upload-images --endpoint http://localhost:9000
 
 # Generate and upload images
-uv run python syntheticdata/synthetic_data.py setup-images --count 100
+uv run python bench/synthetic/synthetic_data.py setup-images --count 100
 ```
 
 Options for image commands:
@@ -85,7 +85,7 @@ All upload commands support:
 Generates synthetic test images:
 
 ```python
-from syntheticdata.synthetic_data import ImageGenerator
+from bench.synthetic.synthetic_data import ImageGenerator
 
 generator = ImageGenerator(
     output_dir="data/imgs",
@@ -108,7 +108,7 @@ Filenames encode content: `{color}-{shape}-{background}-{index}.png`
 Uploads files to MinIO with concurrent uploads and retry logic:
 
 ```python
-from syntheticdata.synthetic_data import MinIOUploader
+from bench.synthetic.synthetic_data import MinIOUploader
 
 uploader = MinIOUploader(
     endpoint="http://localhost:9000",

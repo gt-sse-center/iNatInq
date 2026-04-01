@@ -26,8 +26,7 @@ zarf/
 │   │   └── Dockerfile.pipeline-base
 │   └── dev/          # Development Dockerfiles
 │       └── Dockerfile.pipeline
-├── scripts/          # Infrastructure scripts
-│   └── init-minio.sh
+├── scripts/          # Operational scripts (smoke tests, health checks)
 └── README.md
 ```
 

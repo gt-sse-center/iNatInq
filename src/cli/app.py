@@ -8,6 +8,7 @@ from typing import Annotated
 import typer
 
 # Import sub-apps (deferred to avoid circular imports until all groups are created)
+from cli import benchmark as benchmark_module
 from cli import databricks as databricks_module
 from cli import dev as dev_module
 from cli import docker as docker_module
@@ -76,3 +77,4 @@ app.add_typer(search_module.app, name="search")
 app.add_typer(ray_module.app, name="ray")
 app.add_typer(vectordb_module.app, name="vectordb")
 app.add_typer(databricks_module.app, name="databricks")
+app.add_typer(benchmark_module.app, name="bench")

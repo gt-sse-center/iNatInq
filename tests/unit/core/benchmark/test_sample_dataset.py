@@ -13,7 +13,7 @@ import pytest
 
 from core.benchmark.datasets.json_dataset import JSONDataset
 
-SAMPLE_PATH = Path(__file__).resolve().parents[4] / "benchmarks" / "sample" / "sample-gold.json"
+SAMPLE_PATH = Path(__file__).resolve().parents[4] / "bench" / "datasets" / "sample" / "sample-gold.json"
 
 
 class TestSampleDataset:

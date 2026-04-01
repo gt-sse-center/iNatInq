@@ -244,7 +244,7 @@ uv run inq synthetic setup --count 100 && \
     -d '{"s3_bucket": "pipeline", "s3_prefix": "images/", "collection": "documents"}' | jq .
 ```
 
-See [syntheticdata/README.md](syntheticdata/README.md) for more options.
+See [bench/synthetic/README.md](bench/synthetic/README.md) for more options.
 
 ### Viewing Ray Worker Logs
 
@@ -294,7 +294,7 @@ iNatInq/
 │   ├── environments/     # Per-environment overrides (dev, staging, prod)
 │   └── schemas/          # JSON Schema for validation
 ├── tests/unit/           # Unit tests
-├── syntheticdata/        # Test data generation & S3 upload tools
+├── bench/                # Benchmarks, synthetic data & tooling
 ├── charts/               # Architecture diagrams
 └── zarf/                 # Docker & infrastructure
     ├── compose/dev/      # Docker Compose config
@@ -312,7 +312,7 @@ iNatInq/
 | [core/](src/core/README.md) | Domain models and exceptions |
 | [core/services/](src/core/services/README.md) | Business logic layer |
 | [foundation/](src/foundation/README.md) | Cross-cutting utilities |
-| [syntheticdata/](syntheticdata/README.md) | Test data generation & upload |
+| [bench/](bench/) | Benchmarks, datasets, synthetic data & tooling |
 | [charts/](charts/README.md) | Architecture diagrams |
 | [zarf/](zarf/README.md) | Infrastructure configs |
 

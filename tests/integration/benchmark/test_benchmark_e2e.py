@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from clients.s3 import S3ClientWrapper
-from core.benchmark.cli import app as benchmark_app
+from cli.benchmark import app as benchmark_app
 from typer.testing import CliRunner
 from core.benchmark.datasets.base import Dataset, Query
 from core.benchmark.datasets.json_dataset import JSONDataset

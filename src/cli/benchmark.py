@@ -1,14 +1,14 @@
-"""CLI for the benchmark framework using Typer.
+"""Benchmark framework command group.
 
 Provides commands for running benchmarks, comparing providers,
 listing metrics, and validating datasets.
 
 Example:
     ```bash
-    uv run python -m core.benchmark.cli validate benchmarks/sample/sample-gold.json
-    uv run python -m core.benchmark.cli metrics
-    uv run python -m core.benchmark.cli compare --dataset gold.json --provider qdrant
-    uv run python -m core.benchmark.cli run --dataset gold.json --provider qdrant
+    uv run inq bench validate bench/datasets/sample/sample-gold.json
+    uv run inq bench metrics
+    uv run inq bench compare --dataset gold.json --provider qdrant
+    uv run inq bench run --dataset gold.json --provider qdrant
     ```
 """
 
@@ -286,14 +286,13 @@ def quantization(
 
     Example::
 
-        cd src/
-        uv run python -m core.benchmark.cli quantization \
-            --dataset ../benchmarks/inquire/inquire-val-bench20k.json \
+        uv run inq bench quantization \
+            --dataset bench/datasets/inquire/inquire-val-bench20k.json \
             --collection bench-siglip-float32 \
             --collection bench-siglip-scalar \
             --collection bench-siglip-binary \
             --limit 50 --warmup 5 \
-            --output ../benchmarks/results/quantization-benchmark.json
+            --output bench/results/quantization-benchmark.json
     """
     if not dataset_path:
         typer.echo("Error: --dataset is required.", err=True)
@@ -367,7 +366,3 @@ def quantization(
     asyncio.run(_run_quantization())
 
     typer.echo("Quantization benchmark complete.")
-
-
-if __name__ == "__main__":
-    app()
