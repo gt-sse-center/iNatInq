@@ -13,8 +13,9 @@ Getting started with iNatInq: local setup, CLI, testing, ingestion, API, and ben
 5. [FastAPI Endpoints and Postman](#5-fastapi-endpoints-and-postman)
 6. [Benchmarking](#6-benchmarking)
 7. [Configuration System](#7-configuration-system)
-8. [Architecture Overview](#8-architecture-overview)
-9. [Troubleshooting](#9-troubleshooting)
+8. [Platform Features](#8-platform-features)
+9. [Architecture Overview](#9-architecture-overview)
+10. [Troubleshooting](#10-troubleshooting)
 
 ---
 
@@ -964,7 +965,352 @@ cp configs/examples/aws.yaml configs/environments/prod.yaml
 
 ---
 
-## 8. Architecture Overview
+## 8. Platform Features
+
+This section covers the cross-cutting features built into the platform that developers interact with when writing clients, services, and ingestion pipelines.
+
+### 8.1 Resilience
+
+The platform implements defense-in-depth resilience through three layered primitives that work together: retry with exponential backoff, circuit breakers, and rate limiting. All three are defined in the foundation layer and applied via decorators in the client layer.
+
+#### How the Layers Compose
+
+Each client method is wrapped with decorators stacked outermost-first:
+
+```python
+@with_client_metrics("clip", "embed")       # 1. Metrics (outermost — captures full duration)
+@with_circuit_breaker("clip")               # 2. Circuit breaker (fail-fast if service is down)
+def embed(self, image_bytes: bytes) -> ...: # 3. Method body (retry logic inside)
+    ...
+```
+
+Within the method body, `RetryWithBackoff` or `async_retry_call` handles transient failures. The circuit breaker sits above retries so that once a service is confirmed unhealthy, retries stop immediately.
+
+#### Retry with Exponential Backoff
+
+**Key file**: `src/foundation/retry.py`
+
+Two entry points:
+
+| API | Use case |
+|-----|----------|
+| `RetryWithBackoff.call(func, ...)` | Sync functions (Ray tasks, sync clients) |
+| `async_retry_call(coro_func, ...)` | Async functions (Qdrant, async CLIP) |
+
+Both use tenacity under the hood with configurable parameters:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_attempts` / `max_retries` | 3 | Total attempts before giving up |
+| `wait_min` / `min_wait` | 1–2 s | Minimum backoff delay |
+| `wait_max` / `max_wait` | 10 s | Maximum backoff delay |
+| `multiplier` | 1.0 | Exponential backoff multiplier |
+
+Error classification uses the `ErrorClassifier` protocol. The `HTTPErrorClassifier` base class provides standard HTTP rules:
+
+- **5xx** (500, 502, 503, 504): Retriable
+- **4xx**: Non-retriable (fail fast)
+- `TypeError`, `AttributeError`, `KeyError`: Never retried (programming errors)
+
+When all retries are exhausted, `async_retry_call` wraps the final exception in `UpstreamError`.
+
+#### Circuit Breakers
+
+**Key file**: `src/foundation/circuit_breaker.py`
+
+Uses `pybreaker` (sync) and `aiobreaker` (async). State transitions:
+
+```
+CLOSED ──(N consecutive failures)──→ OPEN ──(recovery timeout)──→ HALF_OPEN
+  ↑                                                                  │
+  └──────────(first success)─────────────────────────────────────────┘
+  HALF_OPEN ──(failure)──→ OPEN
+```
+
+Per-service configuration guidelines:
+
+| Service | Failure threshold | Recovery timeout | Rationale |
+|---------|-------------------|------------------|-----------|
+| CLIP | 5 | 30 s | Critical path, fail fast |
+| Qdrant | 3 | 60 s | Database failures are serious |
+| MinIO/S3 | 5 | 120 s | Transient network issues, allow recovery |
+
+Decorators:
+
+- `@with_circuit_breaker("service")` — sync methods, reads `self._breaker`
+- `@with_circuit_breaker_async("service")` — async methods, reads `self._async_breaker`
+
+Both convert `CircuitBreakerError` into `UpstreamError` for consistent middleware handling.
+
+#### Rate Limiting
+
+**Key file**: `src/foundation/rate_limiter.py`
+
+Token-bucket rate limiter for async workloads:
+
+```python
+from foundation.rate_limiter import RateLimiter
+
+limiter = RateLimiter(rate_per_sec=10)
+await limiter.acquire_permission()  # Blocks if needed
+```
+
+Used in ingestion pipelines to avoid overwhelming upstream embedding services. The limiter uses monotonic time and an async lock for coroutine safety.
+
+#### Adding Resilience to a New Client
+
+1. Implement `HTTPErrorClassifier` for your service-specific error classification
+2. Create sync and/or async circuit breakers in `__attrs_post_init__`
+3. Stack decorators: `@with_client_metrics` → `@with_circuit_breaker` → method body
+4. Use `RetryWithBackoff` or `async_retry_call` inside the method for retries
+5. All external errors should surface as `UpstreamError`
+
+### 8.2 Semantic Cache
+
+**Key file**: `src/clients/cache.py`
+
+An in-memory Qdrant-backed cache that stores search results keyed on query embedding vectors. On a subsequent query with a sufficiently similar embedding, the cache returns stored results without hitting the real vector database.
+
+#### How It Works
+
+1. **Lookup**: The query vector is compared against cached vectors via cosine similarity. If the best match scores at or above `similarity_threshold`, the cached `SearchResults` are returned (hit). Otherwise it's a miss.
+2. **Store on miss**: After a real search completes, the results are stored in the cache keyed by the query vector.
+3. **Per-collection isolation**: Each vector-DB collection gets its own `cache_{collection_name}` collection inside the in-memory Qdrant instance.
+4. **Eviction**: When `max_entries_per_collection` is reached, a random entry is evicted before storing the new one.
+
+#### Configuration
+
+| Environment Variable | Default | Description |
+|----------------------|---------|-------------|
+| `SEMANTIC_CACHE_ENABLED` | `true` | Enable/disable the cache |
+| `SEMANTIC_CACHE_SIMILARITY_THRESHOLD` | `0.95` | Cosine similarity threshold for cache hits |
+| `SEMANTIC_CACHE_MAX_ENTRIES` | `1000` | Max entries per collection before eviction |
+| `SEMANTIC_CACHE_INVALIDATION_INTERVAL` | `3600` | Seconds between automatic invalidation sweeps |
+| `SEMANTIC_CACHE_TIMEOUT` | `5` | Timeout (seconds) for the in-memory Qdrant client |
+
+#### Invalidation
+
+- **Automatic**: On each lookup, if `invalidation_interval_seconds` has elapsed since the last invalidation, the cache is flushed before returning a miss.
+- **Manual**: `DELETE /cache` invalidates all cached data (or a specific collection).
+
+#### Graceful Degradation
+
+When `SEMANTIC_CACHE_ENABLED=false`, `get_semantic_cache()` returns `None` and the search path skips caching entirely. No Qdrant in-memory instance is created.
+
+### 8.3 Dead Letter Queue (DLQ)
+
+**Key files**: `src/foundation/dead_letter_queue/`
+
+Failed image ingestions are sent to a Dead Letter Queue so they can be retried later without re-running the entire job.
+
+#### What Goes in the DLQ
+
+Any image that fails during ingestion (embedding failure, upsert failure, download error) is enqueued with its `image_id` and optional error metadata:
+
+```python
+dlq.enqueue_failed_ingestion(image_id, metadata={"error": str(e)})
+```
+
+#### The `@with_dlq` Decorator
+
+The `@with_dlq` decorator injects a `DLQ` instance as the first argument of the decorated function. It supports both sync and async functions:
+
+```python
+from foundation.dead_letter_queue import with_dlq, DLQ
+
+@with_dlq
+def process_image(dlq: DLQ, image_id: str):
+    try:
+        do_something_with_image(image_id)
+    except Exception as e:
+        dlq.enqueue_failed_ingestion(image_id, metadata={"error": str(e)})
+        raise
+```
+
+If no DLQ backend is configured, a `StubbedDLQBackend` is injected that silently discards entries.
+
+#### Configuration
+
+| Environment Variable | Value | Description |
+|----------------------|-------|-------------|
+| `DLQ_BACKEND` | `redis` | Backend type (currently only `redis`) |
+| `DLQ_REDIS_HOST` | — | Redis host |
+| `DLQ_REDIS_PORT` | — | Redis port |
+| `DLQ_REDIS_DATABASE_NUMBER` | — | Redis database number |
+
+The backend is resolved via `get_dlq_backend()` which is `@lru_cache`d — one instance per process.
+
+#### Reprocessing
+
+Submit a DLQ reprocessing job via the API:
+
+```bash
+# Ray
+curl -X POST http://localhost:8000/ray/jobs/process-dlq
+
+# Databricks
+curl -X POST http://localhost:8000/databricks/jobs/process-dlq
+```
+
+The reprocessing job reads all entries from the DLQ, attempts to re-ingest them, and removes successfully processed entries.
+
+#### Graceful Degradation
+
+When `DLQ_BACKEND` is not set, the system logs a warning and injects a `StubbedDLQBackend`. Failed images are silently dropped from the DLQ path but still logged and counted in metrics.
+
+### 8.4 Change Data Capture (CDC)
+
+**Key file**: `src/core/ingestion/databricks/cdc.py`
+
+CDC enables incremental Databricks ingestion: instead of reprocessing all S3 objects, it reads only new records from a Bronze Delta table.
+
+#### Flow
+
+```
+Bronze Delta Table (Autoloader-populated)
+    → load_next_window() — ordered by (discovered_at, s3_key), limited by window_size
+        → Ray processes the window
+            → compute_commit_cursor() — advances only through contiguous successes
+                → merge_progress_cursor() — upserts into progress Delta table
+```
+
+#### Contiguous-Success Cursor
+
+The cursor advances only through the **last contiguous successfully processed record** in window order. If record 3 of 10 fails, the cursor stops at record 2 — records 4–10 (even if successful) are not committed. This guarantees no records are skipped on the next run.
+
+#### Key Data Types
+
+| Type | Description |
+|------|-------------|
+| `BronzeRecord` | Single row: `s3_key` + `discovered_at` timestamp |
+| `CDCProgressCursor` | Bookmark: `last_discovered_at` + `last_s3_key` |
+| `CDCWindowConfig` | Runtime config: table names, column names, window size |
+
+#### Configuration
+
+| Environment Variable | Description |
+|----------------------|-------------|
+| `AUTOLOADER_BRONZE_TABLE` | Fully qualified Bronze Delta table name |
+| `CDC_WINDOW_SIZE` | Max records per window (default: 5000) |
+| `CDC_PROGRESS_TABLE` | Delta table for storing progress cursors |
+
+#### Safety
+
+- Table identifiers are validated against an allowlist of safe characters to prevent SQL injection.
+- The progress merge uses a monotonic update condition to prevent cursor rewinds from concurrent writers.
+- Duplicate `s3_key` values within a window trigger an immediate `ValueError`.
+
+### 8.5 Checkpointing
+
+**Key file**: `src/foundation/checkpoint.py`
+
+The `CheckpointManager` enables job resumption by persisting the set of already-processed item keys. If a job fails mid-way, resubmitting it skips previously processed items.
+
+#### How It Works
+
+1. **Load**: On job start, `CheckpointManager.load(path)` reads a JSON file containing `{"processed_keys": [...], "last_updated": ...}`.
+2. **Filter**: The pipeline excludes any S3 keys already in the loaded set.
+3. **Save**: Periodically during processing, `CheckpointManager.save(path, keys)` writes the updated set.
+
+#### Storage Backends
+
+- **Local filesystem**: Any path (e.g., `/tmp/checkpoint.json`). Directories are created automatically.
+- **S3**: Any `s3://` or `s3a://` URI. Requires an `s3_client` to be passed at construction.
+
+```python
+from foundation.checkpoint import CheckpointManager
+
+# Local
+manager = CheckpointManager()
+processed = manager.load(Path("/tmp/checkpoint.json"))
+
+# S3
+manager = CheckpointManager(s3_client=s3_client)
+processed = manager.load("s3://bucket/checkpoints/job.json")
+```
+
+#### Configuration
+
+| Environment Variable | Default | Description |
+|----------------------|---------|-------------|
+| `RAY_CHECKPOINT_ENABLED` | `true` | Enable/disable checkpointing |
+| `RAY_CHECKPOINT_DIR` | — | Directory or S3 prefix for checkpoint files |
+
+When disabled, checkpoints are neither loaded nor saved, and the pipeline processes all items on every run.
+
+### 8.6 Metrics and Observability
+
+The platform exposes Prometheus metrics, structured JSON logging, and a health check endpoint.
+
+#### Prometheus Metrics
+
+**Key file**: `src/foundation/metrics/registry.py`
+
+All custom metrics use the `inatinq_` prefix. The platform defines 20+ metrics across six categories:
+
+| Category | Metrics | Labels |
+|----------|---------|--------|
+| **Client requests** | `inatinq_client_request_duration_seconds`, `inatinq_client_request_total`, `inatinq_client_errors_total` | `client`, `operation`, `status`/`error_type` |
+| **Circuit breaker** | `inatinq_circuit_breaker_state`, `inatinq_circuit_breaker_transitions_total` | `breaker`, `from_state`, `to_state` |
+| **Retry** | `inatinq_retry_attempts_total`, `inatinq_retry_exhaustions_total` | `client`, `operation`, `outcome` |
+| **Search** | `inatinq_search_embedding_duration_seconds`, `inatinq_search_vector_query_duration_seconds`, `inatinq_search_result_count` | `provider`, `collection` |
+| **Ingestion** | `inatinq_ingestion_documents_processed_total`, `inatinq_ingestion_batch_duration_seconds`, `inatinq_ingestion_checkpoint_saves_total` | `status`, `pipeline` |
+| **Cache** | `inatinq_cache_hits_total`, `inatinq_cache_misses_total`, `inatinq_cache_lookup_duration_seconds`, `inatinq_cache_store_duration_seconds`, `inatinq_cache_size`, `inatinq_cache_evictions_total`, `inatinq_cache_invalidations_total` | `collection` |
+
+HTTP-level metrics (`http_request_duration_seconds`, etc.) are added automatically by `prometheus-fastapi-instrumentator`.
+
+#### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/metrics` | Prometheus scrape endpoint (auto + custom metrics) |
+| `POST` | `/ingestion/metrics` | Accepts batch stats from ephemeral job processes (Ray/Databricks) |
+
+Ingestion jobs run in separate processes that exit after completion. Because Prometheus scrapes the long-lived API process, job metrics are POSTed to `POST /ingestion/metrics` via `report_ingestion_metrics()` so they land in the correct registry.
+
+#### Client Metrics Decorators
+
+**Key file**: `src/foundation/metrics/decorators.py`
+
+The `@with_client_metrics("client", "operation")` and `@with_client_metrics_async` decorators instrument client methods with duration histograms, request counters, and error counters. Apply as the outermost decorator to capture full request duration including circuit breaker checks.
+
+#### Structured Logging
+
+- JSON format in production (`LOG_FORMAT=json`), text format in development (`LOG_FORMAT=text`)
+- Contextual fields in `extra` parameter: request ID, error details, attempt counts
+- Logger hierarchy: `app.access`, `app.error`, `foundation.*`, `pipeline.*`
+
+#### Health Check
+
+`GET /healthz` — simple liveness probe that returns `200 OK`. It does **not** check downstream dependencies (Qdrant, MinIO, CLIP), keeping the probe fast and preventing cascading failure detection.
+
+#### Example PromQL Queries
+
+```promql
+# Error rate by client over the last 5 minutes
+rate(inatinq_client_errors_total[5m])
+
+# Circuit breaker currently open
+inatinq_circuit_breaker_state == 1
+
+# Cache hit ratio per collection
+sum(rate(inatinq_cache_hits_total[5m])) by (collection)
+/
+(sum(rate(inatinq_cache_hits_total[5m])) by (collection) + sum(rate(inatinq_cache_misses_total[5m])) by (collection))
+
+# Ingestion throughput (docs/sec) by pipeline
+rate(inatinq_ingestion_documents_processed_total{status="success"}[5m])
+
+# P95 search embedding latency
+histogram_quantile(0.95, rate(inatinq_search_embedding_duration_seconds_bucket[5m]))
+
+# Retry exhaustion rate (indicates persistent service issues)
+rate(inatinq_retry_exhaustions_total[5m])
+```
+
+---
+
+## 9. Architecture Overview
 
 ### Directory Structure
 
@@ -1026,7 +1372,7 @@ Dependencies flow upward only. Each layer depends only on the layers below it.
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 ### "Circuit breaker is open"
 
