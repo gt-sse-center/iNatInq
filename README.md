@@ -15,142 +15,17 @@ A semantic search and document ingestion service built with FastAPI, Ray/Spark, 
 
 ## Query Engine
 
-```mermaid
-flowchart TB
-    subgraph Client
-        A[HTTP Request<br/>GET /search/images?q=...&limit=10]
-    end
-
-    subgraph API["FastAPI Routes"]
-        B[Parse Query Parameters]
-        C[Create EmbeddingProvider<br/>+ VectorDBProvider]
-        D[Instantiate ImageSearchService]
-    end
-
-    subgraph Service["ImageSearchService"]
-        E[Validate Query]
-        F[Generate Query Embedding]
-        G{Semantic Cache<br/>Lookup}
-        H[Search Vector Database]
-        I[Store Results in Cache]
-        J[Format Results]
-    end
-
-    subgraph Providers["Provider Layer"]
-        K[EmbeddingProvider<br/>CLIP / Infinity]
-        L[VectorDBProvider<br/>QdrantClientWrapper]
-        M[CacheClient<br/>In-Memory Qdrant]
-    end
-
-    subgraph External["External Services"]
-        N[(CLIP / Infinity)]
-        O[(Qdrant)]
-    end
-
-    A --> B
-    B --> C
-    C --> D
-    D --> E
-    E -->|Valid| F
-    E -->|Invalid| Z[400 Bad Request]
-    F --> K
-    K --> N
-    N --> G
-    G -->|Cache Hit| J
-    G -->|Cache Miss| H
-    H --> L
-    L --> O
-    O --> I
-    I --> M
-    M --> J
-    J --> Y[200 OK<br/>ImageSearchResponse]
-
-    style A fill:#e1f5fe
-    style Y fill:#c8e6c9
-    style Z fill:#ffcdd2
-    style N fill:#fff3e0
-    style O fill:#fce4ec
-    style M fill:#e8eaf6
-```
-
 **Flow**: HTTP Request → Embedding (CLIP/Infinity) → Cache Check → Vector Search → Ranked Results
+
+Diagrams: [flowchart](charts/query-engine-flowchart.md) · [sequence](charts/query-engine-sequence.md)
 
 ---
 
 ## Ingestion Engine
 
-```mermaid
-flowchart TB
-    subgraph Client
-        A[HTTP Request<br/>POST /ray/jobs/images or /databricks/jobs/images]
-    end
-
-    subgraph API["FastAPI Routes"]
-        B[Parse Job Request]
-        C{Engine<br/>Type?}
-        D[RayService]
-        E[DatabricksRayService]
-    end
-
-    subgraph JobSubmission["Job Submission"]
-        F[Submit to Local Ray Cluster]
-        G[Submit Databricks Job<br/>via Jobs API]
-    end
-
-    subgraph Processing["Distributed Processing"]
-        H[List S3 Objects]
-        I[Partition Keys<br/>Across Workers]
-        J[Fetch S3 Content]
-        K[Rate-Limited<br/>Embedding Generation]
-        L[Create Vector Points]
-        M[Batch Upsert to<br/>Qdrant]
-    end
-
-    subgraph Workers["Worker Tasks"]
-        N[Ray Remote Task]
-    end
-
-    subgraph External["External Services"]
-        P[(MinIO/S3)]
-        Q[(CLIP / Infinity)]
-        R[(Qdrant)]
-    end
-
-    A --> B
-    B --> C
-    C -->|Ray| D
-    C -->|Databricks| E
-    D --> F
-    E --> G
-    F --> N
-    G --> N
-    N --> H
-    H --> P
-    P --> I
-    I --> J
-    J --> P
-    P --> K
-    K --> Q
-    Q --> L
-    L --> M
-    M --> R
-
-    subgraph Response["Job Response"]
-        T[202 Accepted<br/>+ Job ID]
-    end
-
-    D --> T
-    E --> T
-
-    style A fill:#e1f5fe
-    style T fill:#c8e6c9
-    style P fill:#fff9c4
-    style Q fill:#fff3e0
-    style R fill:#fce4ec
-    style N fill:#e8f5e9
-```
-
 **Flow**: Job Submit → S3 List → Parallel Workers → Embed → Upsert to Qdrant
+
+Diagrams: [flowchart](charts/ingestion-engine-flowchart.md) · [sequence](charts/ingestion-engine-sequence.md)
 
 ---
 
