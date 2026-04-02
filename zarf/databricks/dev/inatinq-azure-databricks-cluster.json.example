@@ -25,7 +25,7 @@
     "init_scripts": [
         {
             "workspace": {
-                "destination": "/Users/<databricks-userid>/iNatInq/apps/zarf/scripts/set-pythonpath.sh"
+                "destination": "/Users/<databricks-userid>/iNatInq/zarf/databricks/init_scripts/set_pythonpath.sh"
             }
         }
     ],
