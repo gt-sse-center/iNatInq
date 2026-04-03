@@ -7,6 +7,8 @@ iNatInq pipeline.
 
 ```text
 zarf/databricks/
+├── init_scripts/
+│   └── set_pythonpath.sh
 ├── dev/
 │   ├── env.local.example
 │   ├── .env.local                                # gitignored
@@ -38,6 +40,10 @@ cp zarf/databricks/dev/inatinq-ml-pipeline-job.yml.example \
 ```
 
 Then edit the copied files with your Databricks host/token and your cluster/job IDs.
+
+The cluster spec example includes an init script at:
+
+- `/Users/<databricks-userid>/iNatInq/zarf/databricks/init_scripts/set_pythonpath.sh`
 
 ### 2) Set minimum env values (sufficient for `process_s3_images`)
 
